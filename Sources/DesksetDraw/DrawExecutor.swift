@@ -8,7 +8,7 @@ public enum GlassPaint: Equatable, Sendable {
     case none
 }
 
-/// Executes captured drawing values. Resource leaves run synchronously inside the current graphics state.
+/// Executes captured drawing values synchronously inside the current graphics state.
 public enum DrawExecutor {
     public static func draw(scene: WidgetScene, in ctx: CGContext, context: DrawContext, cycle: Int,
                             glass: GlassPaint) {
@@ -41,21 +41,24 @@ public enum DrawExecutor {
             case let .bevel(rect, bevel):
                 DrawPrimitives.drawBevel(rect.cgRect, bevel.type, light: bevel.light, dark: bevel.dark, ctx)
             case let .text(text):
-                context.resources.draw(text, in: ctx, cycle: cycle)
+                TextRenderer.draw(text, in: ctx, layouts: context.text, cycle: cycle)
             case let .image(image):
-                context.resources.draw(image, in: ctx)
+                ImageRenderer.draw(image, in: ctx)
             case let .shape(shape):
                 ShapeRenderer.draw(shape, in: ctx, context: context)
             case let .bar(bar):
-                context.resources.draw(bar, in: ctx)
+                BarRenderer.draw(bar, in: ctx)
             case let .graph(graph):
-                context.resources.draw(graph, in: ctx)
+                switch graph {
+                case let .line(line): LineRenderer.draw(line, in: ctx)
+                case let .histogram(histogram): HistogramRenderer.draw(histogram, in: ctx, cache: context.histogram)
+                }
             case let .roundline(roundline):
                 RoundlineRenderer.draw(roundline, in: ctx)
             case let .rotator(rotator):
-                context.resources.draw(rotator, in: ctx)
+                RotatorRenderer.draw(rotator, in: ctx, cache: context.rotatorImages)
             case let .sprite(sprite):
-                context.resources.draw(sprite, in: ctx)
+                SpriteRenderer.draw(sprite, in: ctx)
             case let .glass(region):
                 drawGlass(region, in: ctx, glass: glass)
             case let .transformed(transform, contents):

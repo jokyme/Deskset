@@ -35,59 +35,10 @@ enum SceneDrawingSelfTests {
         let pictures: [Data]
     }
 
-    /// Observations are values; the only retained service is the same resource cache used by every overload.
-    private final class RecordingResources: ResourceLeafDrawing {
-        struct Call {
-            let item: DrawItem
-            let cycle: Int?
-            let transform: CGAffineTransform
-            let clip: CGRect
-        }
-
-        let delegate: AppDrawResources
-        var calls: [Call] = []
-
-        init(delegate: AppDrawResources) { self.delegate = delegate }
-
-        private func record(_ item: DrawItem, in ctx: CGContext, cycle: Int? = nil) {
-            calls.append(Call(item: item, cycle: cycle, transform: ctx.ctm, clip: ctx.boundingBoxOfClipPath))
-        }
-
-        func draw(_ value: TextDraw, in ctx: CGContext, cycle: Int) {
-            record(.text(value), in: ctx, cycle: cycle)
-            delegate.draw(value, in: ctx, cycle: cycle)
-        }
-
-        func draw(_ value: ImageDraw, in ctx: CGContext) {
-            record(.image(value), in: ctx)
-            delegate.draw(value, in: ctx)
-        }
-
-        func draw(_ value: BarDraw, in ctx: CGContext) {
-            record(.bar(value), in: ctx)
-            delegate.draw(value, in: ctx)
-        }
-
-        func draw(_ value: GraphDraw, in ctx: CGContext) {
-            record(.graph(value), in: ctx)
-            delegate.draw(value, in: ctx)
-        }
-
-        func draw(_ value: RotatorDraw, in ctx: CGContext) {
-            record(.rotator(value), in: ctx)
-            delegate.draw(value, in: ctx)
-        }
-
-        func draw(_ value: SpriteDraw, in ctx: CGContext) {
-            record(.sprite(value), in: ctx)
-            delegate.draw(value, in: ctx)
-        }
-    }
-
     static func run(_ t: AppTestRunner) {
         backgroundTests(t)
         compositionTests(t)
-        resourceBridgeTests(t)
+        libraryContextTests(t)
         selectionTests(t)
         glassTests(t)
         stateTests(t)
@@ -195,20 +146,18 @@ enum SceneDrawingSelfTests {
         }
     }
 
-    private static func resourceBridgeTests(_ t: AppTestRunner) {
-        t.suite("Runtime: scene drawing: library resource bridge keeps mixed drawing order, state and cache lifetimes") {
+    private static func libraryContextTests(_ t: AppTestRunner) {
+        t.suite("Runtime: scene drawing: library context keeps mixed frozen pixels, state and cache lifetimes") {
             let files = try imageFiles(["Button.png"])
             weak var releasedSkin: Skin?
             weak var releasedMeter: Meter?
             weak var releasedMeasure: Measure?
             weak var releasedOwnerContext: SkinRenderContext?
-            weak var releasedOwnerDrawing: DesksetDraw.DrawContext?
             weak var releasedDrawing: DesksetDraw.DrawContext?
-            weak var releasedBridge: RecordingResources?
-            weak var releasedResources: AppDrawResources?
             weak var releasedText: TextLayoutCache?
             weak var releasedRotator: RotatorImageCache?
             weak var releasedShapes: ShapeCG.Cache?
+            weak var releasedHistogram: DesksetDraw.HistogramCache?
 
             try autoreleasepool {
                 let saved = try autoreleasepool { () throws -> (sample: SceneCapture, context: DesksetDraw.DrawContext) in
@@ -238,70 +187,56 @@ enum SceneDrawingSelfTests {
                     releasedMeter = skin.meter(named: "Mask")
                     releasedMeasure = skin.measure(named: "Level")
                     for _ in 0..<4 { skin.update() }
-                    guard let overlay = skin.meter(named: "Overlay") as? ImageMeter,
-                          let child = skin.meter(named: "ChildBefore") as? ImageMeter,
-                          let emptyContent = skin.meter(named: "EmptyContent") as? ImageMeter,
-                          let emptyMask = skin.meter(named: "EmptyMask") as? ImageMeter,
-                          let line = skin.meter(named: "Line") as? LineMeter,
-                          let histogram = skin.meter(named: "Histogram") as? HistogramMeter,
-                          let bar = skin.meter(named: "Bar") as? BarMeter,
-                          let label = skin.meter(named: "Label") as? StringMeter,
-                          let needle = skin.meter(named: "Needle") as? RotatorMeter,
-                          let button = skin.meter(named: "Button") as? ButtonMeter else {
+                    guard skin.meter(named: "Overlay") is ImageMeter,
+                          skin.meter(named: "ChildBefore") is ImageMeter,
+                          skin.meter(named: "EmptyContent") is ImageMeter,
+                          skin.meter(named: "EmptyMask") is ImageMeter,
+                          skin.meter(named: "Line") is LineMeter,
+                          skin.meter(named: "Histogram") is HistogramMeter,
+                          skin.meter(named: "Bar") is BarMeter,
+                          skin.meter(named: "Label") is StringMeter,
+                          skin.meter(named: "Needle") is RotatorMeter,
+                          skin.meter(named: "Button") is ButtonMeter else {
                         throw CocoaError(.coderInvalidValue)
                     }
-                    // This fixture's file order: Overlay precedes Mask's ChildBefore; EmptyContent is drawn
-                    // before EmptyMask. Shape backgrounds/masks stay between these calls without a resource hop.
-                    let expected: [DrawItem] = [.image(overlay.lower()), .image(child.lower()),
-                        .image(emptyContent.lower()), .image(emptyMask.lower()), .graph(.line(line.lower())),
-                        .graph(.histogram(histogram.lower())), .bar(bar.lower()), .text(label.lower()),
-                        .rotator(needle.lower()), .sprite(button.lower())]
                     let owner = SkinRenderContext.of(skin)
-                    let bridge = RecordingResources(delegate: owner.resources)
-                    let drawing = DesksetDraw.DrawContext(resources: bridge)
+                    let drawing = owner.drawing
+                    t.check(owner.text === drawing.text && owner.rotatorImages === drawing.rotatorImages
+                            && owner.shapes === drawing.shapes,
+                            "measurement and drawing share the library context's caches")
                     releasedOwnerContext = owner
-                    releasedOwnerDrawing = owner.drawing
                     releasedDrawing = drawing
-                    releasedBridge = bridge
-                    releasedResources = owner.resources
                     releasedText = owner.text
                     releasedRotator = owner.rotatorImages
                     releasedShapes = drawing.shapes
+                    releasedHistogram = drawing.histogram
                     let scene = SceneProjector().project(skin, environment: Environment())
                     let sample = try capture(scene, skin: skin, glass: .placeholder(dark: false), context: owner, t,
-                                             "mixed library resource bridge")
+                                             "mixed library context")
                     for (index, variant) in variants.enumerated() {
-                        bridge.calls.removeAll(keepingCapacity: true)
-                        var initialTransform = CGAffineTransform.identity
-                        var initialClip = CGRect.null
                         let picture = try pixels(variant) { ctx in
-                            initialTransform = ctx.ctm
-                            initialClip = ctx.boundingBoxOfClipPath
+                            let initialTransform = ctx.ctm
+                            let initialClip = ctx.boundingBoxOfClipPath
                             DesksetDraw.DrawExecutor.draw(scene: sample.scene, in: ctx, context: drawing,
                                                          cycle: sample.cycle, glass: .placeholder(dark: false))
+                            t.equal(ctx.ctm, initialTransform, "mixed drawing restores the incoming transform, \(variant)")
+                            t.equal(ctx.boundingBoxOfClipPath, initialClip,
+                                    "mixed drawing restores the incoming clip, \(variant)")
                         }
                         t.equal(picture, sample.pictures[index], "mixed library drawing keeps frozen pixels, \(variant)")
-                        t.equal(bridge.calls.map(\.item), expected, "all required leaves run in fixture order, \(variant)")
-                        t.equal(bridge.calls.compactMap(\.cycle), [sample.cycle], "text receives the supplied cache cycle")
-                        guard bridge.calls.count == expected.count else { continue }
-                        let childCall = bridge.calls[1]
-                        t.equal(childCall.transform, initialTransform.translatedBy(x: -3, y: 2),
-                                "the container child receives its own matrix, without the mask's skew")
-                        t.equal(childCall.clip, CGRect(x: 28, y: 14, width: 60, height: 52),
-                                "the untransformed container frame is clipped before the child's translation")
-                        t.check(bridge.calls[4...].allSatisfy { $0.transform == initialTransform && $0.clip == initialClip },
-                                "later resources synchronously resume the outer graphics state")
                     }
-                    t.check(owner.text.storedCount > 0 && owner.rotatorImages.count > 0 && drawing.shapes.count > 0,
-                            "the mixed scene populated text, processed Rotator and Shape caches")
+                    t.check(owner.text.storedCount > 0 && owner.rotatorImages.count > 0 && drawing.shapes.count > 0
+                            && drawing.histogram.parts.contains { !$0.isEmpty },
+                            "the mixed scene populated text, processed Rotator, Shape and Histogram caches")
                     return (sample, drawing)
                 }
                 t.check(releasedSkin == nil && releasedMeter == nil && releasedMeasure == nil,
-                        "the scene and independent context retain no live engine owner")
-                t.check(releasedOwnerContext == nil && releasedOwnerDrawing == nil,
-                        "retaining the owner's resources does not retain its SkinRenderContext or drawing context")
-                t.check(releasedBridge != nil && releasedResources != nil && releasedText != nil && releasedRotator != nil,
-                        "the independent context keeps its bridge and shared resource caches alive")
+                        "the scene and retained drawing context keep no live engine owner")
+                t.check(releasedOwnerContext == nil,
+                        "retaining the library context does not retain its SkinRenderContext")
+                t.check(releasedDrawing != nil && releasedText != nil && releasedRotator != nil
+                        && releasedShapes != nil && releasedHistogram != nil,
+                        "the retained library context keeps all four caches alive")
                 Images.purge()
                 for (index, variant) in variants.enumerated() {
                     let picture = try pixels(variant) {
@@ -310,12 +245,38 @@ enum SceneDrawingSelfTests {
                     }
                     t.equal(picture, saved.sample.pictures[index], "owner-free library replay with cold images, \(variant)")
                 }
+                var coldResults: [(variant: String, empty: Bool, released: Bool)] = []
+                for (index, variant) in variants.enumerated() {
+                    Images.purge()
+                    weak var releasedCold: DesksetDraw.DrawContext?
+                    let empty = try autoreleasepool { () throws -> Bool in
+                        let cold = DesksetDraw.DrawContext(fonts: AppFontResolver())
+                        releasedCold = cold
+                        let startedEmpty = cold.text.storedCount == 0 && cold.rotatorImages.count == 0
+                            && cold.shapes.count == 0 && cold.histogram.parts.allSatisfy(\.isEmpty)
+                            && cold.histogram.crops.isEmpty
+                        let picture = try pixels(variant) {
+                            DesksetDraw.DrawExecutor.draw(scene: saved.sample.scene, in: $0, context: cold,
+                                                         cycle: saved.sample.cycle, glass: .placeholder(dark: false))
+                        }
+                        t.equal(picture, saved.sample.pictures[index],
+                                "owner-free library replay with all caches cold, \(variant)")
+                        withExtendedLifetime(cold) {}
+                        return startedEmpty
+                    }
+                    coldResults.append((variant.description, empty, releasedCold == nil))
+                }
+                t.check(coldResults.allSatisfy { $0.empty },
+                        "cold contexts start empty; nonempty: "
+                            + coldResults.filter { !$0.empty }.map { $0.variant }.joined(separator: ", "))
+                t.check(coldResults.allSatisfy { $0.released },
+                        "cold contexts leave after replay; retained: "
+                            + coldResults.filter { !$0.released }.map { $0.variant }.joined(separator: ", "))
                 withExtendedLifetime(saved) {}
             }
-            t.check(releasedDrawing == nil && releasedBridge == nil && releasedResources == nil,
-                    "releasing the independent context releases its bridge and resource service")
-            t.check(releasedText == nil && releasedRotator == nil && releasedShapes == nil,
-                    "text, Rotator and Shape caches leave with the independent drawing context")
+            t.check(releasedDrawing == nil, "the retained library context is released after replay")
+            t.check(releasedText == nil && releasedRotator == nil && releasedShapes == nil && releasedHistogram == nil,
+                    "text, Rotator, Shape and Histogram caches leave with the drawing context")
         }
     }
 
