@@ -101,7 +101,7 @@ enum DrawImageSelfTests {
                     t.check(result.image.colorSpace?.name == CGColorSpace.sRGB, "the raster stays in sRGB")
                     #if DEBUG
                     t.check(LegacyRenderSelfTests.bytesEqual(result.image, original.image))
-                    t.check(LegacyRenderSelfTests.bytesEqual(result.image, cached.image), "the cache uses the protocol")
+                    t.check(LegacyRenderSelfTests.bytesEqual(result.image, cached.image), "cached pixels match the rasterizer")
                     guard let legacy = LegacySymbolImages.render(symbol) else {
                         return t.check(false, "the frozen symbol rasterizer renders")
                     }
