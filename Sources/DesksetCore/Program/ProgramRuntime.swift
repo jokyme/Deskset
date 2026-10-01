@@ -18,11 +18,19 @@ public struct ProgramRuntime: Sendable {
     public private(set) var generation: UInt64 = 0
     public private(set) var clockPrecision: ProgramClockPrecision?
     private var variables: [ProgramScalar?]?
+    private struct ClickHandler: Sendable {
+        let assignments: [ProgramAssignment]
+        let radius: ProgramCornerRadius?
+    }
+    private let clickHandlers: [ElementID: ClickHandler]
+    private var currentHitMap = SkinHitMap()
 
     public init(program: WidgetProgram) throws {
         var expressions = try ProgramExpressionValidation(declarations: program.declarations)
         guard program.onLoad.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
         for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
+        var assignmentCount = program.onLoad.count
+        var clickHandlers: [ElementID: ClickHandler] = [:]
         var pending = [(program.root, 1)], count = 0, contentCount = 0
         var identities = Set<ElementID>()
         while let (node, depth) = pending.popLast() {
@@ -30,6 +38,12 @@ public struct ProgramRuntime: Sendable {
             guard count <= ProgramLimits.maximumElements else { throw ProgramRuntimeError.elementLimit }
             guard depth <= ProgramLimits.maximumDepth else { throw ProgramRuntimeError.depthLimit }
             guard identities.insert(node.id).inserted else { throw ProgramRuntimeError.duplicateIdentity(node.id) }
+            if let actions = node.onClick {
+                guard actions.count <= ProgramLimits.maximumExpressions - assignmentCount else { throw ProgramRuntimeError.expressionLimit }
+                assignmentCount += actions.count
+                for action in actions { try expressions.validateAssignment(action) }
+                clickHandlers[node.id] = ClickHandler(assignments: actions, radius: node.cornerRadius)
+            }
             func valid(_ length: ProgramLength) -> Bool {
                 if case .fixed(let n) = length { return n.isFinite && n >= 0 }
                 return true
@@ -92,6 +106,7 @@ public struct ProgramRuntime: Sendable {
         }
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
         self.program = program
+        self.clickHandlers = clickHandlers
     }
 
     /// The closure must measure the supplied style exactly as it draws it, under the optional wrapping width.
@@ -133,13 +148,59 @@ public struct ProgramRuntime: Sendable {
         var hitMap = SkinHitMap()
         hitMap.width = box.size.width
         hitMap.height = box.size.height
+        // Reverse preorder puts each descendant before its ancestor and preserves topmost sibling draw order.
+        // Desk hits the box, including its padding/rounded corners, independent of painted alpha or curve ink.
+        for element in elements.reversed() where element.visibility == .visible {
+            guard let handler = clickHandlers[element.id], element.frame.width > 0, element.frame.height > 0 else { continue }
+            hitMap.entries.append(SkinHitMap.Entry(name: element.id.name, frame: element.frame,
+                                                   shape: Self.clickShape(element.frame, radius: handler.radius),
+                                                   container: nil, glass: nil, isButton: false,
+                                                   actions: [.leftUp: handler.assignments.isEmpty ? .caught : .runs],
+                                                   cursor: true, cursorName: "", toolTip: nil, elementID: element.id))
+        }
         let scene = WidgetScene(generation: next.partialValue, size: box.size, background: [],
                                 backgroundImageDependencies: [], glass: [], elements: elements,
                                 hitMap: hitMap, environment: environment)
         generation = next.partialValue
         variables = evaluation.variables
         clockPrecision = evaluation.clockPrecision
+        currentHitMap = hitMap
         return scene
+    }
+
+    /// Dispatch one current primary release. The host qualifies its press/source session; Core rejects a stale
+    /// scene or a missed/hidden box. Assignments and their resulting layout are one transaction, with no host calls.
+    public mutating func click(at point: SkinPoint, expectedGeneration: UInt64, environment: EnvironmentStamp,
+                               images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
+                               measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene? {
+        guard point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
+              let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
+              let id = entry.elementID, let handler = clickHandlers[id] else { return nil }
+        var candidate = self
+        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
+                                                      variables: variables, dateInput: dateInput)
+        for assignment in handler.assignments { try ActionExecutor.perform(assignment, on: &evaluation) }
+        candidate.variables = evaluation.variables
+        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, measure: measure)
+        self = candidate
+        return scene
+    }
+
+    private static func clickShape(_ frame: SkinRect, radius: ProgramCornerRadius?) -> MouseShape {
+        let value: Double
+        switch radius {
+        case .points(let n): value = min(n, min(frame.width, frame.height) / 2)
+        case .full: value = min(frame.width, frame.height) / 2
+        case nil: value = 0
+        }
+        guard value > 0 else { return .rect(frame) }
+        let geometry = ShapeGeometry.path(ShapePath(subpaths: [ShapeGeometryBuilder.rectangle(x: 0, y: 0,
+                                         width: frame.width, height: frame.height, radiusX: value)], fillRule: .nonZero))
+        let bounds = ShapeRect(minX: 0, minY: 0, maxX: frame.width, maxY: frame.height)
+        let item = ShapeItem(index: 0, geometry: geometry, closed: true, fill: .color(.black), stroke: .none,
+                             strokeStyle: ShapeStrokeStyle(), strokePlan: nil, paintTransform: .identity, bounds: bounds, visualBounds: bounds)
+        return .shapes(ShapeMouseShape(frame: frame, originX: frame.x, originY: frame.y, inverse: nil,
+                                     solidBackground: false, items: [item], regions: [ShapeHitTester.FlatRegion(geometry)]))
     }
 
     private static func valid(_ color: RGBA) -> Bool {

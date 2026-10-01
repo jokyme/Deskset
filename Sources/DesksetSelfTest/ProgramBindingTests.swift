@@ -2,7 +2,7 @@ import Foundation
 @testable import DesksetCore
 @testable import DeskLanguage
 
-private enum BindingFixtureFailure: Error { case program, measurement, assignment }
+private enum BindingFixtureFailure: Error, Equatable { case program, measurement, assignment }
 
 private struct BindingAssignmentTrace: ProgramAssignmentTarget {
     enum Event: Equatable {
@@ -190,7 +190,7 @@ func runProgramBindingTests(_ t: TestRunner) {
 
     t.suite("Desk: bindings: unsupported data actions persistence and formatting retain source issues") {
         let cases = [#"widget { variable x = "A"; Text(x).onWake { x = "B" } }"#,
-                     #"widget { variable x = false; Text("A").onClick { x = true } }"#,
+                     #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
                      #"widget { Text(true) }"#, #"widget { Text(1) }"#,
                      #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
@@ -520,6 +520,8 @@ func runProgramBindingTests(_ t: TestRunner) {
         t.equal(bindingStrings(try text.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["{甲😀} Yes 09:00 s"])
     }
 
+    runProgramClickTests(t)
+
     t.suite("Desk: clock: unsupported fields reactions and format semantics reject the complete program") {
         let sources = [#"widget { Text("{time.now, format: .relative}") }"#,
                        #"widget { Text("{time.now, format: "ss.SSS"}") }"#,
@@ -542,5 +544,187 @@ func runProgramBindingTests(_ t: TestRunner) {
         let checked = deskCheck("widget { Text(time.now) }", context: CheckContext(catalog: catalog))
         t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
         t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+    }
+}
+
+private func runProgramClickTests(_ t: TestRunner) {
+    let point = SkinPoint(x: 6, y: 6)
+    let environment = bindingEnvironment(false)
+    let start = Date(timeIntervalSince1970: 1_790_586_059.25)
+    func input(_ offset: Double = 0) -> ProgramDateInput {
+        ProgramDateInput(instant: start.addingTimeInterval(offset), timeZone: TimeZone(identifier: "UTC")!, locale: Locale(identifier: "en_US_POSIX"))
+    }
+    t.suite("Program: click: ordered shared assignments publish variables hit map and demand atomically") {
+        let declarations = [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false)),
+                            ProgramDeclaration(name: "caption", kind: .computed, initial: .conditional(.declaration(0), then: .string("开😀"), otherwise: .string("关😀"))),
+                            ProgramDeclaration(name: "before", kind: .variable, initial: .string("unset")),
+                            ProgramDeclaration(name: "after", kind: .variable, initial: .string("unset")),
+                            ProgramDeclaration(name: "stamp", kind: .variable, initial: .timeNow)]
+        let value = ProgramExpression.concatenate([.declaration(2), .string("/"), .declaration(3), .string("/"),
+                                                  .formatDate(.declaration(4), .pattern("HH:mm:ss"))])
+        let actions = [ProgramAssignment(declaration: 2, value: .declaration(1)),
+                       ProgramAssignment(declaration: 0, value: .not(.declaration(0))),
+                       ProgramAssignment(declaration: 3, value: .declaration(1)),
+                       ProgramAssignment(declaration: 4, value: .timeNow)]
+        let root = ProgramElement(id: ElementID(name: "button", index: 0), content: .text(ProgramText(value: value)),
+                                  width: .fixed(40), height: .fixed(30), onClick: actions)
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Click", root: root, declarations: declarations,
+                                        onLoad: [ProgramAssignment(declaration: 0, value: .boolean(true))]))
+        t.check(try runtime.click(at: point, expectedGeneration: 0, environment: environment, dateInput: input(), measure: bindingMeasure) == nil)
+        let first = try runtime.project(environment: environment, dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(first), ["unset/unset/09:00:59"])
+        guard let clicked = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment,
+                                              dateInput: input(1), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(clicked), ["开😀/关😀/09:01:00"])
+        t.equal(clicked.generation, 2); t.equal(runtime.clockPrecision, nil, "a captured date does not request live ticks")
+        t.equal(clicked.hitMap.entry(at: 6, 6, handling: .leftUp, images: nil)?.elementID, root.id)
+        let held = try runtime.project(environment: environment, dateInput: input(10), measure: bindingMeasure)
+        t.equal(bindingStrings(held), ["开😀/关😀/09:01:00"], "onLoad does not repeat after a click or a projection")
+        let rejected = try runtime.click(at: point, expectedGeneration: clicked.generation, environment: environment, dateInput: input(), measure: bindingMeasure)
+        t.check(rejected == nil); t.equal(runtime.generation, held.generation)
+        for missed in [SkinPoint(x: -1, y: 6), SkinPoint(x: 40, y: 6), SkinPoint(x: .nan, y: 6)] {
+            t.check(try runtime.click(at: missed, expectedGeneration: held.generation, environment: environment, dateInput: input(), measure: bindingMeasure) == nil)
+        }
+        guard let second = try runtime.click(at: point, expectedGeneration: held.generation, environment: environment,
+                                             dateInput: input(11), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(second), ["关😀/开😀/09:01:10"])
+    }
+
+    t.suite("Program: click: failed action measurement and layout preserve the preceding complete transaction") {
+        let id = ElementID(name: "clock", index: 0)
+        let declarations = [ProgramDeclaration(name: "live", kind: .variable, initial: .boolean(true))]
+        let value = ProgramExpression.conditional(.declaration(0), then: .formatDate(.timeNow, .pattern("HH:mm:ss")), otherwise: .string("Off"))
+        let root = ProgramElement(id: id, content: .text(ProgramText(value: value)), onClick: [ProgramAssignment(declaration: 0, value: .boolean(false))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rollback", root: root, declarations: declarations))
+        let first = try runtime.project(environment: environment, dateInput: input(), measure: bindingMeasure)
+        t.equal(runtime.clockPrecision, .second)
+        for size in [SkinSize(width: .nan, height: 10), SkinSize(width: -1, height: 10)] {
+            bindingFailure(t, .invalidMeasurement(id)) {
+                _ = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment, dateInput: input()) { _, _, _ in size }
+            }
+            t.equal(runtime.generation, first.generation); t.equal(runtime.clockPrecision, .second)
+        }
+        do {
+            _ = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment, dateInput: input()) { _, _, _ in throw BindingFixtureFailure.measurement }
+            t.check(false)
+        } catch { t.equal(error as? BindingFixtureFailure, .measurement) }
+        let retried = try runtime.project(environment: environment, dateInput: input(1), measure: bindingMeasure)
+        t.equal(bindingStrings(retried), ["09:01:00"]); t.equal(runtime.clockPrecision, .second)
+        guard let clicked = try runtime.click(at: point, expectedGeneration: retried.generation, environment: environment,
+                                              dateInput: input(1), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(clicked), ["Off"]); t.equal(runtime.clockPrecision, nil)
+        let stackID = ElementID(name: "stack", index: 2)
+        let children = [ProgramElement(id: id, content: .text(ProgramText(value: .string("A")))),
+                        ProgramElement(id: ElementID(name: "second", index: 1), content: .text(ProgramText(value: .string("B"))))]
+        let stack = ProgramElement(id: stackID, content: .column(spacing: 0, align: .left, children: children),
+                                   onClick: [ProgramAssignment(declaration: 0, value: .boolean(false))])
+        var stacked = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: stack, declarations: declarations))
+        let prior = try stacked.project(environment: environment, measure: bindingMeasure)
+        bindingFailure(t, .layoutOverflow(stackID)) {
+            _ = try stacked.click(at: point, expectedGeneration: prior.generation, environment: environment) { _, _, _ in
+                SkinSize(width: 10, height: .greatestFiniteMagnitude)
+            }
+        }
+        t.equal(stacked.generation, prior.generation)
+        let bad = ProgramElement(id: id, content: .text(ProgramText(value: .string("A"))),
+                                 onClick: [ProgramAssignment(declaration: 0, value: .dateIn(.timeNow, timeZone: "UTC"))])
+        var dateRuntime = try ProgramRuntime(program: WidgetProgram(name: "Date failure", root: bad,
+                                      declarations: [ProgramDeclaration(name: "stamp", kind: .variable, initial: .timeNow)]))
+        let dated = try dateRuntime.project(environment: environment, dateInput: input(), measure: bindingMeasure)
+        bindingFailure(t, .invalidDateInput) {
+            _ = try dateRuntime.click(at: point, expectedGeneration: dated.generation, environment: environment, measure: bindingMeasure)
+        }
+        t.equal(dateRuntime.generation, dated.generation)
+        for assignment in [ProgramAssignment(declaration: 1, value: .boolean(true)), ProgramAssignment(declaration: 0, value: .string("wrong"))] {
+            let direct = ProgramElement(id: id, content: .text(ProgramText(value: .string("A"))), onClick: [assignment])
+            bindingFailure(t, assignment.declaration == 1 ? .invalidDeclaration(1) : .invalidAssignment(0)) {
+                _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid", root: direct, declarations: declarations))
+            }
+        }
+    }
+
+    t.suite("Program: click: innermost stable identities hidden ancestry and rounded boxes ignore painted alpha") {
+        let parentID = ElementID(name: "same", index: 0), childID = ElementID(name: "same", index: 1)
+        func box(_ id: ElementID, hidden: Bool = false, radius: ProgramCornerRadius? = nil, actions: [ProgramAssignment]? = []) -> ProgramElement {
+            ProgramElement(id: id, content: .rectangle(fill: .literal(.clear)), width: .fixed(20), height: .fixed(20),
+                           padding: SkinInsets(left: 4, top: 4, right: 4, bottom: 4), hidden: hidden, cornerRadius: radius, onClick: actions)
+        }
+        let root = ProgramElement(id: parentID, content: .column(spacing: 0, align: .left, children: [box(childID)]),
+                                  padding: SkinInsets(left: 4, top: 4, right: 4, bottom: 4), onClick: [])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Nested", root: root))
+        let scene = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(scene.hitMap.entries.map(\.elementID), [childID, parentID])
+        t.equal(scene.hitMap.entry(at: 6, 6, handling: .leftUp, images: nil)?.elementID, childID)
+        t.equal(scene.hitMap.entry(at: 1, 1, handling: .leftUp, images: nil)?.elementID, parentID)
+        t.equal(scene.hitMap.entry(at: 6, 6, handling: .leftUp, images: nil)?.action(.leftUp), .caught, "an empty handler consumes without executable text")
+        t.check(try runtime.click(at: point, expectedGeneration: scene.generation, environment: environment, measure: bindingMeasure) != nil)
+        var rounded = try ProgramRuntime(program: WidgetProgram(name: "Rounded", root: box(parentID, radius: .full)))
+        let round = try rounded.project(environment: environment, measure: bindingMeasure)
+        t.check(round.hitMap.entry(at: 0.1, 0.1, handling: .leftUp, images: nil) == nil)
+        t.equal(round.hitMap.entry(at: 1, 10, handling: .leftUp, images: nil)?.elementID, parentID, "padding is inside the rounded box")
+        var circle = try ProgramRuntime(program: WidgetProgram(name: "Circle box", root: ProgramElement(id: childID,
+                            content: .shape(kind: .circle, fill: .literal(.clear)), width: .fixed(20), height: .fixed(20), onClick: [])))
+        let circular = try circle.project(environment: environment, measure: bindingMeasure)
+        t.equal(circular.hitMap.entry(at: 0.1, 0.1, handling: .leftUp, images: nil)?.elementID, childID, "Circle's box is independent of its curve ink")
+        for hidden in [box(parentID, hidden: true), ProgramElement(id: parentID,
+                       content: .column(spacing: 0, align: .left, children: [box(childID)]), hidden: true, onClick: [])] {
+            var hiddenRuntime = try ProgramRuntime(program: WidgetProgram(name: "Hidden", root: hidden))
+            let result = try hiddenRuntime.project(environment: environment, measure: bindingMeasure)
+            t.equal(result.hitMap.entries.count, 0)
+            t.check(try hiddenRuntime.click(at: point, expectedGeneration: result.generation, environment: environment, measure: bindingMeasure) == nil)
+        }
+    }
+
+    t.suite("Desk: click: actual checked leaf handlers preserve assignments and stable identities across reparsing") {
+        let previous = #"widget { variable x = false; Text("A").onClick { x = true } }"#
+        let source = #"widget { variable flag = false; computed caption = flag ? "开😀" : "关😀"; Text(caption).size(40, 30).onClick { flag = not flag } }"#
+        for literal in [previous, source] {
+            let program = try checkedBindingProgram(t, literal)
+            var runtime = try ProgramRuntime(program: program)
+            let first = try runtime.project(environment: environment, measure: bindingMeasure)
+            guard let second = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+            t.equal(bindingStrings(second), literal == previous ? ["A"] : ["开😀"])
+            t.equal(program, try checkedBindingProgram(t, literal), "NodeID tree versions are not element identities")
+        }
+        for leaf in ["Rectangle", "Circle", "Ellipse", "Capsule"] {
+            let program = try checkedBindingProgram(t, "widget { variable flag = false; \(leaf)().size(40, 30).onClick { flag = true } }")
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: environment, measure: bindingMeasure)
+            t.equal(scene.hitMap.entries.count, 1)
+            t.check(try runtime.click(at: point, expectedGeneration: scene.generation, environment: environment, measure: bindingMeasure) != nil)
+        }
+    }
+
+    t.suite("Desk: click: unsupported actions events roles and foreign catalog identities reject the whole source") {
+        let sources = [#"widget { variable x = false; Column { Text("A") }.onClick { x = true } }"#,
+                       #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
+                       #"widget { variable x = false; Text("A").onClick { if x { x = false } } }"#,
+                       #"widget { Text("A").onClick { log("A") } }"#,
+                       #"widget { variable x = "A"; Text(x).onClick { x = "{event.x}" } }"#,
+                       #"widget { Text("A").onClick { widget.openOptions() } }"#]
+        for source in sources {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil); t.equal(result.issues.first?.kind, .unsupported)
+            t.equal(result.diagnostics, checked.diagnostics)
+            t.equal(result.imageSources, [])
+        }
+        let source = #"widget { variable flag = false; Text("A").onClick { flag = true } }"#
+        let checked = deskCheck(source)
+        guard let id = checked.symbols.first(where: { $0.value == .builtIn(.modifier("onClick")) })?.key else { throw BindingFixtureFailure.program }
+        var symbols = checked.symbols
+        symbols.removeValue(forKey: id)
+        var damaged = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols, types: checked.types,
+                                  elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
+                                  reactions: checked.reactions, freeformOrders: checked.freeformOrders, stringTable: checked.stringTable,
+                                  requirements: checked.requirements, root: checked.root)
+        damaged.declarationTypes = checked.declarationTypes
+        t.equal(Desk.compile(damaged).issues.first?.kind, .invalidCheckedModel)
+        var catalog = DeskCatalog.current
+        let index = catalog.modifiers.firstIndex { $0.name == "onClick" }!
+        catalog.modifiers[index].event?.runtimeEvent = "leftMouseDown"
+        let altered = deskCheck(source, context: CheckContext(catalog: catalog))
+        t.check(altered.diagnostics(.error).isEmpty, deskDescribe(altered))
+        t.equal(Desk.compile(altered, catalog: catalog).issues.first?.kind, .invalidCheckedModel)
     }
 }

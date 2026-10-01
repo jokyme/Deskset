@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid shape paints, local images, scalar text bindings and root startup assignments through the shared executor.
+/// proposal-based stacks, solid shape paints, local images, scalar text bindings and local startup/click assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -88,11 +88,14 @@ public struct ProgramElement: Equatable, Sendable {
     public let stroke: ProgramShapeStroke?
     /// Valid only for Rectangle content. Other box decorations are not implied.
     public let cornerRadius: ProgramCornerRadius?
+    /// A local primary click handler. nil has no handler; an empty block still consumes the click.
+    public let onClick: [ProgramAssignment]?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
-                idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil) {
+                idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
+                onClick: [ProgramAssignment]? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -106,6 +109,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.hidden = hidden
         self.stroke = stroke
         self.cornerRadius = cornerRadius
+        self.onClick = onClick
     }
 }
 

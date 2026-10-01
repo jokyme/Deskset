@@ -7,6 +7,7 @@ struct StaticProgramCompiler {
     private var nextIndex = 0
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
+    private var clickAssignmentCount = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
         self.checked = checked
@@ -108,9 +109,17 @@ struct StaticProgramCompiler {
         let allowedModifiers: Set<String> = image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
+        var onClick: [ProgramAssignment]?
         for modifier in call.modifiers {
             if modifier.name.token.text == "onLoad" {
                 try rootOnLoad(modifier, element: node)
+                continue
+            }
+            if modifier.name.token.text == "onClick" {
+                guard onClick == nil, facts.component == "Text" || solidShape else {
+                    throw issue(.unsupported, modifier.node, "Only Text and basic shape onClick assignments are implemented")
+                }
+                onClick = try clickAssignments(modifier, kind: facts.kind)
                 continue
             }
             guard allowedModifiers.contains(modifier.name.token.text), modifier.block == nil else {
@@ -279,7 +288,32 @@ struct StaticProgramCompiler {
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
-                              stroke: stroke, cornerRadius: radius)
+                              stroke: stroke, cornerRadius: radius, onClick: onClick)
+    }
+
+    private mutating func clickAssignments(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAssignment] {
+        let identity = checked.tree.id(of: modifier.node)
+        guard checked.symbols[identity] == .builtIn(.modifier("onClick")),
+              let spec = catalog.modifier(named: "onClick"), spec.appliesTo.contains(kind),
+              spec.event == EventSpec(runtimeEvent: "leftMouseUp", userInitiated: true, eventRecord: "Event"),
+              spec.timing == nil, case .actions(required: true) = spec.block,
+              spec.signatures.count == 1, spec.signatures[0].params.isEmpty,
+              (modifier.arguments?.arguments ?? []).isEmpty, let block = modifier.block else {
+            throw issue(.invalidCheckedModel, modifier.node, "Missing checked built-in onClick contract")
+        }
+        let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
+        guard clickAssignmentCount <= limit, onLoad.count <= limit - clickAssignmentCount,
+              block.items.count <= limit - clickAssignmentCount - onLoad.count else {
+            throw issue(.resourceLimit, block.node, "Shared program assignment limit exceeded")
+        }
+        let assignments = try block.items.map { statement in
+            guard let assignment = AssignmentSyntax(statement) else {
+                throw issue(.unsupported, statement, "Only session variable assignments are implemented in onClick")
+            }
+            return try expressions.assignment(assignment)
+        }
+        clickAssignmentCount += assignments.count
+        return assignments
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {
@@ -298,7 +332,8 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, modifier.node, "Root onLoad has inconsistent checked reaction identity")
         }
         let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
-        guard onLoad.count <= limit, block.items.count <= limit - onLoad.count else {
+        guard clickAssignmentCount <= limit, onLoad.count <= limit - clickAssignmentCount,
+              block.items.count <= limit - clickAssignmentCount - onLoad.count else {
             throw issue(.resourceLimit, block.node, "Shared program assignment limit exceeded")
         }
         for statement in block.items {
