@@ -65,6 +65,30 @@ public enum InkBounds {
         }
     }
 
+    /// Keeps the union of an ordered recipe's candidates, without treating unresolved or invalid ink as empty.
+    /// This is preparation metadata only; it does not establish raster coverage for a group.
+    package static func candidate(of items: [DrawItem], context: DrawContext, target: DrawTarget,
+                                  padding: Int = 0) -> Candidate {
+        items.reduce(.empty) { union($0, candidate(of: $1, context: context, target: target, padding: padding)) }
+    }
+
+    private static func union(_ first: Candidate, _ second: Candidate) -> Candidate {
+        switch (first, second) {
+        case let (.unknown(a), .unknown(b)):
+            return .unknown(a == .unresolvedRasterization ? b : a)
+        case let (.unknown(reason), _), let (_, .unknown(reason)):
+            return .unknown(reason)
+        case (.empty, _): return second
+        case (_, .empty): return first
+        case let (.rectangle(a), .rectangle(b)):
+            guard let rect = DeviceRect(minX: min(a.minX, b.minX), minY: min(a.minY, b.minY),
+                                        maxX: max(a.maxX, b.maxX), maxY: max(a.maxY, b.maxY)) else {
+                return .unknown(.invalidMapping)
+            }
+            return .rectangle(rect)
+        }
+    }
+
     /// Maps all four corners through the actual destination mapping and rounds the enclosing rectangle outward.
     /// Negative dimensions are standardized. Empty rectangles remain empty rather than acquiring ink from padding.
     /// Invalid, singular, overflowing or unrepresentable mappings are rejected instead of being treated as empty.
