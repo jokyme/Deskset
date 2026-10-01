@@ -21,6 +21,7 @@ package final class LayerRuntime {
     }
     package enum Fallback: Equatable {
         case unresolvedInk(ElementID, InkBounds.Unknown)
+        case elementCountExceeded(actual: Int, limit: Int)
         case localizedAntialiasedLine(group: LayerPlan.Identity)
         case localizedAntialiasedFullCircle(group: LayerPlan.Identity)
     }
@@ -155,6 +156,9 @@ package final class LayerRuntime {
     private var baseWindow: InkBounds.DeviceRect?
     private var baseScale: CGFloat?
     private var basePartition: Partition?
+    // A successfully committed count guard applies until the next load, including hide/reveal.
+    // Preparing, discarding or failing a replacement cannot change this decision.
+    private var committedElementCountFallback: Int?
 
     /// The C builder's bitmap budget excludes retained snapshots, old/new builder overlap and CA storage.
     /// It is not a total runtime/process cap; no 4x policy is inferred here.
@@ -226,12 +230,22 @@ package final class LayerRuntime {
                 plan = SinglePartition.plan(in: window)
                 fallback = nil
             case .candidateComponents:
-                do {
-                    plan = try ComponentPartition.candidatePlan(prepared, in: window, baseMembers: retainedBase)
-                    fallback = nil
-                } catch let ComponentPartition.Failure.unresolvedInk(id, reason) {
+                if let actual = committedElementCountFallback {
                     plan = SinglePartition.plan(in: window)
-                    fallback = .unresolvedInk(id, reason)
+                    fallback = .elementCountExceeded(actual: actual, limit: ComponentPartition.maximumElementCount)
+                } else {
+                    do {
+                        plan = try ComponentPartition.candidatePlan(prepared, in: window, baseMembers: retainedBase)
+                        fallback = nil
+                    } catch ComponentPartition.Failure.resourceLimit(_) where scene.elements.count > ComponentPartition.maximumElementCount {
+                        // Only this partition guard selects Single. Its geometry, recipe and owned bitmap budget
+                        // still pass the normal validation below; allocation failures are never swallowed.
+                        plan = SinglePartition.plan(in: window)
+                        fallback = .elementCountExceeded(actual: scene.elements.count, limit: ComponentPartition.maximumElementCount)
+                    } catch let ComponentPartition.Failure.unresolvedInk(id, reason) {
+                        plan = SinglePartition.plan(in: window)
+                        fallback = .unresolvedInk(id, reason)
+                    }
                 }
             }
             let mode = try LayerContentBuilder.validateGeometry(plan)
@@ -480,6 +494,9 @@ package final class LayerRuntime {
         key = pending.key
         sequence = frame.sequence
         currentFrame = frame
+        if case let .some(.elementCountExceeded(actual, _)) = frame.fallback {
+            committedElementCountFallback = actual
+        }
         state = .live
         forcedReason = nil
         if pending.key.partition == .candidateComponents {
@@ -519,6 +536,7 @@ package final class LayerRuntime {
         pending = nil
         key = nil
         forcedReason = .refresh
+        committedElementCountFallback = nil
         clearBase()
     }
 

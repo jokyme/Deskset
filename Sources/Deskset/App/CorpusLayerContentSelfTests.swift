@@ -756,6 +756,7 @@ enum CorpusLayerContentSelfTests {
             let fallback: String?
             switch frame.fallback {
             case let .some(.unresolvedInk(id, reason)): fallback = identity(id) + ":" + reason.rawValue
+            case let .some(.elementCountExceeded(actual, limit)): fallback = "elementCountExceeded:actual=\(actual),limit=\(limit)"
             case let .some(.localizedAntialiasedLine(group)): fallback = "localizedAntialiasedLine:\(group)"
             case let .some(.localizedAntialiasedFullCircle(group)): fallback = "localizedAntialiasedFullCircle:\(group)"
             case .none: fallback = nil
