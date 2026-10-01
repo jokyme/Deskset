@@ -59,6 +59,7 @@ enum AppSelfTest {
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
+        TickSchedulerSelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)

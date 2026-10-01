@@ -341,7 +341,6 @@ timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be 
 background.executorAsync	Sources/Deskset/SkinRuntime.swift	4	runtime owner delivery/lifetime and C-root cleanup after main finishes the last frame; no worker waits for main
 background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)
-timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the executor
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
 event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
@@ -600,6 +599,8 @@ background.thread	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin
 timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 wait.runLoop	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its thread runs its run loop
+
+timer.executorTimer	Sources/DesksetCore/Engine/TickScheduler.swift	1	the update timer, on the injected executor (VirtualTimeExecutor)
 
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 

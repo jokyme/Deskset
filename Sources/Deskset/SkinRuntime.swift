@@ -20,7 +20,7 @@ import DesksetRuntime
 /// The skin lives as long as the runtime and is let go of on its executor: when the runtime goes elsewhere (the window
 /// half that held it went on the main thread while the skin runs on a thread of its own), the skin is handed to its
 /// executor to be released there, with its measures, meters and plugins.
-final class SkinRuntime: LiveSkinHost, SkinImageQueries {
+final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     let config: String
     let file: String
     let fileURL: URL
@@ -37,12 +37,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     var executor: SkinExecutor { skin.executor }
 
     // What the executor owns.
-    private var timer: SkinScheduledWork?
+    private let ticks = TickScheduler()
     /// OnCloseAction is running, or has run.
     private(set) var isClosing = false
     /// The skin is closed: it takes no more messages.
     private(set) var isClosed = false
-    private var updatesPaused = false
+    private var updatesPaused: Bool {
+        get { ticks.isPaused }
+        set { ticks.isPaused = newValue }
+    }
     /// The hops of the message being handled (0 for the skin's own work): what its bangs for other skins count from.
     private var currentHops = 0
     /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
@@ -104,7 +107,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     deinit {
-        timer?.cancel()
+        ticks.cancel()
         // Only the executor lets go of a skin (docs/skin-threading.md, phase 0: Lifetime).
         guard let skin, !skin.executor.isCurrent else { return }
         self.skin = nil
@@ -633,69 +636,31 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// `Update` in ms → timer interval: negative means "update once" (manual: `Update=-1`), otherwise at least 16 ms
     /// ("minimum effective value is 16").
     static func updateInterval(_ milliseconds: Int) -> TimeInterval? {
-        milliseconds < 0 ? nil : Double(max(milliseconds, 16)) / 1000
+        TickScheduler.updateInterval(milliseconds)
     }
 
     /// Timer slack that lets macOS coalesce wake-ups (Apple suggests at least 10%); capped so slow skins still tick
     /// on time.
     static func timerTolerance(_ interval: TimeInterval) -> TimeInterval {
-        min(interval * 0.1, 0.5)
+        TickScheduler.timerTolerance(interval)
     }
 
-    /// The update clock is skin work, so it runs on the skin's executor (on the main thread: a Foundation timer in the
-    /// common modes, which keeps skins updating while a menu is open).
-    private func startTimer() {
-        timer?.cancel()
-        timer = nil
-        guard !isClosed, !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
-        let update = { [weak self] in
-            guard let self, !self.isClosed else { return }
-            self.skin.update()
-        }
-        let leeway = SkinRuntime.timerTolerance(interval)
-        if let executor = skin.executor as? SkinThreadExecutor {
-            timer = executor.updateScheduler.schedule(interval: interval, leeway: leeway, update)
-        } else {
-            timer = skin.executor.timer(interval: interval, leeway: leeway, repeats: true, update)
-        }
-    }
+    // TickTarget reads the live skin at each operation, including after synchronous action callbacks.
+    var updateMilliseconds: Int { skin.settings.update }
+    func updateForTick() { skin.update() }
+    func notifySystemWake() { skin.systemDidWake() }
 
-    /// Sleep / screens asleep / session switched away: no updates and no drawing.
-    private func pause() {
-        guard !updatesPaused else { return }
-        updatesPaused = true
-        timer?.cancel()
-        timer = nil
-    }
-
-    /// `updateNow`: catch up at once. Skins with `Update=-1` ("update only once on load or refresh") are not updated:
-    /// they have nothing to catch up on, and an extra update would run their OnUpdateAction again.
-    private func resume(updateNow: Bool) {
-        guard updatesPaused, !isClosed else { return }
-        updatesPaused = false
-        if updateNow && SkinRuntime.updateInterval(skin.settings.update) != nil { skin.update() }
-        startTimer()
-    }
-
-    /// The Mac woke from sleep: the engine runs OnWakeAction at the end of the next update ("Action to execute when
-    /// Windows returns from the sleep or hibernate states"; at once for Update=-1 skins), which happens right away.
-    private func wake() {
-        skin.systemDidWake()
-        guard !isClosed else { return }
-        if updatesPaused {
-            resume(updateNow: true)
-        } else if SkinRuntime.updateInterval(skin.settings.update) != nil {
-            skin.update()
-        }
-    }
+    private func startTimer() { ticks.startTimer(for: self) }
+    private func pause() { ticks.pause() }
+    private func resume(updateNow: Bool) { ticks.resume(updateNow: updateNow, target: self) }
+    private func wake() { ticks.wake(target: self) }
 
     /// Stops the clock and closes the skin: OnCloseAction runs while the skin can still handle bangs (it cannot reload
     /// or unload itself any more). Then the main thread hears of it (`.closed`, with the ticket of the reload the close is
     /// part of), and whoever waits for the close.
     private func close(ticket: SkinReloadTicket?) {
         guard !isClosing else { return }
-        timer?.cancel()
-        timer = nil
+        ticks.cancel()
         isClosing = true
         skin.close()
         isClosed = true
