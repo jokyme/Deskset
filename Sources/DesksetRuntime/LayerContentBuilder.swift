@@ -13,10 +13,10 @@ package final class LayerContentBuilder {
         package let contentsRect: CGRect
     }
 
-    private enum Mode { case empty, single, components }
-    private struct Recipes {
-        let base: [DrawItem]
-        let layers: [[DrawItem]]
+    package enum Mode { case empty, single, components }
+    package struct Recipes {
+        package let base: [DrawItem]
+        package let layers: [[DrawItem]]
     }
 
     private let plan: PartitionPlan
@@ -92,20 +92,14 @@ package final class LayerContentBuilder {
                 case .fullScene:
                     throw Failure.invalidPlan("A component plan cannot contain a full-scene layer")
                 case .group:
-                    let rect = Self.cgRect(layer.rect)
-                    guard let crop = baseImage.cropping(to: rect) else {
-                        throw Failure.resourceFailure("Cannot crop the group's integer base rectangle")
-                    }
+                    let crop = try Self.crop(baseImage, to: layer.rect)
                     let image = try bitmaps[index][nextBitmap].image(of: recipes.layers[index], in: layer.rect,
                                                                     scale: scale, baseCrop: crop, context: context,
                                                                     cycle: cycle, glass: glass)
                     result.append(Content(plan: layer, image: image, contentsRect: CGRect(x: 0, y: 0, width: 1, height: 1)))
                 case let .baseSlice(source):
                     // Every slice keeps exactly the same image object. Normalized Y starts at its top pixel row.
-                    let unit = CGRect(x: CGFloat(source.minX) / CGFloat(plan.window.width),
-                                      y: CGFloat(source.minY) / CGFloat(plan.window.height),
-                                      width: CGFloat(source.width) / CGFloat(plan.window.width),
-                                      height: CGFloat(source.height) / CGFloat(plan.window.height))
+                    let unit = Self.contentsRect(source: source, window: plan.window)
                     result.append(Content(plan: layer, image: baseImage, contentsRect: unit))
                 }
             }
@@ -115,6 +109,12 @@ package final class LayerContentBuilder {
     }
 
     private func resolve(_ scene: WidgetScene) throws -> Recipes {
+        try Self.resolve(scene, plan: plan, scale: scale, mode: mode)
+    }
+
+    /// Shared recipe validation for the C and E owners. `mode` comes from validateGeometry for this same fixed
+    /// plan, and the owner has checked its finite positive scale. No bitmap, live owner or cache is accessed.
+    package static func resolve(_ scene: WidgetScene, plan: PartitionPlan, scale: CGFloat, mode: Mode) throws -> Recipes {
         let width = CGFloat(scene.size.width) * scale, height = CGFloat(scene.size.height) * scale
         guard scene.size.width.isFinite, scene.size.height.isFinite, scene.size.width >= 0, scene.size.height >= 0,
               width.isFinite, height.isFinite, width.rounded(.up) == CGFloat(plan.window.width),
@@ -169,7 +169,7 @@ package final class LayerContentBuilder {
         return Recipes(base: scene.background + baseMembers.flatMap { scene.drawingItems(for: $0) }, layers: layers)
     }
 
-    private static func validateGeometry(_ plan: PartitionPlan) throws -> Mode {
+    package static func validateGeometry(_ plan: PartitionPlan) throws -> Mode {
         let window = plan.window
         guard window.minX == 0, window.minY == 0 else { throw Failure.invalidPlan("Device window origin must be zero") }
         guard window.width <= Rasterizer.maximumDimension, window.height <= Rasterizer.maximumDimension else {
@@ -248,6 +248,22 @@ package final class LayerContentBuilder {
             }
         }
         return total
+    }
+
+    /// The same integer crop used by C. Callers have already validated the complete canonical plan.
+    package static func crop(_ baseImage: CGImage, to rectangle: InkBounds.DeviceRect) throws -> CGImage {
+        let rect = Self.cgRect(rectangle)
+        guard let crop = baseImage.cropping(to: rect) else {
+            throw Failure.resourceFailure("Cannot crop the group's integer base rectangle")
+        }
+        return crop
+    }
+
+    package static func contentsRect(source: InkBounds.DeviceRect, window: InkBounds.DeviceRect) -> CGRect {
+        CGRect(x: CGFloat(source.minX) / CGFloat(window.width),
+               y: CGFloat(source.minY) / CGFloat(window.height),
+               width: CGFloat(source.width) / CGFloat(window.width),
+               height: CGFloat(source.height) / CGFloat(window.height))
     }
 
     private static func cgRect(_ rect: InkBounds.DeviceRect) -> CGRect {

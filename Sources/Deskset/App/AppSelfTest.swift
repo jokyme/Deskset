@@ -78,6 +78,7 @@ enum AppSelfTest {
         ComponentGeometrySelfTests.run(t)
         PixelComparisonSelfTests.run(t)
         LayerContentSelfTests.run(t)
+        ELayerContentSelfTests.run(t)
         InkEscapeObservationSelfTests.run(t)
         ClippedRecipeInkSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
