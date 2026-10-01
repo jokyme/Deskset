@@ -231,11 +231,36 @@ enum SceneDrawingSelfTests {
                     t.equal(current, reference, "overlapping glass \(glass), \(variant)")
                     #endif
                     if glass == .window {
-                        let single = try pixels(variant) {
+                        // Intel's rounded-path blending can round transparent alpha back to 1 after two 1/255
+                        // fills. White makes both draws observable on each architecture: the overlap darkens twice.
+                        func overWhite(_ draw: (CGContext) -> Void) throws -> Data {
+                            try pixels(variant) { ctx in
+                                ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+                                ctx.fill(CGRect(x: 0, y: 0, width: 180, height: 140))
+                                draw(ctx)
+                            }
+                        }
+                        let both = try overWhite {
+                            DrawExecutor.draw(regions.map(DrawItem.glass), in: $0, context: SkinRenderContext(),
+                                              cycle: 0, glass: glass)
+                        }
+                        let single = try overWhite {
                             DrawExecutor.draw([.glass(regions[0])], in: $0, context: SkinRenderContext(), cycle: 0, glass: glass)
                         }
-                        let offset = ((30 * variant.scale) * (180 * variant.scale) + 45 * variant.scale) * 4 + 3
-                        t.check(current[offset] > single[offset], "hit-area alpha accumulates where regions overlap")
+                        // This interior patch uses two ordinary source-over fills, independent of the glass paths
+                        // and executor. It must match a fully covered pixel in the overlap, including its alpha.
+                        let pair = try overWhite { ctx in
+                            ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1.0 / 255))
+                            for _ in 0..<2 { ctx.fill(CGRect(x: 40, y: 25, width: 10, height: 10)) }
+                        }
+                        #if DEBUG
+                        let legacy = try overWhite { LegacyGlassPlaceholder.drawHitArea(regions, in: $0) }
+                        t.equal(both, legacy, "overlapping hit areas over white keep exact frozen pixels, \(variant)")
+                        #endif
+                        let offset = ((30 * variant.scale) * (180 * variant.scale) + 45 * variant.scale) * 4
+                        t.equal(Array(both[offset..<(offset + 4)]), Array(pair[offset..<(offset + 4)]),
+                                "overlapping hit areas match two independent source-over fills, \(variant)")
+                        t.check(both[offset] < single[offset], "the second hit-area draw darkens the overlap, \(variant)")
                     }
                 }
             }
