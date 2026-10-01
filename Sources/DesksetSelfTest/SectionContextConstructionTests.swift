@@ -375,6 +375,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     }
     runContextBuiltinFactoryTests(t)
     runContextBuiltinExtendedTests(t)
+    runContextRegistryTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -545,8 +546,8 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
                 section: constructionSection("Custom", []), context: context, type: type) == nil,
                     "a built-in name never replaces a selected custom subclass")
         }
-        t.check(makeContextBuiltinMeasure(RegistryMeasure.self, name: "Registry", section: constructionSection("Registry", []),
-                                         context: context, type: "registry") == nil, "unqualified kernels retain legacy construction")
+        t.check(makeContextBuiltinMeasure(WebParserMeasure.self, name: "Web", section: constructionSection("Web", []),
+                                         context: context, type: "webparser") == nil, "unqualified kernels retain legacy construction")
         // Unique names only: there is no unregister API, so canonical global registrations stay untouched.
         MeasureRegistry.registerMeasure("ContextFactoryOverrideProbe", ContextFactoryChild.self)
         MeasureRegistry.registerMeasure("ContextFactoryMemoryAlias", MemoryMeasure.self)
@@ -614,6 +615,7 @@ private final class ContextBuiltinSystem: SystemDataSource, HardwareSensorSource
     let values = EngineTestSystem()
     private(set) var calls: [String] = []
     var sensors: [String: Double] = [SensorKeys.frequencyCPU: 2100]
+    var wallpaper: String?
 
     func resetCalls() { calls.removeAll() }
     var processorCount: Int { calls.append("processorCount"); return values.processorCount }
@@ -638,7 +640,7 @@ private final class ContextBuiltinSystem: SystemDataSource, HardwareSensorSource
     func bestNetworkInterface() -> String? { calls.append("bestInterface"); return values.bestNetworkInterface() }
     func volumeInfo(path: String) -> VolumeInfo? { calls.append("volume:\(path)"); return values.volumeInfo(path: path) }
     func cpuFrequency() -> Double? { calls.append("frequency"); return values.cpuFrequency() }
-    func desktopPicturePath() -> String? { calls.append("desktopPicture"); return nil }
+    func desktopPicturePath() -> String? { calls.append("desktopPicture"); return wallpaper }
     func graphicsAdapterName() -> String? { calls.append("graphics"); return values.graphicsAdapterName() }
     func sensorValue(_ key: String) -> Double? { calls.append("sensor:\(key)"); return sensors[key] }
 }
@@ -1147,5 +1149,164 @@ private func runContextBuiltinExtendedTests(_ t: TestRunner) {
         skin.measure(named: "Time")?.performUpdate()
         t.equal(skin.measure(named: "Time")?.value, 13_443_264_000)
         t.equal(skin.resolve("[Time:TimeStamp]", in: nil, sectionVariables: true), "13443263998", "the real resolver still reads the old stored timestamp after frozen show")
+    }
+}
+
+private func runContextRegistryTests(_ t: TestRunner) {
+    t.suite("Engine: context registry: live wallpaper keeps numeric rules and independent input state") {
+        let system = ContextBuiltinSystem()
+        system.wallpaper = "20"
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-live"), system: system)
+        let node = try extendedNode(RegistryMeasure.self, "Wallpaper", "registry", [
+            ("RegHKey", "HKCU"), ("RegKey", "Control Panel/Desktop/"), ("RegValue", " WALLPAPER "),
+            ("MinValue", "0"), ("MaxValue", "100"), ("AverageSize", "2"), ("InvertMeasure", "1"),
+        ], in: context)
+        t.equal(system.calls, [], "construction does not read the data source")
+        t.check(!node.valueUnavailable)
+        node.readOptionsIfNeeded()
+        t.equal(system.calls, ["desktopPicture"])
+        t.equal(context.services, [], "reading options does not note a live update")
+        node.performUpdate()
+        t.equal(node.value, 80)
+        t.equal(node.rawString, "20")
+        t.equal(system.calls, ["desktopPicture", "desktopPicture"])
+        system.wallpaper = "40"
+        node.performUpdate()
+        t.equal(node.value, 70, "the existing average then inversion pipeline runs once")
+        t.equal(node.stringValue, "40", "a numeric string retains its text independently of numeric rules")
+        t.equal(node.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [20, 40], next: 0))
+        t.equal(context.services, [.system])
+        system.wallpaper = nil
+        node.performUpdate()
+        t.check(node.valueUnavailable)
+        t.equal(node.rawString, "")
+        t.equal(context.issues.count, 1)
+        node.performUpdate()
+        t.equal(context.issues.count, 1, "the existing issue set deduplicates unavailable live values")
+        system.wallpaper = ""
+        node.performUpdate()
+        t.check(!node.valueUnavailable, "an available empty value differs from an unavailable value")
+        system.wallpaper = "/fixture/图片😀.heic"
+        node.performUpdate()
+        t.equal(node.stringValue, "/fixture/图片😀.heic")
+        t.check(!node.valueUnavailable)
+        t.equal(system.calls, Array(repeating: "desktopPicture", count: 7))
+        t.equal(node.updateCount, 6)
+        node.setPaused(true); node.performUpdate()
+        node.setPaused(false); node.setDisabled(true); node.performUpdate()
+        t.equal(system.calls.count, 7, "paused and disabled nodes do not sample")
+        t.equal(node.updateCount, 6)
+        t.equal(node.value, 0)
+        t.equal(context.services, [.system])
+    }
+
+    t.suite("Engine: context registry: static values cache and option changes keep their original behavior") {
+        // The existing machine-facts cache also reads OS metadata. Reset it around this isolated source control,
+        // as the Registry threading suite does; this is not a claim that all machine facts are injected.
+        RegistryMeasure.Facts.forget()
+        defer { RegistryMeasure.Facts.forget() }
+        let system = ContextBuiltinSystem()
+        system.values.sysInfoAnswers["OS_PRODUCT_NAME"] = (0, "macOS Context")
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-static"), system: system)
+        let version = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
+        let environment = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
+        let product = try extendedNode(RegistryMeasure.self, "Product", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", version), ("RegValue", "ProductName"),
+        ], in: context)
+        product.readOptionsIfNeeded()
+        t.equal(system.calls.filter { $0 == "sysInfo:OS_PRODUCT_NAME:" }.count, 1)
+        system.values.sysInfoAnswers["OS_PRODUCT_NAME"] = (0, "Changed source")
+        system.resetCalls()
+        product.performUpdate(); product.performUpdate()
+        t.equal(product.stringValue, "macOS Context")
+        t.equal(system.calls, [], "an unchanged static measure uses its cached result")
+        let cores = try extendedNode(RegistryMeasure.self, "Cores", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", environment), ("RegValue", "NUMBER_OF_PROCESSORS"),
+        ], in: context)
+        let frequency = try extendedNode(RegistryMeasure.self, "Frequency", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"), ("RegValue", "~MHz"),
+        ], in: context)
+        let names = try extendedNode(RegistryMeasure.self, "Names", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", environment), ("OutputType", "ValueList"), ("OutputDelimiter", "|"),
+        ], in: context)
+        let children = try extendedNode(RegistryMeasure.self, "Children", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", "HARDWARE\\DESCRIPTION\\System\\CentralProcessor"),
+            ("OutputType", "SubKeyList"), ("OutputDelimiter", "|"),
+        ], in: context)
+        for node in [cores, frequency, names, children] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(cores.value, 8)
+        t.equal(cores.rawString, "8")
+        t.equal(frequency.value, 3200)
+        t.equal(frequency.rawString, nil, "a numeric registry value has no raw string")
+        t.equal(names.stringValue, "NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|PROCESSOR_IDENTIFIER")
+        t.equal(children.stringValue, "0|1|2|3|4|5|6|7")
+        product.overrides["regvalue"] = "InstallationType"
+        product.needsOptionRead = true
+        product.readOptionsIfNeeded(); product.performUpdate()
+        t.equal(product.stringValue, "Client", "changed options invalidate only the node result cache")
+        names.overrides["outputdelimiter"] = ";"
+        names.needsOptionRead = true
+        names.readOptionsIfNeeded(); names.performUpdate()
+        t.equal(names.stringValue, "NUMBER_OF_PROCESSORS;PROCESSOR_ARCHITECTURE;PROCESSOR_IDENTIFIER")
+        product.overrides["regvalue"] = "UnemulatedContextValue"
+        product.needsOptionRead = true
+        product.readOptionsIfNeeded(); product.performUpdate()
+        t.check(product.valueUnavailable)
+        t.equal(product.value, 0)
+        t.equal(product.rawString, "")
+        t.equal(context.issues.count, 1)
+        system.resetCalls(); product.performUpdate()
+        t.equal(system.calls, [], "a missing static result is cached too")
+        t.equal(context.issues.count, 1)
+        t.equal(context.services, Array(repeating: .system, count: 5))
+    }
+
+    t.suite("Engine: context registry: exact factory preserves aliases and legacy required construction") {
+        let system = ContextBuiltinSystem()
+        system.wallpaper = "/fixture/wallpaper.png"
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-factory"), system: system)
+        t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: "Custom", section: constructionSection("Custom", []),
+                                         context: context, type: "registry") == nil)
+        // Unique aliases preserve the global canonical Registry registration and custom-class precedence.
+        MeasureRegistry.registerMeasure("ContextFactoryRegistryAlias", RegistryMeasure.self)
+        MeasureRegistry.registerMeasure("ContextFactoryRegistryOverride", ContextFactoryChild.self)
+        let host = EnvironmentHost()
+        let skin = try extendedConsumerSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Wallpaper]
+        Measure=Registry
+        RegKey=Control Panel\\Desktop
+        RegValue=Wallpaper
+        [Alias]
+        Measure=ContextFactoryRegistryAlias
+        RegKey=Control Panel\\Desktop
+        RegValue=Wallpaper
+        [Custom]
+        Measure=ContextFactoryRegistryOverride
+        """, system: system, host: host, clock: context.skinClock)
+        defer { skin.close(); withExtendedLifetime(host) {} }
+        skin.update()
+        guard let selected = skin.measure(named: "Wallpaper") as? RegistryMeasure,
+              let alias = skin.measure(named: "Alias") as? RegistryMeasure,
+              let custom = skin.measure(named: "Custom") as? ContextFactoryChild else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        t.check(selected.skin === skin)
+        t.check(alias.skin === skin)
+        t.equal(selected.stringValue, "/fixture/wallpaper.png")
+        t.equal(alias.stringValue, selected.stringValue)
+        t.equal(alias.type, "contextfactoryregistryalias")
+        t.equal(custom.constructorTrace, ["base:contextfactoryregistryoverride", "child:contextfactoryregistryoverride"])
+        t.equal(custom.value, 456)
+        let legacy = RegistryMeasure(name: "Direct", section: selected.own, skin: skin, type: "registry")
+        legacy.readOptionsIfNeeded(); legacy.performUpdate()
+        t.check(legacy.skin === skin)
+        t.equal(legacy.value, selected.value)
+        t.equal(legacy.rawString, selected.rawString)
+        system.wallpaper = "/fixture/new.heic"
+        skin.update(); legacy.performUpdate()
+        t.equal(selected.stringValue, "/fixture/new.heic")
+        t.equal(alias.rawString, legacy.rawString)
     }
 }

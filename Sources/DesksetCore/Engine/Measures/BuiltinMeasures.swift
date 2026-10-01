@@ -882,6 +882,8 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return SysInfoMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(PowerPluginMeasure.self):
         return PowerPluginMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RegistryMeasure.self):
+        return RegistryMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }
