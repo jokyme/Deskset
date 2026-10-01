@@ -138,9 +138,12 @@ enum EnginePoolSelfTests {
                     return same.runtime.skin.variable("Log")
                 }
                 t.equal(immediate ?? nil, "", "a peer on the same worker is queued too")
-                t.check(AppSelfTest.spin(timeout: 30) {
-                    same.runtime.exclusive(timeout: 0) { $0.variable("Log") } == "queued"
-                },
+                let peerValue = Guarded<String?>(nil)
+                same.runtime.executor.async {
+                    let value = same.runtime.exclusive(timeout: 0) { $0.variable("Log") }
+                    peerValue.access { $0 = value ?? nil }
+                }
+                t.check(AppSelfTest.spin(timeout: 30) { peerValue.current == "queued" },
                         "then the peer runs")
                 // Ordering is per sender, for every worker. Record every bang on the receiving worker.
                 for target in [same, other] {
@@ -165,15 +168,28 @@ enum EnginePoolSelfTests {
                         c.runtime.send(.execute("[!SetVariable Armed 1]", section: nil))
                     }
                 }
+                let stopped = Guarded<Int?>(nil)
+                let terminal = ring[7].runtime
+                _ = terminal.exclusive(timeout: 30) { _ in
+                    terminal.messageObserver = { [weak terminal] message in
+                        guard case .bang(let bang, _, let hops) = message, bang.name == "update",
+                              hops == SkinRuntime.maxHops, let terminal else { return }
+                        // The observer runs before handling the bang; read its result on the next owner turn.
+                        terminal.executor.async {
+                            let value = terminal.exclusive(timeout: 0) { _ in terminal.droppedHops }
+                            stopped.access { $0 = value }
+                        }
+                    }
+                }
                 let before = ring.map { $0.runtime.snapshot.updateCount }
                 source.runtime.send(.update(hops: 0))
-                t.check(AppSelfTest.spin(timeout: 30) {
-                    ring[7].runtime.exclusive(timeout: 0) { _ in ring[7].runtime.droppedHops } == 1
-                }, "the asynchronous ring stops after hop 16")
+                t.check(AppSelfTest.spin(timeout: 30) { stopped.current == 1 },
+                        "the asynchronous ring stops after hop 16")
                 t.equal(zip(ring, before).map { $0.runtime.snapshot.updateCount - $1 },
                         [2, 2, 2, 2, 2, 2, 2, 2, 1], "the same hop bound as the shared engine thread")
                 t.equal(ring.map { c in c.runtime.exclusive(timeout: 30) { _ in c.runtime.hopLimitLogs } ?? -1 },
                         [0, 0, 0, 0, 0, 0, 0, 1, 0], "one diagnostic for the dropped chain")
+                _ = terminal.exclusive(timeout: 30) { _ in terminal.messageObserver = nil }
                 for c in ring { app.deactivate(config: c.config) }
             }
             EngineThreadSelfTests.finish(t, app, tracked)
