@@ -81,6 +81,13 @@ open class Measure: SkinSection {
         super.init(name: name, section: section, skin: skin)
     }
 
+    /// Internal construction for kernels whose option, sampling and action paths use SectionContext.
+    /// The legacy required initializer remains the entry point for Skin and its plugin factories.
+    init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        self.type = type
+        super.init(name: name, section: section, context: context)
+    }
+
     // MARK: Subclass hooks
 
     /// MaxValue used when the option is absent (e.g. CPU → 100, Memory → total bytes).
