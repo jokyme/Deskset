@@ -21,7 +21,7 @@ let package = Package(
         ),
         // Pure logic engine. Foundation (+ embedded Lua) only.
         .target(name: "DesksetCore", dependencies: ["CLua"]),
-        .target(name: "DeskLanguage", path: "Sources/DeskLanguage"),
+        .target(name: "DeskLanguage", dependencies: ["DesksetCore"], path: "Sources/DeskLanguage"),
         // Rendering values and capabilities; AppKit implementations stay in the app.
         .target(name: "DesksetDraw", dependencies: ["DesksetCore"]),
         // Layer planning and presentation values, without AppKit.
@@ -29,7 +29,7 @@ let package = Package(
         // AppKit menu bar app.
         .executableTarget(
             name: "Deskset",
-            dependencies: ["DesksetCore", "DesksetDraw", "DesksetRuntime"],
+            dependencies: ["DesksetCore", "DesksetDraw", "DesksetRuntime", "DeskLanguage"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("IOKit"),

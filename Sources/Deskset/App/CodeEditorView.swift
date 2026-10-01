@@ -47,6 +47,11 @@ final class CodeEditorView: NSView {
     var onFileChange: ((URL) -> Void)?
     /// The user changed the font size with ⌘+ / ⌘− / ⌘0 (for the host to remember).
     var onFontSizeChange: ((CGFloat) -> Void)?
+    /// A host may supply checked language completions. Nil preserves NSTextView's original completion path.
+    var onCompletionRange: (() -> NSRange)?
+    var onCompletions: ((NSRange) -> [String])?
+    var onInsertCompletion: ((String, NSRange, Int, Bool) -> Void)?
+
     /// Asked before an ANSI file that cannot hold the new text is converted to UTF-16 LE with BOM; return true to
     /// convert and commit. When nil, an alert asks in a visible window, and headless use converts (like `IniWriter`)
     /// unless the user declined before.
@@ -67,6 +72,16 @@ final class CodeEditorView: NSView {
     /// Reads a file's bytes: the disk by default. The skin studio reads its editing session's text instead (the truth
     /// the disk follows), so the buffers compare with — and re-read — what the Studio's instance of the widget shows.
     var readData: (URL) throws -> Data = { try Data(contentsOf: $0) }
+
+    /// Document-specific decoding. Skin files keep the existing encoding detection; a Desk host uses strict UTF-8.
+    var decodeDocument: (Data, URL) throws -> CodeDocument = { data, _ in CodeDocument(data: data) }
+    /// A read or decode failed; the buffer and its original bytes remain intact.
+    var onReadError: ((URL, Error) -> Void)?
+    /// Every character edit advances this before a delayed check can return. Attribute edits do not count.
+    private(set) var textRevision = 0
+    /// Synchronous after a user change or an API change settles, before the typed-text debounce.
+    var onTextRevision: ((URL, Int, String) -> Void)?
+    private var revisionPending = false
 
     static let defaultIdleCommitDelay: TimeInterval = 0.8
     /// How long typing must pause before the buffer is committed (self-tests set it; the idle commit can also be
@@ -694,8 +709,13 @@ final class CodeEditorView: NSView {
 
     /// A file's text (decoded like `CodeDocument.load`) and its bytes (`readData`).
     private func load(_ url: URL) throws -> (document: CodeDocument, bytes: Data) {
-        let bytes = try readData(url)
-        return (CodeDocument(data: bytes), bytes)
+        do {
+            let bytes = try readData(url)
+            return (try decodeDocument(bytes, url), bytes)
+        } catch {
+            onReadError?(url, error)
+            throw error
+        }
     }
 
     /// Opens a file that was not in the list (e.g. revealed from an include the host did not pass).
@@ -820,8 +840,7 @@ final class CodeEditorView: NSView {
             case .keepEdits:
                 break
             case .takeDisk:
-                adoptDisk(disk, into: buffer)
-                return true
+                return adoptDisk(disk, into: buffer)
             case .decideLater:
                 return false
             }
@@ -884,8 +903,17 @@ final class CodeEditorView: NSView {
     }
 
     /// The buffer takes the file's current bytes (its edits are dropped, with their undo history).
-    private func adoptDisk(_ bytes: Data, into buffer: FileBuffer) {
-        let disk = CodeDocument(data: bytes)
+    private func adoptDisk(_ bytes: Data, into buffer: FileBuffer) -> Bool {
+        let disk: CodeDocument
+        do {
+            disk = try decodeDocument(bytes, buffer.url)
+        } catch {
+            if let onReadError { onReadError(buffer.url, error) }
+            else {
+                Log.write("Code editor: cannot read \(buffer.url.lastPathComponent): \(error.localizedDescription)", level: .error)
+            }
+            return false
+        }
         apiChange {
             buffer.document = disk
             buffer.base = bytes
@@ -902,6 +930,7 @@ final class CodeEditorView: NSView {
             buffer.undoManager.removeAllActions()
             updateJumpBar()
         }
+        return true
     }
 
     /// Whether an ANSI buffer may be converted to Unicode for its commit. With nobody to ask (no callback, no visible
@@ -1081,6 +1110,7 @@ final class CodeEditorView: NSView {
         flushHighlight()
         apiDepth -= 1
         if apiDepth == 0 {
+            reportRevision()
             reportCleanBuffers()
             // The next user move is reported even in the same section: the host may have selected something else.
             lastReport = nil
@@ -1089,6 +1119,33 @@ final class CodeEditorView: NSView {
             ruler.needsDisplay = true
             textView.updateCurrentLineHighlight()
         }
+    }
+
+    private func reportRevision() {
+        guard revisionPending, apiDepth == 0, let current else { return }
+        revisionPending = false
+        onTextRevision?(current.url, textRevision, textView.string)
+    }
+
+    /// One validated user edit, through NSTextView so dirty state, revisions and the normal save path still run.
+    /// Hosts perform document/range checks before calling; the replacement is one independent undo step.
+    @discardableResult
+    func replaceAsUser(with text: String, selection: NSRange, actionName: String) -> Bool {
+        precondition(Thread.isMainThread)
+        let (end, overflow) = selection.location.addingReportingOverflow(selection.length)
+        guard current != nil, textView.isEditable, let undo = textView.undoManager,
+              selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
+              !overflow, end <= text.utf16.count, !text.utf8.elementsEqual(textView.string.utf8) else { return false }
+        let origin = scrollView.contentView.bounds.origin
+        textView.breakUndoCoalescing()
+        undo.beginUndoGrouping()
+        textView.insertText(text, replacementRange: NSRange(location: 0, length: textView.string.utf16.count))
+        undo.setActionName(actionName)
+        undo.endUndoGrouping()
+        guard text.utf8.elementsEqual(textView.string.utf8) else { return false }
+        textView.setSelectedRange(selection)
+        restoreScroll(origin)
+        return true
     }
 
     // MARK: - Highlighting
@@ -1320,6 +1377,7 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
         if buffer.isDirty != wasDirty { updateJumpBar() }
         if buffer.isDirty { scheduleCommit() } else { commitTimer?.invalidate() }
         if buffer.isDirty || typedShown.contains(buffer.url) { scheduleTypedText() } else { typedTimer?.invalidate() }
+        reportRevision()
         ruler.updateThickness(lineCount: analysis.lineCount)
         ruler.needsDisplay = true
     }
@@ -1334,6 +1392,8 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                      range editedRange: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
+        textRevision += 1
+        revisionPending = true
         analysisCache = nil
         let length = textStorage.length
         if let pending = pendingHighlight {
@@ -1383,6 +1443,31 @@ private final class JumpBarView: NSView {
 /// equivalents run while it is focused, and the background shows the section tint and the current line.
 final class CodeTextView: NSTextView {
     weak var editor: CodeEditorView?
+
+    override var rangeForUserCompletion: NSRange {
+        if let range = editor?.onCompletionRange { return range() }
+        return super.rangeForUserCompletion
+    }
+
+    override func completions(forPartialWordRange range: NSRange,
+                              indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
+        guard let completions = editor?.onCompletions else {
+            return super.completions(forPartialWordRange: range, indexOfSelectedItem: index)
+        }
+        let words = completions(range)
+        index.pointee = words.isEmpty ? -1 : 0
+        return words
+    }
+
+    override func insertCompletion(_ word: String, forPartialWordRange range: NSRange,
+                                   movement: Int, isFinal: Bool) {
+        guard let insert = editor?.onInsertCompletion else {
+            super.insertCompletion(word, forPartialWordRange: range, movement: movement, isFinal: isFinal)
+            return
+        }
+        insert(word, range, movement, isFinal)
+    }
+
     /// The line ending Return inserts (the file's dominant one).
     var lineEnding = "\r\n"
     /// Characters of the tinted section (drawn as a full-width band).
@@ -1436,6 +1521,11 @@ final class CodeTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == [.control],
+           event.charactersIgnoringModifiers == " ", editor?.onCompletionRange != nil, !hasMarkedText() {
+            complete(nil)
+            return
+        }
         if event.modifierFlags.contains(.command), editor?.handleKeyEquivalent(event) == true { return }
         super.keyDown(with: event)
     }
