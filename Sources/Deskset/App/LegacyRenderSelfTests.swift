@@ -564,12 +564,10 @@ enum LegacyRenderSelfTests {
             t.check(late.value.hasPixels && late.missing.contains("background work did not settle"))
             t.check(!complete(hasPixels: late.value.hasPixels, missing: late.missing), "an unfinished input is incomplete")
             finishInput()
-            // A late hop currently retains the virtual queue until its owner drains it. The incomplete result above
-            // must not count as G1 success; drain this deliberately gated test so it leaves no executor behind.
-            print("    Late input before owner drain: executor retained=\(executor != nil), recording retained=\(recording != nil)")
-            executor?.runUntilIdle()
+            // Neither the producer's callback nor its queued hop may retain the executor after returning.
+            t.check(executor == nil, "the late hop releases the executor without another owner step")
+            t.check(recording == nil, "the late hop releases the recording and its scratch files")
             t.check(!applied, "the closed skin receives no late result")
-            t.check(executor == nil && recording == nil, "the owner drain releases the late hop")
         }
     }
 
