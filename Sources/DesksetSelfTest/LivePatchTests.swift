@@ -699,8 +699,8 @@ private func runLivePatchConsistencyTests(_ t: TestRunner) {
 }
 
 /// The five widgets the Studio's latency is measured on (0.1's example widgets): a text size and a color of their first
-/// text layer, patched and reloaded. Their clocks read the real time, so a comparison that falls on a second boundary is
-/// tried again.
+/// text layer, patched and reloaded. Both sides read the same fixed clock so the comparison cannot cross a real
+/// second boundary, including the Time measures' stored timestamps.
 private func runLivePatchReferenceTests(_ t: TestRunner) {
     t.suite("Session: live patch — the reference widgets patch as they reload") {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -709,6 +709,7 @@ private func runLivePatchReferenceTests(_ t: TestRunner) {
         let references = [("Deskset\\Clock", "Deskset/Clock/Clock.ini"), ("Deskset\\System", "Deskset/System/System.ini"),
                           ("Deskset\\Calendar", "Deskset/Calendar/Calendar.ini"),
                           ("Audio\\Visualizer", "Audio/Visualizer/Visualizer.ini"), ("Mac\\Glass", "Mac/Glass/Glass.ini")]
+        let clock = SkinClock.fixed(Date(timeIntervalSince1970: 1_790_424_000), timeZone: TimeZone(secondsFromGMT: 0)!)
         for (config, path) in references {
             let url = skins.appendingPathComponent(path)
             let original = try TextDecoding.readFile(at: url)
@@ -717,6 +718,7 @@ private func runLivePatchReferenceTests(_ t: TestRunner) {
                 let host = FakeHost()
                 hosts.append(host)
                 let skin = Skin(config: config, fileURL: url, skinsDirectory: skins, system: FakeSystem(), host: host)
+                skin.skinClock = clock
                 skin.sourceProvider = PatchTexts(url, text)
                 try skin.load()
                 return skin
