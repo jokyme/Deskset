@@ -27,7 +27,7 @@ let package = Package(
         // AppKit menu bar app.
         .executableTarget(
             name: "Deskset",
-            dependencies: ["DesksetCore", "DesksetDraw"],
+            dependencies: ["DesksetCore", "DesksetDraw", "DeskLanguage"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("IOKit"),
