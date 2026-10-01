@@ -1,4 +1,5 @@
 import AppKit
+import DeskLanguage
 import DesksetCore
 import UniformTypeIdentifiers
 
@@ -15,12 +16,18 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     unowned let app: AppController
     /// Asked when the window closes with edits that could not be saved (self-tests answer it; nil: an alert).
     var closeChoice: (() -> InspectorWindowController.CloseChoice)?
+    /// Editing/checking only; a Desk document has no Skin or desktop copy.
+    private(set) var deskChecking: DeskCodeDocumentChecking?
+    private(set) var readError: String?
 
-    init(file: URL, app: AppController) throws {
+    init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil) throws {
         self.file = file.standardizedFileURL
         self.app = app
         codeView = CodeEditorView(frame: NSRect(x: 0, y: 0, width: 760, height: 580))
         codeView.setFontSize(CGFloat(app.state.editor.codeFontSize))
+        if self.file.pathExtension.lowercased() == "desk" {
+            codeView.decodeDocument = DeskCodeDocumentChecking.document(from:file:)
+        }
         try codeView.open(files: [self.file], current: self.file)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 580),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -37,6 +44,18 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = codeView
         super.init(window: window)
         window.delegate = self
+        if self.file.pathExtension.lowercased() == "desk" {
+            let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
+            let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue)
+            deskChecking = checking
+            checking.onSnapshot = { [weak self] snapshot in self?.showDeskCheck(snapshot) }
+            codeView.onReadError = { [weak self] _, error in
+                self?.readError = error.localizedDescription
+                self?.window?.subtitle = error.localizedDescription
+                Log.write("Code editor: \(error.localizedDescription)", level: .error)
+            }
+            showDeskCheck(checking.snapshot)
+        }
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes
             app?.state.updateEditor { $0.codeFontSize = min(max(Double(size), range.lowerBound), range.upperBound) }
@@ -59,7 +78,13 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     /// Coming back to the window: the file as it is on disk now (a clean buffer takes it, keeping the caret).
     func windowDidBecomeKey(_ notification: Notification) {
+        let revision = codeView.textRevision
+        readError = nil
         codeView.reloadFromDisk(keepCaret: true)
+        if let checking = deskChecking {
+            if readError == nil, codeView.textRevision == revision { checking.recheck() }
+            showDeskCheck(checking.snapshot)
+        }
     }
 
     /// Closing (or quitting) saves the edits; when that fails: Save (try again), Discard Changes, or Cancel.
@@ -98,7 +123,19 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        deskChecking?.close()
         app.codeFileWindowDidClose(self)
+    }
+
+    /// The existing window subtitle exposes a checked message until the full diagnostic pane is connected.
+    /// Pending syntax is not reported as a finished check. Cards, ranges, notes and fix actions belong to that pane.
+    private func showDeskCheck(_ snapshot: DeskSnapshot) {
+        if let readError { window?.subtitle = readError }
+        else if snapshot.isChecked, let diagnostic = snapshot.diagnostics.first(where: \.isProblem) {
+            window?.subtitle = diagnostic.message
+        } else {
+            window?.subtitle = file.deletingLastPathComponent().path
+        }
     }
 
     // MARK: Which files

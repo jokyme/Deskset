@@ -68,6 +68,16 @@ final class CodeEditorView: NSView {
     /// the disk follows), so the buffers compare with — and re-read — what the Studio's instance of the widget shows.
     var readData: (URL) throws -> Data = { try Data(contentsOf: $0) }
 
+    /// Document-specific decoding. Skin files keep the existing encoding detection; a Desk host uses strict UTF-8.
+    var decodeDocument: (Data, URL) throws -> CodeDocument = { data, _ in CodeDocument(data: data) }
+    /// A read or decode failed; the buffer and its original bytes remain intact.
+    var onReadError: ((URL, Error) -> Void)?
+    /// Every character edit advances this before a delayed check can return. Attribute edits do not count.
+    private(set) var textRevision = 0
+    /// Synchronous after a user change or an API change settles, before the typed-text debounce.
+    var onTextRevision: ((URL, Int, String) -> Void)?
+    private var revisionPending = false
+
     static let defaultIdleCommitDelay: TimeInterval = 0.8
     /// How long typing must pause before the buffer is committed (self-tests set it; the idle commit can also be
     /// fired at once with `fireIdleCommit`).
@@ -694,8 +704,13 @@ final class CodeEditorView: NSView {
 
     /// A file's text (decoded like `CodeDocument.load`) and its bytes (`readData`).
     private func load(_ url: URL) throws -> (document: CodeDocument, bytes: Data) {
-        let bytes = try readData(url)
-        return (CodeDocument(data: bytes), bytes)
+        do {
+            let bytes = try readData(url)
+            return (try decodeDocument(bytes, url), bytes)
+        } catch {
+            onReadError?(url, error)
+            throw error
+        }
     }
 
     /// Opens a file that was not in the list (e.g. revealed from an include the host did not pass).
@@ -820,8 +835,7 @@ final class CodeEditorView: NSView {
             case .keepEdits:
                 break
             case .takeDisk:
-                adoptDisk(disk, into: buffer)
-                return true
+                return adoptDisk(disk, into: buffer)
             case .decideLater:
                 return false
             }
@@ -884,8 +898,17 @@ final class CodeEditorView: NSView {
     }
 
     /// The buffer takes the file's current bytes (its edits are dropped, with their undo history).
-    private func adoptDisk(_ bytes: Data, into buffer: FileBuffer) {
-        let disk = CodeDocument(data: bytes)
+    private func adoptDisk(_ bytes: Data, into buffer: FileBuffer) -> Bool {
+        let disk: CodeDocument
+        do {
+            disk = try decodeDocument(bytes, buffer.url)
+        } catch {
+            if let onReadError { onReadError(buffer.url, error) }
+            else {
+                Log.write("Code editor: cannot read \(buffer.url.lastPathComponent): \(error.localizedDescription)", level: .error)
+            }
+            return false
+        }
         apiChange {
             buffer.document = disk
             buffer.base = bytes
@@ -902,6 +925,7 @@ final class CodeEditorView: NSView {
             buffer.undoManager.removeAllActions()
             updateJumpBar()
         }
+        return true
     }
 
     /// Whether an ANSI buffer may be converted to Unicode for its commit. With nobody to ask (no callback, no visible
@@ -1081,6 +1105,7 @@ final class CodeEditorView: NSView {
         flushHighlight()
         apiDepth -= 1
         if apiDepth == 0 {
+            reportRevision()
             reportCleanBuffers()
             // The next user move is reported even in the same section: the host may have selected something else.
             lastReport = nil
@@ -1089,6 +1114,12 @@ final class CodeEditorView: NSView {
             ruler.needsDisplay = true
             textView.updateCurrentLineHighlight()
         }
+    }
+
+    private func reportRevision() {
+        guard revisionPending, apiDepth == 0, let current else { return }
+        revisionPending = false
+        onTextRevision?(current.url, textRevision, textView.string)
     }
 
     // MARK: - Highlighting
@@ -1320,6 +1351,7 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
         if buffer.isDirty != wasDirty { updateJumpBar() }
         if buffer.isDirty { scheduleCommit() } else { commitTimer?.invalidate() }
         if buffer.isDirty || typedShown.contains(buffer.url) { scheduleTypedText() } else { typedTimer?.invalidate() }
+        reportRevision()
         ruler.updateThickness(lineCount: analysis.lineCount)
         ruler.needsDisplay = true
     }
@@ -1334,6 +1366,8 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                      range editedRange: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
+        textRevision += 1
+        revisionPending = true
         analysisCache = nil
         let length = textStorage.length
         if let pending = pendingHighlight {

@@ -44,6 +44,8 @@ event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manag
 timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
+
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
