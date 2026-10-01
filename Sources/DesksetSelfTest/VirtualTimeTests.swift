@@ -700,6 +700,94 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Executor: virtual time — a replacement icon service is independent of a held renderer") {
+        let previous = virtualExecutor(), replacement = virtualExecutor()
+        for executor in [previous, replacement] {
+            executor.background.allowsUnfakedWork = false
+            executor.background.setFake(.service, for: .fileViewIcon)
+        }
+        let ini = """
+        [Rainmeter]
+        Update=-1
+        [Files]
+        Measure=Plugin
+        Plugin=FileView
+        Path=#CURRENTPATH#Items
+        ShowDotDot=0
+        [Icon]
+        Measure=Plugin
+        Plugin=FileView
+        Path=[Files]
+        Type=Icon
+        IconPath=#CURRENTPATH#icon.png
+        Disabled=1
+        """
+        let first = try virtualSkin(t, ini, files: ["Root/Sub/Items/first.txt": "first"], executor: previous)
+        let second = try virtualSkin(t, ini, files: ["Root/Sub/Items/second.txt": "second"], executor: replacement)
+        let savedRenderer = FileViewIcons.renderer
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let firstBytes = Data("original icon bytes".utf8), secondBytes = Data("replacement icon bytes".utf8)
+        var released = false
+        defer {
+            if !released { release.signal() }
+            t.check(previous.background.settle(timeout: 5), "the held request drains after release")
+            t.check(replacement.background.settle(timeout: 5), "the replacement request drains")
+            previous.runUntilIdle()
+            replacement.runUntilIdle()
+            first.close()
+            second.close()
+            FileViewIcons.renderer = savedRenderer
+        }
+        func request(_ skin: Skin, _ executor: VirtualTimeExecutor) -> FileViewMeasure? {
+            skin.update()
+            executor.runUntilIdle()
+            t.equal(skin.measure(named: "Files")?.value, 1, "the real fixture listing has one source")
+            guard let icon = skin.measure(named: "Icon") as? FileViewMeasure else {
+                t.check(false, "the actual FileView child is installed")
+                return nil
+            }
+            icon.setDisabled(false)
+            icon.readOptionsIfNeeded()
+            icon.performUpdate()
+            return icon
+        }
+        FileViewIcons.renderer = { _, _, _ in
+            entered.signal()
+            release.wait()
+            return firstBytes
+        }
+        guard let firstIcon = request(first, previous) else { return }
+        let firstEntered = entered.wait(timeout: .now() + 5) == .success
+        t.check(firstEntered, "the previous renderer entered before replacement")
+        guard firstEntered else { return }
+        t.equal(previous.background.outstanding, 1, "one original request is held")
+        t.equal(firstIcon.stringValue, "", "the held request has not published")
+
+        FileViewIcons.renderer = { _, _, _ in secondBytes }
+        guard let secondIcon = request(second, replacement) else { return }
+        let finished = replacement.background.settle(timeout: 5)
+        t.check(finished, "a replacement service completes while the previous renderer is still held")
+        t.equal(previous.background.outstanding, 1, "finishing the replacement does not release the previous request")
+        t.equal(secondIcon.stringValue, "", "completion still waits for the replacement owner")
+        if finished {
+            replacement.runUntilIdle()
+            t.equal(try Data(contentsOf: URL(fileURLWithPath: secondIcon.stringValue)), secondBytes)
+            t.equal(replacement.background.outstanding, 0)
+            t.equal(replacement.background.unverifiable, [])
+        }
+        release.signal()
+        released = true
+        t.check(previous.background.settle(timeout: 5))
+        t.check(replacement.background.settle(timeout: 5))
+        previous.runUntilIdle()
+        replacement.runUntilIdle()
+        t.equal(try Data(contentsOf: URL(fileURLWithPath: firstIcon.stringValue)), firstBytes,
+                "the earlier request retains its captured renderer")
+        t.equal(try Data(contentsOf: URL(fileURLWithPath: secondIcon.stringValue)), secondBytes,
+                "the replacement publishes its own bytes")
+        t.equal(previous.background.unverifiable, [])
+    }
+
     t.suite("Executor: virtual time — background work: fixtures, scripted results, work without a fake") {
         let v = virtualExecutor()
         let savedRenderer = FileViewIcons.renderer
