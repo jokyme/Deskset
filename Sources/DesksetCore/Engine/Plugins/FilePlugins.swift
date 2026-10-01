@@ -5,10 +5,12 @@ import Foundation
 //   https://docs.rainmeter.net/manual/plugins/quote/
 //   https://docs.rainmeter.net/manual/plugins/folderinfo/
 
-/// Background work of the file plugins (scans, list reads, icon writes, the Trash). Concurrent, so one huge scan does
-/// not hold up the others; every measure keeps at most one job of its own in flight.
+/// Background file scans, listing reads and the Trash. Concurrent, so one huge scan does not hold up the others.
 enum PluginIO {
     static let queue = DispatchQueue(label: "Deskset.PluginIO", qos: .utility, attributes: .concurrent)
+    /// Icons may wait inside the system's icon service. Start one job at a time here, so queued icons do not occupy
+    /// the shared dispatch workers while waiting to render; file reads and the Trash stay on the concurrent queue.
+    static let iconQueue = DispatchQueue(label: "Deskset.FileViewIcons", qos: .utility)
     /// Bound on the number of files a scan visits (a whole disk would otherwise take minutes).
     static let maxEntries = 2_000_000
 }
