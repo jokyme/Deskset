@@ -6,7 +6,7 @@ import Foundation
 /// `#MACSEPARATORCOLOR#`; and the clock, week and temperature settings that follow the Mac the same way
 /// (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`, `MacRegionalSettings`). The app fills it in from
 /// AppKit and Foundation (`SkinEnvironment.appearance`); the colors are sRGB, resolved for the appearance.
-public struct SkinAppearance: Equatable {
+public struct SkinAppearance: Equatable, Sendable {
     public var isDark: Bool
     /// System Settings → Appearance → Accent color.
     public var accentColor: RGBA

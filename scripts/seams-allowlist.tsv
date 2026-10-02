@@ -202,7 +202,7 @@ effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private 
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 
-mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
+mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
 
 mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
 
@@ -334,7 +334,6 @@ mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots e
 background.executorAsync	Sources/Deskset/SkinDrawing.swift	1	the frame producer joins the run loop of the executor its skin runs on (skin threading: frames are drawn at the end of the executor's turn)
 event.runLoopObserver	Sources/Deskset/SkinDrawing.swift	1	frames are drawn once per turn of the skin executor's run loop, before Core Animation commits (skin threading §7.3); a frame, not a skin input
 mono.systemUptime	Sources/Deskset/SkinDrawing.swift	6	frame pacing and FrameTimingLog: when a frame was asked for and how long drawing took; a frame, not a skin input
-random.hashSeed	Sources/Deskset/SkinDrawing.swift	1	in-process cache key
 timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be seen lets go of its kept pictures after a while (on the skin's executor); memory, not a skin input
 
 background.executorAsync	Sources/Deskset/SkinRuntime.swift	3	the runtime's messages and its skin's release go to the skin's executor (skin threading §15: the executor seam itself)
@@ -520,7 +519,8 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	ca
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
-background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	concurrent file I/O and serial icon queues; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	concurrent file I/O queue; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	serial queue per installed icon renderer; captured requests retain their lane, replacement services remain independent
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
@@ -651,3 +651,11 @@ effect.fileWrite	Sources/DesksetCore/Weather/WeatherService.swift	5	weather serv
 
 background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.no requests: faked through WeatherEnvironment
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
+
+random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest

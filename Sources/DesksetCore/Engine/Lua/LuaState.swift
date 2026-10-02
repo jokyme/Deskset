@@ -116,6 +116,7 @@ final class LuaState {
         if wall {
             c.wall = luaTimeNow
             c.zone = luaTimeZone
+            c.offset_for_isdst = luaTimeOffsetForDST
         }
         if monotonic { c.monotonic = luaTimeClock }
         if seeded {
@@ -345,6 +346,32 @@ private let luaTimeZone: @convention(c) (UnsafeMutableRawPointer?, Double, Unsaf
         name[bytes.count] = 0
     }
     return zone.secondsFromGMT(for: date)
+}
+
+private let luaTimeOffsetForDST: @convention(c) (UnsafeMutableRawPointer?, Double, Int32) -> Int = { context, time, isDST in
+    let zone = LuaTimeSource.from(context).clock.timeZone()
+    let date = Date(timeIntervalSince1970: time.isFinite ? time : 0)
+    var daylight = zone.daylightSavingTimeOffset(for: date)
+    let standard = Double(zone.secondsFromGMT(for: date)) - daylight
+    guard isDST != 0 else { return Int(standard) }
+    // A winter date still has the zone's daylight-time offset. Look on both sides of adjacent transitions: the
+    // next transition need not start DST. Use the nearest active season, not an assumed one-hour adjustment.
+    if daylight == 0 {
+        let year: TimeInterval = 370 * 86_400
+        var cursor = date.addingTimeInterval(-year)
+        var distance = TimeInterval.infinity
+        for _ in 0..<8 { // As in TimeFormatting's DST lookup, a bounded number of seasonal changes.
+            guard let next = zone.nextDaylightSavingTimeTransition(after: cursor), next > cursor,
+                  next.timeIntervalSince(date) <= year else { break }
+            for sample in [next.addingTimeInterval(-1), next.addingTimeInterval(1)] {
+                let adjustment = zone.daylightSavingTimeOffset(for: sample)
+                let away = abs(sample.timeIntervalSince(date))
+                if adjustment != 0, away < distance { daylight = adjustment; distance = away }
+            }
+            cursor = next.addingTimeInterval(1)
+        }
+    }
+    return Int(standard + daylight)
 }
 
 private let luaTimeClock: @convention(c) (UnsafeMutableRawPointer?) -> Double = { context in

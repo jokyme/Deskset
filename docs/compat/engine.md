@@ -491,10 +491,20 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   it fails; an empty pattern only replaces an empty value. Regular expressions are PCRE patterns translated to ICU:
   `(?U)`, lookarounds and named groups work; `(?|…)` renumbers groups, `\K` is dropped, conditionals become plain
   alternatives, backtracking verbs are dropped, recursion is not supported; `\w`, `\d` and `(?i)` are
-  Unicode-aware; `.` and `$` also treat `\r` and U+2028 as line ends; each regex operation stops after 1 second of
+  Unicode-aware. Shared regex compilation uses LF line separators for `.`, `^` and `$`, including multiline
+  anchors under `(?m)`; `(?s)` still lets dot match LF. CR and U+2028 remain ordinary input to these constructs:
+  strings are not normalized. `\s` and `\R` keep ICU semantics; `\N` is translated to `[^\n]`. Explicit
+  `(*CR)`, `(*LF)`, `(*CRLF)`, `(*ANYCRLF)`, `(*ANY)`, `(*BSR_ANYCRLF)` and `(*BSR_UNICODE)` controls are still
+  stripped, so their requested conventions are not supported. Each regex operation stops after 1 second of
   CPU time (at most 10 seconds of real time on a busy Mac).
-- Why: ICU instead of PCRE; judgment calls where the manual is silent.
-- Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; exotic PCRE features may not match.
+- Why: ICU instead of PCRE; judgment calls where the manual is silent. Deskset selects LF using
+  [ICU's Unix line mode](https://unicode-org.github.io/icu-docs/apidoc/released/icu4c/uregex_8h.html).
+  [PCRE's default build convention is LF](https://www.pcre.org/original/doc/html/pcrebuild.html), but build and
+  compile options or [pattern controls](https://www.pcre.org/original/doc/html/pcrepattern.html) can override it;
+  the newline configuration of Rainmeter's binary has not been verified.
+- Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; patterns that depend on CR / Unicode line
+  boundaries or explicit newline / BSR controls can differ. In HMNmeter's service output, `State.*#CRLF#` now
+  consumes the CR before LF; the skin's following LF-removal and whitespace-trim pairs yield `Running` / `Stopped`.
 - Status: identical (common cases) / partial (exotic PCRE)
 
 ### Running Windows programs
