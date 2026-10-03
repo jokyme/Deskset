@@ -47,15 +47,20 @@ package enum IniProgramConverter {
         defer { skin.close() }
         let builtins = skin.builtInVariables()
         let kernels = try preflight(document, sources: loaded.sources, builtins: builtins)
-        // Skin consults extension registrations before built-ins. This profile qualifies the exact Time kernel,
+        // Skin consults extension registrations before built-ins. This profile qualifies exact built-in kernels,
         // so a substituted implementation must be declined before the temporary Skin can instantiate it.
-        if kernels.values.contains(.time), let registered = MeasureRegistry.measure(named: "time"),
-           ObjectIdentifier(registered) != ObjectIdentifier(TimeMeasure.self) {
-            let section = document.sections.first { kernels[$0.name.lowercased()] == .time }
-            let source = section.flatMap { loaded.sources.location(section: $0.name, key: "Measure") }
-                .map { RainmeterProgram.Source(file: $0.file, line: $0.line) }
-            throw RainmeterProgramError.outsideInitialProfile(section: section?.name ?? "", key: "Measure",
-                                                              source: source, reason: "registered measure implementation")
+        let measureSections = document.sections.filter { kernels[$0.name.lowercased()]?.measureClass != nil }
+        for section in measureSections {
+            guard let kernel = kernels[section.name.lowercased()], let expected = kernel.measureClass else {
+                throw RainmeterProgramError.inconsistentFrozenInput
+            }
+            if let registered = MeasureRegistry.measure(named: kernel.rawValue),
+               ObjectIdentifier(registered) != ObjectIdentifier(expected) {
+                let source = loaded.sources.location(section: section.name, key: "Measure")
+                    .map { RainmeterProgram.Source(file: $0.file, line: $0.line) }
+                throw RainmeterProgramError.outsideInitialProfile(section: section.name, key: "Measure",
+                                                                  source: source, reason: "registered measure implementation")
+            }
         }
         let fonts = skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true)
         if let names = try? FileManager.default.contentsOfDirectory(atPath: fonts.path), names.contains(where: {
@@ -67,8 +72,11 @@ package enum IniProgramConverter {
         let effectsBefore = effects.records
         let pendingBefore = executor.pendingCount
         try skin.load()
-        guard skin.measures.count == kernels.values.filter({ $0 == .time }).count,
-              skin.measures.allSatisfy({ ObjectIdentifier(type(of: $0)) == ObjectIdentifier(TimeMeasure.self) }),
+        guard skin.measures.count == measureSections.count,
+              zip(skin.measures, measureSections).allSatisfy({ measure, section in
+                  guard let expected = kernels[section.name.lowercased()]?.measureClass else { return false }
+                  return ObjectIdentifier(type(of: measure)) == ObjectIdentifier(expected)
+              }),
               skin.meters.count == kernels.values.filter({ $0 == .string || $0 == .image }).count,
               skin.document == document, skin.sources == loaded.sources, skin.includedFiles.isEmpty,
               skin.updateCount == 0, skin.counter == 0, effects.records == effectsBefore,
@@ -101,8 +109,13 @@ package enum IniProgramConverter {
                                        "trailingspaces"])
         let imageKeys = common.union(["meter", "imagename"])
         let timeKeys: Set<String> = ["measure", "format", "updatedivider"]
+        let calcKeys: Set<String> = ["measure", "formula", "lowbound", "highbound", "updaterandom", "uniquerandom",
+                                     "updatedivider", "dynamicvariables", "disabled", "paused", "minvalue", "maxvalue",
+                                     "invertmeasure", "averagesize", "substitute", "regexpsubstitute"]
         let numeric: Set<String> = ["x", "y", "w", "h", "fontsize", "updatedivider", "hidden", "antialias", "update",
-                                   "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces"]
+                                   "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces",
+                                   "lowbound", "highbound", "updaterandom", "uniquerandom", "dynamicvariables", "disabled", "paused",
+                                   "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -139,8 +152,11 @@ package enum IniProgramConverter {
             if name == "variables" { allowed = Set(section.entries.map { $0.key.lowercased() }) }
             else if name == "rainmeter" { allowed = rootKeys }
             else if let raw = section.entries.first(where: { $0.key.lowercased() == "measure" }) {
-                guard raw.value.lowercased() == "time" else { throw decline(section, raw, "measure type") }
-                kernels[name] = .time; allowed = timeKeys
+                switch raw.value.lowercased() {
+                case "time": kernels[name] = .time; allowed = timeKeys
+                case "calc": kernels[name] = .calc; allowed = calcKeys
+                default: throw decline(section, raw, "measure type")
+                }
             } else if let raw = section.entries.first(where: { $0.key.lowercased() == "meter" }) {
                 switch raw.value.lowercased() {
                 case "string": kernels[name] = .string; allowed = stringKeys
@@ -150,7 +166,9 @@ package enum IniProgramConverter {
             } else { allowed = stringKeys.union(imageKeys).subtracting(["meter"]) }
             for entry in section.entries {
                 let key = entry.key.lowercased()
-                guard allowed.contains(key) else { throw decline(section, entry, "option capability") }
+                guard allowed.contains(key) || (allowed.contains("measurename") && LiveOptions.matches(key, numbered: ["measurename"])) else {
+                    throw decline(section, entry, "option capability")
+                }
                 let resolved = try value(entry, in: section)
                 if name != "variables", numeric.contains(key) {
                     let number = (key == "x" || key == "y") && (resolved.hasSuffix("r") || resolved.hasSuffix("R"))
@@ -182,14 +200,21 @@ package enum IniProgramConverter {
                     }
                 }
             }
-            let measureName = options.rawOption("MeasureName", styleValues: { name in
-                document.section(named: name).map(OptionStack.index)
-            })
-            if let raw = measureName, !raw.isEmpty {
-                let entry = IniEntry(key: "MeasureName", value: raw)
-                guard kernels[section.name.lowercased()] == .string,
-                      kernels[try value(entry, in: section).lowercased()] == .time else {
-                    throw decline(section, entry, "missing measure binding")
+            // Match SkinSection.numberedOptions: slot 1 may be absent; later slots stop at the first gap.
+            for index in 1...1000 {
+                let key = index == 1 ? "MeasureName" : "MeasureName\(index)"
+                guard let raw = options.rawOption(key, styleValues: { name in
+                    document.section(named: name).map(OptionStack.index)
+                }) else {
+                    if index == 1 { continue }
+                    break
+                }
+                let entry = IniEntry(key: key, value: raw)
+                let name = try value(entry, in: section).trimmingCharacters(in: .whitespaces).lowercased()
+                if !name.isEmpty {
+                    guard kernels[section.name.lowercased()] == .string, kernels[name]?.measureClass != nil else {
+                        throw decline(section, entry, "missing measure binding")
+                    }
                 }
             }
         }

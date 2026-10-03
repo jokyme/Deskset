@@ -12,7 +12,17 @@ package struct RainmeterProgram: Equatable, Sendable {
         package let value: String
         package let source: Source?
     }
-    package enum Kernel: Equatable, Sendable { case time, string, image }
+    package enum Kernel: String, Equatable, Sendable {
+        case time, calc, string, image
+
+        var measureClass: Measure.Type? {
+            switch self {
+            case .time: return TimeMeasure.self
+            case .calc: return CalcMeasure.self
+            case .string, .image: return nil
+            }
+        }
+    }
     package struct Section: Equatable, Sendable {
         package let name: String
         package let entries: [Entry]

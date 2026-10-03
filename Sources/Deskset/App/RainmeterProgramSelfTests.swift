@@ -163,6 +163,11 @@ enum RainmeterProgramSelfTests {
             }
             t.equal(try Data(contentsOf: file), bytes, "conversion never changes the input")
         }
+        for name in ["Counter", "Observer"] {
+            t.suite("App: Rainmeter program: original \(name) preserves native numeric pixels without a Skin owner") {
+                try qualifyNumericGraph(name, t)
+            }
+        }
         for (name, width, height, omitted) in [("Align", 460.0, 330.0, "multi"), ("Clip", 520.0, 360.0, "clip1h")] {
             t.suite("App: Rainmeter program: original \(name) preserves native text layout without a Skin owner") {
                 try qualifyStaticText(name, width: width, height: height, omittedMeter: omitted, t)
@@ -272,6 +277,110 @@ enum RainmeterProgramSelfTests {
                 guard let last = scenes.last, let finalPixels else { throw Failure.input }
                 t.equal(try pixels(last, scale: scale, cycle: 61, context: DrawContext(fonts: AppFontResolver())), finalPixels,
                         "pure scene replays on a cold context after owner release")
+            }
+        }
+        t.equal(try Data(contentsOf: file), bytes)
+    }
+
+    private static func qualifyNumericGraph(_ name: String, _ t: AppTestRunner) throws {
+        let relative = "App/\(name)/\(name).ini", config = "App\\" + name
+        guard let source = Paths.repositoryFolder("TestSkins")?.appendingPathComponent(relative) else { throw Failure.input }
+        let bytes = try Data(contentsOf: source), skins = t.temporaryDirectory("rainmeter-native-" + name)
+        let file = skins.appendingPathComponent(relative)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try bytes.write(to: file)
+        let manual = name == "Observer", last = manual ? 62 : 60
+        for appearance in [SkinAppearance.light, .dark] {
+            for scale in [1, 2] {
+                let environment = Environment(appearance, scale)
+                var facts = RecordingSkinHost.fixedEnvironment
+                facts.appearance = appearance
+                let effects = RecordingSideEffects(skinsDirectory: skins), conversionTime = try clock()
+                let program = try IniProgramConverter.convert(config: config, fileURL: file, skinsDirectory: skins,
+                    system: System(), environment: facts, clock: conversionTime.clock, executor: conversionTime, effects: effects)
+                t.equal(program.sourceBytes, bytes)
+                t.equal(conversionTime.pendingCount, 0)
+                var scenes: [WidgetScene] = [], cycles: [Int] = []
+                var images: [Int: Data] = [:], builds: [Int: Int] = [:]
+                weak var oldSkin: Skin?
+                weak var oldContext: DrawContext?
+                do {
+                    let text = Text(), host = Host(text, facts), time = try clock(), projector = SceneProjector()
+                    oldContext = text.context
+                    let skin = Skin(config: config, fileURL: file, skinsDirectory: skins, system: System(), host: host)
+                    oldSkin = skin
+                    skin.runInVirtualTime(time); skin.sideEffects = effects; skin.random = SkinRandom(seed: 1)
+                    try skin.load()
+                    t.equal(skin.updateCount, 0)
+                    t.check(text.cycles.isEmpty)
+                    let scheduler = TickScheduler(), target = SkinTick(skin)
+                    skin.update(); scheduler.startTimer(for: target)
+                    for index in 0...last {
+                        if index > 0 && index <= 60 { time.advance(by: 1) }
+                        if index > 60 { skin.update() } // Explicit updates: Observer's Update=-1 has no timer.
+                        let scene = projector.project(skin, environment: environment)
+                        scenes.append(scene)
+                        t.equal(skin.updateCount, manual ? max(1, index - 59) : index + 1)
+                        if [0, 1, 60, last].contains(index) {
+                            let before = text.context.text.builds
+                            images[index] = try pixels(scene, scale: scale, cycle: skin.updateCount, context: text.context)
+                            builds[index] = text.context.text.builds - before
+                        }
+                    }
+                    t.equal(time.now, 60)
+                    t.equal(skin.issues, [])
+                    cycles = text.cycles
+                    scheduler.cancel(); skin.close()
+                    t.equal(time.pendingCount, 0)
+                }
+                t.check(oldSkin == nil && oldContext == nil, "old numeric owner and its native cache have released")
+                let time = try clock()
+                var text: Text? = Text()
+                weak var service = text
+                weak var context = text?.context
+                var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(
+                    program: program, executor: time, clock: time.clock, environment: facts,
+                    system: System(), effects: effects, text: text)
+                weak var owner = runtime
+                try runtime?.update(); try runtime?.startTimer()
+                var finalPixels: Data?
+                for index in 0...last {
+                    if index > 0 && index <= 60 { time.advance(by: 1) }
+                    if index > 60 { try runtime?.update() }
+                    guard let runtime, let text else { throw Failure.input }
+                    let count = manual ? max(1, index - 59) : index + 1
+                    t.equal(runtime.updateCount, count)
+                    let scene = try runtime.project(environment: environment)
+                    t.equal(scene, scenes[index], "numeric scene at \(index), \(scale)x")
+                    if let expected = images[index] {
+                        let before = text.context.text.builds
+                        let actual = try pixels(scene, scale: scale, cycle: count, context: text.context)
+                        t.equal(text.context.text.builds - before, builds[index])
+                        t.check(actual.contains { $0 != 0 }, "actual native pixels, not an empty success")
+                        t.equal(actual, expected, "strict numeric RGBA at \(index), \(scale)x")
+                        let after = text.context.text.builds
+                        t.equal(try pixels(scene, scale: scale, cycle: count, context: text.context), actual)
+                        t.equal(text.context.text.builds, after)
+                        var omitted = scene
+                        omitted.elements.removeAll { $0.id.name == "metertext" }
+                        t.equal(omitted.elements.count, scene.elements.count - 1)
+                        t.check(try pixels(omitted, scale: scale, cycle: count, context: text.context) != actual,
+                                "omitting the only visible numeric meter must change bytes")
+                        if index == last { finalPixels = actual }
+                    }
+                }
+                t.equal(text?.cycles, cycles)
+                t.equal(time.now, 60)
+                t.equal(runtime?.failure, nil)
+                t.equal(runtime?.logs, [])
+                t.equal(effects.records, [])
+                t.equal(time.background.reports, [])
+                runtime?.close(); runtime = nil; text = nil
+                t.check(owner == nil && service == nil && context == nil)
+                t.equal(time.pendingCount, 0)
+                guard let scene = scenes.last, let finalPixels else { throw Failure.input }
+                t.equal(try pixels(scene, scale: scale, cycle: manual ? 3 : 61,
+                                   context: DrawContext(fonts: AppFontResolver())), finalPixels)
             }
         }
         t.equal(try Data(contentsOf: file), bytes)
