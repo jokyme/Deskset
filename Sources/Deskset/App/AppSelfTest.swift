@@ -4,6 +4,7 @@ import DesksetCore
 /// `Deskset --self-test [filter]`: checks of the app layer (DesksetSelfTest links only DesksetCore). Suites are named
 /// "App: …"; skin windows are created headless (never shown), files go to temporary folders, the user's state and
 /// log are not touched. Uses the fixtures in TestSkins/App and DefaultSkins when run from the repository.
+/// Only an exact `App: layer performance: …` filter opts into the separate real-window measurement fixture.
 enum AppSelfTest {
     static func run(filter: String?) -> Int32 {
         let t = AppTestRunner(filter: filter)
@@ -22,6 +23,7 @@ enum AppSelfTest {
         // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
         // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
         MediaUICache.root = t.temporaryDirectory("caches")
+        if LayerPerformanceMeasurements.runIfRequested(t, filter: filter) { return t.finish() }
         // Suites copy the repository's skins before running them in an app: skins write their own files.
         let shipped = DefaultSkinsSelfTests.fingerprint()
         geometryTests(t)
@@ -53,9 +55,13 @@ enum AppSelfTest {
         wiringTests(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
+        SectionHostSelfTests.run(t)
+        ServiceHostLookupSelfTests.run(t)
+        ActionCatalogSelfTests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
+        TickSchedulerSelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)
@@ -64,7 +70,41 @@ enum AppSelfTest {
         SkinWorkWatchdogSelfTests.run(t)
         EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        DrawFontSelfTests.run(t)
+        DeskFontCatalogSelfTests.run(t)
+        DeskCodeDocumentSelfTests.run(t)
+        DeskWidgetInstallationSelfTests.run(t)
+        DeskCodePresentationSelfTests.run(t)
+        DeskCodeEditingSelfTests.run(t)
+        DeskCodeCompletionSelfTests.run(t)
+        DeskProgramDrawingSelfTests.run(t)
+        DeskProgramPreviewSelfTests.run(t)
+        TextDrawSelfTests.run(t)
+        DrawImageSelfTests.run(t)
+        ImageDrawValueSelfTests.run(t)
+        GraphDrawValueSelfTests.run(t)
+        ShapeDrawValueSelfTests.run(t)
+        InkBoundsSelfTests.run(t)
+        ScenePreparerSelfTests.run(t)
+        RectangleClosureSelfTests.run(t)
+        RectangleComplementSelfTests.run(t)
+        OffscreenRendererSelfTests.run(t)
+        ComponentGeometrySelfTests.run(t)
+        PixelComparisonSelfTests.run(t)
+        LayerContentSelfTests.run(t)
+        ELayerContentSelfTests.run(t)
+        LayerRuntimeSelfTests.run(t)
+        InkEscapeObservationSelfTests.run(t)
+        ClippedRecipeInkSelfTests.run(t)
+        AppSceneEnvironmentSelfTests.run(t)
+        SceneDrawingSelfTests.run(t)
+        RainmeterProgramSelfTests.run(t)
+        SceneBitmapSelfTests.run(t)
+        #if DEBUG
+        SpriteDrawSelfTests.run(t)
+        #endif
         SkinDrawingSelfTests.run(t)
+        SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
@@ -93,6 +133,8 @@ enum AppSelfTest {
         PluginSideEffectsSelfTests.run(t)
         #if DEBUG
         LegacyRenderSelfTests.run(t)
+        StationeryLayerContentSelfTests.run(t)
+        CorpusLayerContentSelfTests.run(t)
         #endif
         // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
         // busier, and the renders' checks of what services deliver within one interval are timed in real time.

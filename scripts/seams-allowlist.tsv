@@ -39,10 +39,17 @@ mono.systemUptime	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Mana
 
 zone.localizedText	Sources/Deskset/App/CodeEditorSettings.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.mainHop	Sources/Deskset/App/DeskCodeDocumentChecking.swift	1	one explicitly opened Desk document's image preparation; current request/text/revision/service generation publishes on main, never a skin input
+effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner's 0700 temporary image directory, exact private copies and cleanup; user resources are read only
+effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
+random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
+
 background.mainHop	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
 
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
@@ -133,6 +140,11 @@ random.UUID	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, M
 timer.Timer	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+effect.fileWrite	Sources/Deskset/App/LayerPerformanceMeasurements.swift	5	exact-filter measurement fixture only: preparing its private input directories, copies and overrides, never user skin files
+mono.systemUptime	Sources/Deskset/App/LayerPerformanceMeasurements.swift	7	exact-filter measurement fixture only: monotonic process sample, setup, warm and single native RunLoop interval boundaries
+random.pid	Sources/Deskset/App/LayerPerformanceMeasurements.swift	2	exact-filter measurement fixture only: this process's rusage query and report identity, not a skin input
+wait.runLoop	Sources/Deskset/App/LayerPerformanceMeasurements.swift	1	exact-filter measurement fixture only: one native RunLoop wait call for each explicit warm or observation interval, no polling
+
 random.hashSeed	Sources/Deskset/App/LayerThumbnails.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 wall.Date()	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's clock; DesksetCore has no such defaults
@@ -202,7 +214,7 @@ effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private 
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 
-mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
+mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
 
 mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
 
@@ -333,14 +345,14 @@ mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots e
 
 background.executorAsync	Sources/Deskset/SkinDrawing.swift	1	the frame producer joins the run loop of the executor its skin runs on (skin threading: frames are drawn at the end of the executor's turn)
 event.runLoopObserver	Sources/Deskset/SkinDrawing.swift	1	frames are drawn once per turn of the skin executor's run loop, before Core Animation commits (skin threading §7.3); a frame, not a skin input
-mono.systemUptime	Sources/Deskset/SkinDrawing.swift	6	frame pacing and FrameTimingLog: when a frame was asked for and how long drawing took; a frame, not a skin input
-random.hashSeed	Sources/Deskset/SkinDrawing.swift	1	in-process cache key
+mono.systemUptime	Sources/Deskset/SkinDrawing.swift	7	frame scheduling/timing and the main C-root attachment acknowledgment; the ack is not worker drawing or CPU time
 timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be seen lets go of its kept pictures after a while (on the skin's executor); memory, not a skin input
 
-background.executorAsync	Sources/Deskset/SkinRuntime.swift	3	the runtime's messages and its skin's release go to the skin's executor (skin threading §15: the executor seam itself)
-background.mainHop	Sources/Deskset/SkinRuntime.swift	3	the runtime's requests to the main thread, which owns the window (skin threading §15); not a skin input
+background.executorAsync	Sources/Deskset/SkinRuntime.swift	4	runtime owner delivery/lifetime and C-root cleanup after main finishes the last frame; no worker waits for main
+background.executorAsync	Sources/Deskset/App/RainmeterProgramHost.swift	1	off-thread final App release returns the complete compatibility owner bundle to its injected executor for close and destruction
+background.executorAsync	Sources/Deskset/App/DeskProgramHost.swift	1	off-thread final App release returns the complete Desk bitmap owner bundle and its private resource copies to the injected executor for close and destruction
+background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)
-timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the executor
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
 event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
@@ -520,7 +532,8 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	ca
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
-background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	concurrent file I/O and serial icon queues; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	concurrent file I/O queue; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	serial queue per installed icon renderer; captured requests retain their lane, replacement services remain independent
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
@@ -541,6 +554,9 @@ background.dispatch	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swi
 background.executorAsync	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	2	the Trash monitor's callbacks for callers that are not skins (EmptyBin's refresh, the tests); skins get their readings through Skin.startBackground and their hop
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
 
+background.dispatch	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	1	SectionContext.async forwards the existing Skin.async owner-lifetime and next-action delivery for invalid downloads; no new queue or completion path
+
+background.dispatch	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	SectionContext.async forwards the existing Skin.async owner-lifetime and next-action delivery; no new queue or completion path
 timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
@@ -599,6 +615,8 @@ timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin threa
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 wait.runLoop	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its thread runs its run loop
 
+timer.executorTimer	Sources/DesksetCore/Engine/TickScheduler.swift	2	the update timer and opt-in one-shot date boundary share one cancellation lease on the injected executor (VirtualTimeExecutor)
+
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 
 effect.fileWrite	Sources/DesksetCore/Ini/IniWriter.swift	1	the writer itself
@@ -651,3 +669,21 @@ effect.fileWrite	Sources/DesksetCore/Weather/WeatherService.swift	5	weather serv
 
 background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.no requests: faked through WeatherEnvironment
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
+
+random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
+
+mono.DispatchTime.now	Sources/DesksetRuntime/OffscreenRenderer.swift	2	real GPU completion deadline, independent of the skin's explicit animation clock; expired frames cannot be read back
+wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for the caller's Metal queue tail; submission timeout invalidates the renderer without reading its texture
+background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel replacement is deferred until an applying ScenePatch releases its contentRoot writer; no executor wait inside a claim
+wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt
+
+event.notification	Sources/Deskset/App/CodeFileWindowController.swift	3	App-owned document preview system palette/date/wake notifications; weak owner, main publication, removed at deinit; no skin action or data read
+zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
+zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale
+zone.implicitFormatter	Sources/DesksetCore/Program/ProgramNumberFormatting.swift	1	owner-local formatter receives explicit immutable projection locale; Core reads no current locale

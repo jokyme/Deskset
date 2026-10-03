@@ -8,9 +8,6 @@ import Foundation
 /// Background file scans, listing reads and the Trash. Concurrent, so one huge scan does not hold up the others.
 enum PluginIO {
     static let queue = DispatchQueue(label: "Deskset.PluginIO", qos: .utility, attributes: .concurrent)
-    /// Icons may wait inside the system's icon service. Start one job at a time here, so queued icons do not occupy
-    /// the shared dispatch workers while waiting to render; file reads and the Trash stay on the concurrent queue.
-    static let iconQueue = DispatchQueue(label: "Deskset.FileViewIcons", qos: .utility)
     /// Bound on the number of files a scan visits (a whole disk would otherwise take minutes).
     static let maxEntries = 2_000_000
 }
@@ -50,7 +47,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
 
     public override func readMeasureOptions() {
         let raw = string("PathName")
-        path = raw.trimmingCharacters(in: .whitespaces).isEmpty ? "" : PluginPaths.resolve(raw, skin: skin)
+        path = raw.trimmingCharacters(in: .whitespaces).isEmpty ? "" : PluginPaths.resolve(raw, relativeTo: sectionContext.directory.path)
         separator = option("Separator") ?? "\n"
         subfolders = bool("Subfolders", true)
         filter = WildcardFilter(string("FileFilter"))
@@ -64,7 +61,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
             rawString = ""
             return 0
         }
-        let stale = skin.clock() - loadedAt > QuoteMeasure.reloadInterval
+        let stale = sectionContext.clock() - loadedAt > QuoteMeasure.reloadInterval
         if loadingKey != k && (loadedKey != k || stale) { load(k) }
         if loadedKey == k, !items.isEmpty { current = pick() }
         rawString = current ?? ""
@@ -73,8 +70,8 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
 
     private func pick() -> String {
         guard items.count > 1 else { return items.first ?? "" }
-        var choice = items[skin.random.int(in: 0..<items.count)]
-        if choice == current { choice = items[skin.random.int(in: 0..<items.count)] }
+        var choice = items[sectionContext.random.int(in: 0..<items.count)]
+        if choice == current { choice = items[sectionContext.random.int(in: 0..<items.count)] }
         if choice == current, let other = items.first(where: { $0 != current }) { choice = other }
         return choice
     }
@@ -84,14 +81,14 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
         loadingKey = k
         let path = self.path, separator = self.separator, subfolders = self.subfolders, filter = self.filter
         // A file the skin wrote to a recording's sandbox is read from its copy.
-        let readPath = skin.readablePath(path)
+        let readPath = sectionContext.readablePath(path)
         let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true, reads: path) {
             QuoteMeasure.readItems(path: readPath, separator: separator, subfolders: subfolders, filter: filter)
         }
-        skin.startBackground(job) { [weak self] result in
+        sectionContext.startBackground(job) { [weak self] result in
             guard let self, !self.closed, self.loadingKey == k else { return }
             self.loadingKey = nil
-            self.loadedAt = self.skin.clock()
+            self.loadedAt = self.sectionContext.clock()
             switch result {
             case .success(let list):
                 let first = self.loadedKey != k
@@ -107,7 +104,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
                 self.current = nil
                 self.publishAsyncResult(number: 0, string: "")
                 if self.reported.insert(k).inserted {
-                    self.skin.log("QuotePlugin [\(self.name)]: \(message)", level: .warning)
+                    self.sectionContext.log("QuotePlugin [\(self.name)]: \(message)", level: .warning)
                 }
             }
         }
@@ -229,6 +226,11 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         parentResolver = { [unowned skin] in skin.measure(named: $0) as? FolderInfoMeasure }
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        parentResolver = { [unowned context] in context.measure(named: $0) as? FolderInfoMeasure }
+    }
+
     public func skinWillClose() { closed = true }
 
     public override func readMeasureOptions() {
@@ -245,7 +247,7 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         parentName = nil
         var o = Options()
         let folder = string("Folder")
-        o.path = folder.trimmingCharacters(in: .whitespaces).isEmpty ? "" : PluginPaths.resolve(folder, skin: skin)
+        o.path = folder.trimmingCharacters(in: .whitespaces).isEmpty ? "" : PluginPaths.resolve(folder, relativeTo: sectionContext.directory.path)
         o.subfolders = bool("IncludeSubFolders", false)
         o.hidden = bool("IncludeHiddenFiles", false)
         o.system = bool("IncludeSystemFiles", false)
@@ -258,7 +260,7 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         if let parentName {
             r = parentResolver(parentName)?.latestResult ?? Result()
         } else {
-            if !scanning && !options.path.isEmpty && skin.clock() >= nextScan { scan() }
+            if !scanning && !options.path.isEmpty && sectionContext.clock() >= nextScan { scan() }
             r = result
         }
         switch infoType {
@@ -278,7 +280,7 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         // A folder the skin removed or renamed in a recording's sandbox reads as it is there (the copies of files it
         // wrote are kept apart from the folders they belong to, so a scan does not count them).
         var scanned = o
-        scanned.path = skin.readablePath(o.path)
+        scanned.path = sectionContext.readablePath(o.path)
         let job = BackgroundJob(.folderInfo, subject: o.path, start: { deliver in
             PluginIO.queue.async {
                 let started = ProcessInfo.processInfo.systemUptime
@@ -286,15 +288,15 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
                 deliver((r, ProcessInfo.processInfo.systemUptime - started))
             }
         }, inline: { (FolderInfoMeasure.scan(scanned), 0) }, reads: o.path)
-        skin.startBackground(job) { [weak self] (r: Result, cost: TimeInterval) in
+        sectionContext.startBackground(job) { [weak self] (r: Result, cost: TimeInterval) in
             guard let self else { return }
             self.scanning = false
-            self.nextScan = self.skin.clock() + cost * FolderInfoMeasure.scanPause
+            self.nextScan = self.sectionContext.clock() + cost * FolderInfoMeasure.scanPause
             guard !self.closed, o == self.options else { return }
             self.result = r
             if r.denied && !self.reportedDenied {
                 self.reportedDenied = true
-                self.skin.log("FolderInfo [\(self.name)]: cannot read (all of) \(o.path) — no permission?",
+                self.sectionContext.log("FolderInfo [\(self.name)]: cannot read (all of) \(o.path) — no permission?",
                               level: .notice)
             }
         }

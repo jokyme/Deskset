@@ -439,6 +439,9 @@ final class PCRERegexCache {
         guard conversion.isSupported else { return nil }
         // PCRE accepts an empty pattern (matches the empty string everywhere); NSRegularExpression does not.
         let icu = conversion.pattern.isEmpty ? "(?:)" : conversion.pattern
-        return try? NSRegularExpression(pattern: icu, options: caseInsensitive ? [.caseInsensitive] : [])
+        // Shared LF convention for ., ^ and $; CR stays in the input for patterns and later Substitute pairs.
+        return try? NSRegularExpression(pattern: icu,
+                                        options: caseInsensitive ? [.caseInsensitive, .useUnixLineSeparators]
+                                                                 : [.useUnixLineSeparators])
     }
 }

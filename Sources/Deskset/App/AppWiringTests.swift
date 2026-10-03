@@ -598,9 +598,12 @@ extension AppSelfTest {
             t.check(AudioSelfTests.wait { engine.status(for: key).permissionNote != nil },
                     "silence while another app plays")
             t.equal(engine.status(for: key).permissionNote, AudioCaptureEngine.silenceNote)
-            // Sound arrives (permission granted meanwhile): the note goes away.
-            backend.feed(0.25)
-            t.check(AudioSelfTests.wait { engine.status(for: key).permissionNote == nil }, "cleared by sound")
+            // Feed a stream: a real-time write can be dropped, and a retap clears the ring. Keep feeding until
+            // analysis observes sound; serialize with backend starts on HAL, within the unchanged wait budget.
+            t.check(AudioSelfTests.wait {
+                AudioHAL.queue.sync { backend.feed(0.25) }
+                return engine.status(for: key).permissionNote == nil
+            }, "cleared by sound")
             engine.unsubscribe(a)
             engine.drain()
 
@@ -693,8 +696,10 @@ extension AppSelfTest {
             t.check(AudioSelfTests.wait { watch.status(for: outKey).permissionNote != nil }, "silence noted")
             _ = out.computeValue()
             t.check(skin.issues.contains(AudioCaptureEngine.silenceNote), "\(skin.issues)")
-            silent.feed(0.25)
-            t.check(AudioSelfTests.wait { watch.status(for: outKey).permissionNote == nil }, "cleared by sound")
+            t.check(AudioSelfTests.wait {
+                AudioHAL.queue.sync { silent.feed(0.25) }
+                return watch.status(for: outKey).permissionNote == nil
+            }, "cleared by sound")
             _ = out.computeValue()
             t.check(!skin.issues.contains(AudioCaptureEngine.silenceNote), "sound arrived: \(skin.issues)")
             withExtendedLifetime((mic, out)) {}

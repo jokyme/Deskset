@@ -71,7 +71,7 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
 
     /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
     var clock: () -> TimeInterval {
-        get { clockOverride ?? skin.clock }
+        get { clockOverride ?? sectionContext.clock }
         set { clockOverride = newValue }
     }
     private var clockOverride: (() -> TimeInterval)?
@@ -128,7 +128,7 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
         }
         // Read here: a measure disabled since the skin loaded has not read its options yet.
         guard bool("RequireDragging", false) else {
-            skin.logOnce("Mouse [\(name)]: \"\(command)\" needs RequireDragging=1; ignored", level: .warning)
+            sectionContext.logOnce("Mouse [\(name)]: \"\(command)\" needs RequireDragging=1; ignored", level: .warning)
             return
         }
         isStarted = verb == "start"
@@ -219,7 +219,7 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
         guard moveTimer == nil else { return }
         // On the skin's executor, like the skin's update timer (on the main thread in the common modes: a drag goes on
         // while a menu is open).
-        moveTimer = skin.executor.timer(interval: max(0, time - clock()), leeway: 0, repeats: false) { [weak self] in
+        moveTimer = sectionContext.executor.timer(interval: max(0, time - clock()), leeway: 0, repeats: false) { [weak self] in
             guard let self else { return }
             self.moveTimer = nil
             self.flushPendingMove()
@@ -230,6 +230,6 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
     /// paused or stopped it).
     func run(_ action: String?, x: Double, y: Double) {
         guard let action, !action.isEmpty, isActive else { return }
-        skin.executePointerAction(action, from: self, x: x, y: y, relativeToSkin: settings.relativeToSkin)
+        sectionContext.executePointerAction(action, from: self, x: x, y: y, relativeToSkin: settings.relativeToSkin)
     }
 }

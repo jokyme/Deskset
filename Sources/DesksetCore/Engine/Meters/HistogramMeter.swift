@@ -25,6 +25,9 @@ import Foundation
 /// - An image name without extension gets ".png" (General Image Options: ".png is assumed").
 /// - PrimaryImageRotate and the ColorMatrix options are not supported (reported as compatibility issues).
 public final class HistogramMeter: Meter {
+    /// Separates captured history revisions from those of another graph instance.
+    let drawIdentity = UUID()
+
     /// One of PrimaryImage / SecondaryImage / BothImage with its image options.
     public struct HistogramImage: Equatable, Sendable {
         public var path: String

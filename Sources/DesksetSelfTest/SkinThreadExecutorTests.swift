@@ -374,6 +374,61 @@ private func runSkinThreadStopTests(_ t: TestRunner) {
         executor.async { last.add("much later") }
         t.equal(last.all, ["before"])
     }
+
+    t.suite("Executor: skin thread: final owner release drains queued hop drops before stopping") {
+        var executor: SkinThreadExecutor? = SkinThreadExecutor(name: "Deskset core test final hop")
+        weak var weakExecutor: SkinThreadExecutor?
+        weakExecutor = executor
+        weak var weakSkin: Skin?
+        let gate = ThreadGate()
+        defer {
+            gate.open()
+            executor?.stop()
+        }
+        guard let (thread, ownerThread) = onThread(executor!, { (Thread.current, pthread_self()) }) else {
+            return t.check(false, "the owner thread is available")
+        }
+        let root = t.temporaryDirectory("skin-thread-final-hop")
+        func makeHop(_ destination: SkinThreadExecutor) -> SkinHop? {
+            onThread(destination) {
+                let skin = Skin(config: "Gone", fileURL: root.appendingPathComponent("Skin.ini"),
+                                skinsDirectory: root, system: FakeSystem(), host: nil)
+                skin.executor = destination
+                weakSkin = skin
+                let hop = skin.hop()
+                skin.close()
+                return hop
+            }
+        }
+        var hop = makeHop(executor!)
+        t.check(hop != nil, "the hop was made on the skin's owner")
+        // Also waits until the preceding owner work has returned and released its local references.
+        gate.hold(executor!)
+        t.check(weakSkin == nil, "the skin is gone before its late results are queued")
+        let order = Collected<String>(), places = Collected<Bool>()
+        let drained = DispatchSemaphore(value: 0)
+        for index in 1...3 {
+            hop?.post({ order.add("unexpected work \(index)") }, orElse: {
+                order.add("dropped \(index)")
+                places.add(pthread_equal(ownerThread, pthread_self()) != 0 && SkinThreadExecutor.isSkinThread)
+            })
+        }
+        executor?.async {
+            order.add("tail")
+            drained.signal()
+        }
+        executor = nil
+        t.check(weakExecutor != nil, "the external hop still holds its destination")
+        hop = nil
+        t.check(weakExecutor == nil, "queued hops do not hold the last executor reference")
+        t.equal(order.all, [], "the queue is still behind the gate when its owner goes")
+        t.check(!thread.isFinished, "the thread waits for the gate, independently of the executor's lifetime")
+        gate.open()
+        t.check(drained.wait(timeout: .now() + 60) == .success, "work queued before deinit's stop was drained")
+        t.equal(order.all, ["dropped 1", "dropped 2", "dropped 3", "tail"], "orElse keeps queue order")
+        t.equal(places.all, [true, true, true], "every dropped result is cleaned up on the skin's thread")
+        t.check(waitFor { thread.isFinished }, "the thread exits after draining the queued results")
+    }
 }
 
 // MARK: - A skin on the thread

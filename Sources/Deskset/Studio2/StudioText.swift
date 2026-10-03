@@ -122,6 +122,20 @@ enum StudioText {
         case interactTip = "preview.interact.tip"
         case backToLive = "preview.backToLive"
         case previewOnly = "preview.popover.title"
+        case deskPreviewChecking = "desk.preview.checking"
+        case deskPreviewStatic = "desk.preview.static"
+        case deskPreviewEmpty = "desk.preview.empty"
+        case deskPreviewUnavailable = "desk.preview.unavailable"
+        case deskPreviewTooLarge = "desk.preview.tooLarge"
+        case deskPreviewInvalidText = "desk.preview.invalidText"
+        case deskImageOutside = "desk.image.outside"
+        case deskImageUnreadable = "desk.image.unreadable"
+        case deskImageAmbiguous = "desk.image.ambiguous"
+        case deskImageChanged = "desk.image.changed"
+        case deskImageTooLarge = "desk.image.tooLarge"
+        case deskImageInvalid = "desk.image.invalid"
+        case deskImagePreparationFailed = "desk.image.preparationFailed"
+        case deskImageRefreshFailed = "desk.image.refreshFailed"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -495,6 +509,7 @@ enum StudioText {
         case statusEditing = "code.status.editing"
         case statusLine = "code.status.line"
         case fix = "code.fix"
+        case completeNamed = "code.complete.named"
         case stepTyping = "step.typing"
         case stepFix = "step.fix"
         case stepRefresh = "step.refresh"
@@ -711,6 +726,22 @@ enum StudioText {
                        "不离开 Studio，在组件里悬停和点按；点按会像在桌面上一样生效"),
         .backToLive: ("Back to Live", "回到实时"),
         .previewOnly: ("Preview only", "只是预览"),
+        .deskPreviewChecking: ("Checking the current document…", "正在检查当前文档…"),
+        .deskPreviewStatic: ("Preview · this document is not running on the desktop", "预览 · 此文档未在桌面运行"),
+        .deskPreviewEmpty: ("No visible content", "没有可见内容"),
+        .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
+        .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",
+                               "排版或字体超出了预览每边 16,384 像素的上限。"),
+        .deskPreviewInvalidText: ("Text content or style is invalid. Check the text, color and font; font size must be finite and greater than zero.",
+                                 "文字内容或样式无效。请检查文字、颜色与字体；字号必须为大于 0 的有限数值。"),
+        .deskImageOutside: ("Image must stay inside the widget folder: %@", "图片必须位于小组件文件夹内：%@"),
+        .deskImageUnreadable: ("Cannot read a regular image in the widget folder: %@", "无法读取小组件文件夹内的图片文件：%@"),
+        .deskImageAmbiguous: ("Image path has clashing case or Unicode spellings: %@", "图片路径的大小写或 Unicode 拼写存在冲突：%@"),
+        .deskImageChanged: ("Image changed while being read: %@", "读取期间图片已更改：%@"),
+        .deskImageTooLarge: ("Referenced images exceed the widget’s size or file limit: %@", "引用的图片超出了小组件的大小或文件数量上限：%@"),
+        .deskImageInvalid: ("Image is too large or cannot be decoded: %@", "图片过大或无法解码：%@"),
+        .deskImagePreparationFailed: ("Cannot prepare images: %@", "无法准备图片：%@"),
+        .deskImageRefreshFailed: ("Images could not be refreshed. Reopen the document to try again.", "无法刷新图片。请重新打开文档后再试。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),
@@ -1080,6 +1111,7 @@ enum StudioText {
         .statusEditing: ("Editing · saved when you pause", "正在编辑 · 停下来就存储"),
         .statusLine: ("Line %d", "第 %d 行"),
         .fix: ("Fix", "改正"),
+        .completeNamed: ("Complete %@", "补全 %@"),
         .stepTyping: ("Typing", "输入"),
         .stepFix: ("Fix %@", "改正 %@"),
         .stepRefresh: ("Refresh", "刷新"),

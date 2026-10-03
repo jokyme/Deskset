@@ -343,14 +343,19 @@ public struct SyntaxTree: Sendable, CustomStringConvertible {
     }
 
     /// The node a reference points to, or nil when the reference belongs to another tree version or points at
-    /// nothing of that kind.
+    /// nothing of that kind. A canonical expression reference also checks its text end; a legacy start-only
+    /// reference locates the outermost node of that kind at the start.
     public func resolve(_ id: NodeID) -> PositionedNode? {
         guard id.treeVersion == version else { return nil }
         var stack: [PositionedNode] = [rootNode]
         while let current = stack.popLast() {
             let range = current.range
             guard range.lowerBound <= id.utf8Start, id.utf8Start <= range.upperBound else { continue }
-            if current.kind == id.kind, current.textRange.lowerBound == id.utf8Start { return current }
+            if current.kind == id.kind {
+                let textRange = current.textRange
+                if textRange.lowerBound == id.utf8Start,
+                   id.utf8End == nil || id.utf8End == textRange.upperBound { return current }
+            }
             for child in current.children.reversed() {
                 if case .node(let n) = child { stack.append(n) }
             }
@@ -360,7 +365,11 @@ public struct SyntaxTree: Sendable, CustomStringConvertible {
 
     /// The reference to a node of this tree.
     public func id(of node: PositionedNode) -> NodeID {
-        NodeID(kind: node.kind, utf8Start: node.textRange.lowerBound, treeVersion: version)
+        if node.kind.isExpression {
+            let range = node.quickTextRange
+            return NodeID(kind: node.kind, utf8Start: range.lowerBound, treeVersion: version, utf8End: range.upperBound)
+        }
+        return NodeID(kind: node.kind, utf8Start: node.textRange.lowerBound, treeVersion: version)
     }
 }
 

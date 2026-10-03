@@ -1,0 +1,2710 @@
+import Foundation
+@testable import DesksetCore
+
+private enum SectionConstructionError: Error { case utcUnavailable, unexpectedKernel }
+
+private final class SectionConstructionSystem: FakeSystem {
+    private(set) var processors: [Int] = []
+    private(set) var memoryReads = 0
+    private(set) var requestedInterfaces: [String?] = []
+    var interfaces = ["en0", "en1"]
+    var counters: [String: NetworkCounters] = [
+        "en0": NetworkCounters(received: 1000, sent: 500),
+        "en1": NetworkCounters(received: 100, sent: 50),
+    ]
+
+    override func cpuUsage(processor: Int) -> Double {
+        processors.append(processor)
+        return cpu
+    }
+
+    override func memoryStatus() -> MemoryStatus {
+        memoryReads += 1
+        return memory
+    }
+
+    override func networkInterfaces() -> [String] { interfaces }
+
+    override func networkCounters(interface: String?) -> NetworkCounters {
+        requestedInterfaces.append(interface)
+        if let interface { return counters[interface] ?? NetworkCounters() }
+        return counters.values.reduce(NetworkCounters()) {
+            let received = $0.received.addingReportingOverflow($1.received)
+            let sent = $0.sent.addingReportingOverflow($1.sent)
+            precondition(!received.overflow && !sent.overflow, "Synthetic counters must fit UInt64")
+            return NetworkCounters(received: received.partialValue, sent: sent.partialValue)
+        }
+    }
+}
+
+/// A test owner of real measure kernels, with no Skin or closures that capture one. Unsupported service paths
+/// fail if called: this fixture qualifies selected built-ins, rather than pretending to implement another runtime.
+private class IndependentSectionContext: SectionContext {
+    var settings = SkinSettings()
+    var sources = IniSourceMap()
+    var optionsLoaded = false
+    let runsInVirtualTime = true
+    var measureValues: MeasureValueOverride?
+    weak var host: SkinHost?
+    let system: SystemDataSource
+    var counter = 0
+    let random = SkinRandom(seed: 1)
+    let skinClock: SkinClock
+    let clock: () -> TimeInterval
+    let executor: SkinExecutor
+    var locale: Locale
+    var environment: SkinEnvironment?
+    let directory: URL
+    var skinsDirectory: URL { preconditionFailure("Unqualified skins directory in the construction fixture") }
+    var orderedMeasures: [Measure] { preconditionFailure("Unqualified measure order in the construction fixture") }
+    var resourcesDirectory: URL { preconditionFailure("Unqualified resources directory in the construction fixture") }
+    func imageFilePath(_ name: String, imagePath: String) -> String {
+        preconditionFailure("Unqualified image path in the construction fixture")
+    }
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)? {
+        preconditionFailure("Unqualified text measurement in the construction fixture")
+    }
+    func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+        preconditionFailure("Unqualified shown glass in the construction fixture")
+    }
+    let sideEffects: SideEffects
+    var styles: [String: IniSection] = [:]
+    var variables: [String: String] = [:]
+    var measures: [String: Measure] = [:]
+    private(set) var services: [BackgroundWorkKind] = []
+    private(set) var actions: [Bang] = []
+    private(set) var logs: [String] = []
+    private var logged: Set<String> = []
+    private(set) var issues: Set<String> = []
+    private var snapshotChanges = 0
+
+    init(directory: URL, system: SystemDataSource = SectionConstructionSystem(),
+         clock: @escaping () -> TimeInterval = { 86_400 }, skinClock: SkinClock? = nil,
+         locale: Locale = Locale(identifier: "en_US_POSIX"), executor: SkinExecutor? = nil) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let date = Date(timeIntervalSince1970: 1_798_761_598)
+        self.directory = directory
+        self.system = system
+        self.clock = clock
+        self.skinClock = skinClock ?? .fixed(date, timeZone: utc)
+        self.locale = locale
+        self.executor = executor ?? VirtualTimeExecutor(start: date, timeZone: utc)
+        sideEffects = RecordingSideEffects(directory: directory.appendingPathComponent("effects"))
+    }
+
+    func measure(named name: String) -> Measure? {
+        preconditionFailure("Unqualified measure lookup in the construction fixture")
+    }
+    func absolutePath(_ raw: String, relativeTo base: URL?) -> String {
+        preconditionFailure("Unqualified absolute path in the construction fixture")
+    }
+    func allowsWebParserFileAccess(_ path: String) -> Bool {
+        preconditionFailure("Unqualified WebParser file policy in the construction fixture")
+    }
+
+    func styleSection(named name: String) -> IniSection? { styles[name.lowercased()] }
+    func styleValues(named name: String) -> [String: String]? {
+        styleSection(named: name).map { OptionStack.index($0) }
+    }
+
+    private func resolver(in section: SkinSection?, sectionVariables: Bool) -> VariableResolver {
+        VariableResolver(variableLookup: { [unowned self] name in
+            name.lowercased() == "currentsection" ? section?.name : self.variables[name.lowercased()]
+        }, sectionLookup: sectionVariables ? { [unowned self] name, parameter in
+            guard let measure = self.measures[name.lowercased()] else { return nil }
+            switch parameter {
+            case .none: return measure.stringValue
+            case .number(let format):
+                return format.format(value: measure.value, minValue: measure.minValue, maxValue: measure.maxValue)
+            case .keyword: preconditionFailure("Unqualified section variable keyword in the construction fixture")
+            }
+        } : nil)
+    }
+
+    func resolve(_ text: String, in section: SkinSection?, sectionVariables: Bool) -> String {
+        resolver(in: section, sectionVariables: sectionVariables).resolve(text)
+    }
+    func resolveStandardVariables(_ text: String, in section: SkinSection?) -> String {
+        resolver(in: section, sectionVariables: false).resolveStandardVariables(text)
+    }
+    func mentionsSectionVariable(_ text: String) -> Bool {
+        var found = false
+        let detector = VariableResolver(variableLookup: { _ in nil }, sectionLookup: { [unowned self] name, _ in
+            if self.measures[name.lowercased()] != nil { found = true }
+            return nil
+        })
+        _ = detector.resolve(text)
+        return found
+    }
+
+    func noteSnapshotChange() { snapshotChanges += 1 }
+    func assertOwned(_ entry: StaticString) { precondition(executor.isCurrent, "\(entry) called off the fixture owner") }
+    func log(_ message: String, level: SkinLogLevel) { logs.append("\(level.rawValue): \(message)") }
+    func logOnce(_ message: String, level: SkinLogLevel) {
+        if logged.insert(message).inserted { log(message, level: level) }
+    }
+    func addIssue(_ issue: String) { issues.insert(issue) }
+    func removeIssue(_ issue: String) { issues.remove(issue) }
+    func currentEnvironment() -> SkinEnvironment { environment ?? SkinEnvironment(locale: locale) }
+    func readablePath(_ path: String) -> String { path }
+    func formulaValue(of identifier: String, from section: SkinSection?) -> Double? {
+        measures[identifier.lowercased()]?.value
+    }
+    func noteService(_ kind: BackgroundWorkKind) { services.append(kind) }
+
+    /// Only these two synthetic canaries are accepted. Parsing/variable expansion reuse the real components;
+    /// this is a synchronous pipeline observation, not a replacement for Skin's general action executor.
+    func execute(_ actionText: String, from section: SkinSection?) {
+        assertOwned(#function)
+        for action in ActionParser.parse(resolve(actionText, in: section, sectionVariables: true)) {
+            guard case .bang(let bang) = action else { preconditionFailure("Unexpected external action") }
+            actions.append(bang)
+            switch bang.name {
+            case "canary":
+                precondition(bang.args == ["7"] && measures["state"] != nil)
+                measures["state"]?.value = 7
+                variables["state"] = "7"
+            case "log":
+                precondition(bang.args.count == 1)
+                log(bang.args[0], level: .notice)
+            default: preconditionFailure("Unexpected construction fixture action")
+            }
+        }
+    }
+    func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
+                              relativeToSkin: Bool) { preconditionFailure("Unexpected pointer action") }
+    func async(_ work: @escaping () -> Void) { preconditionFailure("Unexpected asynchronous measure work") }
+    func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                            orElse dropped: ((T) -> Void)?) { preconditionFailure("Unexpected background measure work") }
+}
+
+private func constructionSection(_ name: String, _ options: [(String, String)]) -> IniSection {
+    IniSection(name: name, entries: options.map { IniEntry(key: $0.0, value: $0.1) })
+}
+
+/// One coherent virtual clock and recorded processes. Only output delivery can be held; the real kernel still
+/// decodes and writes the recording's file before publishing its result. No process or background queue starts.
+private final class IndependentScheduledContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var jobs: [BackgroundWorkKind] = []
+    var holdOutput = false
+    var heldOutput: [() -> Void] = []
+    var actionTimes: [TimeInterval] = []
+    var onAction: ((SkinSection?) -> Void)?
+
+    init(directory: URL) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, clock: { virtual.uptime }, skinClock: virtual.clock, executor: virtual)
+    }
+
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionTimes.append(virtual.now)
+        super.execute(actionText, from: section)
+        onAction?(section)
+    }
+    override func async(_ work: @escaping () -> Void) {
+        executor.async { [self] in
+            assertOwned(#function)
+            work()
+        }
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition(!sideEffects.isLive && (job.kind == .runCommandProcess || job.kind == .runCommandOutput))
+        guard let produce = job.inline else { preconditionFailure("Only recorded process work is qualified") }
+        jobs.append(job.kind)
+        let result = produce()
+        let deliver = { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+        if holdOutput && job.kind == .runCommandOutput { heldOutput.append(deliver) }
+        else { executor.async(deliver) }
+    }
+    func deliverOutput() {
+        let pending = heldOutput
+        heldOutput = []
+        for delivery in pending { executor.async(delivery) }
+    }
+}
+
+private func runContextScheduledPluginTests(_ t: TestRunner) {
+    t.suite("Engine: context scheduled plugins: timer uses its owner's clock and cancels lists on close") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-timer-clock"))
+        let timer = try extendedNode(ActionTimerMeasure.self, "Timer", "actiontimer", [
+            ("ActionList1", "A | Wait 100 | Repeat B, 50, 2 | C"),
+            ("A", "[!Log A]"), ("B", "[!Log B]"), ("C", "[!Log C]"),
+        ], in: context)
+        timer.execute(command: "Execute 1")
+        t.equal(timer.value, 0)
+        t.equal(timer.runningLists, [1])
+        t.equal(context.actions.count, 0, "the first action is queued after Execute")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.map(\.args), [["A"]])
+        context.virtual.advance(by: 0.1)
+        t.equal(context.actions.map(\.args), [["A"], ["B"]])
+        context.virtual.advance(by: 0.05)
+        t.equal(context.actions.map(\.args), [["A"], ["B"], ["B"], ["C"]])
+        t.equal(context.actionTimes, [0, 0.1, 0.15, 0.15])
+        t.equal(timer.runningLists, [])
+        timer.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 5)
+        timer.skinWillClose()
+        t.equal(timer.runningLists, [])
+        t.equal(context.virtual.pendingCount, 0)
+        timer.execute(command: "Execute 1")
+        context.virtual.advance(by: 10)
+        t.equal(context.actions.count, 5)
+        t.equal(context.jobs, [])
+    }
+
+    t.suite("Engine: context scheduled plugins: timer reentry and release leave no scheduled work") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-timer-release"))
+        var timer: ActionTimerMeasure? = try extendedNode(ActionTimerMeasure.self, "Timer", "actiontimer", [
+            ("ActionList1", "A | Wait 100 | B"), ("A", "[!Log A]"), ("B", "[!Log B]"),
+        ], in: context)
+        context.onAction = { [weak timer] _ in timer?.execute(command: "Stop 1") }
+        timer?.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(timer?.runningLists, [])
+        t.equal(context.actions.map(\.args), [["A"]])
+        t.equal(context.virtual.pendingCount, 0)
+        context.onAction = nil
+        timer?.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(context.virtual.pendingCount, 1)
+        weak var released = timer
+        context.measures.removeAll()
+        timer = nil
+        t.check(released == nil)
+        t.equal(context.virtual.pendingCount, 0)
+        context.virtual.advance(by: 10)
+        t.equal(context.actions.map(\.args), [["A"], ["A"]])
+    }
+
+    t.suite("Engine: context scheduled plugins: command publishes saved output before FinishAction") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-output"))
+        guard let effects = context.sideEffects as? RecordingSideEffects else { throw SectionConstructionError.unexpectedKernel }
+        effects.programOutput = { _ in Data("hello 🐈\n".utf8) }
+        context.holdOutput = true
+        let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+            ("Parameter", "printf fixture"), ("OutputFile", "output.txt"), ("OutputType", "UTF8"),
+            ("Timeout", "5000"), ("FinishAction", "[!Log complete]"),
+        ], in: context)
+        let original = context.directory.appendingPathComponent("output.txt")
+        let saved = effects.destination(forWriting: original)
+        t.equal(command.value, -1)
+        t.equal(command.rawString, "")
+        var actionValues: [Double] = []
+        var actionText: [String] = []
+        var actionFiles: [Data?] = []
+        context.onAction = { section in
+            guard let measure = section as? RunCommandMeasure else { return }
+            actionValues.append(measure.value)
+            actionText.append(measure.stringValue)
+            actionFiles.append(try? Data(contentsOf: saved))
+        }
+        command.execute(command: "Run")
+        t.equal(command.value, 0)
+        t.check(command.isRunning)
+        t.equal(context.jobs, [.runCommandProcess])
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.jobs, [.runCommandProcess, .runCommandOutput])
+        t.equal(context.heldOutput.count, 1)
+        t.equal(command.value, 0)
+        t.equal(try Data(contentsOf: saved), Data("hello 🐈\n".utf8))
+        t.check(!FileManager.default.fileExists(atPath: original.path), "only the recording's copy was written")
+        command.execute(command: "Run")
+        t.equal(command.value, 101)
+        t.equal(context.jobs.count, 2, "a duplicate Run cannot start a second process during output delivery")
+        context.deliverOutput()
+        context.virtual.runUntilIdle()
+        t.equal(command.value, 1)
+        t.equal(command.stringValue, "hello 🐈\n")
+        t.check(!command.isRunning)
+        t.equal(actionValues, [1])
+        t.equal(actionText, ["hello 🐈\n"])
+        t.equal(actionFiles, [Data("hello 🐈\n".utf8)])
+        command.skinWillClose()
+        t.equal(context.virtual.pendingCount, 0)
+    }
+
+    t.suite("Engine: context scheduled plugins: close suppresses queued process and decoded output results") {
+        for afterDecode in [false, true] {
+            let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-close"))
+            context.holdOutput = true
+            let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+                ("Parameter", "printf fixture"), ("Timeout", "5000"), ("FinishAction", "[!Log stale]"),
+            ], in: context)
+            command.execute(command: "Run")
+            if afterDecode { context.virtual.runUntilIdle() }
+            t.equal(context.heldOutput.count, afterDecode ? 1 : 0)
+            command.skinWillClose()
+            context.deliverOutput()
+            context.virtual.advance(by: 10)
+            t.equal(command.runningJobCount, 0)
+            t.equal(command.value, 0, "late results do not publish into a closed owner")
+            t.equal(context.actions.count, 0)
+            t.equal(context.virtual.pendingCount, 0)
+            command.execute(command: "Run")
+            t.equal(context.jobs.count, afterDecode ? 2 : 1)
+        }
+    }
+
+    t.suite("Engine: context scheduled plugins: background result does not retain a released owner") {
+        var context: IndependentScheduledContext? = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-release"))
+        guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+        weak var releasedOwner = context
+        weak var releasedMeasure: RunCommandMeasure?
+        if let context {
+            let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+                ("Parameter", "printf fixture"), ("Timeout", "5000"), ("FinishAction", "[!Log stale]"),
+            ], in: context)
+            releasedMeasure = command
+            command.execute(command: "Run")
+            t.equal(context.jobs, [.runCommandProcess])
+        }
+        context = nil
+        t.check(releasedOwner == nil)
+        t.check(releasedMeasure == nil)
+        executor.advance(by: 10)
+        t.equal(executor.pendingCount, 0)
+    }
+
+    t.suite("Engine: context scheduled plugins: failed starts use owner time and close cancels the action") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-failure"))
+        let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+            ("Program", "PowerShell"), ("FinishAction", "[!Log failed]"),
+        ], in: context)
+        command.execute(command: "Run")
+        t.equal(command.value, 103)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1)
+        context.virtual.advance(by: 0.5)
+        command.execute(command: "Run")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1, "a repeated failure within one owner-clock second is throttled")
+        context.virtual.advance(by: 1)
+        command.execute(command: "Run")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 2)
+        context.virtual.advance(by: 1)
+        command.execute(command: "Run")
+        command.skinWillClose()
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 2)
+        t.equal(context.jobs, [], "an unsupported program never starts background work")
+    }
+
+    t.suite("Engine: context scheduled plugins: real registry aliases and legacy initializers stay compatible") {
+        MeasureRegistry.registerMeasure("ContextScheduledTimerAlias", ActionTimerMeasure.self)
+        MeasureRegistry.registerMeasure("ContextScheduledCommandAlias", RunCommandMeasure.self)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Timer]
+        Measure=Plugin
+        Plugin=ActionTimer
+        [Command]
+        Measure=Plugin
+        Plugin=RunCommand
+        [TimerAlias]
+        Measure=ContextScheduledTimerAlias
+        [CommandAlias]
+        Measure=ContextScheduledCommandAlias
+        """)
+        defer { skin.close() }
+        t.check(skin.measure(named: "Timer") is ActionTimerMeasure)
+        t.check(skin.measure(named: "Command") is RunCommandMeasure)
+        t.check(skin.measure(named: "TimerAlias") is ActionTimerMeasure)
+        t.check(skin.measure(named: "CommandAlias") is RunCommandMeasure)
+        t.equal(skin.measure(named: "TimerAlias")?.type, "contextscheduledtimeralias")
+        t.equal(skin.measure(named: "CommandAlias")?.type, "contextscheduledcommandalias")
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        let timer = ActionTimerMeasure(name: "DirectTimer", section: constructionSection("DirectTimer", []), skin: skin, type: "actiontimer")
+        let command = RunCommandMeasure(name: "DirectCommand", section: constructionSection("DirectCommand", []), skin: skin, type: "runcommand")
+        t.check(timer.skin === skin && command.skin === skin)
+        t.equal(timer.runningLists, [])
+        t.equal(timer.value, 0)
+        t.equal(command.value, -1)
+        t.equal(command.rawString, "")
+        t.equal(command.runningJobCount, 0)
+    }
+}
+
+/// A file-only test owner. Real WebParser parsing and file writes run unchanged; results are deliberately
+/// queued after production so tests can close or release the owner before delivery. No network start is allowed.
+private final class IndependentWebParserContext: IndependentSectionContext {
+    var ordered: [Measure] = []
+    var allowedFiles: Set<String> = []
+    var policyReads: [String] = []
+    var jobs: [BackgroundWorkKind] = []
+    var actionViews: [[String]] = []
+
+    override var skinsDirectory: URL { directory }
+    override var orderedMeasures: [Measure] { ordered }
+    var virtual: VirtualTimeExecutor {
+        guard let virtual = executor as? VirtualTimeExecutor else { preconditionFailure("Expected virtual executor") }
+        return virtual
+    }
+    override func measure(named name: String) -> Measure? {
+        measures[name.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+    override func allowsWebParserFileAccess(_ path: String) -> Bool {
+        policyReads.append(path)
+        return allowedFiles.contains(path)
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionViews.append(ordered.map(\.stringValue))
+        super.execute(actionText, from: section)
+    }
+    override func async(_ work: @escaping () -> Void) {
+        executor.async { [self] in
+            assertOwned(#function)
+            work()
+        }
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition(job.kind == .webParserPage || job.kind == .webParserDownload)
+        if let path = job.reads {
+            precondition(allowedFiles.contains((path as NSString).standardizingPath), "Only explicit fixture files")
+        }
+        guard let produce = job.inline else { preconditionFailure("No network in independent construction tests") }
+        jobs.append(job.kind)
+        let result = produce()
+        executor.async { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+    }
+    func add(_ name: String, _ options: [(String, String)]) throws -> WebParserMeasure {
+        guard let measure = makeContextBuiltinMeasure(WebParserMeasure.self, name: name,
+            section: constructionSection(name, options), context: self, type: "webparser") as? WebParserMeasure else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        measures[name.lowercased()] = measure
+        ordered.append(measure)
+        return measure
+    }
+    func prepare() {
+        for measure in ordered { measure.readOptionsIfNeeded() }
+        optionsLoaded = true
+    }
+}
+
+private func runContextWebParserTests(_ t: TestRunner) {
+    t.suite("Engine: context WebParser: ordered parent results precede actions without a Skin") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-tree"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "42:hello".write(to: file, atomically: true, encoding: .utf8)
+        context.allowedFiles = [file.path]
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", #"(\d+):(\w+)"#), ("FinishAction", "[!Log parent]"),
+        ])
+        let second = try context.add("Second", [
+            ("URL", "[pArEnT]"), ("StringIndex", "2"), ("RegExp", "(.*)"), ("FinishAction", "[!Log second]"),
+        ])
+        let first = try context.add("First", [
+            ("URL", "[Parent]"), ("StringIndex", "1"), ("RegExp", "(.*)"), ("FinishAction", "[!Log first]"),
+        ])
+        t.equal([parent.rawString, second.rawString, first.rawString], ["", "", ""])
+        context.prepare()
+        parent.performUpdate()
+        t.check(parent.isFetching)
+        t.equal(context.ordered.map(\.stringValue), ["", "", ""])
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.check(!parent.isFetching)
+        t.equal(context.ordered.map(\.stringValue), ["42:hello", "hello", "42"])
+        t.equal(context.logs, ["Notice: parent", "Notice: second", "Notice: first"])
+        t.equal(context.actionViews, Array(repeating: ["42:hello", "hello", "42"], count: 3),
+                "all children have their result before even the parent's action")
+        t.equal(parent.captures, ["42:hello", "42", "hello"])
+        t.equal(context.jobs, [.webParserPage])
+        parent.execute(command: "Reset")
+        t.equal(context.ordered.map(\.stringValue), ["", "", ""])
+        t.equal(context.ordered.map(\.value), [0, 0, 0])
+        t.equal(context.actions.count, 3, "reset does not invent finish actions")
+    }
+
+    t.suite("Engine: context WebParser: superseded and closed results preserve the accepted state") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-generation"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "11".write(to: file, atomically: true, encoding: .utf8)
+        context.allowedFiles = [file.path]
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", "(.*)"), ("FinishAction", "[!Log accepted]"),
+        ])
+        let child = try context.add("Child", [("URL", "[Parent]"), ("StringIndex", "1"), ("Disabled", "1")])
+        context.prepare()
+        parent.performUpdate()
+        try "22".write(to: file, atomically: true, encoding: .utf8)
+        parent.execute(command: "Update")
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "22")
+        t.equal(child.stringValue, "", "disabled children keep their displayed value")
+        child.setDisabled(false)
+        child.readOptionsIfNeeded()
+        child.performUpdate()
+        t.equal(child.stringValue, "22", "the disabled child's parsed result was still stored")
+        t.equal(context.logs, ["Notice: accepted"])
+        t.equal(parent.fetchCount, 2)
+        try "33".write(to: file, atomically: true, encoding: .utf8)
+        parent.execute(command: "Update")
+        parent.skinWillClose()
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "22")
+        t.equal(child.stringValue, "22")
+        t.equal(context.logs, ["Notice: accepted"], "late results run no actions")
+        parent.execute(command: "Update")
+        t.equal(parent.fetchCount, 3, "a closed node never starts another fetch")
+    }
+
+    t.suite("Engine: context WebParser: the independent owner decides file access") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-policy"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "19".write(to: file, atomically: true, encoding: .utf8)
+        let original = WebParserMeasure.allowsFileAccess
+        var legacyPolicyCalls = 0
+        WebParserMeasure.allowsFileAccess = { _, _ in legacyPolicyCalls += 1; return false }
+        defer { WebParserMeasure.allowsFileAccess = original }
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", "(.*)"), ("OnConnectErrorAction", "[!Log refused]"),
+        ])
+        context.prepare()
+        parent.performUpdate()
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "")
+        t.equal(context.logs.last, "Notice: refused")
+        t.equal(context.policyReads, [file.path])
+        context.allowedFiles.insert(file.path)
+        parent.execute(command: "Update")
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "19")
+        t.equal(context.policyReads, [file.path, file.path])
+        t.equal(legacyPolicyCalls, 0, "independent construction never consults a Skin-only policy")
+        t.equal(context.jobs, [.webParserPage, .webParserPage])
+    }
+
+    t.suite("Engine: context WebParser: downloads release files after delivery or owner loss") {
+        func files(_ folder: URL) -> [URL] {
+            let urls = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey])?
+                .allObjects.compactMap { $0 as? URL } ?? []
+            return urls.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+        }
+        for deliver in [true, false] {
+            let directory = t.temporaryDirectory(deliver ? "context-web-download-deliver" : "context-web-download-drop")
+            var context: IndependentWebParserContext? = try IndependentWebParserContext(directory: directory)
+            guard let virtual = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            let file = directory.appendingPathComponent("source.bin")
+            let bytes = Data([1, 4, 9, 16])
+            try bytes.write(to: file)
+            context?.allowedFiles = [file.path]
+            var download = try context?.add("Download", [("URL", file.absoluteString), ("Download", "1")])
+            weak var borrowedContext = context
+            weak var borrowedDownload = download
+            context?.prepare()
+            download?.performUpdate()
+            let written = files(directory.appendingPathComponent("effects"))
+            t.equal(written.count, 1, "the real download save runs before the deferred completion")
+            if let path = written.first { t.equal(try Data(contentsOf: path), bytes) }
+            if deliver {
+                virtual.runUntilIdle()
+                t.equal(download.map { URL(fileURLWithPath: $0.stringValue).resolvingSymlinksInPath() },
+                        written.first?.resolvingSymlinksInPath(),
+                        "the delivered path names the exact saved file through the system temporary-directory alias")
+                t.check(download?.isDownloading == false)
+            }
+            download = nil
+            context = nil
+            t.check(borrowedContext == nil)
+            t.check(borrowedDownload == nil, "pending completions never retain the node or its owner")
+            virtual.runUntilIdle()
+            t.equal(files(directory.appendingPathComponent("effects")), [],
+                    "deinit or the dropped-result callback removes the private temporary download")
+            t.equal(try Data(contentsOf: file), bytes, "cleanup leaves the fixture source intact")
+        }
+    }
+
+    t.suite("Engine: context WebParser: real factory aliases retain the required constructor state") {
+        MeasureRegistry.registerMeasure("ContextFactoryWebParserAlias", WebParserMeasure.self)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Page]
+        Measure=ContextFactoryWebParserAlias
+        Disabled=1
+        URL=https://example.invalid/never-started
+        """)
+        defer { skin.close() }
+        guard let selected = skin.measure(named: "Page") as? WebParserMeasure else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        let legacy = WebParserMeasure(name: "Legacy", section: constructionSection("Legacy", [("Disabled", "1")]),
+                                      skin: skin, type: "webparser")
+        t.check(selected.skin === skin)
+        t.equal(selected.type, "contextfactorywebparseralias")
+        t.equal(selected.rawString, "")
+        t.equal(selected.rawString, legacy.rawString)
+        t.equal(selected.fetchCount, 0)
+        t.check(!selected.isFetching && !selected.isDownloading)
+        skin.update()
+        t.equal(selected.fetchCount, 0)
+        t.equal(selected.stringValue, "")
+    }
+}
+
+func runSectionContextConstructionTests(_ t: TestRunner) {
+    t.suite("Engine: section context construction: String options and actions use an independent owner") {
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("section-construction-string"))
+        context.settings.defaultUpdateDivider = 3
+        context.variables = ["prefix": "first", "state": "0"]
+        context.styles = [
+            "early": constructionSection("Early", [("Tag", "early"), ("OnlyEmpty", ""), ("ValueReminder", "9")]),
+            "late": constructionSection("Late", [("Tag", ""), ("OnlyEmpty", "")]),
+        ]
+        let input = StringMeasure(name: "Input", section: constructionSection("Input", [("String", "4")]),
+                                  context: context, type: "string")
+        context.measures["input"] = input
+        input.readOptionsIfNeeded()
+        input.performUpdate()
+        t.equal(input.stringValue, "4")
+        t.equal(input.value, 4)
+
+        let reader = StringMeasure(name: "Reader", section: constructionSection("Reader", [
+            ("String", "#Prefix# [Input] #CURRENTSECTION#"), ("Tag", ""),
+        ]), context: context, type: "string")
+        context.measures["reader"] = reader
+        reader.styles = ["Early", "Late"]
+        let file = context.directory.appendingPathComponent("synthetic.ini")
+        let own = IniSourceLocation(file: file, line: 5), late = IniSourceLocation(file: file, line: 9)
+        context.sources.options = ["reader": ["tag": own], "late": ["tag": late]]
+        t.equal(reader.rawOption("TAG"), "early")
+        t.equal(reader.fileOption("Tag"), "early")
+        t.equal(reader.styleFileOption("Tag"), "early")
+        t.equal(reader.fileOrigin("Tag"), .own(own))
+        t.equal(reader.optionOrigin("Tag"), .own(own))
+        t.equal(reader.rawOption("OnlyEmpty"), "")
+        t.equal(reader.rawOption("Missing"), nil)
+        t.equal(reader.rawOption("ValueRemainder"), "9")
+        t.equal(reader.fileOption("ValueRemainder"), nil)
+        reader.overrides["tag"] = "runtime"
+        t.equal(reader.rawOption("Tag"), "runtime")
+        t.equal(reader.optionOrigin("Tag"), .setOption)
+        t.equal(reader.fileOption("Tag"), "early")
+        reader.overrides["tag"] = ""
+        t.equal(reader.rawOption("Tag"), "early")
+        t.equal(reader.optionOrigin("Tag"), .style("Late", late))
+        t.equal(reader.fileOrigin("Tag"), .own(own))
+
+        reader.readOptionsIfNeeded()
+        reader.performUpdate()
+        t.equal(reader.updateDivider, 3)
+        t.equal(reader.stringValue, "first [Input] Reader", "load-time non-dynamic read preserves section syntax")
+        t.check(reader.mentionsSectionVariables)
+        context.optionsLoaded = true
+        reader.needsOptionRead = true
+        reader.readOptionsIfNeeded()
+        reader.performUpdate()
+        t.equal(reader.stringValue, "first 4 Reader")
+        context.variables["prefix"] = "second"
+        input.overrides["string"] = "8"
+        input.needsOptionRead = true
+        input.readOptionsIfNeeded()
+        input.performUpdate()
+        reader.readOptionsIfNeeded()
+        reader.performUpdate()
+        t.equal(reader.stringValue, "first 4 Reader", "a non-dynamic option retains the preceding read")
+        reader.overrides["dynamicvariables"] = "1"
+        reader.needsOptionRead = true
+        reader.readOptionsIfNeeded()
+        reader.performUpdate()
+        t.equal(reader.stringValue, "second 8 Reader")
+        context.variables["prefix"] = "third"
+        reader.readOptionsIfNeeded()
+        reader.performUpdate()
+        t.equal(reader.stringValue, "third 8 Reader")
+
+        let state = StringMeasure(name: "State", section: constructionSection("State", [("String", "0")]),
+                                  context: context, type: "string")
+        context.measures["state"] = state
+        state.readOptionsIfNeeded()
+        state.performUpdate()
+        let gate = StringMeasure(name: "Gate", section: constructionSection("Gate", [
+            ("String", "1"), ("IfCondition", "1"), ("IfTrueAction", "[!Canary 7]"),
+            ("IfCondition2", "State=7"), ("IfTrueAction2", "[!Log next:[#State]]"),
+            ("IfFalseAction2", "[!Log unexpected-stale]"),
+            ("OnUpdateAction", "[!Log \"frozen:#State#;live:[#State]\"]"),
+        ]), context: context, type: "string")
+        context.measures["gate"] = gate
+        gate.readOptionsIfNeeded()
+        gate.performUpdate()
+        t.equal(gate.value, 1)
+        t.equal(state.value, 7, "the first synchronous action changes an actual independent measure")
+        t.equal(context.actions, [Bang(name: "canary", args: ["7"]), Bang(name: "log", args: ["next:7"]),
+                                  Bang(name: "log", args: ["frozen:0;live:7"])])
+        t.equal(context.logs, ["Notice: next:7", "Notice: frozen:0;live:7"])
+        t.equal(context.services, [], "String performs no live service reads")
+        t.check(context.executor.isCurrent)
+    }
+
+    t.suite("Engine: section context construction: CPU sampling and pinned history use an independent owner") {
+        let system = SectionConstructionSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("section-construction-cpu"), system: system)
+        context.optionsLoaded = true
+        let cpu = CPUMeasure(name: "CPU", section: constructionSection("CPU", [
+            ("Processor", "2"), ("AverageSize", "2"), ("InvertMeasure", "1"), ("MinValue", "0"),
+            ("MaxValue", "100"), ("OnUpdateAction", "[!Log \"cpu:[CPU:]\"]"),
+        ]), context: context, type: "cpu")
+        context.measures["cpu"] = cpu
+        cpu.readOptionsIfNeeded()
+        cpu.setPaused(true)
+        cpu.performUpdate()
+        t.equal(system.processors, [])
+        t.equal(context.services, [], "a paused first update does not mark or read live inputs")
+        t.equal(cpu.updateCount, 0)
+        cpu.setPaused(false)
+        cpu.readOptionsIfNeeded()
+        var reads: [Int] = []
+        system.cpu = 20
+        cpu.performUpdate()
+        reads.append(system.processors.count)
+        t.equal(cpu.value, 80)
+        t.equal(system.processors, [2])
+        let sample = MeasureValueOverride()
+        sample.pinned["cpu"] = (value: 90, text: nil)
+        context.measureValues = sample
+        system.cpu = 97
+        cpu.performUpdate()
+        reads.append(system.processors.count)
+        t.equal(cpu.value, 90)
+        t.equal(system.processors, [2])
+        sample.pinned.removeAll()
+        system.cpu = 40
+        cpu.performUpdate()
+        reads.append(system.processors.count)
+        t.equal(cpu.value, 70)
+        t.equal(system.processors, [2, 2])
+        t.equal(reads, [1, 1, 2], "the pinned update bypasses actual CPU sampling")
+        t.equal(cpu.minValue, 0)
+        t.equal(cpu.maxValue, 100)
+        t.equal(cpu.updateCount, 3)
+        t.equal(context.services, [.system])
+        t.equal(context.logs, ["Notice: cpu:80", "Notice: cpu:90", "Notice: cpu:70"])
+        t.equal(cpu.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [20, 40], next: 0))
+        cpu.setPaused(true)
+        cpu.performUpdate()
+        t.equal(cpu.value, 70)
+        t.equal(cpu.updateCount, 3)
+        cpu.setPaused(false)
+        cpu.setDisabled(true)
+        cpu.performUpdate()
+        t.equal(cpu.value, 0)
+        t.equal(cpu.updateCount, 3)
+        t.equal(system.processors, [2, 2], "paused and disabled updates never read CPU")
+        t.equal(context.services, [.system])
+        t.equal(context.logs.count, 3)
+    }
+
+    t.suite("Engine: section context construction: legacy Skin identity and borrowed lifetimes remain intact") {
+        let system = SectionConstructionSystem()
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Text]
+        Measure=String
+        String=legacy
+        [CPU]
+        Measure=CPU
+        Processor=2
+        AverageSize=2
+        InvertMeasure=1
+        MinValue=0
+        MaxValue=100
+        """, system: system)
+        defer { skin.close() }
+        guard let text = skin.measure(named: "Text") as? StringMeasure,
+              let cpu = skin.measure(named: "CPU") as? CPUMeasure else { return t.check(false, "legacy factory classes") }
+        t.check(text.skin === skin)
+        t.check(cpu.skin === skin)
+        system.cpu = 20
+        skin.update()
+        t.equal(text.stringValue, "legacy")
+        t.equal(cpu.value, 80)
+        let sample = MeasureValueOverride()
+        sample.pinned["cpu"] = (value: 90, text: nil)
+        skin.measureValues = sample
+        skin.update()
+        t.equal(cpu.value, 90)
+        sample.pinned.removeAll()
+        system.cpu = 40
+        skin.update()
+        t.equal(cpu.value, 70)
+        t.equal(system.processors, [2, 2])
+        let direct = StringMeasure(name: "Direct", section: constructionSection("Direct", [("String", "direct")]),
+                                   skin: skin, type: "string")
+        direct.readOptionsIfNeeded()
+        direct.performUpdate()
+        t.check(direct.skin === skin, "the original public required initializer keeps exact identity")
+        t.equal(direct.stringValue, "direct")
+
+        var context: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("section-construction-lifetime"))
+        weak var borrowedContext = context
+        let kernel = StringMeasure(name: "Borrowed", section: constructionSection("Borrowed", [("String", "independent")]),
+                                   context: context!, type: "string")
+        context?.measures["borrowed"] = kernel
+        var host: FakeHost? = FakeHost()
+        weak var borrowedHost = host
+        context?.host = host
+        t.check(kernel.serviceHost === host)
+        host = nil
+        t.check(borrowedHost == nil)
+        t.check(kernel.serviceHost == nil, "host service reads follow the weak live channel")
+        kernel.readOptionsIfNeeded()
+        kernel.performUpdate()
+        t.equal(kernel.stringValue, "independent")
+        context = nil
+        t.check(borrowedContext == nil, "a retained kernel never retains its independent context")
+        withExtendedLifetime(kernel) {} // No access through the borrowed reference after its owner was released.
+    }
+    runContextBuiltinFactoryTests(t)
+    runContextBuiltinExtendedTests(t)
+    runContextRegistryTests(t)
+    runContextWebParserTests(t)
+    runContextScheduledPluginTests(t)
+    runContextSynchronousPluginTests(t)
+    runContextFilePluginTests(t)
+    runContextServicePluginTests(t)
+    runContextMeterTests(t)
+}
+
+private class ContextFactoryOverride: Measure {
+    var constructorTrace: [String] = []
+
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        super.init(name: name, section: section, skin: skin, type: type)
+        constructorTrace.append("base:\(type)")
+    }
+
+    public override func computeValue() -> Double { 123 }
+}
+
+private final class ContextFactoryChild: ContextFactoryOverride {
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        super.init(name: name, section: section, skin: skin, type: type)
+        constructorTrace.append("child:\(type)")
+    }
+
+    public override func computeValue() -> Double { 456 }
+}
+
+private func runContextBuiltinFactoryTests(_ t: TestRunner) {
+    t.suite("Engine: context builtin factory: independent memory kinds preserve option and sample order") {
+        let system = SectionConstructionSystem()
+        system.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40, swapTotal: 20, swapUsed: 5)
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-memory"), system: system)
+        context.optionsLoaded = true
+        let cases: [(type: String, options: [(String, String)], value: Double, maximum: Double)] = [
+            ("physicalmemory", [], 40, 100), ("swapmemory", [], 45, 120), ("memory", [], 85, 220),
+            ("physicalmemory", [("Total", "1")], 100, 100), ("swapmemory", [("Total", "1")], 120, 120),
+            ("memory", [("Total", "1")], 220, 220), ("physicalmemory", [("Free", "1")], 60, 100),
+            ("memory", [("InvertMeasure", "1")], 135, 220),
+        ]
+        for (index, item) in cases.enumerated() {
+            let name = "Memory\(index)"
+            let before = system.memoryReads
+            guard let measure = makeContextBuiltinMeasure(MemoryMeasure.self, name: name,
+                section: constructionSection(name, item.options + [("MaxValue", "5")]),
+                context: context, type: item.type) as? MemoryMeasure else { throw SectionConstructionError.unexpectedKernel }
+            context.measures[name.lowercased()] = measure
+            t.equal(system.memoryReads, before, "constructing a kind never samples memory")
+            t.equal(measure.type, item.type)
+            measure.readOptionsIfNeeded()
+            t.equal(system.memoryReads, before + 1, "the original automatic maximum samples at option read")
+            t.equal(measure.maxValue, item.maximum, "MaxValue is ignored for every memory kind")
+            measure.performUpdate()
+            t.equal(system.memoryReads, before + 2)
+            t.equal(measure.value, item.value)
+            t.equal(measure.automaticMaxValue, item.maximum)
+            t.equal(system.memoryReads, before + 2, "the sampled total is cached before numeric range refresh")
+        }
+        t.equal(context.services, Array(repeating: .system, count: cases.count))
+        t.equal(context.logs, [])
+
+        var owner: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("context-memory-lifetime"))
+        weak var borrowed = owner
+        guard let kernel = makeContextBuiltinMeasure(MemoryMeasure.self, name: "BorrowedMemory",
+            section: constructionSection("BorrowedMemory", []), context: owner!, type: "memory") else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        owner?.measures["borrowedmemory"] = kernel
+        owner = nil
+        t.check(borrowed == nil, "the context factory does not retain a memory kernel's owner")
+        withExtendedLifetime(kernel) {}
+    }
+
+    t.suite("Engine: context builtin factory: independent network directions retain rates and per-node history") {
+        let system = SectionConstructionSystem()
+        var now = 100.0
+        var clockReads = 0
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-network"), system: system,
+                                                   clock: { clockReads += 1; return now })
+        context.optionsLoaded = true
+        func node(_ name: String, _ type: String, _ options: [(String, String)] = []) throws -> NetMeasure {
+            guard let measure = makeContextBuiltinMeasure(NetMeasure.self, name: name,
+                section: constructionSection(name, options), context: context, type: type) as? NetMeasure else {
+                throw SectionConstructionError.unexpectedKernel
+            }
+            context.measures[name.lowercased()] = measure
+            measure.readOptionsIfNeeded()
+            return measure
+        }
+        let incoming = try node("Incoming", "netin", [("Interface", "en0")])
+        let outgoing = try node("Outgoing", "netout", [("Interface", "en0")])
+        let total = try node("Total", "nettotal", [("Interface", "en0")])
+        let bits = try node("Bits", "nettotal", [("Interface", "en0"), ("UseBits", "1")])
+        let all = try node("All", "netin", [("Interface", "0")])
+        let indexed = try node("Indexed", "netin", [("Interface", "2")])
+        let cumulative = try node("Cumulative", "netin", [("Interface", "en0"), ("Cumulative", "1")])
+        let fallback = try node("Fallback", "netin", [("Interface", "missing"), ("MaxValue", "8000")])
+        let speed = try node("Speed", "netout", [("Interface", "en0"), ("NetOutSpeed", "500")])
+        let nodes = [incoming, outgoing, total, bits, all, indexed, cumulative, fallback, speed]
+        t.equal(system.requestedInterfaces, [], "constructors and options do not read network counters")
+        t.equal(clockReads, 0)
+        for measure in nodes { measure.performUpdate() }
+        t.equal(nodes.map(\.value), [0, 0, 0, 0, 0, 0, 1000, 0, 0])
+        t.equal(clockReads, 8, "cumulative data does not ask for a time")
+        t.equal(system.requestedInterfaces, ["en0", "en0", "en0", "en0", nil, "en1", "en0", "en0", "en0"])
+        system.counters = ["en0": NetworkCounters(received: 1400, sent: 700),
+                           "en1": NetworkCounters(received: 300, sent: 150)]
+        now = 102
+        for measure in nodes { measure.performUpdate() }
+        t.equal(nodes.map(\.value), [200, 100, 300, 2400, 300, 100, 1400, 200, 100])
+        t.equal(clockReads, 16)
+        t.equal(incoming.maxValue, 200)
+        t.equal(fallback.maxValue, 1000, "MaxValue remains in bits for a byte-valued measure")
+        t.equal(speed.maxValue, 500, "NetOutSpeed remains in bytes")
+        fallback.needsOptionRead = true
+        fallback.readOptionsIfNeeded()
+        t.equal(context.logs, ["Notice: [Fallback] Interface=missing does not exist on this Mac; using the active interface"])
+        system.counters["en0"] = NetworkCounters(received: 1600, sent: 900)
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "an equal-time sample gives zero and still replaces the previous sample")
+        now = 103
+        system.counters["en0"] = NetworkCounters(received: 1700, sent: 1000)
+        incoming.performUpdate()
+        t.equal(incoming.value, 100)
+        now = 104
+        system.counters["en0"] = NetworkCounters(received: 5, sent: 1000)
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "counter reversal gives zero")
+        incoming.overrides["interface"] = "en1"
+        incoming.needsOptionRead = true
+        incoming.readOptionsIfNeeded()
+        now = 105
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "an interface change forgets only this node's previous sample")
+
+        let reads = system.requestedInterfaces.count
+        incoming.setPaused(true)
+        incoming.performUpdate()
+        incoming.setPaused(false)
+        incoming.setDisabled(true)
+        incoming.performUpdate()
+        t.equal(system.requestedInterfaces.count, reads)
+        t.equal(incoming.value, 0)
+        t.equal(context.services, Array(repeating: .system, count: nodes.count))
+
+        let fast = try node("Fast", "netin", [("Interface", "en0")])
+        let slow = try node("Slow", "netin", [("Interface", "en0")])
+        now = 200
+        system.counters["en0"] = NetworkCounters(received: 1000, sent: 0)
+        fast.performUpdate(); slow.performUpdate()
+        now = 201
+        system.counters["en0"] = NetworkCounters(received: 1300, sent: 0)
+        fast.performUpdate()
+        t.equal(fast.value, 300)
+        let pin = MeasureValueOverride()
+        pin.pinned["fast"] = (value: 77, text: nil)
+        context.measureValues = pin
+        let beforePin = system.requestedInterfaces.count
+        fast.performUpdate()
+        t.equal(fast.value, 77)
+        t.equal(system.requestedInterfaces.count, beforePin)
+        pin.pinned.removeAll()
+        now = 202
+        system.counters["en0"] = NetworkCounters(received: 1400, sent: 0)
+        fast.performUpdate(); slow.performUpdate()
+        t.equal(fast.value, 100, "the pinned update leaves this node's rate history untouched")
+        t.equal(slow.value, 200, "a slower node computes its own two-second delta")
+    }
+
+    t.suite("Engine: context builtin factory: exact classes preserve real registry and legacy construction") {
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-factory-negative"))
+        for type in ["cpu", "string", "memory", "netin"] {
+            t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: "Custom",
+                section: constructionSection("Custom", []), context: context, type: type) == nil,
+                    "a built-in name never replaces a selected custom subclass")
+        }
+        t.check(makeContextBuiltinMeasure(ScriptMeasure.self, name: "Script", section: constructionSection("Script", []),
+                                         context: context, type: "script") == nil, "unqualified kernels retain legacy construction")
+        // Unique names only: there is no unregister API, so canonical global registrations stay untouched.
+        MeasureRegistry.registerMeasure("ContextFactoryOverrideProbe", ContextFactoryChild.self)
+        MeasureRegistry.registerMeasure("ContextFactoryMemoryAlias", MemoryMeasure.self)
+        let system = SectionConstructionSystem()
+        system.cpu = 20
+        system.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40, swapTotal: 20, swapUsed: 5)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [CPU]
+        Measure=CPU
+        Processor=2
+        [Text]
+        Measure=String
+        String=factory
+        [Physical]
+        Measure=PhysicalMemory
+        [Swap]
+        Measure=SwapMemory
+        [Memory]
+        Measure=Memory
+        [Incoming]
+        Measure=NetIn
+        Cumulative=1
+        [Outgoing]
+        Measure=NetOut
+        Cumulative=1
+        [Total]
+        Measure=NetTotal
+        Cumulative=1
+        [Custom]
+        Measure=ContextFactoryOverrideProbe
+        [Alias]
+        Measure=ContextFactoryMemoryAlias
+        """, system: system)
+        defer { skin.close() }
+        skin.update()
+        t.equal(skin.measures.map(\.value), [20, 0, 40, 45, 85, 1000, 500, 1500, 456, 85])
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        t.check(skin.measure(named: "CPU") is CPUMeasure)
+        t.check(skin.measure(named: "Text") is StringMeasure)
+        t.equal(skin.measure(named: "Text")?.stringValue, "factory")
+        guard let custom = skin.measure(named: "Custom") as? ContextFactoryChild else { throw SectionConstructionError.unexpectedKernel }
+        t.equal(custom.constructorTrace, ["base:contextfactoryoverrideprobe", "child:contextfactoryoverrideprobe"])
+        t.equal(custom.type, "contextfactoryoverrideprobe")
+        t.check(skin.measure(named: "Alias") is MemoryMeasure)
+        t.equal(skin.measure(named: "Alias")?.type, "contextfactorymemoryalias", "effectiveType is never canonicalized by the context helper")
+
+        let directMemory = MemoryMeasure(name: "DirectMemory", section: constructionSection("DirectMemory", []),
+                                         skin: skin, type: "swapmemory")
+        directMemory.readOptionsIfNeeded(); directMemory.performUpdate()
+        t.check(directMemory.skin === skin)
+        t.equal(directMemory.value, 45)
+        let directNet = NetMeasure(name: "DirectNet", section: constructionSection("DirectNet", [("Cumulative", "1")]),
+                                   skin: skin, type: "netout")
+        directNet.readOptionsIfNeeded(); directNet.performUpdate()
+        t.check(directNet.skin === skin)
+        t.equal(directNet.value, 500)
+    }
+}
+
+/// Direct protocol witnesses avoid the real-volume defaults and the global hardware-sensor fallback.
+/// The existing deterministic engine source supplies values; this wrapper observes their actual read order.
+private final class ContextBuiltinSystem: SystemDataSource, HardwareSensorSource {
+    let values = EngineTestSystem()
+    private(set) var calls: [String] = []
+    var sensors: [String: Double] = [SensorKeys.frequencyCPU: 2100]
+    var wallpaper: String?
+
+    func resetCalls() { calls.removeAll() }
+    var processorCount: Int { calls.append("processorCount"); return values.processorCount }
+    func cpuUsage(processor: Int) -> Double { calls.append("cpu:\(processor)"); return values.cpuUsage(processor: processor) }
+    func memoryStatus() -> MemoryStatus { calls.append("memory"); return values.memoryStatus() }
+    func networkInterfaces() -> [String] { calls.append("interfaces"); return values.networkInterfaces() }
+    func networkCounters(interface: String?) -> NetworkCounters {
+        calls.append("network:\(interface ?? "all")"); return values.networkCounters(interface: interface)
+    }
+    func diskSpace(path: String) -> (total: Double, free: Double)? {
+        calls.append("disk:\(path)"); return values.diskSpace(path: path)
+    }
+    func availableDiskSpace(path: String) -> Double? {
+        calls.append("available:\(path)"); return values.availableDiskSpace(path: path)
+    }
+    func uptime() -> TimeInterval { calls.append("uptime"); return values.uptime() }
+    func battery() -> BatteryStatus? { calls.append("battery"); return values.battery() }
+    func isProcessRunning(_ name: String) -> Bool { calls.append("process:\(name)"); return values.isProcessRunning(name) }
+    func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
+        calls.append("sysInfo:\(type):\(data)"); return values.sysInfo(type: type, data: data)
+    }
+    func bestNetworkInterface() -> String? { calls.append("bestInterface"); return values.bestNetworkInterface() }
+    func volumeInfo(path: String) -> VolumeInfo? { calls.append("volume:\(path)"); return values.volumeInfo(path: path) }
+    func cpuFrequency() -> Double? { calls.append("frequency"); return values.cpuFrequency() }
+    func desktopPicturePath() -> String? { calls.append("desktopPicture"); return wallpaper }
+    func graphicsAdapterName() -> String? { calls.append("graphics"); return values.graphicsAdapterName() }
+    func sensorValue(_ key: String) -> Double? { calls.append("sensor:\(key)"); return sensors[key] }
+}
+
+private func extendedNode<T: Measure>(_ cls: T.Type, _ name: String, _ type: String,
+                                     _ options: [(String, String)], in context: IndependentSectionContext) throws -> T {
+    guard let node = makeContextBuiltinMeasure(cls, name: name, section: constructionSection(name, options),
+                                              context: context, type: type) as? T else {
+        throw SectionConstructionError.unexpectedKernel
+    }
+    context.measures[name.lowercased()] = node
+    return node
+}
+
+/// The normal Skin loader, with private synthetic input and the real protocol source. The caller keeps the weak
+/// host alive until close; unlike the independent suites below this control deliberately owns a real Skin.
+private func extendedConsumerSkin(_ t: TestRunner, _ ini: String, system: SystemDataSource,
+                                  host: EnvironmentHost, clock: SkinClock) throws -> Skin {
+    let skins = t.temporaryDirectory("context-extended-consumer").appendingPathComponent("Skins")
+    let dir = skins.appendingPathComponent("Root/Sub")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: skins.appendingPathComponent("Root/@Resources"), withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("Skin.ini")
+    try ini.write(to: file, atomically: true, encoding: .utf8)
+    let skin = Skin(config: "Root\\Sub", fileURL: file, skinsDirectory: skins, system: system, host: host)
+    skin.skinClock = clock
+    skin.random = SkinRandom(seed: 1)
+    try skin.load()
+    return skin
+}
+
+private func runContextBuiltinExtendedTests(_ t: TestRunner) {
+    t.suite("Engine: context builtin extended: Calc reads live state and preserves random and error history") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-calc"), system: system)
+        context.optionsLoaded = true
+        context.counter = 2
+        let state = StringMeasure(name: "State", section: constructionSection("State", [("String", "1")]), context: context, type: "string")
+        context.measures["state"] = state
+        state.readOptionsIfNeeded(); state.performUpdate()
+        let calc = try extendedNode(CalcMeasure.self, "Calc", "calc", [("Formula", "State+Counter"),
+                                    ("OnUpdateAction", "[!Canary 7]")], in: context)
+        calc.readOptionsIfNeeded(); calc.performUpdate()
+        t.equal(calc.value, 3)
+        t.equal(state.value, 7)
+        t.equal(context.actions, [Bang(name: "canary", args: ["7"])])
+        context.counter = 3
+        calc.performUpdate()
+        t.equal(calc.value, 10, "the next call reads the adjacent measure changed by the preceding synchronous action")
+        calc.overrides["formula"] = "Missing+1"
+        calc.needsOptionRead = true
+        calc.readOptionsIfNeeded(); calc.performUpdate(); calc.performUpdate()
+        t.equal(calc.value, 10)
+        t.equal(context.logs.filter { $0.contains("cannot evaluate Formula") }.count, 1)
+        for bad in ["(", "?"] {
+            calc.overrides["formula"] = bad
+            calc.needsOptionRead = true
+            calc.readOptionsIfNeeded(); calc.performUpdate()
+        }
+        t.equal(context.logs.filter { $0.contains("invalid Formula") }.count, 1)
+
+        let randomOptions = [("Formula", "Random"), ("LowBound", "1"), ("HighBound", "3"),
+                             ("UpdateRandom", "1"), ("UniqueRandom", "1")]
+        let random = try extendedNode(CalcMeasure.self, "Random", "calc", randomOptions, in: context)
+        random.readOptionsIfNeeded()
+        var first: [Double] = []
+        for _ in 0..<3 { random.performUpdate(); first.append(random.value) }
+        t.equal(Set(first), Set([1.0, 2.0, 3.0]))
+        let other = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-calc-seed"), system: system)
+        let repeated = try extendedNode(CalcMeasure.self, "Random", "calc", randomOptions, in: other)
+        repeated.readOptionsIfNeeded()
+        var second: [Double] = []
+        for _ in 0..<3 { repeated.performUpdate(); second.append(repeated.value) }
+        t.equal(second, first, "the existing per-owner seed advances at the same kernel call sites")
+        let once = try extendedNode(CalcMeasure.self, "Once", "calc", [("Formula", "Random"), ("LowBound", "10"), ("HighBound", "20")], in: context)
+        once.readOptionsIfNeeded(); once.performUpdate()
+        let held = once.value
+        t.check((10...20).contains(held))
+        once.performUpdate()
+        t.equal(once.value, held)
+        once.overrides["lowbound"] = "30"; once.overrides["highbound"] = "30"
+        once.needsOptionRead = true
+        once.readOptionsIfNeeded(); once.performUpdate()
+        t.equal(once.value, 30)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Loop cadence reset and borrowed ownership remain local") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-loop"), system: system)
+        let forward = try extendedNode(LoopMeasure.self, "Forward", "loop", [("StartValue", "0"), ("EndValue", "10"),
+            ("Increment", "3"), ("AverageSize", "3"), ("MinValue", "-100"), ("MaxValue", "200")], in: context)
+        let reverse = try extendedNode(LoopMeasure.self, "Reverse", "loop", [("StartValue", "10"), ("EndValue", "0"),
+            ("Increment", "-5"), ("LoopCount", "1")], in: context)
+        forward.readOptionsIfNeeded(); reverse.readOptionsIfNeeded()
+        var a: [Double] = [], b: [Double] = []
+        for index in 0..<7 {
+            forward.performUpdate(); a.append(forward.value)
+            if index % 2 == 0 { reverse.performUpdate(); b.append(reverse.value) }
+        }
+        t.equal(a, [0, 3, 6, 9, 10, 0, 3])
+        t.equal(b, [10, 5, 0, 0])
+        t.equal(forward.minValue, 0)
+        t.equal(forward.maxValue, 10)
+        t.equal(forward.averageSize, 1)
+        t.equal(forward.runtimeSnapshot.average, nil)
+        forward.execute(command: " Reset "); forward.performUpdate()
+        t.equal(forward.value, 0)
+        forward.overrides["endvalue"] = "20"; forward.needsOptionRead = true
+        forward.readOptionsIfNeeded(); forward.performUpdate()
+        t.equal(forward.value, 0)
+        forward.overrides["invertmeasure"] = "1"; forward.needsOptionRead = true
+        forward.readOptionsIfNeeded(); forward.performUpdate()
+        t.equal(forward.value, 20)
+        t.equal(reverse.value, 0, "resetting one kernel does not advance another")
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+
+        var owner: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-loop-lifetime"), system: system)
+        weak var weakOwner = owner
+        let retained = try extendedNode(LoopMeasure.self, "Retained", "loop", [], in: owner!)
+        retained.readOptionsIfNeeded(); retained.performUpdate()
+        t.equal(retained.value, 1)
+        owner = nil
+        t.check(weakOwner == nil)
+        withExtendedLifetime(retained) {} // Never dereference the unowned context after release.
+    }
+
+    t.suite("Engine: context builtin extended: ordinary Time uses the injected clock zone and locale") {
+        guard let shanghai = TimeZone(identifier: "Asia/Shanghai") else { throw SectionConstructionError.utcUnavailable }
+        let date = Date(timeIntervalSince1970: 1_798_761_598)
+        var nowReads = 0, zoneReads = 0
+        let clock = SkinClock(now: { nowReads += 1; return date }, uptime: { 1 }, timeZone: { zoneReads += 1; return shanghai })
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-time"), system: system, skinClock: clock)
+        let local = try extendedNode(TimeMeasure.self, "Local", "time", [], in: context)
+        t.equal([nowReads, zoneReads], [0, 0], "construction does not force lazy time zone or sampling")
+        local.readOptionsIfNeeded()
+        t.equal([nowReads, zoneReads], [1, 1])
+        local.performUpdate()
+        t.equal([nowReads, zoneReads], [2, 1])
+        t.equal(local.value, 13_443_263_998)
+        t.equal(local.timestamp, 13_443_263_998)
+        t.equal(local.rawString, "07:59:58")
+        let cases: [(String, [(String, String)], Double, String)] = [
+            ("Formatted", [("Format", "%Y-%m-%d %H:%M:%S")], 2027, "2027-01-01 07:59:58"),
+            ("Offset", [("Format", "%H:%M"), ("TimeZone", "-5"), ("DaylightSavingTime", "0")], 18, "18:59"),
+            ("Locale", [("Format", "%A %#d %B"), ("FormatLocale", "Local")], 0, "Friday 1 January"),
+            ("Numeric", [("TimeStamp", "13000000000")], 13_000_000_000, "23:06:40"),
+            ("Parsed", [("TimeStamp", "2026-12-31 23:59:58"), ("TimeStampFormat", "%Y-%m-%d %H:%M:%S")], 13_443_235_198, "23:59:58"),
+        ]
+        for (name, options, value, text) in cases {
+            let node = try extendedNode(TimeMeasure.self, name, "time", options, in: context)
+            node.readOptionsIfNeeded(); node.performUpdate()
+            t.equal(node.value, value)
+            t.equal(node.rawString, text)
+            if name == "Numeric" || name == "Parsed" { t.equal(node.timestamp, value) }
+        }
+        let invalid = try extendedNode(TimeMeasure.self, "Invalid", "time", [("TimeStamp", "not-a-timestamp")], in: context)
+        invalid.readOptionsIfNeeded(); invalid.performUpdate(); invalid.performUpdate()
+        t.equal(invalid.value, 0)
+        t.equal(invalid.timestamp, 0)
+        t.equal(context.logs.filter { $0.contains("does not match TimeStampFormat") }.count, 1)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Time override keeps original live-read and stored timestamp semantics") {
+        guard let newYork = TimeZone(identifier: "America/New_York"), let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        var date = Date(timeIntervalSince1970: 1_798_761_598), zone = newYork
+        var nowReads = 0, zoneReads = 0
+        let clock = SkinClock(now: { nowReads += 1; return date }, uptime: { 1 }, timeZone: { zoneReads += 1; return zone })
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-time-override"), system: system, skinClock: clock)
+        context.optionsLoaded = true
+        context.variables["mask"] = "%H:%M"
+        let time = try extendedNode(TimeMeasure.self, "Time", "time", [("Format", "#Mask#"), ("FormatLocale", "Local")], in: context)
+        let plain = try extendedNode(TimeMeasure.self, "Plain", "time", [], in: context)
+        let fixed = try extendedNode(TimeMeasure.self, "Fixed", "time", [("TimeStamp", "13000000000")], in: context)
+        for node in [time, plain, fixed] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(time.value, 18)
+        t.equal(time.rawString, "18:59")
+        t.equal(time.timestamp, 13_443_217_198)
+        let stored = time.timestamp
+        let sample = MeasureValueOverride()
+        sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_600)
+        sample.pinned["time"] = (77, "pinned")
+        context.measureValues = sample
+        let beforePin = [nowReads, zoneReads]
+        time.performUpdate()
+        t.equal(time.value, 77)
+        t.equal(time.rawString, "pinned")
+        t.equal(time.timestamp, stored)
+        t.equal([nowReads, zoneReads], beforePin)
+        sample.pinned.removeAll()
+        zone = utc
+        let beforeFrozen = [nowReads, zoneReads]
+        time.performUpdate(); plain.performUpdate()
+        t.equal(time.value, 0)
+        t.equal(time.rawString, "00:00")
+        t.equal(time.timestamp, stored, "frozen show never rewrites normal compute's stored timestamp")
+        t.equal(plain.value, 13_443_235_200)
+        t.equal(plain.timestamp, 13_443_217_198)
+        t.equal(nowReads, beforeFrozen[0])
+        t.equal(zoneReads, beforeFrozen[1] + 2)
+        context.variables["mask"] = "%B"
+        context.locale = Locale(identifier: "fr_FR")
+        time.performUpdate()
+        t.equal(time.rawString, "janvier", "frozen show re-reads the resolver and Local locale without another options read")
+        t.equal(time.value, 0)
+        t.equal(time.timestamp, stored)
+        let beforeFixed = [nowReads, zoneReads]
+        fixed.performUpdate()
+        t.equal(fixed.value, 13_000_000_000, "an explicit TimeStamp refuses frozen show")
+        t.equal([nowReads, zoneReads], [beforeFixed[0] + 1, beforeFixed[1] + 1])
+
+        zone = newYork
+        let dst = try extendedNode(TimeMeasure.self, "DST", "time", [("Format", "%H"), ("TimeZone", "-5"), ("DaylightSavingTime", "1")], in: context)
+        dst.readOptionsIfNeeded()
+        context.measureValues = nil
+        dst.performUpdate()
+        t.equal(dst.value, 18)
+        let winterStamp = dst.timestamp
+        context.measureValues = sample
+        sample.frozenTime = Date(timeIntervalSince1970: 1_784_116_800)
+        let beforeDST = nowReads
+        dst.performUpdate()
+        t.equal(dst.value, 8, "numeric zone DST uses the frozen summer instant, not the cached winter zone")
+        t.equal(dst.timestamp, winterStamp)
+        t.equal(nowReads, beforeDST)
+        let beforePaused = time.updateCount
+        time.setPaused(true); time.performUpdate()
+        t.equal(time.updateCount, beforePaused)
+        time.setPaused(false); time.setDisabled(true); time.performUpdate()
+        t.equal(time.value, 0)
+        t.equal(time.updateCount, beforePaused)
+        time.setDisabled(false)
+        context.measureValues = nil
+        context.variables["mask"] = "%H"
+        zone = utc
+        date = Date(timeIntervalSince1970: 1_798_761_598)
+        time.readOptionsIfNeeded(); time.performUpdate()
+        t.equal(time.value, 23)
+        t.equal(time.rawString, "23")
+        t.equal(time.timestamp, 13_443_235_198)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Uptime and Process keep service notes separate from reads") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-uptime-process"), system: system)
+        let fixed = try extendedNode(UptimeMeasure.self, "Fixed", "uptime", [("SecondsValue", "3725"), ("Format", "%3!i!h %2!02i!m %1!02i!s")], in: context)
+        fixed.readOptionsIfNeeded(); fixed.performUpdate()
+        t.equal(fixed.value, 3725)
+        t.equal(fixed.rawString, "1h 02m 05s")
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        let uptime = try extendedNode(UptimeMeasure.self, "Uptime", "uptime", [("Format", "%3!i!:%2!02i!")], in: context)
+        uptime.readOptionsIfNeeded(); uptime.performUpdate()
+        t.equal(uptime.value, 90061)
+        t.equal(uptime.rawString, "25:01")
+        t.equal(system.calls, ["uptime"], "uptime still reads SystemDataSource, not the context's monotonic clock")
+        let process = try extendedNode(ProcessMeasure.self, "Process", "process", [("ProcessName", " Finder.exe ")], in: context)
+        let gone = try extendedNode(ProcessMeasure.self, "Gone", "process", [("ProcessName", "Nothing.exe")], in: context)
+        let empty = try extendedNode(ProcessMeasure.self, "Empty", "process", [], in: context)
+        for node in [process, gone, empty] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal([process.value, gone.value, empty.value], [1, -1, -1])
+        t.equal(process.minValue, -1)
+        t.equal(system.calls, ["uptime", "process:Finder", "process:Nothing"])
+        t.equal(context.services, Array(repeating: .system, count: 4), "the empty process still notes its existing live-input class")
+        let before = system.calls
+        process.setPaused(true); process.performUpdate()
+        process.setPaused(false); process.setDisabled(true); process.performUpdate()
+        t.equal(system.calls, before)
+        t.equal(process.value, 0)
+        process.setDisabled(false)
+        let sample = MeasureValueOverride(); sample.data = .noData; context.measureValues = sample
+        process.performUpdate()
+        t.equal(process.value, 0)
+        t.equal(system.calls, before)
+    }
+
+    t.suite("Engine: context builtin extended: FreeDisk witnesses preserve loading and volume branches") {
+        let system = ContextBuiltinSystem()
+        system.values.available = nil
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-disk"), system: system)
+        let available = try extendedNode(FreeDiskSpaceMeasure.self, "Available", "freediskspace", [("Drive", "/fixture"), ("MacAvailable", "1"), ("AverageSize", "3")], in: context)
+        let used = try extendedNode(FreeDiskSpaceMeasure.self, "Used", "freediskspace", [("Drive", "/fixture"), ("MacAvailable", "1"), ("InvertMeasure", "1")], in: context)
+        t.equal(system.calls, [], "even FreeDisk construction does not read a volume")
+        available.readOptionsIfNeeded(); used.readOptionsIfNeeded()
+        t.equal(system.calls, ["disk:/fixture", "disk:/fixture"], "the original automatic max is read in option order")
+        system.resetCalls()
+        available.performUpdate(); used.performUpdate()
+        t.equal([available.value, used.value], [-1, -1])
+        t.equal(available.rawString, "")
+        t.check(available.valueUnavailable && used.valueUnavailable)
+        t.equal(available.runtimeSnapshot.average, nil)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture", "available:/fixture", "volume:/fixture", "disk:/fixture", "available:/fixture"])
+        system.values.available = 600
+        available.performUpdate(); used.performUpdate()
+        t.equal([available.value, used.value], [600, 400])
+        t.check(!available.valueUnavailable && !used.valueUnavailable)
+        t.equal(available.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [600], next: 1))
+        system.values.available = 5000
+        available.performUpdate()
+        t.equal(available.value, 800, "available bytes clamp before entering the existing numeric average")
+        t.equal(available.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [600, 1000], next: 2))
+
+        system.values.disk = nil; system.values.volume = nil
+        let missing = try extendedNode(FreeDiskSpaceMeasure.self, "Missing", "freediskspace", [("Drive", "/fixture")], in: context)
+        missing.readOptionsIfNeeded(); system.resetCalls(); missing.performUpdate()
+        t.equal(missing.value, 0)
+        t.check(!missing.valueUnavailable)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"])
+        system.values.disk = (1000, 250)
+        system.values.volume = VolumeInfo(label: "USB", kind: .removable)
+        let ignored = try extendedNode(FreeDiskSpaceMeasure.self, "Ignored", "freediskspace", [("Drive", "/fixture")], in: context)
+        ignored.readOptionsIfNeeded(); system.resetCalls(); ignored.performUpdate()
+        t.equal(ignored.value, 0)
+        t.equal(system.calls, ["volume:/fixture"])
+        let type = try extendedNode(FreeDiskSpaceMeasure.self, "Type", "freediskspace", [("Drive", "/fixture"), ("Type", "1")], in: context)
+        type.readOptionsIfNeeded(); system.resetCalls(); type.performUpdate()
+        t.equal(type.value, 3)
+        t.equal(type.rawString, "Removable")
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"], "Type's value bypasses disk data, while the old numeric range still reads its automatic max")
+        let label = try extendedNode(FreeDiskSpaceMeasure.self, "Label", "freediskspace", [("Drive", "/fixture"), ("Label", "1"), ("IgnoreRemovable", "0")], in: context)
+        label.readOptionsIfNeeded(); system.resetCalls(); label.performUpdate()
+        t.equal(label.value, 250)
+        t.equal(label.rawString, "USB")
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"])
+        let total = try extendedNode(FreeDiskSpaceMeasure.self, "Total", "freediskspace", [("Drive", "/fixture"), ("Total", "1"), ("MacAvailable", "1"), ("IgnoreRemovable", "0")], in: context)
+        total.readOptionsIfNeeded(); system.resetCalls(); total.performUpdate()
+        t.equal(total.value, 1000)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"], "Total bypasses available-space reading")
+    }
+
+    t.suite("Engine: context builtin extended: SysInfo uses current environment and explicit source answers") {
+        guard let newYork = TimeZone(identifier: "America/New_York") else { throw SectionConstructionError.utcUnavailable }
+        var date = Date(timeIntervalSince1970: 1_798_761_598)
+        let clock = SkinClock(now: { date }, uptime: { 1 }, timeZone: { newYork })
+        let system = ContextBuiltinSystem()
+        system.values.sysInfoAnswers["SCREEN_WIDTH"] = (999, nil)
+        system.values.sysInfoAnswers["NONFINITE"] = (.nan, nil)
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-sysinfo"), system: system, skinClock: clock)
+        let environmentHost = EnvironmentHost()
+        context.environment = environmentHost.env
+        let cases: [(String, String, String, Double, String?)] = [
+            ("Monitors", "NUM_MONITORS", "", 2, nil), ("Width", "SCREEN_WIDTH", "2", 1280, nil),
+            ("Work", "WORK_AREA", "", 0, "1920 x 1055"), ("Bits", "OS_BITS", "", 64, nil),
+            ("User", "USER_NAME", "", 0, "tester"), ("Finite", "NONFINITE", "", 0, nil),
+        ]
+        for (name, type, data, value, text) in cases {
+            let node = try extendedNode(SysInfoMeasure.self, name, "sysinfo", [("SysInfoType", type), ("SysInfoData", data)], in: context)
+            node.readOptionsIfNeeded(); node.performUpdate()
+            t.equal(node.value, value)
+            t.equal(node.rawString, text)
+            t.check(!node.valueUnavailable)
+        }
+        t.equal(system.calls, ["sysInfo:USER_NAME:", "sysInfo:NONFINITE:"], "engine environment answers take precedence over the source")
+        let sid = try extendedNode(SysInfoMeasure.self, "SID", "sysinfo", [("SysInfoType", "USER_SID")], in: context)
+        sid.readOptionsIfNeeded(); sid.performUpdate(); sid.performUpdate()
+        t.equal(sid.value, 0)
+        t.equal(sid.rawString, "")
+        t.check(sid.valueUnavailable)
+        t.equal(context.issues, Set(["SysInfoType=USER_SID is not supported on macOS"]))
+        let unknown = try extendedNode(SysInfoMeasure.self, "Unknown", "sysinfo", [("SysInfoType", "USER_NAMES")], in: context)
+        unknown.readOptionsIfNeeded(); unknown.performUpdate(); unknown.performUpdate()
+        t.equal(unknown.value, 0)
+        t.equal(unknown.rawString, "")
+        t.check(!unknown.valueUnavailable)
+        t.equal(context.logs.filter { $0.contains("USER_NAMES is not a SysInfo type") }.count, 1)
+        let dst = try extendedNode(SysInfoMeasure.self, "DST", "sysinfo", [("SysInfoType", "TIMEZONE_ISDST")], in: context)
+        let bias = try extendedNode(SysInfoMeasure.self, "Bias", "sysinfo", [("SysInfoType", "TIMEZONE_BIAS")], in: context)
+        dst.readOptionsIfNeeded(); bias.readOptionsIfNeeded(); dst.performUpdate(); bias.performUpdate()
+        t.equal(dst.value, 0)
+        t.equal(bias.value, 300)
+        date = Date(timeIntervalSince1970: 1_784_116_800)
+        let sample = MeasureValueOverride(); sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_598)
+        context.measureValues = sample
+        dst.performUpdate()
+        t.equal(dst.value, 1, "Time's frozen-date override does not replace SysInfo's own context clock read")
+        context.environment?.screens = []
+        let beforeEmpty = system.calls
+        context.measures["monitors"]?.performUpdate(); context.measures["width"]?.performUpdate()
+        t.equal(context.measures["monitors"]?.value, 0)
+        t.equal(context.measures["width"]?.value, 0)
+        t.equal(system.calls, beforeEmpty, "an empty supplied screen list is an engine answer, not a source fallback")
+    }
+
+    t.suite("Engine: context builtin extended: Power keeps battery rated and sensor witness order") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-power"), system: system)
+        let states = ["ACLine", "Status", "Status2", "Lifetime", "Percent", "Hz", "MHz"]
+        let nodes = try states.map { try extendedNode(PowerPluginMeasure.self, $0, "powerplugin", [("PowerState", $0)], in: context) }
+        for node in nodes { node.readOptionsIfNeeded() }
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        for node in nodes { node.performUpdate() }
+        t.equal(nodes.map(\.value), [0, 4, 1, 5400, 80, 3_200_000_000, 3200])
+        t.equal(nodes[3].rawString, "01:30")
+        t.equal(system.calls, ["battery", "battery", "battery", "battery", "battery", "battery", "frequency", "battery", "frequency"])
+        t.equal(context.services, Array(repeating: [.battery, .system], count: 7).flatMap { $0 })
+        system.values.batteryStatus = BatteryStatus(percent: 3, isCharging: true, isPluggedIn: true)
+        for node in nodes.prefix(5) { node.performUpdate() }
+        t.equal(Array(nodes.prefix(5)).map(\.value), [1, 1, 14, -1, 3])
+        t.equal(nodes[3].rawString, "Unknown")
+        system.values.batteryStatus = nil
+        for node in nodes.prefix(5) { node.performUpdate() }
+        t.equal(Array(nodes.prefix(5)).map(\.value), [1, 0, 128, -1, 100])
+        system.values.frequency = nil
+        system.resetCalls()
+        nodes[5].performUpdate(); nodes[6].performUpdate()
+        t.equal([nodes[5].value, nodes[6].value], [2_100_000_000, 2100])
+        t.equal(system.calls, ["battery", "frequency", "sensor:frequency.cpu", "battery", "frequency", "sensor:frequency.cpu"])
+        system.sensors.removeAll()
+        system.resetCalls(); nodes[5].performUpdate()
+        t.equal(nodes[5].value, 0)
+        t.equal(system.calls, ["battery", "frequency", "sensor:frequency.cpu"], "a nil reading remains on the injected source, never the global source")
+        nodes[3].overrides["powerstate"] = "Percent"; nodes[3].needsOptionRead = true
+        nodes[3].readOptionsIfNeeded(); nodes[3].performUpdate()
+        t.equal(nodes[3].value, 100)
+        t.equal(nodes[3].rawString, nil, "changing away from Lifetime drops the former text")
+    }
+
+    t.suite("Engine: context builtin extended: real Skin consumer and old required constructors agree") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-constructor"), system: system)
+        let classes: [(Measure.Type, String)] = [(CalcMeasure.self, "calc"), (LoopMeasure.self, "loop"),
+            (TimeMeasure.self, "time"), (UptimeMeasure.self, "uptime"), (FreeDiskSpaceMeasure.self, "freediskspace"),
+            (ProcessMeasure.self, "process"), (SysInfoMeasure.self, "sysinfo"), (PowerPluginMeasure.self, "powerplugin")]
+        for (cls, type) in classes {
+            let node = makeContextBuiltinMeasure(cls, name: type, section: constructionSection(type, []), context: context, type: type)
+            t.check(node != nil)
+            if let node { t.check(ObjectIdentifier(Swift.type(of: node)) == ObjectIdentifier(cls)) }
+            t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: type, section: constructionSection(type, []), context: context, type: type) == nil,
+                    "exact dispatch never substitutes a selected registered subclass")
+        }
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        guard let shanghai = TimeZone(identifier: "Asia/Shanghai") else { throw SectionConstructionError.utcUnavailable }
+        let host = EnvironmentHost()
+        host.env.locale = Locale(identifier: "en_US_POSIX")
+        let skin = try extendedConsumerSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Calc]
+        Measure=Calc
+        Formula=2+3
+        [Loop]
+        Measure=Loop
+        StartValue=0
+        EndValue=10
+        Increment=3
+        [Time]
+        Measure=Time
+        [Uptime]
+        Measure=Uptime
+        SecondsValue=3725
+        [Disk]
+        Measure=FreeDiskSpace
+        Drive=/fixture
+        Label=1
+        [Process]
+        Measure=Process
+        ProcessName=Finder.exe
+        [SysInfo]
+        Measure=SysInfo
+        SysInfoType=SCREEN_WIDTH
+        SysInfoData=2
+        [Power]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=MHz
+        [ProcessAlias]
+        Measure=Plugin
+        Plugin=Plugins\\Process.dll
+        ProcessName=Finder.exe
+        [SysInfoAlias]
+        Measure=Plugin
+        Plugin=SysInfo
+        SysInfoType=USER_NAME
+        """, system: system, host: host, clock: .fixed(Date(timeIntervalSince1970: 1_798_761_598), timeZone: shanghai))
+        defer { skin.close(); withExtendedLifetime(host) {} }
+        t.equal(skin.measures.map(\.name), ["Calc", "Loop", "Time", "Uptime", "Disk", "Process", "SysInfo", "Power", "ProcessAlias", "SysInfoAlias"])
+        skin.update()
+        t.equal(skin.measures.map(\.value), [5, 0, 13_443_263_998, 3725, 250, 1, 1280, 3200, 1, 0])
+        t.equal(skin.measure(named: "Disk")?.rawString, "Macintosh HD")
+        t.equal(skin.measure(named: "SysInfoAlias")?.rawString, "tester")
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        for ((cls, type), measure) in zip(classes, skin.measures.prefix(8)) {
+            t.check(ObjectIdentifier(Swift.type(of: measure)) == ObjectIdentifier(cls))
+            let legacy = cls.init(name: "Direct\(measure.name)", section: measure.own, skin: skin, type: type)
+            legacy.readOptionsIfNeeded(); legacy.performUpdate()
+            t.check(legacy.skin === skin)
+            t.equal(legacy.value, measure.value)
+            t.equal(legacy.rawString, measure.rawString)
+        }
+        t.equal(skin.measure(named: "ProcessAlias")?.type, "process")
+        t.equal(skin.measure(named: "SysInfoAlias")?.type, "sysinfo")
+        let ordinaryStamp = (skin.measure(named: "Time") as? TimeMeasure)?.timestamp
+        t.equal(ordinaryStamp, 13_443_263_998)
+        let sample = MeasureValueOverride(); sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_600)
+        skin.measureValues = sample
+        skin.measure(named: "Time")?.performUpdate()
+        t.equal(skin.measure(named: "Time")?.value, 13_443_264_000)
+        t.equal(skin.resolve("[Time:TimeStamp]", in: nil, sectionVariables: true), "13443263998", "the real resolver still reads the old stored timestamp after frozen show")
+    }
+}
+
+private func runContextSynchronousPluginTests(_ t: TestRunner) {
+    t.suite("Engine: context synchronous plugins: sensor kernels read the live owner source") {
+        let system = ContextBuiltinSystem()
+        system.sensors = [SensorKeys.cpu: 50, SensorKeys.cpuCore(2): 62.5,
+                          SensorKeys.fan(1): 1000, SensorKeys.fan(2): 2300,
+                          SensorKeys.gpuMemory: 12 * 1_048_576]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-values"), system: system)
+        let core = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [
+            ("CoreTempType", "Temperature"), ("CoreTempIndex", "1"),
+        ], in: context)
+        let temperature = try extendedNode(SpeedFanMeasure.self, "Temperature", "speedfanplugin", [
+            ("SpeedFanScale", "F"), ("SpeedFanNumber", "0"),
+        ], in: context)
+        let fan = try extendedNode(SpeedFanMeasure.self, "Fan", "speedfanplugin", [
+            ("SpeedFanType", "Fan"), ("SpeedFanNumber", "1"),
+        ], in: context)
+        let gpuMemory = try extendedNode(MSIAfterburnerMeasure.self, "GPU", "msiafterburner", [
+            ("DataSource", "GPU memory usage"),
+        ], in: context)
+        for measure in [core, temperature, fan, gpuMemory] as [Measure] {
+            measure.readOptionsIfNeeded(); measure.performUpdate()
+        }
+        t.equal(core.value, 62.5)
+        t.equal(temperature.value, 122)
+        t.equal(fan.value, 2300)
+        t.equal(gpuMemory.value, 12)
+        system.sensors[SensorKeys.cpuCore(2)] = 70
+        system.sensors[SensorKeys.cpu] = 60
+        system.sensors[SensorKeys.fan(2)] = 2500
+        system.sensors[SensorKeys.gpuMemory] = 16 * 1_048_576
+        for measure in [core, temperature, fan, gpuMemory] as [Measure] { measure.performUpdate() }
+        t.equal(core.value, 70)
+        t.equal(temperature.value, 140)
+        t.equal(fan.value, 2500)
+        t.equal(gpuMemory.value, 16)
+        t.equal(core.maxValue, 70)
+        t.equal(fan.maxValue, 2500)
+        t.check(system.calls.contains("sensor:cpu.core.2"))
+        t.check(system.calls.contains("sensor:gpu.memory"))
+        t.equal(context.logs, [])
+        t.check(context.services.contains(.sensors))
+        t.check(context.services.contains(.system))
+    }
+
+    t.suite("Engine: context synchronous plugins: missing sensors log once and recover on the same owner") {
+        let system = ContextBuiltinSystem()
+        system.sensors = [:]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-missing"), system: system)
+        let core = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [], in: context)
+        let fan = try extendedNode(SpeedFanMeasure.self, "Fan", "speedfanplugin", [
+            ("SpeedFanType", "Fan"), ("SpeedFanNumber", "9"),
+        ], in: context)
+        let gpu = try extendedNode(MSIAfterburnerMeasure.self, "GPU", "msiafterburner", [
+            ("DataSource", "GPU temperature"),
+        ], in: context)
+        for measure in [core, fan, gpu] as [Measure] {
+            measure.readOptionsIfNeeded(); measure.performUpdate(); measure.performUpdate()
+            t.equal(measure.value, 0)
+        }
+        t.equal(context.logs.count, 3)
+        system.sensors[SensorKeys.cpu] = 55
+        system.sensors[SensorKeys.gpu] = 45
+        fan.overrides["speedfannumber"] = "0"
+        fan.needsOptionRead = true
+        system.sensors[SensorKeys.fan(1)] = 1800
+        fan.readOptionsIfNeeded()
+        for measure in [core, fan, gpu] as [Measure] { measure.performUpdate() }
+        t.equal(core.value, 55)
+        t.equal(fan.value, 1800)
+        t.equal(gpu.value, 45)
+        t.equal(context.logs.count, 3)
+        let otherSystem = ContextBuiltinSystem()
+        otherSystem.sensors = [SensorKeys.cpu: 20]
+        let other = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-other"), system: otherSystem)
+        let otherCore = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [], in: other)
+        otherCore.readOptionsIfNeeded(); otherCore.performUpdate()
+        t.equal(otherCore.value, 20)
+        t.equal(core.value, 55, "the second owner's source cannot replace the first owner's reading")
+    }
+
+    t.suite("Engine: context synchronous plugins: compatibility values and command logs need no Skin") {
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-compatibility-plugins"))
+        let window = try extendedNode(WindowMessageMeasure.self, "Window", "windowmessageplugin", [
+            ("WindowName", "Fixture"),
+        ], in: context)
+        window.readOptionsIfNeeded(); window.performUpdate()
+        t.equal(window.value, 0)
+        t.equal(window.rawString, "")
+        t.check(context.logs.first?.contains("Fixture") == true)
+        window.needsOptionRead = true
+        window.readOptionsIfNeeded()
+        t.equal(context.logs.count, 1)
+        window.execute(command: "SendMessage 1 2 3")
+        window.execute(command: "SendMessage 1 2 3")
+        t.equal(context.logs.count, 2)
+        let desktop = try extendedNode(VirtualDesktopsMeasure.self, "Desktop", "virtualdesktops", [
+            ("VDMeasureType", "DesktopName"),
+        ], in: context)
+        desktop.readOptionsIfNeeded(); desktop.performUpdate()
+        t.equal(desktop.value, 0)
+        t.equal(desktop.stringValue, "Desktop 1")
+        desktop.overrides["vdmeasuretype"] = "DesktopCount"
+        desktop.needsOptionRead = true
+        desktop.readOptionsIfNeeded(); desktop.performUpdate()
+        t.equal(desktop.value, 1)
+        t.equal(desktop.rawString, nil)
+        desktop.execute(command: "SwitchDesktop 2")
+        desktop.execute(command: "SwitchDesktop 2")
+        t.equal(context.logs.count, 3)
+        t.equal(context.services, [])
+        t.equal(context.actions, [])
+    }
+
+    t.suite("Engine: context synchronous plugins: registered aliases preserve exact classes and legacy construction") {
+        let classes: [(Measure.Type, String, [(String, String)])] = [
+            (CoreTempMeasure.self, "CoreTemp", [("CoreTempType", "MaxTemperature")]),
+            (SpeedFanMeasure.self, "SpeedFan", [("SpeedFanType", "Fan")]),
+            (MSIAfterburnerMeasure.self, "MSI", [("DataSource", "CPU temperature")]),
+            (WindowMessageMeasure.self, "Window", []),
+            (VirtualDesktopsMeasure.self, "Desktop", [("VDMeasureType", "DesktopCount")]),
+        ]
+        let system = ContextBuiltinSystem()
+        system.sensors = [SensorKeys.cpu: 45, SensorKeys.fan(1): 1700]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-registry"), system: system)
+        let host = EnvironmentHost()
+        for (selected, name, options) in classes {
+            let alias = "ContextSynchronous" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let body = options.map { "\($0.0)=\($0.1)" }.joined(separator: "\n")
+            let skin = try extendedConsumerSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n\(body)\n",
+                                                system: system, host: host, clock: context.skinClock)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            guard let registered = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Direct", section: constructionSection("Direct", options), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: registered)) == ObjectIdentifier(selected))
+            t.check(registered.skin === skin && legacy.skin === skin)
+            t.equal(registered.type, alias.lowercased())
+            t.equal(registered.value, legacy.value)
+            t.equal(registered.rawString, legacy.rawString)
+            registered.readOptionsIfNeeded(); registered.performUpdate()
+            legacy.readOptionsIfNeeded(); legacy.performUpdate()
+            t.equal(registered.value, legacy.value)
+            t.equal(registered.rawString, legacy.rawString)
+        }
+    }
+}
+
+/// Real scans of explicitly granted temporary files, with delivery queued on the same virtual owner.
+/// Holding results changes only delivery order; it never replaces a scan's result with invented metadata.
+private final class IndependentFilePluginContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var allowedReads: Set<String> = []
+    var jobs: [BackgroundWorkKind] = []
+    var holdResults = false
+    var heldResults: [() -> Void] = []
+    var actionValues: [[String: String]] = []
+
+    init(directory: URL) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, clock: { virtual.uptime }, skinClock: virtual.clock, executor: virtual)
+    }
+    func allow(_ url: URL) { allowedReads.insert(url.resolvingSymlinksInPath().standardizedFileURL.path) }
+    override func measure(named name: String) -> Measure? {
+        measures[name.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionValues.append(measures.mapValues(\.stringValue))
+        super.execute(actionText, from: section)
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition([BackgroundWorkKind.quote, .folderInfo, .fileViewListing].contains(job.kind))
+        guard let path = job.reads, let produce = job.inline else {
+            preconditionFailure("Only explicit fixture file work is qualified")
+        }
+        precondition(allowedReads.contains(URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path))
+        jobs.append(job.kind)
+        let result = produce()
+        let deliver = { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+        if holdResults { heldResults.append(deliver) } else { executor.async(deliver) }
+    }
+    func deliverResults() {
+        let pending = heldResults
+        heldResults = []
+        for delivery in pending { executor.async(delivery) }
+    }
+}
+
+private func runContextFilePluginTests(_ t: TestRunner) {
+    t.suite("Engine: context file plugins: Quote uses owner random, clock and stale-result guards") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-quote"))
+        let first = context.directory.appendingPathComponent("first.txt")
+        let second = context.directory.appendingPathComponent("second.txt")
+        try "alpha\nbeta\n".write(to: first, atomically: true, encoding: .utf8)
+        try "replacement\n".write(to: second, atomically: true, encoding: .utf8)
+        context.allow(first); context.allow(second)
+        let quote = try extendedNode(QuoteMeasure.self, "Quote", "quoteplugin", [("PathName", first.path)], in: context)
+        quote.readOptionsIfNeeded(); quote.performUpdate()
+        t.check(quote.isLoading)
+        t.equal(quote.stringValue, "")
+        context.virtual.runUntilIdle()
+        t.equal(quote.itemCount, 2)
+        t.check(["alpha", "beta"].contains(quote.stringValue))
+        let initial = quote.stringValue
+        quote.performUpdate()
+        t.check(quote.stringValue != initial, "the shared random source retains the kernel's nonrepeat rule")
+        t.equal(context.jobs.count, 1)
+        try "changed\n".write(to: first, atomically: true, encoding: .utf8)
+        context.virtual.advance(by: 61)
+        context.holdResults = true
+        quote.performUpdate()
+        t.equal(context.heldResults.count, 1)
+        quote.overrides["pathname"] = second.path
+        quote.needsOptionRead = true
+        quote.readOptionsIfNeeded(); quote.performUpdate()
+        t.equal(context.heldResults.count, 2)
+        context.deliverResults(); context.virtual.runUntilIdle()
+        t.equal(quote.itemCount, 1)
+        t.equal(quote.stringValue, "replacement", "the older path's completed read cannot replace the current one")
+        t.equal(context.jobs, [.quote, .quote, .quote])
+        quote.skinWillClose()
+    }
+
+    t.suite("Engine: context file plugins: FolderInfo children look up the current parent without a Skin") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-folder-parent"))
+        let folder = context.directory.appendingPathComponent("Files")
+        let other = context.directory.appendingPathComponent("Other")
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("Sub"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: folder.appendingPathComponent("a.txt"))
+        try Data([4, 5]).write(to: folder.appendingPathComponent("b.txt"))
+        try Data([6]).write(to: other.appendingPathComponent("c.txt"))
+        context.allow(folder); context.allow(other)
+        let parent = try extendedNode(FolderInfoMeasure.self, "Parent", "folderinfo", [
+            ("Folder", folder.path), ("InfoType", "FileCount"),
+        ], in: context)
+        let child = try extendedNode(FolderInfoMeasure.self, "Child", "folderinfo", [
+            ("Folder", "[pArEnT]"), ("InfoType", "FolderSize"),
+        ], in: context)
+        parent.readOptionsIfNeeded(); child.readOptionsIfNeeded()
+        parent.performUpdate(); child.performUpdate()
+        t.check(parent.isScanning)
+        t.equal(child.value, 0)
+        context.virtual.runUntilIdle()
+        t.equal(parent.latestResult.files, 2)
+        t.equal(parent.latestResult.folders, 1)
+        t.equal(parent.latestResult.size, 5)
+        child.performUpdate()
+        t.equal(child.value, 5)
+        t.equal(context.jobs, [.folderInfo], "a child shares its parent's scan")
+        let replacement = try extendedNode(FolderInfoMeasure.self, "Parent", "folderinfo", [
+            ("Folder", other.path), ("InfoType", "FileCount"),
+        ], in: context)
+        replacement.readOptionsIfNeeded(); replacement.performUpdate()
+        context.virtual.runUntilIdle(); child.performUpdate()
+        t.equal(child.value, 1, "the resolver borrows the owner's current lookup rather than capturing the old parent")
+        t.equal(parent.latestResult.size, 5)
+        context.measures.removeValue(forKey: "parent")
+        child.performUpdate()
+        t.equal(child.value, 0, "a removed parent retains the existing empty-result fallback")
+        parent.skinWillClose(); replacement.skinWillClose(); child.skinWillClose()
+    }
+
+    t.suite("Engine: context file plugins: FileView publishes children before its finish action") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-fileview"))
+        let folder = context.directory.appendingPathComponent("Files")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data([1, 2]).write(to: folder.appendingPathComponent("a.txt"))
+        try Data([3]).write(to: folder.appendingPathComponent("b.txt"))
+        context.allow(folder)
+        let parent = try extendedNode(FileViewMeasure.self, "Parent", "fileview", [
+            ("Path", folder.path), ("ShowDotDot", "0"), ("Count", "2"), ("FinishAction", "[!Log ready]"),
+        ], in: context)
+        let child = try extendedNode(FileViewMeasure.self, "Child", "fileview", [
+            ("Path", "[pArEnT]"), ("Type", "FileName"), ("Index", "1"),
+        ], in: context)
+        let count = try extendedNode(FileViewMeasure.self, "Count", "fileview", [
+            ("Path", "[Parent]"), ("Type", "FileCount"),
+        ], in: context)
+        t.equal(parent.rawString, "")
+        for measure in [parent, child, count] { measure.readOptionsIfNeeded(); measure.performUpdate() }
+        t.check(parent.isReading)
+        t.check(child.isChild && count.isChild)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(parent.value, 2)
+        t.equal(child.stringValue, "a.txt")
+        t.equal(count.value, 2)
+        t.equal(context.actionValues.first?["child"], "a.txt")
+        t.equal(context.actionValues.first?["count"], "2")
+        t.equal(context.jobs, [.fileViewListing])
+        context.holdResults = true
+        parent.execute(command: "Update")
+        t.equal(context.heldResults.count, 1)
+        parent.skinWillClose(); child.skinWillClose(); count.skinWillClose()
+        context.deliverResults(); context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1)
+        t.equal(child.stringValue, "a.txt")
+    }
+
+    t.suite("Engine: context file plugins: closed and released owners discard queued scans") {
+        for kind in ["quote", "folder", "view"] {
+            var context: IndependentFilePluginContext? = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-file-release"))
+            guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            weak var releasedOwner = context
+            weak var releasedMeasure: Measure?
+            weak var releasedPending: Measure?
+            if let context {
+                let file = context.directory.appendingPathComponent("value.txt")
+                try "value".write(to: file, atomically: true, encoding: .utf8)
+                context.allow(file); context.allow(context.directory)
+                func makeNode(_ name: String) throws -> Measure {
+                    switch kind {
+                    case "quote": return try extendedNode(QuoteMeasure.self, name, "quoteplugin", [("PathName", file.path)], in: context)
+                    case "folder": return try extendedNode(FolderInfoMeasure.self, name, "folderinfo", [("Folder", context.directory.path)], in: context)
+                    default: return try extendedNode(FileViewMeasure.self, name, "fileview", [
+                        ("Path", context.directory.path), ("ShowDotDot", "0"), ("FinishAction", "[!Log stale]"),
+                    ], in: context)
+                    }
+                }
+                let node = try makeNode("Node")
+                releasedMeasure = node
+                node.readOptionsIfNeeded(); node.performUpdate()
+                t.equal(context.jobs.count, 1)
+                (node as? PluginLifecycle)?.skinWillClose()
+                executor.runUntilIdle()
+                t.equal(context.actions.count, 0)
+                t.equal(node.value, 0)
+                // A second, open node leaves an actual result pending while the whole owner is released.
+                let pending = try makeNode("Pending")
+                releasedPending = pending
+                pending.readOptionsIfNeeded(); pending.performUpdate()
+                t.equal(executor.pendingCount, 1)
+            }
+            context = nil
+            t.check(releasedOwner == nil)
+            t.check(releasedMeasure == nil)
+            t.check(releasedPending == nil)
+            executor.runUntilIdle()
+            t.equal(executor.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: context file plugins: exact registry aliases retain old initializers") {
+        let classes: [(Measure.Type, String)] = [(QuoteMeasure.self, "Quote"), (FolderInfoMeasure.self, "Folder"), (FileViewMeasure.self, "View")]
+        for (selected, name) in classes {
+            let alias = "ContextFile" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let (skin, _) = try makeSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n")
+            defer { skin.close() }
+            guard let node = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Legacy", section: constructionSection("Legacy", []), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: node)) == ObjectIdentifier(selected))
+            t.check(node.skin === skin && legacy.skin === skin)
+            t.equal(node.value, legacy.value)
+            t.equal(node.rawString, legacy.rawString)
+            t.equal(node.type, alias.lowercased())
+            if let folder = legacy as? FolderInfoMeasure { t.check(folder.parentResolver("Node") === node) }
+            if let view = legacy as? FileViewMeasure { t.check(view.parentResolver("Node") === node) }
+        }
+    }
+}
+
+/// Uses the production jobs' existing scripted decoders and the owner's queued result delivery.
+private final class IndependentServicePluginContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var answers: [BackgroundWorkKind: BackgroundFakeValue] = [:]
+    var jobs: [BackgroundWorkKind] = []
+    var actionValues: [[String: Double]] = []
+
+    init(directory: URL, system: SystemDataSource = ContextBuiltinSystem()) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, system: system, clock: { virtual.uptime },
+                       skinClock: virtual.clock, executor: virtual)
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionValues.append(measures.mapValues(\.value))
+        super.execute(actionText, from: section)
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition([BackgroundWorkKind.ping, .sensorList, .trash].contains(job.kind))
+        guard let decode = job.scripted, let answer = answers[job.kind] else {
+            preconditionFailure("A service construction fixture requires an explicit scripted answer")
+        }
+        jobs.append(job.kind)
+        let result = decode(answer)
+        executor.async { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+    }
+}
+
+private func runContextServicePluginTests(_ t: TestRunner) {
+    t.suite("Engine: context service plugins: Ping publishes before actions and cancels queued results") {
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-ping"))
+        context.answers[.ping] = .number(12.6)
+        let ping = try extendedNode(PingMeasure.self, "Ping", "ping", [
+            ("DestAddress", "fixture.invalid"), ("UpdateRate", "1"), ("TimeoutValue", "999"),
+            ("FinishAction", "[!Log complete]"),
+        ], in: context)
+        ping.readOptionsIfNeeded(); ping.performUpdate(); ping.performUpdate()
+        t.equal(ping.pingCount, 1, "an outstanding reply prevents duplicate work")
+        t.check(ping.isPinging)
+        t.equal(ping.value, 0)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(ping.value, 13)
+        t.equal(context.actionValues.first?["ping"], 13)
+        t.check(!ping.isPinging)
+        context.answers[.ping] = .failure("timeout")
+        ping.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(ping.value, 999)
+        t.equal(context.actionValues.last?["ping"], 999)
+        t.equal(context.actions.count, 2)
+        context.answers[.ping] = .number(4)
+        ping.performUpdate(); ping.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(ping.value, 999)
+        t.equal(context.actions.count, 2)
+        ping.performUpdate()
+        t.equal(context.jobs.count, 3, "closing prevents subsequent network jobs")
+        let empty = try extendedNode(PingMeasure.self, "Empty", "ping", [], in: context)
+        empty.readOptionsIfNeeded(); empty.performUpdate(); empty.performUpdate()
+        t.equal(context.logs.filter { $0.contains("DestAddress is empty") }.count, 1)
+        t.equal(context.jobs.count, 3)
+        empty.skinWillClose()
+    }
+
+    t.suite("Engine: context service plugins: MacSensors uses independent values and queued List results") {
+        let system = ContextBuiltinSystem()
+        system.sensors[SensorKeys.cpu] = 40
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-macsensors"), system: system)
+        context.answers[.sensorList] = .lines(["1 sensors:", "cpu — fixture: 40 °C"])
+        let sensor = try extendedNode(MacSensorsMeasure.self, "Sensor", "macsensors", [
+            ("Sensor", "cpu"), ("Scale", "F"), ("MacOptional", "1"),
+        ], in: context)
+        sensor.readOptionsIfNeeded(); sensor.performUpdate()
+        t.equal(sensor.value, 104)
+        t.equal(sensor.stringValue, "104 °F")
+        t.check(!sensor.valueUnavailable)
+        system.sensors[SensorKeys.cpu] = nil
+        sensor.performUpdate()
+        t.equal(sensor.value, 0)
+        t.equal(sensor.stringValue, "")
+        t.check(sensor.valueUnavailable)
+        t.equal(context.logs.count, 0, "an optional missing reading remains silent")
+        system.sensors[SensorKeys.cpu] = 50
+        sensor.performUpdate()
+        t.equal(sensor.value, 122)
+        t.check(!sensor.valueUnavailable)
+        sensor.execute(command: "List")
+        t.equal(context.logs.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 2)
+        t.check(context.logs.last?.contains("cpu — fixture: 40 °C") == true)
+        sensor.execute(command: "List"); sensor.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 2, "a late discovery result cannot log after close")
+        t.equal(context.jobs, [.sensorList, .sensorList])
+    }
+
+    t.suite("Engine: context service plugins: RecycleManager publishes scripted readings and permission recovery") {
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-recycle"))
+        context.answers[.trash] = .text("7 4096")
+        let count = try extendedNode(RecycleManagerMeasure.self, "Count", "recyclemanager", [], in: context)
+        let size = try extendedNode(RecycleManagerMeasure.self, "Size", "recyclemanager", [("RecycleType", "Size")], in: context)
+        for node in [count, size] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(count.value, 0)
+        t.equal(size.value, 0)
+        t.check(!count.hasReading && !size.hasReading)
+        context.virtual.runUntilIdle()
+        t.equal(count.value, 7)
+        t.equal(size.value, 4096)
+        t.check(count.hasReading && size.hasReading)
+        context.answers[.trash] = .failure("7")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 4096, "later readings wait for the next ordinary update")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 0)
+        t.equal(context.issues.count, 1)
+        t.equal(context.logs.count, 1)
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 1)
+        context.answers[.trash] = .text("2 512")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 0, "a later permission recovery retains the same update cadence")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 512)
+        t.check(context.issues.isEmpty)
+        count.performUpdate(); size.performUpdate()
+        count.skinWillClose(); size.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(count.value, 7)
+        t.equal(size.value, 512)
+    }
+
+    t.suite("Engine: context service plugins: pending service results do not retain their owner") {
+        for kind in ["ping", "sensor", "trash"] {
+            var context: IndependentServicePluginContext? = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-service-release"))
+            guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            weak var releasedOwner = context
+            weak var releasedNode: Measure?
+            if let context {
+                let node: Measure
+                switch kind {
+                case "ping":
+                    context.answers[.ping] = .number(5)
+                    node = try extendedNode(PingMeasure.self, "Node", "ping", [("DestAddress", "fixture.invalid")], in: context)
+                case "sensor":
+                    context.answers[.sensorList] = .lines(["late"])
+                    node = try extendedNode(MacSensorsMeasure.self, "Node", "macsensors", [], in: context)
+                default:
+                    context.answers[.trash] = .text("2 512")
+                    node = try extendedNode(RecycleManagerMeasure.self, "Node", "recyclemanager", [], in: context)
+                }
+                releasedNode = node
+                node.readOptionsIfNeeded()
+                if kind == "sensor" { node.execute(command: "List") } else { node.performUpdate() }
+                t.equal(executor.pendingCount, 1)
+            }
+            context = nil
+            t.check(releasedOwner == nil)
+            t.check(releasedNode == nil)
+            executor.runUntilIdle()
+            t.equal(executor.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: context service plugins: exact registry aliases preserve legacy construction") {
+        let classes: [(Measure.Type, String)] = [(PingMeasure.self, "Ping"), (MacSensorsMeasure.self, "Sensor"),
+                                               (RecycleManagerMeasure.self, "Trash")]
+        for (selected, name) in classes {
+            let alias = "ContextService" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let (skin, _) = try makeSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n")
+            defer { skin.close() }
+            guard let node = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Legacy", section: constructionSection("Legacy", []), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: node)) == ObjectIdentifier(selected))
+            t.check(node.skin === skin && legacy.skin === skin)
+            t.equal(node.value, legacy.value)
+            t.equal(node.rawString, legacy.rawString)
+            t.equal(node.type, alias.lowercased())
+        }
+    }
+}
+
+private func runContextRegistryTests(_ t: TestRunner) {
+    t.suite("Engine: context registry: live wallpaper keeps numeric rules and independent input state") {
+        let system = ContextBuiltinSystem()
+        system.wallpaper = "20"
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-live"), system: system)
+        let node = try extendedNode(RegistryMeasure.self, "Wallpaper", "registry", [
+            ("RegHKey", "HKCU"), ("RegKey", "Control Panel/Desktop/"), ("RegValue", " WALLPAPER "),
+            ("MinValue", "0"), ("MaxValue", "100"), ("AverageSize", "2"), ("InvertMeasure", "1"),
+        ], in: context)
+        t.equal(system.calls, [], "construction does not read the data source")
+        t.check(!node.valueUnavailable)
+        node.readOptionsIfNeeded()
+        t.equal(system.calls, ["desktopPicture"])
+        t.equal(context.services, [], "reading options does not note a live update")
+        node.performUpdate()
+        t.equal(node.value, 80)
+        t.equal(node.rawString, "20")
+        t.equal(system.calls, ["desktopPicture", "desktopPicture"])
+        system.wallpaper = "40"
+        node.performUpdate()
+        t.equal(node.value, 70, "the existing average then inversion pipeline runs once")
+        t.equal(node.stringValue, "40", "a numeric string retains its text independently of numeric rules")
+        t.equal(node.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [20, 40], next: 0))
+        t.equal(context.services, [.system])
+        system.wallpaper = nil
+        node.performUpdate()
+        t.check(node.valueUnavailable)
+        t.equal(node.rawString, "")
+        t.equal(context.issues.count, 1)
+        node.performUpdate()
+        t.equal(context.issues.count, 1, "the existing issue set deduplicates unavailable live values")
+        system.wallpaper = ""
+        node.performUpdate()
+        t.check(!node.valueUnavailable, "an available empty value differs from an unavailable value")
+        system.wallpaper = "/fixture/图片😀.heic"
+        node.performUpdate()
+        t.equal(node.stringValue, "/fixture/图片😀.heic")
+        t.check(!node.valueUnavailable)
+        t.equal(system.calls, Array(repeating: "desktopPicture", count: 7))
+        t.equal(node.updateCount, 6)
+        node.setPaused(true); node.performUpdate()
+        node.setPaused(false); node.setDisabled(true); node.performUpdate()
+        t.equal(system.calls.count, 7, "paused and disabled nodes do not sample")
+        t.equal(node.updateCount, 6)
+        t.equal(node.value, 0)
+        t.equal(context.services, [.system])
+    }
+
+    t.suite("Engine: context registry: static values cache and option changes keep their original behavior") {
+        // The existing machine-facts cache also reads OS metadata. Reset it around this isolated source control,
+        // as the Registry threading suite does; this is not a claim that all machine facts are injected.
+        RegistryMeasure.Facts.forget()
+        defer { RegistryMeasure.Facts.forget() }
+        let system = ContextBuiltinSystem()
+        system.values.sysInfoAnswers["OS_PRODUCT_NAME"] = (0, "macOS Context")
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-static"), system: system)
+        let version = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
+        let environment = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
+        let product = try extendedNode(RegistryMeasure.self, "Product", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", version), ("RegValue", "ProductName"),
+        ], in: context)
+        product.readOptionsIfNeeded()
+        t.equal(system.calls.filter { $0 == "sysInfo:OS_PRODUCT_NAME:" }.count, 1)
+        system.values.sysInfoAnswers["OS_PRODUCT_NAME"] = (0, "Changed source")
+        system.resetCalls()
+        product.performUpdate(); product.performUpdate()
+        t.equal(product.stringValue, "macOS Context")
+        t.equal(system.calls, [], "an unchanged static measure uses its cached result")
+        let cores = try extendedNode(RegistryMeasure.self, "Cores", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", environment), ("RegValue", "NUMBER_OF_PROCESSORS"),
+        ], in: context)
+        let frequency = try extendedNode(RegistryMeasure.self, "Frequency", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0"), ("RegValue", "~MHz"),
+        ], in: context)
+        let names = try extendedNode(RegistryMeasure.self, "Names", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", environment), ("OutputType", "ValueList"), ("OutputDelimiter", "|"),
+        ], in: context)
+        let children = try extendedNode(RegistryMeasure.self, "Children", "registry", [
+            ("RegHKey", "HKLM"), ("RegKey", "HARDWARE\\DESCRIPTION\\System\\CentralProcessor"),
+            ("OutputType", "SubKeyList"), ("OutputDelimiter", "|"),
+        ], in: context)
+        for node in [cores, frequency, names, children] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(cores.value, 8)
+        t.equal(cores.rawString, "8")
+        t.equal(frequency.value, 3200)
+        t.equal(frequency.rawString, nil, "a numeric registry value has no raw string")
+        t.equal(names.stringValue, "NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|PROCESSOR_IDENTIFIER")
+        t.equal(children.stringValue, "0|1|2|3|4|5|6|7")
+        product.overrides["regvalue"] = "InstallationType"
+        product.needsOptionRead = true
+        product.readOptionsIfNeeded(); product.performUpdate()
+        t.equal(product.stringValue, "Client", "changed options invalidate only the node result cache")
+        names.overrides["outputdelimiter"] = ";"
+        names.needsOptionRead = true
+        names.readOptionsIfNeeded(); names.performUpdate()
+        t.equal(names.stringValue, "NUMBER_OF_PROCESSORS;PROCESSOR_ARCHITECTURE;PROCESSOR_IDENTIFIER")
+        product.overrides["regvalue"] = "UnemulatedContextValue"
+        product.needsOptionRead = true
+        product.readOptionsIfNeeded(); product.performUpdate()
+        t.check(product.valueUnavailable)
+        t.equal(product.value, 0)
+        t.equal(product.rawString, "")
+        t.equal(context.issues.count, 1)
+        system.resetCalls(); product.performUpdate()
+        t.equal(system.calls, [], "a missing static result is cached too")
+        t.equal(context.issues.count, 1)
+        t.equal(context.services, Array(repeating: .system, count: 5))
+    }
+
+    t.suite("Engine: context registry: exact factory preserves aliases and legacy required construction") {
+        let system = ContextBuiltinSystem()
+        system.wallpaper = "/fixture/wallpaper.png"
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-registry-factory"), system: system)
+        t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: "Custom", section: constructionSection("Custom", []),
+                                         context: context, type: "registry") == nil)
+        // Unique aliases preserve the global canonical Registry registration and custom-class precedence.
+        MeasureRegistry.registerMeasure("ContextFactoryRegistryAlias", RegistryMeasure.self)
+        MeasureRegistry.registerMeasure("ContextFactoryRegistryOverride", ContextFactoryChild.self)
+        let host = EnvironmentHost()
+        let skin = try extendedConsumerSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Wallpaper]
+        Measure=Registry
+        RegKey=Control Panel\\Desktop
+        RegValue=Wallpaper
+        [Alias]
+        Measure=ContextFactoryRegistryAlias
+        RegKey=Control Panel\\Desktop
+        RegValue=Wallpaper
+        [Custom]
+        Measure=ContextFactoryRegistryOverride
+        """, system: system, host: host, clock: context.skinClock)
+        defer { skin.close(); withExtendedLifetime(host) {} }
+        skin.update()
+        guard let selected = skin.measure(named: "Wallpaper") as? RegistryMeasure,
+              let alias = skin.measure(named: "Alias") as? RegistryMeasure,
+              let custom = skin.measure(named: "Custom") as? ContextFactoryChild else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        t.check(selected.skin === skin)
+        t.check(alias.skin === skin)
+        t.equal(selected.stringValue, "/fixture/wallpaper.png")
+        t.equal(alias.stringValue, selected.stringValue)
+        t.equal(alias.type, "contextfactoryregistryalias")
+        t.equal(custom.constructorTrace, ["base:contextfactoryregistryoverride", "child:contextfactoryregistryoverride"])
+        t.equal(custom.value, 456)
+        let legacy = RegistryMeasure(name: "Direct", section: selected.own, skin: skin, type: "registry")
+        legacy.readOptionsIfNeeded(); legacy.performUpdate()
+        t.check(legacy.skin === skin)
+        t.equal(legacy.value, selected.value)
+        t.equal(legacy.rawString, selected.rawString)
+        system.wallpaper = "/fixture/new.heic"
+        skin.update(); legacy.performUpdate()
+        t.equal(selected.stringValue, "/fixture/new.heic")
+        t.equal(alias.rawString, legacy.rawString)
+    }
+}
+
+/// Only the String/Image services exercised below are supplied. The owner keeps kernels, while every kernel
+/// borrows the owner; neither the image fake nor a lowered value has a Skin hidden behind this boundary.
+private final class IndependentMeterContext: IndependentSectionContext {
+    struct TextRequest {
+        let text: String
+        let style: TextStyle
+        let wrapWidth: Double?
+    }
+    var meters: [Meter] = []
+    var resourceRoot: URL?
+    private(set) var resourceReads = 0
+    var measuredSize: SkinSize?
+    private(set) var textRequests: [TextRequest] = []
+    var paths: [String: String] = [:]
+    private(set) var pathRequests: [String] = []
+    var glass: [String: GlassRegion] = [:]
+
+    override var resourcesDirectory: URL {
+        resourceReads += 1
+        return resourceRoot ?? directory.appendingPathComponent("@Resources", isDirectory: true)
+    }
+    override func measure(named name: String) -> Measure? { measures[name.lowercased()] }
+    override func imageFilePath(_ name: String, imagePath: String) -> String {
+        assertOwned(#function)
+        let key = imagePath + "|" + name
+        pathRequests.append(key)
+        guard let path = paths[key] else { preconditionFailure("Unqualified image name: \(key)") }
+        return path
+    }
+    override func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)? {
+        assertOwned(#function)
+        textRequests.append(TextRequest(text: text, style: style, wrapWidth: wrapWidth))
+        return measuredSize.map { ($0.width, $0.height) }
+    }
+    override func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+        assertOwned(#function)
+        return glass[meter.name]
+    }
+}
+
+private final class ContextMeterImages: FakeHost, SkinImageQueries {
+    var sizes: [String: SkinSize] = [:]
+    var orientations: [String: Int] = [:]
+    private(set) var sizeRequests: [String] = []
+    private(set) var orientationRequests: [String] = []
+    private(set) var alphaRequests: [String] = []
+    override func imageSize(atPath path: String) -> (width: Double, height: Double)? {
+        sizeRequests.append(path)
+        return sizes[path].map { ($0.width, $0.height) }
+    }
+    func imageExifOrientation(atPath path: String) -> Int {
+        orientationRequests.append(path)
+        return orientations[path] ?? 1
+    }
+    func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
+        alphaRequests.append("\(path)|\(x),\(y)|\(exifOriented)")
+        return 0
+    }
+}
+
+private final class ContextUnavailableMeasure: Measure {
+    override var valueUnavailable: Bool { true }
+    override func computeValue() -> Double { rawString = ""; return 0 }
+}
+
+private func contextString(_ name: String, _ value: String, in context: IndependentMeterContext) -> StringMeasure {
+    let measure = StringMeasure(name: name, section: constructionSection(name, [("String", value)]),
+                                context: context, type: "string")
+    context.measures[name.lowercased()] = measure
+    measure.readOptionsIfNeeded()
+    measure.performUpdate()
+    return measure
+}
+
+private func runContextMeterTests(_ t: TestRunner) {
+    t.suite("Engine: context meters: live options and styles lower to independent text values") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-text"))
+        context.settings.accurateText = false
+        context.variables["tag"] = "a:"
+        let firstResources = context.directory.appendingPathComponent("@Resources", isDirectory: true)
+        context.styles["base"] = constructionSection("Base", [
+            ("FontFace", "Helvetica"), ("FontSize", "12"), ("FontColor", "20,30,40"),
+            ("Text", "style %1"), ("StringAlign", "Right"), ("ClipString", "2"),
+            ("ClipStringW", "80"), ("ClipStringH", "18"),
+        ])
+        let value = contextString("Value", "alpha", in: context)
+        let meter = StringMeter(name: "Label", section: constructionSection("Label", [
+            ("MeterStyle", "Base"), ("MeasureName", "Value"), ("Text", "own %1"), ("Prefix", "#tag#"),
+            ("X", "100"), ("Y", "7"), ("Padding", "2,3,4,5"), ("DynamicVariables", "1"),
+        ]), context: context, type: "string")
+        context.meters = [meter]
+        context.measuredSize = SkinSize(width: 91, height: 23)
+        meter.readOptionsIfNeeded()
+        context.optionsLoaded = true
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let first = meter.lower()
+        t.equal(first.text, "a:own alpha")
+        t.equal(first.frame, SkinRect(x: 14, y: 7, width: 86, height: 26))
+        t.equal(first.contentFrame, SkinRect(x: 16, y: 10, width: 80, height: 18))
+        t.equal(first.anchor, SkinPoint(x: 100, y: 7))
+        t.equal(context.textRequests.count, 1, "lowering does not measure again")
+        t.equal(context.textRequests.first?.text, "a:own alpha")
+        t.equal(context.textRequests.first?.wrapWidth, 80)
+        t.equal(context.textRequests.first?.style, first.style)
+        t.equal(first.style.fontFolder, firstResources.appendingPathComponent("Fonts").path)
+        t.check(!first.style.accurateText)
+
+        value.overrides["string"] = "beta"
+        value.needsOptionRead = true
+        value.readOptionsIfNeeded()
+        value.performUpdate()
+        context.variables["tag"] = "b:"
+        context.styles["base"] = constructionSection("Base", [
+            ("Text", "later %1"), ("FontSize", "12"), ("StringAlign", "Right"),
+            ("ClipString", "2"), ("ClipStringW", "80"), ("ClipStringH", "18"),
+        ])
+        context.resourceRoot = context.directory.appendingPathComponent("later-resources")
+        meter.overrides["text"] = ""
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let second = meter.lower()
+        t.equal(second.text, "b:later beta", "an empty override removes the own option before the live style query")
+        t.equal(first.text, "a:own alpha")
+        t.equal(context.textRequests.map(\.text), ["a:own alpha", "b:later beta"])
+        t.equal(second.style.fontFolder, first.style.fontFolder, "the font folder keeps its original lazy read")
+        t.equal(context.resourceReads, 1)
+        t.equal(context.logs, [])
+    }
+
+    t.suite("Engine: context meters: absent text service and unavailable values retain their size rules") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-estimate"))
+        let meter = StringMeter(name: "Estimate", section: constructionSection("Estimate", [
+            ("Text", "abcd"), ("FontSize", "12"), ("ClipString", "2"), ("ClipStringW", "1"),
+        ]), context: context, type: "string")
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        let size = meter.naturalSize()
+        t.close(size.width, 38.4, "a missing service retains the unclamped legacy estimate")
+        t.close(size.height, 19.2)
+        t.equal(context.textRequests.count, 1)
+        t.equal(context.textRequests.first?.wrapWidth, 1)
+        let empty = StringMeter(name: "Empty", section: constructionSection("Empty", []),
+                                context: context, type: "string")
+        empty.readOptionsIfNeeded()
+        empty.updateMeter()
+        t.equal(empty.naturalSize().width, 0)
+        t.equal(empty.naturalSize().height, 0)
+        t.equal(context.textRequests.count, 1, "ordinary empty text never calls the measurement service")
+
+        let unavailable = ContextUnavailableMeasure(name: "Unavailable", section: constructionSection("Unavailable", []),
+                                                    context: context, type: "fixture")
+        context.measures["unavailable"] = unavailable
+        unavailable.readOptionsIfNeeded()
+        unavailable.performUpdate()
+        let line = StringMeter(name: "Line", section: constructionSection("Line", [
+            ("MeasureName", "Unavailable"), ("FontSize", "12"), ("InlineSetting", "Size | 80"),
+        ]), context: context, type: "string")
+        line.readOptionsIfNeeded()
+        line.updateMeter()
+        let estimate = line.naturalSize()
+        t.equal(line.text, "")
+        t.equal(estimate.width, 0)
+        t.close(estimate.height, 19.2)
+        context.measuredSize = SkinSize(width: 5, height: 27)
+        let measured = line.naturalSize()
+        t.equal(measured.width, 0)
+        t.equal(measured.height, 27)
+        t.equal(context.textRequests.last?.text, "X")
+        t.equal(context.textRequests.last?.style.inlineSpans, [])
+        t.equal(context.textRequests.last?.wrapWidth, nil)
+    }
+
+    t.suite("Engine: context meters: image paths masks and queries follow the current owner") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-image"))
+        let host = ContextMeterImages()
+        context.host = host
+        let cover = context.directory.appendingPathComponent("cover.png").path
+        let other = context.directory.appendingPathComponent("other.png").path
+        let mask = context.directory.appendingPathComponent("mask.png").path
+        context.paths = ["Images|cover": cover, "Images|other": other, "Masks|mask": mask]
+        host.sizes = [cover: SkinSize(width: 120, height: 60), other: SkinSize(width: 90, height: 30),
+                      mask: SkinSize(width: 80, height: 40)]
+        let value = contextString("Picture", "cover", in: context)
+        let meter = ImageMeter(name: "PictureMeter", section: constructionSection("PictureMeter", [
+            ("MeasureName", "Picture"), ("ImageName", "%1"), ("ImagePath", "Images"),
+            ("MaskImageName", "mask"), ("MaskImagePath", "Masks"), ("W", "40"),
+            ("PreserveAspectRatio", "1"), ("ImageTint", "10,20,30,128"), ("Greyscale", "1"),
+        ]), context: context, type: "image")
+        context.meters = [meter]
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let first = meter.lower()
+        t.equal(context.pathRequests, ["Masks|mask", "Images|cover", "Images|cover"])
+        t.equal(host.sizeRequests, [cover, mask])
+        t.equal(first.path, cover)
+        t.equal(first.maskPath, mask)
+        t.equal(first.contentFrame, SkinRect(width: 40, height: 20))
+        t.check(first.options.greyscale)
+        t.equal(first.options.tint, RGBA(r: 10, g: 20, b: 30, a: 128))
+        value.overrides["string"] = "other"
+        value.needsOptionRead = true
+        value.readOptionsIfNeeded()
+        value.performUpdate()
+        meter.updateMeter()
+        t.equal(meter.lower().path, other)
+        t.equal(first.path, cover, "the old drawing does not follow its measure")
+        t.equal(meter.lower().maskPath, mask)
+        t.equal(context.pathRequests.last, "Images|other")
+
+        meter.overrides["maskimagename"] = ""
+        meter.overrides["useexiforientation"] = "1"
+        meter.needsOptionRead = true
+        host.orientations[other] = 6
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        t.equal(meter.lower().contentFrame, SkinRect(width: 40, height: 120))
+        t.equal(host.orientationRequests, [other])
+        t.equal(meter.imagePixelAlpha(other, x: 2, y: 3, exifOriented: true), 0)
+        t.equal(host.alphaRequests, ["\(other)|2,3|true"])
+        context.host = nil
+        t.equal(meter.naturalSize().width, 0)
+        t.equal(meter.naturalSize().height, 0)
+        t.equal(first.contentFrame, SkinRect(width: 40, height: 20))
+        t.equal(context.logs, [])
+    }
+
+    t.suite("Engine: context meters: missing symbols glass and hit facts do not require a Skin") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-errors"))
+        let host = ContextMeterImages()
+        context.host = host
+        let meter = ImageMeter(name: "Glyph", section: constructionSection("Glyph", [
+            ("ImageName", "sf:fixture.missing"), ("MacGlass", "invalid"),
+            ("DynamicVariables", "1"), ("W", "20"), ("H", "10"),
+        ]), context: context, type: "image")
+        context.meters = [meter]
+        for _ in 0..<2 {
+            meter.readOptionsIfNeeded()
+            meter.updateMeter()
+            meter.layout(after: nil)
+        }
+        let missing = meter.lower()
+        t.equal(context.logs.count, 2)
+        t.equal(context.issues.count, 1)
+        t.check(context.logs.contains { $0.contains("MacGlass=invalid on [Glyph]") })
+        t.check(context.issues.contains { $0.contains("sf:fixture.missing") })
+        t.equal(context.pathRequests, [], "symbols never pass through file-path resolution")
+        let good = MacSymbol(name: "fixture.present").path
+        host.sizes[good] = SkinSize(width: 10, height: 10)
+        meter.overrides["imagename"] = "sf:fixture.present"
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        t.equal(meter.lower().path, good)
+        t.equal(context.issues, [])
+        t.equal(context.logs.count, 2)
+        t.check(missing.path != meter.lower().path)
+        meter.overrides["imagename"] = ""
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        t.equal(meter.lower().path, nil)
+
+        context.glass["Glyph"] = GlassRegion(id: "Glyph", rect: SkinRect(x: -5, y: -5, width: 30, height: 20))
+        t.check(!meter.hitTest(x: -2, y: 2))
+        t.check(meter.isOnGlass(x: -2, y: 2))
+        t.check(meter.isHit(x: -2, y: 2, precise: true))
+        context.glass = [:]
+        t.check(!meter.isOnGlass(x: -2, y: 2))
+        t.check(!meter.isHit(x: -2, y: 2, precise: true))
+        let file = context.directory.appendingPathComponent("missing.png").path
+        context.paths["|missing"] = file
+        meter.overrides["imagename"] = "missing"
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.updateMeter()
+        t.equal(context.logs.filter { $0.contains("Unable to open image: \(file)") }.count, 1)
+        t.equal(context.issues, [])
+    }
+
+    t.suite("Engine: context meters: borrowed owners and hosts release while draw values survive") {
+        var context: IndependentMeterContext? = try IndependentMeterContext(
+            directory: t.temporaryDirectory("context-meter-release"))
+        weak var weakContext = context
+        var host: ContextMeterImages? = ContextMeterImages()
+        weak var weakHost = host
+        context?.host = host
+        var heldMeter: StringMeter?
+        weak var weakMeter: StringMeter?
+        weak var weakMeasure: Measure?
+        weak var weakImage: ImageMeter?
+        var textDraw: TextDraw?
+        var imageDraw: ImageDraw?
+        if let owner = context {
+            let value = contextString("Value", "saved", in: owner)
+            weakMeasure = value
+            let meter = StringMeter(name: "Label", section: constructionSection("Label", [
+                ("MeasureName", "Value"), ("W", "30"), ("H", "12"),
+            ]), context: owner, type: "string")
+            meter.readOptionsIfNeeded()
+            meter.updateMeter()
+            meter.layout(after: nil)
+            let image = ImageMeter(name: "Image", section: constructionSection("Image", [
+                ("ImageName", "sf:fixture.saved"), ("W", "8"), ("H", "6"),
+            ]), context: owner, type: "image")
+            image.readOptionsIfNeeded()
+            image.updateMeter()
+            image.layout(after: nil)
+            owner.meters = [meter, image]
+            heldMeter = meter
+            weakMeter = meter
+            weakImage = image
+            textDraw = meter.lower()
+            imageDraw = image.lower()
+        }
+        host = nil
+        t.check(weakHost == nil && context?.host == nil, "meters and their owner do not retain the service host")
+        context = nil
+        t.check(weakContext == nil, "a still-live borrowed meter does not retain its owner")
+        t.check(weakImage == nil)
+        withExtendedLifetime(heldMeter) { t.check(weakMeter != nil) }
+        heldMeter = nil
+        t.check(weakMeter == nil && weakMeasure == nil)
+        t.equal(textDraw?.text, "saved")
+        t.equal(textDraw?.contentFrame, SkinRect(width: 30, height: 12))
+        t.equal(imageDraw?.path, MacSymbol(name: "fixture.saved").path)
+        t.equal(imageDraw?.contentFrame, SkinRect(width: 8, height: 6))
+    }
+}

@@ -37,7 +37,16 @@ func runSendableTests(_ t: TestRunner) {
         let input = [sendable(MouseEventKind.self), sendable(MouseButton.self), sendable(PointerEvent.self),
                      sendable(MouseActionState.self), sendable(OutsidePointerNeeds.self), sendable(ToolTipInfo.self),
                      sendable(ContextMenuItem.self), sendable(SkinLogLevel.self), sendable(JSONValue.self)]
-        let all = geometry + color + glass + text + shape + images + meters + actions + input
+        let scene = [sendable(WidgetScene.self), sendable(SceneElement.self), sendable(ElementID.self),
+                     sendable(ElementKind.self), sendable(Visibility.self), sendable(Backing.self),
+                     sendable(NativeKind.self), sendable(DrawItem.self), sendable(Paint.self), sendable(BevelDraw.self),
+                     sendable(TextDraw.self), sendable(ImageDraw.self), sendable(BarDraw.self), sendable(GraphDraw.self),
+                     sendable(LineDraw.self), sendable(HistogramDraw.self), sendable(GraphDrawHistory.self),
+                     sendable(RoundlineDraw.self), sendable(RotatorDraw.self), sendable(SpriteDraw.self),
+                     sendable(ShapeDraw.self), sendable(SkinPoint.self), sendable(SkinAppearance.self),
+                     sendable(MacRegionalSettings.self), sendable(TemperatureUnit.self), sendable(ImageStamp.self),
+                     sendable(ImageDependency.self), sendable(AppearanceStamp.self), sendable(EnvironmentStamp.self)]
+        let all = geometry + color + glass + text + shape + images + meters + actions + input + scene
         t.equal(Set(all).count, all.count, "each type once")
         t.check(all.count >= 60, "\(all.count) types")
     }

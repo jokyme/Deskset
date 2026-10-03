@@ -57,6 +57,7 @@ private func deskReuseOutline(_ symbols: [DeskDocumentSymbol]) -> [String] {
 }
 
 func runDeskServiceReuseTests(_ t: TestRunner) {
+    runDeskNumericMetadataReuseTests(t)
     t.suite("Desk: service — subtree reuse") {
         var random = DeskRandom(seed: 0x5AB7_2026)
         var total = SubtreeReuseStats()
@@ -298,5 +299,157 @@ func runDeskServiceReuseTests(_ t: TestRunner) {
         checking.sync {}
         owner.sync {}
         t.check(now.isChecked && calls == 0, "checked at once")
+    }
+
+    t.suite("Desk: service — expression identity across edits") {
+        struct Metadata: Equatable {
+            let kind: SyntaxKind
+            let start: Int
+            let end: Int?
+            let type: SemType
+        }
+        func metadata(_ checked: CheckedFile) -> [Metadata] {
+            checked.types.filter { $0.key.kind.isExpression }.map { id, type in
+                Metadata(kind: id.kind, start: id.utf8Start, end: id.utf8End, type: type)
+            }.sorted {
+                if $0.start != $1.start { return $0.start < $1.start }
+                if $0.end != $1.end { return ($0.end ?? -1) < ($1.end ?? -1) }
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
+        }
+        func binaries(_ snapshot: DeskSnapshot) -> [NodeID] {
+            let table = snapshot.nodeTable
+            let indexes = table.entries.indices.filter { table.entries[$0].kind == .binaryExpr }
+            let ids = indexes.map(table.id)
+            t.equal(indexes.count, 2)
+            t.equal(Set(ids).count, 2)
+            t.equal(ids.map { snapshot.checked.types[$0]?.type }, [.bool, .number(.plain)])
+            for index in indexes {
+                let entry = table.entries[index], id = table.id(index)
+                t.equal(snapshot.tree.id(of: entry.positioned), id)
+                t.equal(snapshot.tree.resolve(id)?.range, entry.positioned.range)
+                t.equal(snapshot.tree.quickResolve(id)?.range, entry.positioned.range)
+                t.equal(table.indexes(of: id), [index])
+            }
+            return ids
+        }
+
+        let file = DeskFileID("Identity.desk")
+        let text = "widget {\n    computed result = (1 / 0 < 1)\n    Text(\"{result}\")\n}\n"
+        let service = DeskLanguageService(openFile: file, files: [file: text])
+        let original = service.snapshot
+        t.check(original.isChecked)
+        t.equal(original.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        let oldIDs = binaries(original)
+        t.check(!metadata(original.checked).isEmpty)
+
+        // UTF-16 edits produce UTF-8 keys. The non-ASCII prefix moves both ends by bytes, not code units.
+        let prefix = "// 中😀\n"
+        t.check(prefix.utf8.count != prefix.utf16.count)
+        let pending = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: prefix)], version: 1)
+        let syntax = service.snapshot
+        t.check(!syntax.isChecked)
+        t.equal(syntax.text, prefix + text)
+        t.check(metadata(syntax.checked).isEmpty, "pending syntax has no checked expression metadata")
+        for id in oldIDs {
+            t.check(syntax.tree.resolve(id) == nil && syntax.tree.quickResolve(id) == nil)
+            t.equal(syntax.nodeTable.indexes(of: id), [])
+        }
+        guard let updated = service.accept(pending.run()) else {
+            t.check(false, "the current pending check must be accepted")
+            return
+        }
+        t.check(updated.isChecked)
+        let fresh = DeskLanguageService(openFile: file, files: [file: prefix + text]).snapshot
+        t.equal(updated.diagnostics, fresh.diagnostics)
+        t.equal(metadata(updated.checked), metadata(fresh.checked), "fresh and reused trees have the same complete typed metadata")
+        let movedIDs = binaries(updated)
+        for (old, moved) in zip(oldIDs, movedIDs) {
+            t.equal(moved.kind, old.kind)
+            t.equal(moved.utf8Start, old.utf8Start + prefix.utf8.count)
+            t.equal(moved.utf8End, old.utf8End.map { $0 + prefix.utf8.count })
+            t.check(moved.treeVersion != old.treeVersion)
+            t.check(updated.tree.resolve(old) == nil && updated.tree.quickResolve(old) == nil)
+        }
+        // An unchanged reparse shares green nodes but never canonical IDs from the old version.
+        let (same, _) = Desk.reparse(updated.text, previous: updated.tree)
+        t.check(same.root === updated.tree.root)
+        t.check(same.version != updated.tree.version)
+        let sameChecked = Desk.check(same)
+        t.equal(metadata(sameChecked), metadata(updated.checked))
+        for id in movedIDs {
+            t.check(same.resolve(id) == nil && same.quickResolve(id) == nil)
+            t.equal(DeskNodeTable(tree: same).indexes(of: id), [])
+        }
+
+        let stale = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// old\n")], version: 2)
+        let current = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// newest\n")], version: 3)
+        t.check(service.accept(stale.run()) == nil, "a stale expression check cannot publish its keys")
+        guard let latest = service.accept(current.run()) else {
+            t.check(false, "the newest pending check must be accepted")
+            return
+        }
+        t.equal(latest.version, 3)
+        let latestFresh = DeskLanguageService(openFile: file, files: [file: latest.text]).snapshot
+        t.equal(metadata(latest.checked), metadata(latestFresh.checked))
+        _ = binaries(latest)
+        for id in movedIDs {
+            t.check(latest.tree.resolve(id) == nil && latest.tree.quickResolve(id) == nil)
+            t.equal(latest.nodeTable.indexes(of: id), [])
+        }
+    }
+}
+
+
+private func runDeskNumericMetadataReuseTests(_ t: TestRunner) {
+    t.suite("Desk: service — settled numeric metadata across edits") {
+        struct Metadata: Equatable {
+            let kind: SyntaxKind
+            let start: Int
+            let end: Int?
+            let type: SemType
+            let constant: Double?
+            let coercion: NumericCoercion?
+        }
+        func metadata(_ checked: CheckedFile) -> [Metadata] {
+            checked.types.map { key, type in
+                Metadata(kind: key.kind, start: key.utf8Start, end: key.utf8End, type: type,
+                         constant: checked.canonicalNumericValues[key], coercion: checked.numericCoercions[key])
+            }.sorted {
+                if $0.start != $1.start { return $0.start < $1.start }
+                if $0.end != $1.end { return ($0.end ?? -1) < ($1.end ?? -1) }
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
+        }
+        let file = DeskFileID("Numeric.desk")
+        let text = "widget { variable b = 1KB; Text(\"{b + 1}\").onClick { b = 1KiB } }"
+        let service = DeskLanguageService(openFile: file, files: [file: text])
+        let original = service.snapshot
+        t.check(original.isChecked)
+        t.check(!original.checked.canonicalNumericValues.isEmpty)
+        t.equal(original.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        let prefix = "// 中😀\n"
+        t.check(prefix.utf8.count != prefix.utf16.count)
+        let work = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: prefix)], version: 1)
+        let syntax = service.snapshot
+        t.check(!syntax.isChecked)
+        t.check(syntax.checked.types.isEmpty)
+        t.check(syntax.checked.canonicalNumericValues.isEmpty && syntax.checked.numericCoercions.isEmpty)
+        guard let current = service.accept(work.run()) else { t.check(false, "current check is accepted"); return }
+        let fresh = DeskLanguageService(openFile: file, files: [file: prefix + text]).snapshot
+        t.equal(current.diagnostics, fresh.diagnostics)
+        t.equal(metadata(current.checked), metadata(fresh.checked))
+        for key in original.checked.canonicalNumericValues.keys {
+            t.check(current.checked.canonicalNumericValues[key] == nil && current.tree.resolve(key) == nil)
+        }
+        let stale = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// old\n")], version: 2)
+        let newest = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// fresh\n")], version: 3)
+        t.check(service.accept(stale.run()) == nil)
+        guard let latest = service.accept(newest.run()) else { t.check(false, "latest check is accepted"); return }
+        let latestFresh = DeskLanguageService(openFile: file, files: [file: latest.text]).snapshot
+        t.equal(latest.diagnostics, latestFresh.diagnostics)
+        t.equal(metadata(latest.checked), metadata(latestFresh.checked))
+        t.equal(latest.checked.canonicalNumericValues.count, original.checked.canonicalNumericValues.count)
+        t.equal(latest.checked.numericCoercions.count, original.checked.numericCoercions.count)
     }
 }

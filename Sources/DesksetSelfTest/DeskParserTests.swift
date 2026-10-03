@@ -248,4 +248,98 @@ func runDeskParserTests(_ t: TestRunner) {
         // Every grammar slot the parser names is a display-name id.
         t.check(SyntaxSlot.allCases.allSatisfy { $0.rawValue.hasPrefix("slot:") })
     }
+
+    t.suite("Desk: parser — canonical expression references and types") {
+        func nodes(_ tree: SyntaxTree, kind: SyntaxKind) -> [PositionedNode] {
+            var found: [PositionedNode] = []
+            var stack = [tree.rootNode]
+            while let node = stack.popLast() {
+                if node.kind == kind { found.append(node) }
+                stack.append(contentsOf: node.childNodes.reversed())
+            }
+            return found
+        }
+        func verify(_ tree: SyntaxTree, _ selected: [PositionedNode]) {
+            let table = DeskNodeTable(tree: tree)
+            let ids = selected.map(tree.id)
+            t.equal(Set(ids).count, selected.count, "these legal nested expressions have distinct canonical keys")
+            for node in selected {
+                let id = tree.id(of: node)
+                t.equal(node.quickTextRange, node.textRange)
+                t.equal(id.utf8Start, node.textRange.lowerBound)
+                t.equal(id.utf8End, node.textRange.upperBound)
+                t.equal(tree.resolve(id)?.range, node.range, "resolve must return this node, not its enclosing expression")
+                t.equal(tree.quickResolve(id)?.range, node.range)
+                let indexes = table.indexes(of: id)
+                t.equal(indexes.count, 1)
+                if let index = indexes.first {
+                    t.equal(table.id(index), id)
+                    t.equal(table.entries[index].positioned.range, node.range)
+                }
+            }
+        }
+
+        let prefix = "widget {\n    computed result = ("
+        let text = prefix + "1 / 0 < 1)\n    Text(\"{result}\")\n}\n"
+        let checked = deskCheck(text)
+        let tree = checked.tree
+        t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        let binary = nodes(tree, kind: .binaryExpr)
+        let start = prefix.utf8.count
+        t.equal(binary.map(\.textRange), [start..<(start + 9), start..<(start + 5)])
+        t.equal(binary.map { checked.types[tree.id(of: $0)]?.type }, [.bool, .number(.plain)])
+        verify(tree, binary)
+        if let outer = binary.first, let inner = binary.last, binary.count == 2 {
+            let outerID = tree.id(of: outer), innerID = tree.id(of: inner)
+            let legacy = NodeID(kind: .binaryExpr, utf8Start: start, treeVersion: tree.version)
+            t.equal(legacy.utf8End, nil)
+            t.equal(legacy.description, "binaryExpr@\(start)#\(tree.version)")
+            t.equal(innerID.description, "binaryExpr@\(start)..<\(start + 5)#\(tree.version)")
+            t.equal(Set([legacy, innerID, outerID]).count, 3, "nil is a distinct key, never an equality wildcard")
+            t.equal(tree.resolve(legacy)?.range, outer.range, "the old start-only locator keeps its outermost behavior")
+            t.equal(tree.quickResolve(legacy)?.range, outer.range)
+            t.equal(DeskNodeTable(tree: tree).indexes(of: legacy), [])
+            t.equal(checked.types[legacy], nil)
+            let absent = NodeID(kind: .binaryExpr, utf8Start: start, treeVersion: tree.version, utf8End: start + 6)
+            t.check(tree.resolve(absent) == nil && tree.quickResolve(absent) == nil)
+            t.equal(DeskNodeTable(tree: tree).indexes(of: absent), [])
+            let otherVersion = NodeID(kind: innerID.kind, utf8Start: innerID.utf8Start,
+                                      treeVersion: tree.version + 1, utf8End: start + 5)
+            t.check(innerID != otherVersion)
+            t.check(tree.resolve(otherVersion) == nil && tree.quickResolve(otherVersion) == nil)
+        }
+        let declarations = nodes(tree, kind: .declaration)
+        t.equal(declarations.count, 1)
+        if let declaration = declarations.first {
+            t.equal(tree.id(of: declaration), NodeID(kind: .declaration, utf8Start: declaration.textRange.lowerBound,
+                                                    treeVersion: tree.version))
+            t.equal(tree.id(of: declaration).utf8End, nil, "non-expression keys keep the three-part contract")
+        }
+
+        // Real catalog value members and methods. Each nested member/call must keep its own metadata and locator.
+        let chains: [(String, SyntaxKind, [String], [DeskType])] = [
+            ("system.name.trimmed.length", .memberExpr,
+             ["system.name.trimmed.length", "system.name.trimmed", "system.name"], [.number(.plain), .string, .string]),
+            (#"time.now.in("UTC").in("UTC")"#, .callExpr,
+             [#"time.now.in("UTC").in("UTC")"#, #"time.now.in("UTC")"#], [.date, .date]),
+        ]
+        for (expression, kind, spans, types) in chains {
+            let prefix = "widget {\n    computed value = "
+            let checked = deskCheck(prefix + expression + "\n    Text(\"{value}\")\n}\n")
+            t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [], expression)
+            let chain = nodes(checked.tree, kind: kind)
+            t.equal(chain.map(\.textRange), spans.map { prefix.utf8.count..<(prefix.utf8.count + $0.utf8.count) })
+            t.equal(chain.map { checked.types[checked.tree.id(of: $0)]?.type }, types.map(Optional.some))
+            verify(checked.tree, chain)
+        }
+
+        let broken = deskParse("widget { computed result = 1 / }")
+        t.equal(broken.diagnostics.filter { $0.severity == .error }.map(\.id), [.missingOperand])
+        let incomplete = nodes(broken, kind: .binaryExpr)
+        t.equal(incomplete.count, 1)
+        verify(broken, incomplete)
+        let number = nodes(broken, kind: .numberLiteral)
+        t.equal(number.count, 1)
+        verify(broken, number)
+    }
 }

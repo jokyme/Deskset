@@ -233,14 +233,14 @@ extension Meter {
     /// have: noted once as a compatibility issue and logged once, and the meter draws nothing.
     func noteMissingSymbol(_ path: String?) {
         guard let path, let symbol = MacSymbol(path: path) else { return }
-        skin.noteMissingSymbol(symbol, section: name)
+        sectionContext.noteMissingSymbol(symbol, section: name)
     }
 
     /// Takes back the note of a missing symbol the meter no longer shows (a measure's value named it, and now names
     /// another picture). Nothing for a file, or a symbol the host has.
     func withdrawMissingSymbol(_ path: String?) {
         guard let path, let symbol = MacSymbol(path: path) else { return }
-        skin.removeIssue(Skin.missingSymbolNote(symbol, section: name))
+        sectionContext.removeIssue(Skin.missingSymbolNote(symbol, section: name))
     }
 
     /// Meters that cannot draw symbols (Bitmap, Rotator, Histogram) note an `sf:` image option once and draw nothing.
@@ -248,7 +248,7 @@ extension Meter {
     func rejectSymbol(_ written: String, option: String) -> Bool {
         guard MacSymbol.isSymbolName(written) else { return false }
         let value = written.trimmingCharacters(in: .whitespaces)
-        skin.addIssue("[\(name)] \(option)=\(value): SF Symbols (sf:) are drawn by Image, Button and Bar meters and the "
+        sectionContext.addIssue("[\(name)] \(option)=\(value): SF Symbols (sf:) are drawn by Image, Button and Bar meters and the "
                       + "skin background only")
         return true
     }
@@ -264,12 +264,19 @@ extension Skin {
 
     /// See `Meter.noteMissingSymbol`.
     func noteMissingSymbol(_ symbol: MacSymbol, section: String) {
-        let message = Skin.missingSymbolNote(symbol, section: section)
-        addIssue(message)
-        logOnce(message, level: .warning)
+        (self as any SectionContext).noteMissingSymbol(symbol, section: section)
     }
 
     static func missingSymbolNote(_ symbol: MacSymbol, section: String) -> String {
         "[\(section)] sf:\(symbol.name): there is no SF Symbol called “\(symbol.name)” on this Mac"
+    }
+}
+
+extension SectionContext {
+    /// The same issue and once-only warning for a missing symbol, owned by either runtime.
+    func noteMissingSymbol(_ symbol: MacSymbol, section: String) {
+        let message = Skin.missingSymbolNote(symbol, section: section)
+        addIssue(message)
+        logOnce(message, level: .warning)
     }
 }

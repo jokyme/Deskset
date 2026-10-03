@@ -150,14 +150,14 @@ extension Meter {
     /// hit map, which keeps it: `SkinHitMap.Entry.glass`), even where the meter draws nothing (a Shape with a
     /// transparent fill, the corners around an Ellipse, a meter moved by a TransformationMatrix).
     public func isOnGlass(x: Double, y: Double) -> Bool {
-        skin.shownGlassRegion(of: self)?.contains(x: x, y: y) ?? false
+        sectionContext.shownGlassRegion(of: self)?.contains(x: x, y: y) ?? false
     }
 
     /// Reads the meter's `MacGlass…` options (see `Meter.readOptions`).
     func readGlassOptions() -> GlassOptions? {
         GlassOptions.read({ option($0) }) { value in
             guard !awaitsSectionVariables("MacGlass") else { return }
-            skin.logOnce("MacGlass=\(value) on [\(name)] is not None, Regular or Clear", level: .warning)
+            sectionContext.logOnce("MacGlass=\(value) on [\(name)] is not None, Regular or Clear", level: .warning)
         }
     }
 }

@@ -234,7 +234,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     @discardableResult
     static func deliver(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
-        let predicted = runtime.snapshot.hitMap.handles(kind, x: x, y: y)
+        let predicted = runtime.snapshot.hitMap.handles(kind, x: x, y: y, images: runtime)
         guard let live = runtime.send(.mouse(kind, x: x, y: y)) else { return predicted }
         SnapshotAudit.compare("handles(\(kind.rawValue)) at (\(x), \(y))", runtime, snapshot: predicted, live: live)
         return live
@@ -244,7 +244,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func hasAction(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
         return SnapshotAudit.check("hasAction(\(kind.rawValue)) at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.hasAction(kind, x: x, y: y),
+                                   snapshot: c.view.displayedHitMap(runtime).hasAction(kind, x: x, y: y, images: runtime),
                                    live: { $0.hasAction(kind, x: x, y: y) })
     }
 
@@ -253,7 +253,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func isOnButton(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
         return SnapshotAudit.check("isOnButton at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.isOnButton(x: x, y: y),
+                                   snapshot: c.view.displayedHitMap(runtime).isOnButton(x: x, y: y, images: runtime),
                                    live: { $0.isOnButton(x: x, y: y) })
     }
 
@@ -261,7 +261,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func isInDragArea(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
         return SnapshotAudit.check("isInDragArea at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.isInDragArea(x: x, y: y),
+                                   snapshot: c.view.displayedHitMap(runtime).isInDragArea(x: x, y: y),
                                    live: { $0.isInDragArea(x: x, y: y) })
     }
 
@@ -502,7 +502,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func cursorName(_ c: SkinWindowController, x: Double, y: Double) -> String? {
         let runtime = c.runtime
         return SnapshotAudit.check("cursor at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.pointerCursorName(at: x, y),
+                                   snapshot: c.view.displayedHitMap(runtime).pointerCursorName(at: x, y, images: runtime),
                                    live: { $0.pointerCursorName(x: x, y: y) })
     }
 
@@ -527,11 +527,24 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// snapshot (`SkinHitMap.toolTipAreas`: a meter's area includes its glass), the text is read when the tooltip
     /// appears. Called when the snapshot's areas change and when the window follows a new size; AppKit is only touched
     /// when the areas change.
+    /// Immutable hit/tooltip values of completed layer content. Bitmap mode keeps its existing snapshot path.
+    private var layerHitMap: SkinHitMap?
+
+    func takeLayerHitMap(_ map: SkinHitMap) {
+        precondition(Thread.isMainThread)
+        layerHitMap = map
+        updateToolTips()
+    }
+
+    private func displayedHitMap(_ runtime: SkinRuntime) -> SkinHitMap {
+        layerHitMap ?? runtime.snapshot.hitMap
+    }
+
     func updateToolTips() {
         var rects: [CGRect] = []
         if let c = controller, !c.isStopped, !c.state.clickThrough {
             let runtime = c.runtime
-            rects = SnapshotAudit.check("tooltip areas", runtime, snapshot: runtime.snapshot.toolTipAreas,
+            rects = SnapshotAudit.check("tooltip areas", runtime, snapshot: layerHitMap?.toolTipAreas.map(\.cgRect) ?? runtime.snapshot.toolTipAreas,
                                         live: { $0.toolTipAreas().map(\.cgRect) })
         }
         guard rects != toolTipRects else { return }
@@ -545,7 +558,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard let c = controller, !c.isStopped else { return nil }
         let runtime = c.runtime
         let info = SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
-                                       snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y),
+                                       snapshot: displayedHitMap(runtime).toolTipInfo(at: x, y, images: runtime),
                                        live: { $0.toolTipInfo(at: x, y) })
         guard let info else { return nil }
         return info.title.isEmpty ? info.text : "\(info.title)\n\(info.text)"

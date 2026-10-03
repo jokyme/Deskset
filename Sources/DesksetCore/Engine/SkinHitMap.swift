@@ -11,7 +11,7 @@ import Foundation
 
 /// The area where the mouse finds one meter (`Meter.hitTest`), as a value: it can be kept, compared and tested on any
 /// thread.
-public enum MouseShape: Equatable {
+public enum MouseShape: Equatable, Sendable {
     /// Found nowhere: a hidden Shape meter, a Shape turned by a matrix that cannot be undone, a Button without an image.
     case nowhere
     /// The frame (most meters).
@@ -35,7 +35,7 @@ public enum MouseShape: Equatable {
 
 /// A Shape meter's mouse area (manual: Shape → Mouse Detection on Shapes): any solid part of its shapes, even outside
 /// the frame, or its own SolidColor background; its TransformationMatrix moves both.
-public struct ShapeMouseShape: Equatable {
+public struct ShapeMouseShape: Equatable, Sendable {
     /// The meter's frame (skin coordinates): where the background is.
     public var frame: SkinRect
     /// Where the shapes start: the frame's corner after Padding.
@@ -77,7 +77,7 @@ public struct ShapeMouseShape: Equatable {
 
 /// A Button meter's mouse area: the non-transparent pixels of the normal frame of its image, or of the frame on screen
 /// (see `ButtonMeter.hitTest`, which says why both).
-public struct ButtonMouseShape: Equatable {
+public struct ButtonMouseShape: Equatable, Sendable {
     /// The image file (or `sf:` symbol).
     public var path: String
     /// Where the frame is drawn (skin coordinates, one frame big).
@@ -135,19 +135,22 @@ enum MouseHit {
 /// the meters the mouse can find with what they do there, the `[Rainmeter]` section's mouse actions and cursor, the
 /// tooltips, the drag margins and the skin's size. Its answers are the live skin's (`Skin.hasAction`,
 /// `Skin.mouseCursorName`, `Skin.toolTipInfo`, `Skin.isInDragArea`, `Skin.isOnButton`): the same rules, on the values
-/// they read. Built on the skin's owner (`Skin.makeHitMap()`); read anywhere.
-public struct SkinHitMap: Equatable {
+/// they read. Built on the skin's owner (`Skin.makeHitMap()`); read anywhere. Image queries are supplied when asking
+/// a question, so the map keeps no reference to a skin, its host or an image service.
+public struct SkinHitMap: Equatable, Sendable {
     /// What one mouse action does at a meter or the skin: none (not defined or cleared: the event goes on to what is
     /// behind), caught (disabled, or only empty brackets like `[]`: the event stops there and nothing runs) or runs.
-    public enum Action: UInt8 {
+    public enum Action: UInt8, Sendable {
         case absent, caught, runs
     }
 
     /// One meter the mouse can find: it has a mouse action, a tooltip or `MouseActionCursor=0`, or is a Button. Hidden
     /// meters are left out (the mouse never finds them). Immutable, so it can be read on any thread; a class, so the
     /// lookups that walk the entries on every mouse move do not copy them.
-    public final class Entry: Equatable {
+    public final class Entry: Equatable, Sendable {
         public let name: String
+        /// Shared-program occurrence identity. Legacy meter lookups keep their original name and nil default.
+        public let elementID: ElementID?
         public let frame: SkinRect
         /// `Meter.hitTest`'s area.
         public let shape: MouseShape
@@ -167,8 +170,9 @@ public struct SkinHitMap: Equatable {
 
         public init(name: String, frame: SkinRect, shape: MouseShape, container: MouseShape?, glass: GlassRegion?,
                     isButton: Bool, actions: [MouseEventKind: Action], cursor: Bool, cursorName: String,
-                    toolTip: ToolTipInfo?) {
+                    toolTip: ToolTipInfo?, elementID: ElementID? = nil) {
             self.name = name
+            self.elementID = elementID
             self.frame = frame
             self.shape = shape
             self.container = container
@@ -185,7 +189,8 @@ public struct SkinHitMap: Equatable {
         public static func == (a: Entry, b: Entry) -> Bool {
             a === b || (a.name == b.name && a.frame == b.frame && a.shape == b.shape && a.container == b.container
                         && a.glass == b.glass && a.isButton == b.isButton && a.actions == b.actions
-                        && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip)
+                        && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip
+                        && a.elementID == b.elementID)
         }
     }
 
@@ -206,9 +211,6 @@ public struct SkinHitMap: Equatable {
     public var toolTipAreas: [SkinRect] = []
     /// Some tooltip shows measure values (`%1`…): it changes with them.
     public var toolTipsReadMeasures = false
-    /// Answers a Button's pixels (the skin's host, which asks the thread-safe image cache). Not compared.
-    public var images: ImageQueriesReference = ImageQueriesReference(nil)
-
     /// Most tooltip areas one skin registers with its window.
     public static let maxToolTipAreas = 512
 
@@ -218,52 +220,53 @@ public struct SkinHitMap: Equatable {
 
     // MARK: Answers
 
-    /// `Meter.isHit(x:y:precise:)` of the entry's meter.
-    public func isHit(_ e: Entry, x: Double, y: Double, precise: Bool) -> Bool {
+    /// `Meter.isHit(x:y:precise:)` of the entry's meter. `images` answers Button pixels, including those of a
+    /// container; nil keeps the engine's fallback that unknown pixels are opaque.
+    public func isHit(_ e: Entry, x: Double, y: Double, precise: Bool, images: SkinImageQueries?) -> Bool {
         MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: e.isButton, glass: e.glass, frame: e.frame,
-                       shape: { e.shape }, container: { e.container }, images: images.value)
+                       shape: { e.shape }, container: { e.container }, images: images)
     }
 
     /// `Meter.isHit(x:y:)`: a Button's mouse actions use its frame, other meters their area.
-    public func isHit(_ e: Entry, x: Double, y: Double) -> Bool {
-        isHit(e, x: x, y: y, precise: !e.isButton)
+    public func isHit(_ e: Entry, x: Double, y: Double, images: SkinImageQueries?) -> Bool {
+        isHit(e, x: x, y: y, precise: !e.isButton, images: images)
     }
 
     /// `Skin.meter(at:_:handling:)`: the topmost meter hit at the point that does something for `kind`.
-    public func entry(at x: Double, _ y: Double, handling kind: MouseEventKind) -> Entry? {
-        entries.first { $0.action(kind) != .absent && isHit($0, x: x, y: y) }
+    public func entry(at x: Double, _ y: Double, handling kind: MouseEventKind, images: SkinImageQueries?) -> Entry? {
+        entries.first { $0.action(kind) != .absent && isHit($0, x: x, y: y, images: images) }
     }
 
     /// `Skin.hasAction`: a click there runs (or is caught by) an action.
-    public func hasAction(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
-        entry(at: x, y, handling: kind) != nil || skinAction(kind) != .absent
+    public func hasAction(_ kind: MouseEventKind, x: Double, y: Double, images: SkinImageQueries?) -> Bool {
+        entry(at: x, y, handling: kind, images: images) != nil || skinAction(kind) != .absent
     }
 
     /// What `Skin.mouseEvent(kind…)` answers — whether an action ran or caught the event, or a Button took it — for an
     /// event that is not the release of a press a Button holds (the engine gives that release to the Button first).
-    public func handles(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
-        for e in entries where isHit(e, x: x, y: y) {
+    public func handles(_ kind: MouseEventKind, x: Double, y: Double, images: SkinImageQueries?) -> Bool {
+        for e in entries where isHit(e, x: x, y: y, images: images) {
             // A Button takes a press on its pixels itself, or leaves it to its own action: handled either way.
-            if e.isButton && kind == .leftDown && e.shape.contains(x: x, y: y, images: images.value) { return true }
+            if e.isButton && kind == .leftDown && e.shape.contains(x: x, y: y, images: images) { return true }
             if e.action(kind) != .absent { return true }
         }
         return skinAction(kind) != .absent
     }
 
     /// The topmost Button there (its frame or glass), the one the engine gives a click first.
-    public func topButton(at x: Double, _ y: Double) -> Entry? {
-        entries.first { $0.isButton && isHit($0, x: x, y: y) }
+    public func topButton(at x: Double, _ y: Double, images: SkinImageQueries?) -> Entry? {
+        entries.first { $0.isButton && isHit($0, x: x, y: y, images: images) }
     }
 
     /// `Skin.isOnButton`: the point is on the image of the topmost Button there.
-    public func isOnButton(x: Double, y: Double) -> Bool {
-        guard let button = topButton(at: x, y) else { return false }
-        return button.shape.contains(x: x, y: y, images: images.value)
+    public func isOnButton(x: Double, y: Double, images: SkinImageQueries?) -> Bool {
+        guard let button = topButton(at: x, y, images: images) else { return false }
+        return button.shape.contains(x: x, y: y, images: images)
     }
 
     /// `Skin.mouseCursorName`: the cursor the mouse actions ask for there.
-    public func mouseCursorName(at x: Double, _ y: Double) -> String? {
-        for e in entries where isHit(e, x: x, y: y) {
+    public func mouseCursorName(at x: Double, _ y: Double, images: SkinImageQueries?) -> String? {
+        for e in entries where isHit(e, x: x, y: y, images: images) {
             if !e.cursor { return nil }
             switch Skin.cursorTarget(e.action) {
             case .pointer: return e.cursorName.isEmpty ? "HAND" : e.cursorName
@@ -278,18 +281,18 @@ public struct SkinHitMap: Equatable {
     }
 
     /// `Skin.pointerCursorName`: over a Button's image the pointer of that Button, else the mouse actions' cursor.
-    public func pointerCursorName(at x: Double, _ y: Double) -> String? {
-        if let button = topButton(at: x, y), button.shape.contains(x: x, y: y, images: images.value) {
+    public func pointerCursorName(at x: Double, _ y: Double, images: SkinImageQueries?) -> String? {
+        if let button = topButton(at: x, y, images: images), button.shape.contains(x: x, y: y, images: images) {
             guard button.cursor else { return nil }
             return button.cursorName.isEmpty ? "HAND" : button.cursorName
         }
-        return mouseCursorName(at: x, y)
+        return mouseCursorName(at: x, y, images: images)
     }
 
     /// `Skin.toolTipInfo(at:)`: the tooltip of the topmost meter there that has one.
-    public func toolTipInfo(at x: Double, _ y: Double) -> ToolTipInfo? {
+    public func toolTipInfo(at x: Double, _ y: Double, images: SkinImageQueries?) -> ToolTipInfo? {
         guard !toolTipHidden else { return nil }
-        for e in entries where isHit(e, x: x, y: y) {
+        for e in entries where isHit(e, x: x, y: y, images: images) {
             if let tip = e.toolTip { return tip }
         }
         return nil
@@ -300,21 +303,12 @@ public struct SkinHitMap: Equatable {
         Skin.isInDragArea(x: x, y: y, margins: dragMargins, width: width, height: height)
     }
 
-    /// Everything but the Button pixels' source.
+    /// The map's values, independent of the image service used to query them.
     public static func == (a: SkinHitMap, b: SkinHitMap) -> Bool {
         a.entries == b.entries && a.skinActions == b.skinActions && a.skinCursor == b.skinCursor
             && a.skinCursorName == b.skinCursorName && a.toolTipHidden == b.toolTipHidden && a.width == b.width
             && a.height == b.height && a.dragMargins == b.dragMargins && a.toolTipAreas == b.toolTipAreas
             && a.toolTipsReadMeasures == b.toolTipsReadMeasures
-    }
-}
-
-/// A weak reference to what answers a Button's pixels, so a hit map kept by the window does not keep its skin's host.
-public struct ImageQueriesReference {
-    public private(set) weak var value: SkinImageQueries?
-
-    public init(_ value: SkinImageQueries?) {
-        self.value = value
     }
 }
 
@@ -332,12 +326,24 @@ extension SkinHitMap.Action {
     }
 }
 
-extension Skin {
+/// Live facts consumed by the existing hit-map builder. No owner escapes into the resulting value.
+protocol HitMapSource: AnyObject {
+    var width: Double { get }
+    var height: Double { get }
+    var settings: SkinSettings { get }
+    var meters: [Meter] { get }
+    var rainmeterSection: RainmeterSection? { get }
+    var hitMapReadsMeasures: Bool { get set }
+    func assertOwned(_ entry: StaticString)
+    func shownGlassRegion(of meter: Meter) -> GlassRegion?
+}
+
+extension Skin: HitMapSource {}
+
+extension HitMapSource {
     /// What the mouse finds in the skin now (see `SkinHitMap`). On the skin's owner.
-    public func makeHitMap() -> SkinHitMap {
-        assertOwned()
+    func buildHitMap() -> SkinHitMap {
         var map = SkinHitMap()
-        map.images = ImageQueriesReference(host as? SkinImageQueries)
         map.width = width
         map.height = height
         map.dragMargins = settings.dragMargins
@@ -366,7 +372,7 @@ extension Skin {
                 glass: shownGlassRegion(of: m), isButton: m.handlesMouseItself, actions: actions,
                 cursor: m.mouseActionCursor, cursorName: m.mouseActionCursorName, toolTip: toolTip))
         }
-        map.toolTipAreas = toolTipAreas()
+        map.toolTipAreas = buildToolTipAreas()
         map.toolTipsReadMeasures = readsMeasures
         hitMapReadsMeasures = readsMeasures
         return map
@@ -376,7 +382,7 @@ extension Skin {
     /// `SkinHitMap.maxToolTipAreas`. A meter's area is its frame, cut off at its container's, plus its glass
     /// (`MacGlass`), which is part of the meter for the mouse (`Meter.isOnGlass`) also where it lies outside the frame:
     /// moved by a TransformationMatrix, or a Shape's Rectangle beyond it. None while `[Rainmeter]` hides tooltips.
-    public func toolTipAreas() -> [SkinRect] {
+    func buildToolTipAreas() -> [SkinRect] {
         var areas: [SkinRect] = []
         guard !settings.toolTipHidden else { return areas }
         for m in meters where !m.hidden && !m.toolTipHidden && !m.toolTipText.isEmpty {
@@ -403,6 +409,17 @@ extension Skin {
         }
         return areas
     }
+
+}
+
+extension Skin {
+    /// What the mouse finds in the skin now, captured on the original owner.
+    public func makeHitMap() -> SkinHitMap {
+        assertOwned()
+        return buildHitMap()
+    }
+
+    public func toolTipAreas() -> [SkinRect] { buildToolTipAreas() }
 
     /// Whether the point is on the image of the topmost Button meter there (transparent pixels are not the button), like
     /// the engine's dispatch of clicks (Buttons first, even under other meters): such a press never drags the window.
