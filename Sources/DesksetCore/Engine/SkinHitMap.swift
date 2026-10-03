@@ -326,10 +326,23 @@ extension SkinHitMap.Action {
     }
 }
 
-extension Skin {
+/// Live facts consumed by the existing hit-map builder. No owner escapes into the resulting value.
+protocol HitMapSource: AnyObject {
+    var width: Double { get }
+    var height: Double { get }
+    var settings: SkinSettings { get }
+    var meters: [Meter] { get }
+    var rainmeterSection: RainmeterSection? { get }
+    var hitMapReadsMeasures: Bool { get set }
+    func assertOwned(_ entry: StaticString)
+    func shownGlassRegion(of meter: Meter) -> GlassRegion?
+}
+
+extension Skin: HitMapSource {}
+
+extension HitMapSource {
     /// What the mouse finds in the skin now (see `SkinHitMap`). On the skin's owner.
-    public func makeHitMap() -> SkinHitMap {
-        assertOwned()
+    func buildHitMap() -> SkinHitMap {
         var map = SkinHitMap()
         map.width = width
         map.height = height
@@ -359,7 +372,7 @@ extension Skin {
                 glass: shownGlassRegion(of: m), isButton: m.handlesMouseItself, actions: actions,
                 cursor: m.mouseActionCursor, cursorName: m.mouseActionCursorName, toolTip: toolTip))
         }
-        map.toolTipAreas = toolTipAreas()
+        map.toolTipAreas = buildToolTipAreas()
         map.toolTipsReadMeasures = readsMeasures
         hitMapReadsMeasures = readsMeasures
         return map
@@ -369,7 +382,7 @@ extension Skin {
     /// `SkinHitMap.maxToolTipAreas`. A meter's area is its frame, cut off at its container's, plus its glass
     /// (`MacGlass`), which is part of the meter for the mouse (`Meter.isOnGlass`) also where it lies outside the frame:
     /// moved by a TransformationMatrix, or a Shape's Rectangle beyond it. None while `[Rainmeter]` hides tooltips.
-    public func toolTipAreas() -> [SkinRect] {
+    func buildToolTipAreas() -> [SkinRect] {
         var areas: [SkinRect] = []
         guard !settings.toolTipHidden else { return areas }
         for m in meters where !m.hidden && !m.toolTipHidden && !m.toolTipText.isEmpty {
@@ -396,6 +409,17 @@ extension Skin {
         }
         return areas
     }
+
+}
+
+extension Skin {
+    /// What the mouse finds in the skin now, captured on the original owner.
+    public func makeHitMap() -> SkinHitMap {
+        assertOwned()
+        return buildHitMap()
+    }
+
+    public func toolTipAreas() -> [SkinRect] { buildToolTipAreas() }
 
     /// Whether the point is on the image of the topmost Button meter there (transparent pixels are not the button), like
     /// the engine's dispatch of clicks (Buttons first, even under other meters): such a press never drags the window.

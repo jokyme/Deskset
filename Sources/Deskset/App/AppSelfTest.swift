@@ -95,6 +95,7 @@ enum AppSelfTest {
         ClippedRecipeInkSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)
+        RainmeterProgramSelfTests.run(t)
         SceneBitmapSelfTests.run(t)
         #if DEBUG
         SpriteDrawSelfTests.run(t)

@@ -1,5 +1,25 @@
 import Foundation
 
+/// Queried in projection order, without an eagerly copied owner state or retained owner.
+protocol SceneProjectionSource: AnyObject {
+    var meters: [Meter] { get }
+    var width: Double { get }
+    var height: Double { get }
+    var settings: SkinSettings { get }
+    func assertOwned(_ entry: StaticString)
+    func projectionGlass(_ source: SceneProjector.GlassSource) -> [GlassRegion]
+    func makeHitMap() -> SkinHitMap
+}
+
+extension Skin: SceneProjectionSource {
+    func projectionGlass(_ source: SceneProjector.GlassSource) -> [GlassRegion] {
+        switch source {
+        case .published: return glassRegions
+        case .current: return currentGlassRegions()
+        }
+    }
+}
+
 /// Captures a complete scene on the skin's owner. The projector keeps only its sequence number, so old scenes
 /// stay independent after the owner updates, refreshes or unloads. Drawing inputs are captured on every call:
 /// measure ranges and files can change without a meter's draw generation changing.
@@ -16,7 +36,12 @@ public final class SceneProjector {
     public init() {}
 
     public func project(_ skin: Skin, environment: SceneEnvironment, glassSource: GlassSource = .current) -> WidgetScene {
-        skin.assertOwned()
+        project(source: skin, environment: environment, glassSource: glassSource)
+    }
+
+    func project(source skin: any SceneProjectionSource, environment: SceneEnvironment,
+                 glassSource: GlassSource = .current) -> WidgetScene {
+        skin.assertOwned(#function)
         generation &+= 1
         let stamp = environment.stamp
         let ids = Dictionary(uniqueKeysWithValues: skin.meters.enumerated().map {
@@ -31,11 +56,7 @@ public final class SceneProjector {
                     container: meter.container.flatMap { ids[ObjectIdentifier($0)] },
                     dependencies: captureDependencies)
         }
-        let glass: [GlassRegion]
-        switch glassSource {
-        case .published: glass = skin.glassRegions
-        case .current: glass = skin.currentGlassRegions()
-        }
+        let glass = skin.projectionGlass(glassSource)
         let background = glass.map(DrawItem.glass) + backgroundItems(skin)
         return WidgetScene(generation: generation, size: SkinSize(width: skin.width, height: skin.height),
                            background: background, backgroundImageDependencies: captureDependencies(background),
@@ -97,7 +118,7 @@ public final class SceneProjector {
         }
     }
 
-    private func backgroundItems(_ skin: Skin) -> [DrawItem] {
+    private func backgroundItems(_ skin: any SceneProjectionSource) -> [DrawItem] {
         let settings = skin.settings
         let frame = SkinRect(width: skin.width, height: skin.height)
         switch settings.backgroundMode {
