@@ -299,7 +299,18 @@ extension Checker {
 
     func inferArithmetic(_ op: PositionedToken, _ leftNode: PositionedNode, _ rightNode: PositionedNode,
                          _ node: PositionedNode, _ context: ExprContext, expected: DeskType?) -> Val {
-        var (l, r) = inferPair(leftNode, rightNode, context)
+        let (l, r) = inferPair(leftNode, rightNode, context)
+        if mute == 0, !l.error, !r.error, l.isNumber, r.isNumber,
+           [.plus, .minus, .percent].contains(op.kind), hasOpenDimension(l) || hasOpenDimension(r) {
+            deferredNumericUses.append(.arithmetic(op, leftNode, rightNode, node, l, r))
+        }
+        return arithmeticValues(op, leftNode, rightNode, node, left: l, right: r)
+    }
+
+    /// The original arithmetic rules, also used to finish an already inferred open-slot relation.
+    func arithmeticValues(_ op: PositionedToken, _ leftNode: PositionedNode, _ rightNode: PositionedNode,
+                          _ node: PositionedNode, left: Val, right: Val) -> Val {
+        var l = left, r = right
         var deps = l.deps.union(r.deps)
         func result(_ v: Val) -> Val {
             var out = v

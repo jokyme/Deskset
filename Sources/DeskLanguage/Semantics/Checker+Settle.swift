@@ -100,7 +100,44 @@ extension Checker {
         if numericValues[key] != nil { numericSlots[key] = slot }
     }
 
-    /// Materialize only facts/relations recorded by inference. No names are resolved and no algebra is rerun.
+    /// Finish only relations explicitly deferred by the original inference. Nested relations were recorded
+    /// first, so their confirmed values/adoptions are available to the enclosing operation/assignment.
+    private func completeDeferredNumericUses() {
+        func resolved(_ original: Val, at node: PositionedNode? = nil) -> Val? {
+            var value = node.flatMap { numericValues[id($0)] } ?? original
+            if value.error { return nil }
+            if let slot = value.open, slot < openSlots.count {
+                let open = openSlots[slot]
+                if case .declaration(let decl) = open.owner, decl.poisoned { return nil }
+                if open.kind == .dimension, let type = open.settled { value.type = type }
+                if let base = open.settledBase { value.base = base }
+            }
+            value.open = nil
+            if let node, numericCoercions[id(node)] == .percentAsFraction { value.type = .number(.plain) }
+            return value
+        }
+        func hasError(_ node: PositionedNode) -> Bool {
+            diagnostics.contains { $0.severity == .error && $0.range.overlaps(range(node)) }
+        }
+        for use in deferredNumericUses {
+            switch use {
+            case .arithmetic(let op, let leftNode, let rightNode, let node, let left, let right):
+                guard !hasError(node), let l = resolved(left, at: leftNode), let r = resolved(right, at: rightNode) else { continue }
+                let value = arithmeticValues(op, leftNode, rightNode, node, left: l, right: r)
+                let key = id(node)
+                if value.error {
+                    numericValues.removeValue(forKey: key)
+                    types.removeValue(forKey: key)
+                    numericCoercions.removeValue(forKey: key)
+                } else { numericValues[key] = value }
+            case .assignment(let node, let target, let original, let what, let context):
+                guard !hasError(node), let target = resolved(target), let value = resolved(original, at: node) else { continue }
+                _ = coerce(value, node, to: target.type, what: what, context)
+            }
+        }
+    }
+
+    /// Materialize only facts/relations recorded by inference. No names or expressions are inferred again.
     func completeNumericMetadata() {
         // Slider/Stepper slots are opened by the option checker after their arguments have been checked.
         for slot in openSlots.indices {
@@ -109,7 +146,8 @@ extension Checker {
                 for (key, node) in numericNodes where range(node) == literal.range { numericSlots[key] = slot }
             }
         }
-        var values = numericValues
+        let originalValues = numericValues
+        var values = originalValues
         for key in values.keys {
             guard var value = values[key] else { continue }
             if let slot = numericSlots[key], slot < openSlots.count {
@@ -152,7 +190,10 @@ extension Checker {
             return value.base
         }
         for key in values.keys { _ = resolveBase(key) }
-        for (key, original) in numericValues {
+        numericValues = values
+        completeDeferredNumericUses()
+        values = numericValues
+        for (key, original) in originalValues {
             guard let value = values[key] else {
                 types.removeValue(forKey: key)
                 numericCoercions.removeValue(forKey: key)

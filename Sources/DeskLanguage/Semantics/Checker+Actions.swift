@@ -176,6 +176,9 @@ extension Checker {
         let value = inferValue(valueNode, valueContext, expected: targetVal?.type)
         guard assignable, let targetVal, !value.error else { return }
         if let slot = targetVal.open {
+            if mute == 0, targetVal.isNumber, value.isNumber {
+                deferredNumericUses.append(.assignment(valueNode, targetVal, value, .code(text(target.node)), valueContext))
+            }
             recordUse(slot, of: value, valueNode, description: LocalizedText("assigned \(catalog.displayName(for: value.type).en)",
                                                                            "被赋值为\(catalog.displayName(for: value.type).zh)"))
         } else if let slot = value.open {
