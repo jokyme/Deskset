@@ -82,6 +82,94 @@ func runRainmeterProgramTests(_ t: TestRunner) {
                                         clock: time.clock, executor: time, effects: effects)
     }
 
+    t.suite("Engine: Rainmeter live owner: injected services use the real main executor") {
+        let (skins, file, _) = try input("main-services", relative: "App/Counter/Counter.ini")
+        let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        let program = try convert(file, skins, time, effects, config: "App\\Counter")
+        let random = SkinRandom(seed: 974), text = RainmeterFixtureText()
+        var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(program: program,
+            executor: MainSkinExecutor.shared, clock: time.clock, environment: RecordingSkinHost.fixedEnvironment,
+            system: FakeSystem(), effects: LiveSideEffects.shared, random: random, text: text)
+        weak var owner = runtime
+        weak var meter = runtime?.meters.first
+        weak var measure = runtime?.orderedMeasures.first
+        t.check(runtime?.executor === MainSkinExecutor.shared)
+        t.check(runtime?.sideEffects === LiveSideEffects.shared)
+        t.check(runtime?.random === random, "uses the explicitly supplied random stream")
+        t.equal(runtime?.runsInVirtualTime, false)
+        t.equal(runtime?.clock(), time.clock.uptime())
+        var environment = RecordingSkinHost.fixedEnvironment
+        environment.locale = Locale(identifier: "fr_FR")
+        runtime?.takeEnvironment(environment)
+        t.equal(runtime?.locale.identifier, "fr_FR")
+        try runtime?.update()
+        t.equal(runtime?.orderedMeasures.first?.value, 0)
+        try runtime?.update()
+        t.equal(runtime?.orderedMeasures.first?.value, 1)
+        t.equal(text.cycles, [0, 1])
+        runtime?.close(); runtime = nil
+        t.check(owner == nil && meter == nil && measure == nil, "kernels borrow the independent owner")
+        t.equal(effects.records, [])
+    }
+
+    t.suite("Engine: Rainmeter live owner: pause wake and synchronous completion retain the original tick order") {
+        for name in ["Counter", "Observer"] {
+            let (skins, file, _) = try input("lifecycle-" + name, relative: "App/\(name)/\(name).ini")
+            let conversion = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try convert(file, skins, conversion, effects, config: "App\\" + name)
+            let oldTime = try clock(), time = try clock()
+            let oldHost = RainmeterFixtureHost(RainmeterFixtureText())
+            let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: oldHost)
+            skin.runInVirtualTime(oldTime); skin.sideEffects = effects
+            try skin.load()
+            let oldClock = TickScheduler(), target = RainmeterSkinTick(skin)
+            var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(program: program, executor: time,
+                clock: time.clock, environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(),
+                effects: effects, random: SkinRandom(seed: 1), text: RainmeterFixtureText())
+            weak var weakOwner = runtime
+            var completions: [Int] = []
+            runtime?.didUpdate = { [weak runtime] in
+                guard let runtime else { return }
+                completions.append(runtime.updateCount)
+                t.check(runtime.width > 0 && runtime.height > 0, "completion follows layout")
+            }
+            func compare() {
+                t.equal(runtime?.updateCount, skin.updateCount)
+                t.equal(runtime?.orderedMeasures.map(\.value), skin.measures.map(\.value))
+                t.equal(runtime?.isPaused, oldClock.isPaused)
+                t.equal(time.pendingCount, oldTime.pendingCount)
+            }
+            oldClock.pause(); runtime?.pause()
+            skin.update(); try runtime?.update()
+            oldClock.startTimer(for: target); try runtime?.startTimer(); compare()
+            oldTime.advance(by: 2); time.advance(by: 2); compare()
+            oldClock.resume(updateNow: false, target: target); try runtime?.resume(updateNow: false)
+            oldTime.advance(by: 0.5); time.advance(by: 0.5)
+            oldClock.resume(updateNow: true, target: target); try runtime?.resume(updateNow: true); compare()
+            oldTime.advance(by: 0.5); time.advance(by: 0.5); compare()
+            oldClock.pause(); runtime?.pause()
+            oldTime.advance(by: 3); time.advance(by: 3); compare()
+            oldClock.wake(target: target); try runtime?.wake(); compare()
+            oldClock.wake(target: target); try runtime?.wake(); compare()
+            t.equal(completions, Array(1...skin.updateCount), "one post-layout notification per actual update")
+            // The callback can stop a just-resuming clock, at its original synchronous reentry point.
+            runtime?.pause()
+            runtime?.didUpdate = { [weak runtime] in runtime?.pause() }
+            try runtime?.resume(updateNow: true)
+            if name == "Counter" { t.equal(runtime?.isPaused, true); t.equal(time.pendingCount, 0) }
+            runtime?.pause()
+            runtime?.didUpdate = { [weak runtime] in runtime?.close() }
+            try runtime?.resume(updateNow: true)
+            if name == "Counter" { t.equal(runtime?.isClosed, true) }
+            runtime?.close(); runtime = nil
+            oldClock.cancel(); skin.close()
+            t.check(weakOwner == nil)
+            t.equal(time.pendingCount, 0)
+            t.equal(effects.records, [])
+            withExtendedLifetime(oldHost) {}
+        }
+    }
+
     t.suite("Engine: Rainmeter program: original Anchors survives conversion and runs without either Skin owner") {
         let (skins, file, bytes) = try input("timeline")
         let conversionTime = try clock()

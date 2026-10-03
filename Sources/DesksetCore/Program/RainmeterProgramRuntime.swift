@@ -8,7 +8,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
     let skinClock: SkinClock
     let system: SystemDataSource
     let sideEffects: SideEffects
-    private let environment: SkinEnvironment
+    private var environment: SkinEnvironment
     private let textService: (any RainmeterTextMeasuring)?
     private let layout = LayoutDriver()
     private let projector = SceneProjector()
@@ -30,7 +30,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
     package private(set) var failure: RainmeterProgramError?
     package private(set) var logs: [String] = []
     private var issues: Set<String> = []
-    let random = SkinRandom(seed: 1)
+    let random: SkinRandom
     var settings: SkinSettings { program.window.settings }
     var sources: IniSourceMap { program.sourceMap }
     var counter: Int { updateCount }
@@ -39,22 +39,36 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
     var directory: URL { program.fileURL.deletingLastPathComponent() }
     var skinsDirectory: URL { program.skinsDirectory }
     var resourcesDirectory: URL { program.resourcesDirectory }
-    var runsInVirtualTime: Bool { true }
+    var runsInVirtualTime: Bool { executor is VirtualTimeExecutor }
     var measureValues: MeasureValueOverride? { nil }
     var host: SkinHost? { nil }
     var rainmeterSection: RainmeterSection? { nil }
     var hitMapReadsMeasures = false
     package var updateMilliseconds: Int { settings.update }
 
-    package init(program: RainmeterProgram, executor: VirtualTimeExecutor, clock: SkinClock,
-                 environment: SkinEnvironment, system: SystemDataSource, effects: RecordingSideEffects,
-                 text: (any RainmeterTextMeasuring)?) throws {
+    /// A completed engine update, still on the owner. The App frame producer subscribes weakly.
+    package var didUpdate: (() -> Void)?
+    package var isPaused: Bool { scheduler.isPaused }
+
+    /// The verifier keeps its original deterministic convenience entry.
+    package convenience init(program: RainmeterProgram, executor: VirtualTimeExecutor, clock: SkinClock,
+                             environment: SkinEnvironment, system: SystemDataSource, effects: RecordingSideEffects,
+                             text: (any RainmeterTextMeasuring)?) throws {
+        try self.init(program: program, executor: executor, clock: clock, environment: environment,
+                      system: system, effects: effects, random: SkinRandom(seed: 1), text: text)
+    }
+
+    /// Services and scheduling belong to the caller's owner; no verifier executor or recording is required.
+    package init(program: RainmeterProgram, executor: SkinExecutor, clock: SkinClock,
+                 environment: SkinEnvironment, system: SystemDataSource, effects: SideEffects,
+                 random: SkinRandom, text: (any RainmeterTextMeasuring)?) throws {
         self.program = program
         self.executor = executor
         skinClock = clock
         self.environment = environment
         self.system = system
         sideEffects = effects
+        self.random = random
         textService = text
         assertOwned(#function)
         for section in program.sections { sectionIndex[section.name.lowercased()] = section.ini }
@@ -116,6 +130,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
             width = size.width
             height = size.height
         }
+        didUpdate?()
     }
 
     package func project(environment: SceneEnvironment) throws -> WidgetScene {
@@ -129,10 +144,35 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         try checkOpen()
         scheduler.startTimer(for: self)
     }
+    /// Published host facts, consumed on the owner; no window or AppKit query enters the engine.
+    package func takeEnvironment(_ environment: SkinEnvironment) {
+        assertOwned(#function)
+        guard !isClosed else { return }
+        self.environment = environment
+    }
+    package func pause() {
+        assertOwned(#function)
+        guard !isClosed else { return }
+        scheduler.pause()
+    }
+    package func resume(updateNow: Bool) throws {
+        assertOwned(#function)
+        try checkOpen()
+        scheduler.resume(updateNow: updateNow, target: self)
+        // An immediate update can reject a service synchronously. Do not leave its rearmed timer running.
+        if let failure { scheduler.cancel(); throw failure }
+    }
+    package func wake() throws {
+        assertOwned(#function)
+        try checkOpen()
+        scheduler.wake(target: self)
+        if let failure { scheduler.cancel(); throw failure }
+    }
     package func close() {
         assertOwned(#function)
         scheduler.cancel()
         isClosed = true
+        didUpdate = nil
     }
     package func updateForTick() {
         do { try update() }
