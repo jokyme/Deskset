@@ -18,11 +18,16 @@ protocol SectionContext: AnyObject {
     var locale: Locale { get }
     var directory: URL { get }
     var skinsDirectory: URL { get }
+    var resourcesDirectory: URL { get }
     var orderedMeasures: [Measure] { get }
     var sideEffects: SideEffects { get }
 
     func measure(named name: String) -> Measure?
     func absolutePath(_ raw: String, relativeTo base: URL?) -> String
+    func imageFilePath(_ name: String, imagePath: String) -> String
+    /// Nil means this owner has no text measurement service; the meter keeps its existing estimate.
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)?
+    func shownGlassRegion(of meter: Meter) -> GlassRegion?
     func allowsWebParserFileAccess(_ path: String) -> Bool
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
@@ -55,6 +60,10 @@ extension SectionContext {
 
 extension Skin: SectionContext {
     var orderedMeasures: [Measure] { measures }
+
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)? {
+        host?.textSize(text, style: style, wrapWidth: wrapWidth, for: self)
+    }
 
     func allowsWebParserFileAccess(_ path: String) -> Bool {
         WebParserMeasure.allowsFileAccess(path, self)

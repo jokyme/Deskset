@@ -61,7 +61,7 @@ public struct BarDraw: Equatable, Sendable {
 public extension ImageMeter {
     /// Captures the current drawing after layout, on the skin's owner.
     func lower() -> ImageDraw {
-        skin.assertOwned()
+        sectionContext.assertOwned(#function)
         return ImageDraw(contentFrame: contentFrame, path: imagePath, options: imageOptions,
                          maskPath: maskImagePath, maskOptions: maskOptions, preserveAspectRatio: preserveAspectRatio,
                          tile: tile, scaleMargins: scaleMargins, decodesAtDrawnSize: decodesAtDrawnSize)

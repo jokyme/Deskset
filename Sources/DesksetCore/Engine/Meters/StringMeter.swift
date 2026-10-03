@@ -40,7 +40,7 @@ public final class StringMeter: Meter {
     /// Unsupported `InlineSettingN=value` already reported (options are re-read on every update when dynamic).
     private var loggedSettings: Set<String> = []
     /// `@Resources/Fonts` of the root config (see `TextStyle.fontFolder`).
-    private lazy var fontFolder = skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true).path
+    private lazy var fontFolder = sectionContext.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true).path
 
     struct InlineRule: Hashable {
         var setting: InlineSetting
@@ -84,7 +84,7 @@ public final class StringMeter: Meter {
         let angle = double("Angle", 0)
         s.angle = angle.isFinite ? angle.truncatingRemainder(dividingBy: 2 * .pi) : 0
         s.antiAlias = antiAlias
-        s.accurateText = skin.settings.accurateText
+        s.accurateText = sectionContext.settings.accurateText
         s.fontFolder = fontFolder
         s.trailingSpaces = bool("TrailingSpaces", false)
 
@@ -126,7 +126,7 @@ public final class StringMeter: Meter {
         boundMeasures = [:]
         for entry in numberedOptions("MeasureName") {
             let measureName = entry.value.trimmingCharacters(in: .whitespaces)
-            boundMeasures[entry.index] = measureName.isEmpty ? .some(nil) : .some(skin.measure(named: measureName))
+            boundMeasures[entry.index] = measureName.isEmpty ? .some(nil) : .some(sectionContext.measure(named: measureName))
         }
         inlineRules = readInlineRules()
         s.inlineSpans = style.inlineSpans
@@ -146,7 +146,7 @@ public final class StringMeter: Meter {
             guard let setting = InlineSetting.parse(value) else {
                 let message = "[\(name)] InlineSetting\(suffix)=\(value) is not supported"
                 if loggedSettings.count < 64, loggedSettings.insert(message).inserted {
-                    skin.log(message, level: .warning)
+                    sectionContext.log(message, level: .warning)
                 }
                 continue
             }
@@ -271,7 +271,7 @@ public final class StringMeter: Meter {
         let result = StringMeter.inlineSpans(for: source, rules: inlineRules) { [weak self] pattern in
             // Bounded: a dynamic pattern built from changing values could otherwise log (and remember) forever.
             guard let self, self.loggedPatterns.count < 64, self.loggedPatterns.insert(pattern).inserted else { return }
-            self.skin.log("[\(self.name)] invalid InlinePattern: \(pattern)", level: .warning)
+            self.sectionContext.log("[\(self.name)] invalid InlinePattern: \(pattern)", level: .warning)
         }
         inlineCache = (source, inlineRules, result.text, result.spans)
         text = result.text
@@ -378,21 +378,24 @@ public final class StringMeter: Meter {
 
     public override func naturalSize() -> (width: Double, height: Double) {
         guard !text.isEmpty else { return emptyTextSize() }
-        guard let host = skin.host else {
-            let px = TextStyle.pixelSize(points: style.fontSize)
-            return (Double(text.count) * px * 0.6, px * 1.2)
-        }
         switch style.clip {
         case 2:
             let maxWidth = widthOption ?? clipStringW
-            var size = host.textSize(text, style: style, wrapWidth: maxWidth, for: skin)
+            guard var size = sectionContext.textSize(text, style: style, wrapWidth: maxWidth) else {
+                return unmeasuredTextSize()
+            }
             // A word longer than the (maximum) width is clipped, the meter does not grow past it.
             if let maxWidth { size.width = min(size.width, maxWidth) }
             if heightOption == nil, let maxHeight = clipStringH { size.height = min(size.height, maxHeight) }
             return size
         default:
-            return host.textSize(text, style: style, wrapWidth: nil, for: skin)
+            return sectionContext.textSize(text, style: style, wrapWidth: nil) ?? unmeasuredTextSize()
         }
+    }
+
+    private func unmeasuredTextSize() -> (width: Double, height: Double) {
+        let px = TextStyle.pixelSize(points: style.fontSize)
+        return (Double(text.count) * px * 0.6, px * 1.2)
     }
 
     /// Size of a meter whose text is empty.
@@ -406,11 +409,12 @@ public final class StringMeter: Meter {
     private func emptyTextSize() -> (width: Double, height: Double) {
         guard style.fontSize > 0, boundMeasures.values.contains(where: { $0?.valueUnavailable == true })
         else { return (0, 0) }
-        guard let host = skin.host else { return (0, TextStyle.pixelSize(points: style.fontSize) * 1.2) }
         var probe = style
         probe.inlineSpans = []
         // Any one-line text has the line height of the font; its width is not used.
-        return (0, host.textSize("X", style: probe, wrapWidth: nil, for: skin).height)
+        let height = sectionContext.textSize("X", style: probe, wrapWidth: nil)?.height
+            ?? TextStyle.pixelSize(points: style.fontSize) * 1.2
+        return (0, height)
     }
 
     public override func anchorOffset(width: Double, height: Double) -> (dx: Double, dy: Double) {
