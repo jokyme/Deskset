@@ -26,6 +26,7 @@ private func compiledDraws(_ scene: WidgetScene) -> [TextDraw] {
 }
 
 func runDeskCompilationTests(_ t: TestRunner) {
+    runDeskPaletteCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -123,7 +124,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"widget { Text("A").width(.fill).margin(1) }"#,
                      #"widget { Text("A").width(20, min: 10).margin(1) }"#,
                      #"widget { Text("A").offset(x: 2) }"#,
-                     #"widget { Text("A").color(.red) }"#,
+                     #"widget { Text("A").color(.red, if: true) }"#,
                      #"widget { Text("A").color(.dim, if: true) }"#,
                      #"widget { Text("A").font(.largeNumber).margin(1) }"#,
                      #"widget { Text("{cpu.usage}") }"#,
@@ -231,7 +232,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
                        #"Rectangle().size(12).stroke(.accent, dash: [2, 3])"#, #"Rectangle().size(12).fill(.accent).stroke(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
-                       #"Rectangle().size(12).fill(.red)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
+                       #"Rectangle().size(12).fill(.red, if: true)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
                        #"Rectangle().size(12).background(.accent)"#, #"Rectangle().size(12).opacity(0.5)"#,
                        #"Circle().size(12).fill(.accent).stroke(.white, dash: [2, 3])"#]
         for element in sources {
@@ -574,4 +575,58 @@ func runDeskCompilationTests(_ t: TestRunner) {
         }
     }
 
+}
+
+private func runDeskPaletteCompilationTests(_ t: TestRunner) {
+    let names = ["accent", "text", "dim", "faint", "separator", "red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink", "brown", "gray", "white", "black", "clear"]
+    let paint = RGBA(r: 23, g: 47, b: 71, a: 127)
+    let input = ProgramColorInput(colors: Dictionary(uniqueKeysWithValues: ProgramPaletteColor.allCases.map { ($0, paint) }))
+    t.suite("Desk: palette: every actual catalog color lowers to shared text fill and stroke") {
+        t.equal(Set(DeskCatalog.current.namedValues.filter { $0.type == "Color" }.map(\.name)), Set(names))
+        for name in names {
+            let source = "widget { Row(spacing: 0) { Text(\"色😀\").color(." + name + "); Rectangle().size(12).fill(." + name + "); Ellipse().size(12).stroke(." + name + ") } }"
+            let program = try compileFixture(t, source)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), colorInput: input) { _, style, _ in
+                t.equal(style.color, paint); return SkinSize(width: 8, height: 10)
+            }
+            guard scene.drawingItems.count == 3, case .fill(_, let fill) = scene.drawingItems[1],
+                  case .shape(let outline) = scene.drawingItems[2] else { return t.check(false, "all palette consumers") }
+            t.equal(compiledDraws(scene)[0].style.color, paint); t.equal(fill.color, paint)
+            t.equal(outline.shapes[0].stroke, .color(paint)); t.equal(outline.shapes[0].fill, .color(.clear))
+        }
+        // These are the original negative literals, including the full mixed-content rejection context.
+        for source in [#"widget { Text("A").color(.red) }"#,
+                       #"widget { Column { Text("must not paint partially"); Rectangle().size(12).fill(.red) } }"#] {
+            let program = try compileFixture(t, source)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), colorInput: input) { _, _, _ in SkinSize(width: 8, height: 10) }
+            t.equal(compiledDraws(scene)[0].style.color, paint)
+            if source.contains("must not") {
+                // The sibling keeps its default text semantic color, also supplied by this input.
+                guard case .fill(_, let fill)? = scene.drawingItems.last else { return t.check(false, "original red rectangle") }
+                t.equal(fill.color, paint); t.equal(compiledDraws(scene)[0].text, "must not paint partially")
+            } else { t.equal(compiledDraws(scene)[0].text, "A") }
+        }
+    }
+    t.suite("Desk: palette: future catalog colors and unsupported color facets reject the whole source") {
+        var catalog = DeskCatalog.current
+        var future = catalog.namedValues.first { $0.type == "Color" && $0.name == "red" }!
+        future.name = "futureHue"; catalog.namedValues.append(future)
+        let source = #"widget { Text("must not paint partially"); Rectangle().size(12).fill(.futureHue) }"#
+        let checked = deskCheck(source, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        let result = Desk.compile(checked, catalog: catalog)
+        t.check(result.program == nil && result.issues.first?.kind == .unsupported)
+        for source in [#"widget { Text("A").color(.red, if: true) }"#,
+                       #"widget { Column { Text("must not paint partially"); Rectangle().size(12).fill(.red, if: true) } }"#,
+                       ##"widget { Text("A").color(light: "#222222", dark: "#EEEEEE") }"##,
+                       #"widget { Rectangle().size(12).fill(gradient(.red, .blue)) }"#] {
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let result = Desk.compile(checked)
+            t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+    }
 }

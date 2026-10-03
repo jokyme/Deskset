@@ -36,7 +36,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil,
          previewClock: SkinClock = .live, previewExecutor: SkinExecutor = MainSkinExecutor.shared,
-         previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale) throws {
+         previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+         previewColors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:)) throws {
         self.file = file.standardizedFileURL
         self.app = app
         codeView = CodeEditorView(frame: NSRect(x: 0, y: 0, width: 760, height: 580))
@@ -66,7 +67,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             deskChecking = checking
             let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
                 checking?.imageResources(for: snapshot) ?? .pending
-            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale) { [weak self] snapshot in
+            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale, colors: previewColors) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true
             }
@@ -112,6 +113,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             }
             previewObservers.append((workspace, wake))
             let center = NotificationCenter.default
+            let colors = center.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak preview] _ in
+                preview?.refreshEnvironment()
+            }
+            previewObservers.append((center, colors))
             for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
                          NSNotification.Name.NSSystemClockDidChange] {
                 let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak preview] _ in

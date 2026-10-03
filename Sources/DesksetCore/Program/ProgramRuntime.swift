@@ -9,6 +9,7 @@ public enum ProgramRuntimeError: Error, Equatable {
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
     case invalidAssignment(Int)
     case invalidDateInput
+    case invalidColorInput, missingColorInput(ProgramPaletteColor)
 }
 
 /// The executable part of the shared runtime. It owns a program value, session variables and scene generations,
@@ -113,6 +114,7 @@ public struct ProgramRuntime: Sendable {
     /// It is used synchronously and is not retained. Graphics/font resources stay outside Core.
     public mutating func project(environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
                                  dateInput: ProgramDateInput? = nil,
+                                 colorInput: ProgramColorInput? = nil,
                                  measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene {
         let appearance = environment.appearance.value
         guard environment.scale.isFinite, environment.scale > 0,
@@ -121,6 +123,7 @@ public struct ProgramRuntime: Sendable {
             throw ProgramRuntimeError.invalidEnvironment
         }
         if let dateInput, !dateInput.instant.timeIntervalSince1970.isFinite { throw ProgramRuntimeError.invalidDateInput }
+        try colorInput?.validate()
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables, dateInput: dateInput)
@@ -130,7 +133,7 @@ public struct ProgramRuntime: Sendable {
             // may be retried after failed measurement/layout; no external action is admitted here.
             for assignment in program.onLoad { try ActionExecutor.perform(assignment, on: &evaluation) }
         }
-        var layoutState = LayoutState(images: images)
+        var layoutState = LayoutState(images: images, colors: colorInput)
         _ = flexibility(program.root, into: &layoutState)
         var visibleText: Set<ElementID> = [], pending = [(program.root, false)]
         while let (node, parentHidden) = pending.popLast() {
@@ -172,16 +175,18 @@ public struct ProgramRuntime: Sendable {
     /// scene or a missed/hidden box. Assignments and their resulting layout are one transaction, with no host calls.
     public mutating func click(at point: SkinPoint, expectedGeneration: UInt64, environment: EnvironmentStamp,
                                images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
+                               colorInput: ProgramColorInput? = nil,
                                measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene? {
         guard point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
               let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
               let id = entry.elementID, let handler = clickHandlers[id] else { return nil }
         var candidate = self
+        try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
                                                       variables: variables, dateInput: dateInput)
         for assignment in handler.assignments { try ActionExecutor.perform(assignment, on: &evaluation) }
         candidate.variables = evaluation.variables
-        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, measure: measure)
+        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, colorInput: colorInput, measure: measure)
         self = candidate
         return scene
     }
@@ -228,6 +233,7 @@ public struct ProgramRuntime: Sendable {
     /// no font or graphics resource, closure, cache or partial scene survives publication or failure.
     private struct LayoutState {
         let images: [String: ProgramImageResource]
+        let colors: ProgramColorInput?
         var flex: [ElementID: Flexibility] = [:]
         var boxes: [ProposalKey: Box] = [:]
         var text: [ElementID: TextInput] = [:]
@@ -283,7 +289,7 @@ public struct ProgramRuntime: Sendable {
             if let old = state.text[node.id] { input = old }
             else {
                 let value = try resolve(node.id, text.value)
-                input = TextInput(value: value.text, style: text.drawingStyle(in: appearance, wrap: false, text: value))
+                input = TextInput(value: value.text, style: try text.drawingStyle(in: appearance, colorInput: state.colors, wrap: false, text: value))
                 state.text[node.id] = input
             }
             resolvedText = input.value
@@ -326,7 +332,7 @@ public struct ProgramRuntime: Sendable {
             let ideal = node.idealSize ?? SkinSize()
             width = try requestedWidth ?? clamp(sum([ideal.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
             height = try requestedHeight ?? clamp(sum([ideal.height, vertical]), minimum: node.minHeight, maximum: node.maxHeight)
-            fill = color.resolved(in: appearance)
+            fill = try color.resolved(in: appearance, colorInput: state.colors)
             minimumContent = SkinSize(width: max(0, width - horizontal), height: max(0, height - vertical))
         case .column(let spacing, _, let nodes), .row(let spacing, _, let nodes):
             let column: Bool
@@ -496,7 +502,8 @@ public struct ProgramRuntime: Sendable {
         }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight),
-                      style: style, text: resolvedText, fill: fill, stroke: node.stroke?.color.resolved(in: appearance), image: image, children: children)
+                      style: style, text: resolvedText, fill: fill,
+                      stroke: try node.stroke.map { try $0.color.resolved(in: appearance, colorInput: state.colors) }, image: image, children: children)
         state.boxes[key] = box
         return box
     }

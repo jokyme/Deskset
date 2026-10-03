@@ -113,19 +113,60 @@ public struct ProgramElement: Equatable, Sendable {
     }
 }
 
+/// The catalog's named colors. Platform hosts resolve them, not Core or a fixed RGB approximation.
+public enum ProgramPaletteColor: String, CaseIterable, Hashable, Sendable {
+    case accent, text, dim, faint, separator
+    case red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, gray
+    case white, black, clear
+}
+
+/// One immutable platform palette for one projection. A supplied palette must contain every catalog color.
+public struct ProgramColorInput: Equatable, Sendable {
+    public let colors: [ProgramPaletteColor: RGBA]
+
+    public init(colors: [ProgramPaletteColor: RGBA]) { self.colors = colors }
+
+    func validate() throws {
+        guard colors.count == ProgramPaletteColor.allCases.count,
+              ProgramPaletteColor.allCases.allSatisfy({ key in
+                  guard let color = colors[key] else { return false }
+                  return [color.r, color.g, color.b, color.a].allSatisfy { $0.isFinite && (0...255).contains($0) }
+              }) else { throw ProgramRuntimeError.invalidColorInput }
+    }
+}
+
 /// Appearance-dependent colors stay typed until scene projection; no variable substitution is involved.
 public enum ProgramColor: Equatable, Sendable {
     case literal(RGBA)
     case text, dim, faint, accent, separator
+    case palette(ProgramPaletteColor)
 
-    func resolved(in appearance: SkinAppearance) -> RGBA {
+    func resolved(in appearance: SkinAppearance, colorInput: ProgramColorInput?) throws -> RGBA {
+        let key: ProgramPaletteColor
         switch self {
         case .literal(let color): return color
+        case .text: key = .text
+        case .dim: key = .dim
+        case .faint: key = .faint
+        case .accent: key = .accent
+        case .separator: key = .separator
+        case .palette(let value): key = value
+        }
+        if let colorInput {
+            guard let color = colorInput.colors[key] else { throw ProgramRuntimeError.invalidColorInput }
+            return color
+        }
+        // The original eight colors keep their pre-palette API behavior. New system hues need a host input.
+        switch key {
         case .text: return appearance.labelColor
         case .dim: return appearance.secondaryLabelColor
         case .faint: return appearance.tertiaryLabelColor
         case .accent: return appearance.accentColor
         case .separator: return appearance.separatorColor
+        case .white: return .white
+        case .black: return .black
+        case .clear: return .clear
+        default: throw ProgramRuntimeError.missingColorInput(key)
         }
     }
 }
@@ -162,13 +203,13 @@ public struct ProgramText: Equatable, Sendable {
     }
 
     /// Adapt once at the existing renderer boundary. Measuring and TextDraw receive this same value.
-    func drawingStyle(in appearance: SkinAppearance, wrap: Bool, text: ProgramTextValue? = nil) -> TextStyle {
+    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, wrap: Bool, text: ProgramTextValue? = nil) throws -> TextStyle {
         var style = TextStyle()
         style.fontFace = fontFamily
         style.fontSize = fontSize * (72.0 / 96.0)
         style.fontWeight = fontWeight
         style.italic = italic
-        style.color = color.resolved(in: appearance)
+        style.color = try color.resolved(in: appearance, colorInput: colorInput)
         style.horizontalAlign = align
         style.verticalAlign = .center
         style.accurateText = true

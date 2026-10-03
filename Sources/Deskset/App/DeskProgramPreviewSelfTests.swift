@@ -23,7 +23,8 @@ enum DeskProgramPreviewSelfTests {
                                 queue: DispatchQueue = DispatchQueue(label: "desk.preview.test.check"),
                                 ext: String = "desk", clock: SkinClock = .live,
                                 executor: SkinExecutor = MainSkinExecutor.shared,
-                                locale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale) throws -> Fixture {
+                                locale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+                                colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:)) throws -> Fixture {
         let root = t.temporaryDirectory("desk-program-preview")
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: root.appendingPathComponent("Skins"),
@@ -33,7 +34,7 @@ enum DeskProgramPreviewSelfTests {
         let file = root.appendingPathComponent("Preview." + ext)
         try Data(text.utf8).write(to: file)
         let controller = try CodeFileWindowController(file: file, app: app, deskCheckQueue: queue,
-                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale)
+                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale, previewColors: colors)
         controller.window?.appearance = NSAppearance(named: .aqua)
         controller.codeView.idleCommitDelay = 600
         controller.codeView.typedTextDelay = 600
@@ -999,9 +1000,191 @@ enum DeskProgramPreviewSelfTests {
             t.equal(f.app.sortedControllers.count, 0)
         }
 
+        runPalettePreviewTests(t)
         runNumericPreviewTests(t)
         runClockPreviewTests(t)
         runClickPreviewTests(t)
+    }
+
+    private static func runPalettePreviewTests(_ t: AppTestRunner) {
+        // This explicit native catalog is independent of MacAppearance's provider and ProgramColor resolution.
+        let native: [(String, NSColor)] = [("accent", .controlAccentColor), ("text", .labelColor), ("dim", .secondaryLabelColor),
+            ("faint", .tertiaryLabelColor), ("separator", .separatorColor), ("red", .systemRed), ("orange", .systemOrange),
+            ("yellow", .systemYellow), ("green", .systemGreen), ("mint", .systemMint), ("teal", .systemTeal), ("cyan", .systemCyan),
+            ("blue", .systemBlue), ("indigo", .systemIndigo), ("purple", .systemPurple), ("pink", .systemPink), ("brown", .systemBrown),
+            ("gray", .systemGray), ("white", .white), ("black", .black), ("clear", .clear)]
+        t.suite("Desk: palette preview: all catalog colors match independent native text fill and outline pixels") {
+            t.equal(Set(native.map { $0.0 }), Set(DeskCatalog.current.namedValues.filter { $0.type == "Color" }.map(\.name)))
+            for (name, nativeColor) in native {
+                let source = "widget { Row(spacing: 8, align: .top) { Text(\"色😀\").font(20).color(." + name + ").size(100, 50).padding(4).onClick { }; Rectangle().size(36, 28).fill(." + name + ").onClick { }; Ellipse().size(36, 28).stroke(." + name + ", width: 4).onClick { } } }"
+                let f = try fixture(t, source), p = f.preview
+                for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+                    guard let appearance = NSAppearance(named: appearanceName) else { throw Failure.fixture }
+                    f.controller.window?.appearance = appearance; p.refreshEnvironment()
+                    var resolved: NSColor?
+                    appearance.performAsCurrentDrawingAppearance { resolved = nativeColor.usingColorSpace(.sRGB) }
+                    guard let resolved else { throw Failure.pixel }
+                    let color = RGBA(r: Double(resolved.redComponent) * 255, g: Double(resolved.greenComponent) * 255,
+                                     b: Double(resolved.blueComponent) * 255, a: Double(resolved.alphaComponent) * 255)
+                    if name == "white" { t.equal(color, .white) }
+                    if name == "clear" { t.equal(color, .clear) }
+                    t.equal(p.state, .ready, "transparent boxes remain actually interactive")
+                    t.equal(p.scene?.hitMap.entries.count, 3)
+                    t.equal(p.scene?.size, SkinSize(width: 188, height: 50))
+                    let layout = CGRect(x: 0, y: 0, width: 188, height: 50)
+                    if color.a > 0 {
+                        let path = CGPath(ellipseIn: CGRect(x: 152, y: 0, width: 36, height: 28), transform: nil)
+                        let stroke = path.copy(strokingWithWidth: 4, lineCap: .butt, lineJoin: .miter, miterLimit: 10).boundingBoxOfPath
+                        t.check(p.canvas.bounds.contains(layout.union(stroke)), "the viewport contains independently computed native paint and the full layout")
+                    } else { t.equal(p.canvas.bounds, layout, "transparent paint retains its exact layout viewport") }
+                    // ShapeStroker's conservative viewport can exceed the native curve bounds. As in the existing
+                    // outline oracle, both views use that viewport while native geometry remains independent.
+                    let viewport = p.canvas.bounds
+                    let reference = PaletteReferenceView(color: color, viewport: viewport)
+                    let wrong = PaletteReferenceView(color: RGBA(r: 197, g: 23, b: 83), viewport: viewport)
+                    let blank = ReferenceView(items: [], size: viewport.size); blank.bounds = viewport
+                    for scale in [1, 2] {
+                        let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        let missing = try paint(blank, scale: scale), incorrect = try paint(wrong, scale: scale)
+                        for rep in [actual, expected, missing, incorrect] { try canaries(t, rep) }
+                        t.equal(try bytes(actual), try bytes(expected), "native \(name) \(appearanceName.rawValue) at \(scale)x")
+                        t.equal(try outlineInk(missing), 0)
+                        if name == "clear" {
+                            t.equal(try outlineInk(actual), 0, "the known transparent palette is separately qualified")
+                            t.equal(try bytes(actual), try bytes(missing))
+                        } else {
+                            t.check(try outlineInk(actual) > 0, "\(name) really paints; white is opaque, not an empty pass")
+                            t.check(try bytes(actual) != bytes(missing))
+                        }
+                        t.check(try bytes(actual) != bytes(incorrect), "wrong literal paint cannot qualify \(name)")
+                    }
+                }
+                t.check(f.app.sortedControllers.isEmpty); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            }
+        }
+        t.suite("Desk: palette preview: actual color notifications preserve variables clocks and a held native press") {
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_059.25), timeZone: TimeZone(identifier: "UTC")!)
+            var blue = RGBA(r: 19, g: 67, b: 131), reads = 0
+            let source = #"widget { variable enabled = false; computed caption = enabled ? "On😀" : "Off😀"; Text("{caption}|{time.now, format: "HH:mm:ss"}").font(20).color(.blue).size(280, 60).padding(8).onLoad { enabled = not enabled }.onClick { enabled = not enabled } }"#
+            let f = try fixture(t, source, clock: executor.clock, executor: executor, locale: { Locale(identifier: "en_US_POSIX") }, colors: { appearance in
+                reads += 1
+                let value = try MacAppearance.programValues(for: appearance)
+                var colors = value.colors.colors; colors[.blue] = blue
+                return MacAppearance.ProgramValues(appearance: value.appearance, colors: ProgramColorInput(colors: colors))
+            }), p = f.preview
+            p.setVisible(true); t.equal(executor.pendingCount, 1)
+            try paletteTextPixels(t, "On😀|09:00:59", color: blue, in: f)
+            let stamp = p.scene?.environment, generation = p.scene?.generation
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            blue = RGBA(r: 131, g: 53, b: 17)
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            t.check(AppSelfTest.spin(timeout: 5) { p.scene?.generation != generation })
+            t.equal(p.scene?.environment, stamp, "only a named palette color changed, outside the original five-color stamp")
+            try paletteTextPixels(t, "On😀|09:00:59", color: blue, in: f)
+            executor.advance(until: 0.75)
+            try paletteTextPixels(t, "On😀|09:01:00", color: blue, in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try paletteTextPixels(t, "Off😀|09:01:00", color: blue, in: f)
+            t.equal(executor.pendingCount, 1, "a legal palette refresh retains the real clock dependency")
+            let current = p.scene?.generation
+            f.controller.window?.appearance = NSAppearance(named: .darkAqua); p.refreshEnvironment()
+            t.check(p.scene?.generation != current)
+            try paletteTextPixels(t, "Off😀|09:01:00", color: blue, in: f)
+            p.close(); t.equal(executor.pendingCount, 0)
+            let closedReads = reads
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            executor.advance(by: 2)
+            t.equal(reads, closedReads); t.equal(p.state, .closed); t.check(p.scene == nil && p.canvas.isHidden)
+        }
+        t.suite("Desk: palette preview: failed capture pending source read failure and close clear stale colors") {
+            let queue = DispatchQueue(label: "desk.palette.pending.check")
+            var fail = false
+            let source = #"widget { variable enabled = false; Text(enabled ? "On😀" : "Off😀").font(20).color(.blue).size(280, 60).padding(8).onLoad { enabled = not enabled }.onClick { enabled = not enabled } }"#
+            let f = try fixture(t, source + "\n//" + String(repeating: "x", count: 9_000), queue: queue, colors: { appearance in
+                if fail { throw MacAppearance.ProgramFailure.unresolvableColor(.blue) }
+                return try MacAppearance.programValues(for: appearance)
+            }), p = f.preview
+            t.check(settled(f)); p.setVisible(true)
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            t.check(p.scene != nil)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            fail = true
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            if case .unavailable(let message) = p.state { t.check(message.contains("unresolvableColor")) }
+            else { t.check(false, "a failed real provider explicitly invalidates the previous preview") }
+            t.check(p.scene == nil && p.canvas.isHidden)
+            fail = false
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            t.equal(p.scene?.drawingItems.compactMap { if case .text(let value) = $0 { return value.text }; return nil }, ["On😀"])
+            let recovered = p.scene?.generation
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.scene?.generation, recovered, "capture failure cancels the old held press, while recovery does not repeat onLoad")
+            queue.suspend()
+            var suspended = true
+            defer { if suspended { queue.resume() } }
+            let previous = checking.snapshot
+            replace(source.replacingOccurrences(of: ".blue", with: ".red") + "\n//" + String(repeating: "x", count: 9_000), in: f)
+            t.check(!checking.snapshot.isChecked && !checking.isCurrent(previous))
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            t.equal(p.state, .checking); t.check(p.scene == nil && p.canvas.isHidden)
+            p.show(previous, readError: nil); t.check(p.scene == nil, "old checked generation cannot restore palette pixels")
+            queue.resume(); suspended = false; t.check(settled(f)); t.equal(p.state, .ready)
+            try Data([0xFF]).write(to: f.file)
+            f.controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification))
+            t.check(p.scene == nil && p.canvas.isHidden)
+            NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            t.check(p.scene == nil && p.canvas.isHidden, "read errors stay empty despite platform changes")
+            p.close(); NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            t.equal(p.state, .closed); t.check(p.scene == nil)
+        }
+    }
+
+    private static func paletteTextPixels(_ t: AppTestRunner, _ text: String, color: RGBA, in f: Fixture) throws {
+        var style = TextStyle()
+        style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400; style.color = color
+        style.horizontalAlign = .center; style.verticalAlign = .center
+        style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+        let frame = SkinRect(width: 280, height: 60)
+        let draw = TextDraw(text: text, style: style, frame: frame, contentFrame: SkinRect(x: 8, y: 8, width: 264, height: 44), anchor: SkinPoint())
+        t.equal(f.preview.scene?.drawingItems, [.text(draw)])
+        let reference = ReferenceView(items: [.text(draw)], size: NSSize(width: 280, height: 60))
+        let blank = ReferenceView(items: [], size: reference.bounds.size)
+        for scale in [1, 2] {
+            let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+            try canaries(t, actual); try canaries(t, expected)
+            t.check(try ink(actual) > 0); t.equal(try ink(paint(blank, scale: scale)), 0)
+            t.equal(try bytes(actual), try bytes(expected))
+        }
+    }
+
+    /// Literal native geometry and independently constructed point-text style, not Program geometry/resolution.
+    private final class PaletteReferenceView: NSView {
+        let color: RGBA
+        let context = DrawContext(fonts: AppFontResolver())
+        override var isFlipped: Bool { true }
+        init(color: RGBA, viewport: CGRect) {
+            self.color = color
+            super.init(frame: NSRect(origin: .zero, size: viewport.size)); bounds = viewport
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let destination = NSGraphicsContext.current?.cgContext else { return }
+            destination.saveGState(); defer { destination.restoreGState() }
+            var style = TextStyle()
+            style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400; style.color = color
+            style.horizontalAlign = .center; style.verticalAlign = .center
+            style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+            let draw = TextDraw(text: "色😀", style: style, frame: SkinRect(width: 100, height: 50),
+                                contentFrame: SkinRect(x: 4, y: 4, width: 92, height: 42), anchor: SkinPoint())
+            DesksetDraw.DrawExecutor.draw([.text(draw)], in: destination, context: context, cycle: 1,
+                                         target: DrawTarget.capture(destination, glass: .none))
+            destination.setAllowsAntialiasing(true); destination.setShouldAntialias(true)
+            destination.setFillColor(CGColor(srgbRed: color.r / 255, green: color.g / 255, blue: color.b / 255, alpha: color.a / 255))
+            destination.fill(CGRect(x: 108, y: 0, width: 36, height: 28))
+            let path = CGPath(ellipseIn: CGRect(x: 152, y: 0, width: 36, height: 28), transform: nil)
+            destination.addPath(path.copy(strokingWithWidth: 4, lineCap: .butt, lineJoin: .miter, miterLimit: 10))
+            destination.fillPath(using: .winding)
+        }
     }
 
     private static func mouse(_ type: NSEvent.EventType, at point: NSPoint, in f: Fixture,
