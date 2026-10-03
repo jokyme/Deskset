@@ -31,7 +31,7 @@ struct ProgramExpressionCompiler {
                 throw issue(.invalidCheckedModel, declaration.node, "Missing checked declaration type")
             }
             guard supportedType(type) else {
-                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration declarations are implemented")
+                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length declarations are implemented")
             }
             if kind == .variable { assignmentTypes[index] = type }
             return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
@@ -54,11 +54,21 @@ struct ProgramExpressionCompiler {
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
         guard type == .string || type == .date || type.flatMap(numberDimension) != nil else {
-            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration; other value formatting is not implemented")
+            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration/Length; other value formatting is not implemented")
         }
         let value = try lower(node, depth: 1)
         if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
         return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
+    }
+
+    mutating func fontSize(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked font-size type")
+        }
+        guard type == .plainNumber || type == .length else {
+            throw issue(.unsupported, node, "Font size requires a checked Plain or Length expression")
+        }
+        return try lower(node, depth: 1)
     }
 
     private mutating func lower(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
@@ -73,7 +83,7 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "Missing checked expression type")
         }
         guard supportedType(type) else {
-            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration expressions are implemented")
+            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length expressions are implemented")
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
@@ -285,6 +295,7 @@ struct ProgramExpressionCompiler {
         case .percent: return .percent
         case .bytes: return .bytes
         case .duration: return .duration
+        case .length: return .length
         default: return nil
         }
     }

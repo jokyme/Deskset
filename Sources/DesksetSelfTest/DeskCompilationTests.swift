@@ -27,6 +27,7 @@ private func compiledDraws(_ scene: WidgetScene) -> [TextDraw] {
 
 func runDeskCompilationTests(_ t: TestRunner) {
     runDeskPaletteCompilationTests(t)
+    runDeskFontSizeCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -636,5 +637,110 @@ private func runDeskPaletteCompilationTests(_ t: TestRunner) {
             t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
             t.equal(result.diagnostics, checked.diagnostics)
         }
+    }
+}
+
+
+private func runDeskFontSizeCompilationTests(_ t: TestRunner) {
+    func measure(_ text: String, _ style: TextStyle, _ width: Double?) -> SkinSize {
+        let points = TextStyle.pixelSize(points: style.fontSize)
+        return SkinSize(width: points, height: points)
+    }
+    t.suite("Desk: font size: checked Length and Plain expressions drive current shared layouts") {
+        let source = "\u{FEFF}" + #"widget { variable size = 20; Text("甲😀").font(size).onClick { size = size + 4 } }"# + "\r\n"
+        let program = try compileFixture(t, source)
+        t.equal(program.declarations[0].initial, .quantity(ProgramNumber(20, dimension: .length)))
+        t.equal(program.root.onClick, [ProgramAssignment(declaration: 0, value: .add(.declaration(0), .quantity(ProgramNumber(4, dimension: .length))))])
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(first.size, SkinSize(width: 20, height: 20))
+        guard let changed = try runtime.click(at: SkinPoint(x: 6, y: 6), expectedGeneration: first.generation,
+                                              environment: compileEnvironment(), measure: measure) else { throw CompilationFixtureError.missingProgram }
+        t.equal(changed.size, SkinSize(width: 24, height: 24))
+        t.equal(compiledDraws(changed).map(\.text), ["甲😀"])
+        t.close(TextStyle.pixelSize(points: compiledDraws(changed)[0].style.fontSize), 24)
+        t.equal(changed.elements[0].id, first.elements[0].id)
+        t.check(try runtime.click(at: SkinPoint(x: 6, y: 6), expectedGeneration: first.generation,
+                                 environment: compileEnvironment(), measure: measure) == nil)
+
+        let plain = try compileFixture(t, #"widget { variable count = 1; computed size = count * 4 + 16; Text("{count}").font(size).onClick { count = count + 1 } }"#)
+        t.equal(plain.declarations[0].initial, .number(1))
+        var points = try ProgramRuntime(program: plain)
+        let before = try points.project(environment: compileEnvironment(), measure: measure)
+        guard let after = try points.click(at: SkinPoint(x: 6, y: 6), expectedGeneration: before.generation,
+                                          environment: compileEnvironment(), measure: measure) else { throw CompilationFixtureError.missingProgram }
+        t.equal(compiledDraws(before).map(\.text), ["1"]); t.equal(compiledDraws(after).map(\.text), ["2"])
+        t.equal([before.size, after.size], [SkinSize(width: 20, height: 20), SkinSize(width: 24, height: 24)])
+        t.equal(compiledDraws(after)[0].style.inlineSpans, [InlineSpan(location: 0, length: 1, setting: .typography(feature: "tnum", value: 1))])
+        t.equal(points.clockPrecision, nil)
+        let lengthText = try compileFixture(t, #"widget { variable size = 20; Text("{size}").font(size) }"#)
+        var displayed = try ProgramRuntime(program: lengthText)
+        t.equal(compiledDraws(try displayed.project(environment: compileEnvironment(), measure: measure)).map(\.text), ["20"])
+    }
+    t.suite("Desk: font size: inherited live values yield to literal and preset overrides") {
+        let source = #"widget { computed size = system.dark ? 20 : 28; Column(spacing: 3, align: .left) { Text("A"); Text("B").font(13); Text("C").font(.caption) }.font(size) }"#
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        let dark = try runtime.project(environment: compileEnvironment(.dark), measure: measure)
+        let light = try runtime.project(environment: compileEnvironment(.light), measure: measure)
+        t.equal(compiledDraws(dark).map { TextStyle.pixelSize(points: $0.style.fontSize) }, [20, 13, 11])
+        t.equal(compiledDraws(light).map { TextStyle.pixelSize(points: $0.style.fontSize) }, [28, 13, 11])
+        t.equal(compiledDraws(light).map { $0.style.fontWeight }, [400, 400, 500])
+        t.equal(dark.size, SkinSize(width: 20, height: 50)); t.equal(light.size, SkinSize(width: 28, height: 58))
+        t.equal(dark.elements[2].frame.y, 23); t.equal(light.elements[2].frame.y, 31)
+        t.equal(dark.elements[3].frame.y, 39); t.equal(light.elements[3].frame.y, 47)
+        t.equal(dark.elements.map(\.id), light.elements.map(\.id))
+        let literal = try compileFixture(t, #"widget { Text("A").font(20) }"#)
+        if case .text(let text) = literal.root.content { t.check(text.fontSizeExpression == nil) }
+        else { t.check(false) }
+    }
+    t.suite("Desk: font size: unsupported facets bad units and incomplete checked identities reject fully") {
+        let sources = [#"widget { variable size = 20; Text("A").font(size).margin(1) }"#,
+                       #"widget { variable size = 20; Text("A").font(size, if: system.dark) }"#,
+                       #"widget { variable size = 20; Text("A").font(size).opacity(0.5) }"#]
+        for source in sources {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && !result.issues.isEmpty, source)
+            t.equal(result.issues.first?.kind, .unsupported)
+            t.equal(result.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+        }
+        for value in ["20%", "20s", "20KB"] {
+            let checked = deskCheck("widget { Text(\"A\").font(\(value)) }"), result = Desk.compile(checked)
+            t.check(!checked.diagnostics(.error).isEmpty)
+            t.check(result.program == nil && result.issues.isEmpty)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+        let source = #"widget { variable size = 20; Text("A").font(size) }"#
+        let checked = deskCheck(source)
+        guard let use = deskCompilationNode(checked, text: "size", kind: .identifierExpr),
+              let font = checked.symbols.first(where: { $0.value == .builtIn(.modifier("font")) })?.key else {
+            throw CompilationFixtureError.missingProgram
+        }
+        func withFacts(types: [NodeID: SemType], symbols: [NodeID: Symbol]) -> CheckedFile {
+            var value = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols, types: types,
+                                    elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
+                                    reactions: checked.reactions, freeformOrders: checked.freeformOrders, stringTable: checked.stringTable,
+                                    requirements: checked.requirements, options: checked.options, styles: checked.styles,
+                                    translations: checked.translations, root: checked.root)
+            value.loopIdentities = checked.loopIdentities; value.assets = checked.assets
+            value.declarationTypes = checked.declarationTypes
+            value.canonicalNumericValues = checked.canonicalNumericValues; value.numericCoercions = checked.numericCoercions
+            return value
+        }
+        var types = checked.types; types.removeValue(forKey: checked.tree.id(of: use))
+        let missing = withFacts(types: types, symbols: checked.symbols)
+        let absent = Desk.compile(missing)
+        t.check(absent.program == nil); t.equal(absent.issues.first?.kind, .invalidCheckedModel)
+        var symbols = checked.symbols; symbols[font] = .builtIn(.modifier("color"))
+        let wrong = withFacts(types: checked.types, symbols: symbols)
+        let identity = Desk.compile(wrong)
+        t.check(identity.program == nil); t.equal(identity.issues.first?.kind, .unsupported)
+    }
+}
+
+private func deskCompilationNode(_ checked: CheckedFile, text: String, kind: SyntaxKind) -> PositionedNode? {
+    let bytes = Array(checked.tree.text.utf8)
+    return DeskNodeTable(tree: checked.tree).entries.map(\.positioned).first {
+        $0.kind == kind && String(decoding: bytes[$0.textRange], as: UTF8.self) == text
     }
 }

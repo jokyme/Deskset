@@ -22,6 +22,7 @@ struct StaticProgramCompiler {
     private struct Appearance {
         var family = "System"
         var size = 13.0
+        var sizeExpression: ProgramExpression?
         var weight = 400
         var italic = false
         var design = "standard"
@@ -112,6 +113,15 @@ struct StaticProgramCompiler {
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         var onClick: [ProgramAssignment]?
         for modifier in call.modifiers {
+            if modifier.name.token.text == "font" {
+                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
+                      let font = catalog.modifier(named: "font"), font.inheritable, font.appliesTo.contains(facts.kind),
+                      font.facets.contains(FacetID("font.size")),
+                      font.signatures.compactMap({ $0.param(named: "size") }).count == 2,
+                      font.signatures.compactMap({ $0.param(named: "size") }).allSatisfy({ $0.type == .length && $0.facets == [FacetID("font.size")] }) else {
+                    throw issue(.unsupported, modifier.node, "Unsupported checked font-size catalog contract")
+                }
+            }
             if modifier.name.token.text == "digits" {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("digits")),
                       let digits = catalog.modifier(named: "digits"), digits.inheritable, digits.appliesTo.contains(facts.kind),
@@ -266,7 +276,8 @@ struct StaticProgramCompiler {
             }
             content = .text(ProgramText(value: text, fontFamily: family, fontSize: appearance.size,
                                         fontWeight: appearance.weight, italic: appearance.italic,
-                                        color: appearance.color, align: appearance.align, digits: appearance.digits))
+                                        color: appearance.color, align: appearance.align, digits: appearance.digits,
+                                        fontSizeExpression: appearance.sizeExpression))
         default:
             let arguments = call.arguments?.arguments ?? []
             guard arguments.allSatisfy({ ["spacing", "align"].contains($0.label?.name ?? "") }) else {
@@ -358,14 +369,29 @@ struct StaticProgramCompiler {
         }
     }
 
-    private func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, at node: PositionedNode) throws -> Appearance {
+    private mutating func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, at node: PositionedNode) throws -> Appearance {
         var result = try defaultAppearance(at: node)
         for key in ["font.family", "font.size", "font.weight", "font.italic", "font.design", "color", "align", "digits"] {
+            if key == "font.size", let best = facts.facets[FacetID(key)]?.first {
+                if let fixed = best.fixedValue {
+                    try assign(try self.fixed(fixed, at: node), to: key, appearance: &result, at: node)
+                } else {
+                    guard let value = checked.tree.resolve(best.value) else {
+                        throw issue(.invalidCheckedModel, node, "Font size refers to a different syntax tree")
+                    }
+                    if NumberLiteralSyntax(value) != nil {
+                        try assign(try constant(value), to: key, appearance: &result, at: value)
+                    } else {
+                        result.sizeExpression = try expressions.fontSize(value)
+                    }
+                }
+                continue
+            }
             let value = try facet(facts, key, at: node)
             if value == nil, facts.inherits.contains(FacetID(key)) {
                 switch key {
                 case "font.family": result.family = inherited.family
-                case "font.size": result.size = inherited.size
+                case "font.size": result.size = inherited.size; result.sizeExpression = inherited.sizeExpression
                 case "font.weight": result.weight = inherited.weight
                 case "font.italic": result.italic = inherited.italic
                 case "font.design": result.design = inherited.design
@@ -395,7 +421,7 @@ struct StaticProgramCompiler {
     private func assign(_ value: Value, to key: String, appearance: inout Appearance, at node: PositionedNode) throws {
         switch (key, value) {
         case ("font.family", .string(let n)): appearance.family = n
-        case ("font.size", .number(let n)) where n > 0: appearance.size = n
+        case ("font.size", .number(let n)) where n > 0: appearance.size = n; appearance.sizeExpression = nil
         case ("font.weight", .choice(let n)):
             let weights = ["ultralight": 100, "thin": 200, "light": 300, "regular": 400, "medium": 500,
                            "semibold": 600, "bold": 700, "heavy": 800, "black": 900]

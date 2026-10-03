@@ -29,11 +29,13 @@ public struct DeskCompilationResult: Sendable {
 }
 
 public extension Desk {
-    /// Checked source → the shared Core program. It supports String/Bool/Date/plain/Percent/Bytes/Duration declarations,
+    /// Checked source → the shared Core program. It supports String/Bool/Date/plain/Percent/Bytes/Duration/Length declarations,
     /// scalar text templates, checked time.now/Date.in/date formats, numeric and Date/Duration arithmetic,
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark, root onLoad and Text/basic-shape onClick variable assignments, proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
-    /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, and constant box/style properties.
+    /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, dynamic inherited
+    /// font sizes, and constant other box/style properties. Missing/invalid font sizes fail the current scene transaction;
+    /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
     /// Other numeric dimensions, system numeric data, Duration decimals, relative/subsecond Date formats and
