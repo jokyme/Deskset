@@ -11,6 +11,8 @@ import QuartzCore
 package final class LayerRuntime {
     package enum State: Equatable { case loading, live, hidden, refreshing, closing, closed }
     package enum Partition: Equatable { case single, candidateComponents }
+    /// Selects the native recipe, never tree-writer permission. Components must come from an accepted C plan.
+    package enum NativePartition: Equatable { case single, acceptedComponents }
     package enum Failure: Error, Equatable {
         case wrongOwner
         case invalidLifecycle(State)
@@ -72,8 +74,10 @@ package final class LayerRuntime {
         package let supportsFrames: Bool
         package let sourceHitMap: SkinHitMap
         package let sourceGlass: [GlassRegion]
+        package let partition: NativePartition
+        package let plan: PartitionPlan
 
-        fileprivate init(_ content: ELayerContent, fallbackRoot: CALayer, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace, sourceHitMap: SkinHitMap, sourceGlass: [GlassRegion], supportsFrames: Bool) {
+        fileprivate init(_ content: ELayerContent, fallbackRoot: CALayer, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace, sourceHitMap: SkinHitMap, sourceGlass: [GlassRegion], supportsFrames: Bool, partition: NativePartition, plan: PartitionPlan) {
             root = content.root
             self.fallbackRoot = fallbackRoot
             sourceSequence = sequence
@@ -81,6 +85,8 @@ package final class LayerRuntime {
             self.colorSpace = colorSpace
             callbackReport = content.callbackReport
             self.supportsFrames = supportsFrames
+            self.partition = partition
+            self.plan = plan
             self.sourceHitMap = sourceHitMap
             self.sourceGlass = sourceGlass
         }
@@ -148,14 +154,16 @@ package final class LayerRuntime {
         var frameSequence: UInt64
         var frame: NativeFrame?
 
-        init(_ content: ELayerContent, fallbackRoot: CALayer, source: Key, sequence: UInt64, supportsFrames: Bool) {
+        init(_ content: ELayerContent, fallbackRoot: CALayer, source: Key, sequence: UInt64, supportsFrames: Bool,
+             partition: NativePartition, plan: PartitionPlan) {
             self.content = content
             self.source = source
             frameKey = source
             frameSequence = sequence
             attachment = NativeStage(content, fallbackRoot: fallbackRoot, sequence: sequence, scale: source.scale,
                                      colorSpace: source.colorSpace, sourceHitMap: source.prepared.scene.hitMap,
-                                     sourceGlass: source.prepared.scene.glass, supportsFrames: supportsFrames)
+                                     sourceGlass: source.prepared.scene.glass, supportsFrames: supportsFrames,
+                                     partition: partition, plan: plan)
         }
     }
 
@@ -397,19 +405,32 @@ package final class LayerRuntime {
         return transferred != nil
     }
 
-    /// Explicit, one-shot Single staging from an already accepted C frame. There is no automatic call from update,
+    /// Explicit staging from an already accepted C frame. There is no automatic call from update,
     /// no ready cache and no C tree/sequence mutation. App must additionally require a physical worker and validate
     /// its current actual-window epoch; this package operation cannot establish those AppKit facts by itself.
-    package func prepareNativeStage(maximumCallbackBitmapBytes: Int, cycle: Int, supportsFrames: Bool = false) throws -> NativeStage {
+    package func prepareNativeStage(maximumCallbackBitmapBytes: Int, cycle: Int, supportsFrames: Bool = false,
+                                    partition: NativePartition = .single) throws -> NativeStage {
         try checkMutable()
         guard nativeCandidate == nil else { throw NativeStageFailure.busy }
         guard state == .live, pending == nil, let key, key.context != nil, key.cycle == cycle,
               let frame = currentFrame else { throw NativeStageFailure.notReady }
-        guard !supportsFrames || key.partition == .single else { throw NativeStageFailure.notReady }
-        let content = try ELayerContent(plan: SinglePartition.plan(in: key.window), scale: key.scale,
+        let plan: PartitionPlan
+        switch partition {
+        case .single:
+            guard !supportsFrames || key.partition == .single else { throw NativeStageFailure.notReady }
+            plan = SinglePartition.plan(in: key.window)
+        case .acceptedComponents:
+            guard key.partition == .candidateComponents, frame.fallback == nil,
+                  case .components = try LayerContentBuilder.validateGeometry(frame.plan) else {
+                throw NativeStageFailure.notReady
+            }
+            plan = frame.plan
+        }
+        let content = try ELayerContent(plan: plan, scale: key.scale,
             colorSpace: key.colorSpace, maximumBaseBitmapBytes: maximumOwnedBitmapBytes,
             maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, executor: executor)
-        let candidate = NativeCandidate(content, fallbackRoot: root, source: key, sequence: frame.sequence, supportsFrames: supportsFrames)
+        let candidate = NativeCandidate(content, fallbackRoot: root, source: key, sequence: frame.sequence,
+                                        supportsFrames: supportsFrames, partition: partition, plan: plan)
         nativeCandidate = candidate
         return candidate.attachment
     }
@@ -521,9 +542,32 @@ package final class LayerRuntime {
             throw NativeStageFailure.staleSource
         }
         let source = candidate.source
+        let plan: PartitionPlan
+        switch stage.partition {
+        case .single:
+            plan = SinglePartition.plan(in: source.window)
+        case .acceptedComponents:
+            do {
+                plan = try ComponentPartition.candidatePlan(prepared, in: source.window, baseMembers: frozenBase)
+            } catch ComponentPartition.Failure.unresolvedInk {
+                throw NativeStageFailure.staleSource
+            } catch ComponentPartition.Failure.resourceLimit where scene.elements.count > ComponentPartition.maximumElementCount {
+                throw NativeStageFailure.staleSource
+            }
+            let mode = try LayerContentBuilder.validateGeometry(plan)
+            let recipes = try LayerContentBuilder.resolve(scene, plan: plan, scale: source.scale, mode: mode)
+            // Validate before declining the plan, as C does. No live backing or base bitmap has been written yet.
+            for (layer, items) in zip(plan.layers, recipes.layers) {
+                guard case .group = layer.content, layer.rect != source.window else { continue }
+                if Self.localizedRoundlineFallback(items, group: layer.id) != nil {
+                    throw NativeStageFailure.staleSource
+                }
+            }
+            guard plan == stage.plan else { throw NativeStageFailure.staleSource }
+        }
         let next = Key(prepared, window: source.window, scale: source.scale, colorSpace: source.colorSpace,
-                       partition: .single, context: context, cycle: cycle, glass: glass)
-        let reason = reason(from: candidate.frameKey, to: next, plan: SinglePartition.plan(in: source.window))
+                       partition: source.partition, context: context, cycle: cycle, glass: glass)
+        let reason = reason(from: candidate.frameKey, to: next, plan: plan)
         if let failure = stage.callbackReport.observation.failure { throw failure }
         if reason == nil, let frame = candidate.frame {
             return NativeFrame(sequence: frame.sequence, cycle: cycle, change: .unchanged,

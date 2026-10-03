@@ -57,6 +57,7 @@ enum SkinLayerContentSelfTests {
         nativeStagingUnexpectedCallbackTests(t)
         nativePublicationTests(t)
         nativeFrameTests(t)
+        nativeComponentTests(t)
     }
 
     private static func app(_ t: AppTestRunner, threading: SkinThreading, source: String = text) throws -> AppController {
@@ -1541,7 +1542,11 @@ enum SkinLayerContentSelfTests {
     }
 
     private static func readPublishedNative(_ window: SkinWindowController, _ expected: LayerContentBuilder.Content,
-                                           _ renderer: OffscreenRenderer, _ t: AppTestRunner, callbacks: Int = 1) throws -> [UInt8] {
+                                           _ renderer: OffscreenRenderer, _ t: AppTestRunner, callbacks: Int = 1,
+                                           componentCallbacks: [Int]? = nil) throws -> [UInt8] {
+        if let componentCallbacks {
+            return try readPublishedComponents(window, expected, renderer, t, callbacks: componentCallbacks)
+        }
         let readback = window.runtime.exclusive(timeout: 30) { _ -> Result<[UInt8], Error> in
             Result {
                 guard let host = window.content.stagedNativeHost, let root = host.sublayers?.first,
@@ -2087,6 +2092,419 @@ enum SkinLayerContentSelfTests {
                 } else if selection.nativeFrameBudget == 1 {
                     t.check(window.runtime.exclusive { _ in window.runtime.frames.nativeFrameFailure != nil } == true)
                     t.check(window.content.installedLayerRoot != nil && window.content.contentOpacity == 1)
+                }
+            }
+        }
+    }
+    private static let nativeComponentMode = SkinFrameContentMode.layers(partition: .candidateComponents,
+        maximumOwnedBitmapBytes: 1_000_000, backend: .nativeComponents(maximumCallbackBitmapBytes: 1_000_000))
+    private static let nativeMergedComponentText = """
+    [Rainmeter]
+    Update=-1
+    DynamicWindowSize=1
+    [Variables]
+    Left=4
+    Tint=217,61,139,157
+    [Back]
+    Meter=Shape
+    Shape=Rectangle 0,0,48,32 | Fill Color 31,89,151,100 | StrokeWidth 0
+    [Moving]
+    Meter=Shape
+    Shape=Rectangle #Left#,5,12,15 | Fill Color #Tint# | StrokeWidth 0
+    DynamicVariables=1
+    [Mask]
+    Meter=Shape
+    Shape=Rectangle 24,16,20,12 | Fill Color 255,255,255,180 | StrokeWidth 0
+    [Child]
+    Meter=Shape
+    Shape=Rectangle 20,12,20,18 | Fill Color 23,211,73,140 | StrokeWidth 0
+    Container=Mask
+    """
+
+    private static let nativeComponentText = nativeMergedComponentText.replacingOccurrences(of: """
+    [Mask]
+    Meter=Shape
+    Shape=Rectangle 24,16,20,12 | Fill Color 255,255,255,180 | StrokeWidth 0
+    """, with: """
+    [Mask]
+    Meter=Shape
+    X=24
+    Y=16
+    W=20
+    H=12
+    Shape=Rectangle 0,0,20,12 | Fill Color 255,255,255,180 | StrokeWidth 0
+    """).replacingOccurrences(of: """
+    [Child]
+    Meter=Shape
+    Shape=Rectangle 20,12,20,18 | Fill Color 23,211,73,140 | StrokeWidth 0
+    """, with: """
+    [Child]
+    Meter=Shape
+    X=-4
+    Y=-4
+    Shape=Rectangle 0,0,20,18 | Fill Color 23,211,73,140 | StrokeWidth 0
+    """)
+
+    /// CARenderer detaches its input layer. Read the actual flipped ancestor of this private window;
+    /// a neutral host or its immediate unflipped parent loses the native ancestor's geometry convention.
+    /// This is an observer only. Its original hierarchy and every leaf's inherited flip are restored.
+    private static func readPublishedComponents(_ window: SkinWindowController, _ expected: LayerContentBuilder.Content,
+                                                _ renderer: OffscreenRenderer, _ t: AppTestRunner,
+                                                callbacks: [Int]) throws -> [UInt8] {
+        let readback = window.runtime.exclusive(timeout: 30) { _ -> Result<[UInt8], Error> in
+            Result {
+                guard let host = window.content.stagedNativeHost, let root = host.sublayers?.first,
+                      let parent = host.superlayer, let index = parent.sublayers?.firstIndex(where: { $0 === host }),
+                      UInt32(exactly: index) != nil, let attachment = window.content.visibleNativeStage else {
+                    throw CocoaError(.coderReadCorrupt)
+                }
+                let observed = [host, root] + (root.sublayers ?? [])
+                let flips = observed.map { $0.contentsAreFlipped() }
+                let hostFrame = host.frame, hostPosition = host.position
+                t.equal(host.opacity, Float(1))
+                t.equal(window.content.contentOpacity, Float(0))
+                guard let observationRoot = parent.superlayer, observationRoot.isGeometryFlipped,
+                      observationRoot.contentsAreFlipped() == parent.contentsAreFlipped(),
+                      observationRoot.bounds == parent.bounds, observationRoot.frame == parent.frame,
+                      CATransform3DIsIdentity(parent.transform), CATransform3DIsIdentity(parent.sublayerTransform),
+                      CATransform3DIsIdentity(observationRoot.transform), CATransform3DIsIdentity(observationRoot.sublayerTransform) else {
+                    throw CocoaError(.coderReadCorrupt)
+                }
+                let originalSuper = observationRoot.superlayer
+                let originalIndex = originalSuper?.sublayers?.firstIndex(where: { $0 === observationRoot })
+                let originalBounds = observationRoot.bounds, originalPosition = observationRoot.position
+                let originalTransform = observationRoot.transform
+                if originalSuper != nil, originalIndex == nil { throw CocoaError(.coderReadCorrupt) }
+                print("COMPONENT OBSERVER actual ancestor bounds=\(observationRoot.bounds) geometryFlip=\(observationRoot.isGeometryFlipped) scale=\(observationRoot.contentsScale) transform=\(observationRoot.transform) hostFrame=\(hostFrame) hostPosition=\(hostPosition) before=\(flips)")
+                defer {
+                    CATransaction.begin(); CATransaction.setDisableActions(true)
+                    if let originalSuper, let originalIndex, let slot = UInt32(exactly: originalIndex) {
+                        observationRoot.removeFromSuperlayer()
+                        originalSuper.insertSublayer(observationRoot, at: slot)
+                    }
+                    CATransaction.commit()
+                    let after = observed.map { $0.contentsAreFlipped() }
+                    print("COMPONENT OBSERVER restored hostFrame=\(host.frame) hostPosition=\(host.position) after=\(after)")
+                    t.equal(after, flips)
+                    t.equal(observationRoot.bounds, originalBounds)
+                    t.equal(observationRoot.position, originalPosition)
+                    t.check(CATransform3DEqualToTransform(observationRoot.transform, originalTransform))
+                    t.equal(originalSuper?.sublayers?.firstIndex(where: { $0 === observationRoot }), originalIndex)
+                    t.check(parent.superlayer === observationRoot && host.superlayer === parent)
+                    t.equal(host.frame, hostFrame)
+                    t.equal(host.position, hostPosition)
+                    t.equal(parent.sublayers?.firstIndex(where: { $0 === host }), Optional(index))
+                    t.equal(host.opacity, Float(1))
+                }
+                let actual = try renderer.render(observationRoot, at: 0, deadline: .now() + .seconds(30))
+                let during = observed.map { $0.contentsAreFlipped() }
+                print("COMPONENT OBSERVER during=\(during)")
+                t.equal(during, flips)
+                let reference = try renderer.render(singleTree(expected, scale: attachment.scale, size: window.view.bounds.size),
+                    at: 0, deadline: .now() + .seconds(30))
+                let difference = try PixelComparison.compare(reference: reference.rgba, candidate: actual.rgba, width: 48, height: 32)
+                t.check(difference.isExact, "actual parent geometry / independent C Single exact active bytes: \(difference)")
+                t.check(stride(from: 3, to: actual.rgba.count, by: 4).contains { actual.rgba[$0] > 0 && actual.rgba[$0] < 255 },
+                    "real grouped native pixels retain nonempty translucent ink")
+                let blank = [UInt8](repeating: 0, count: reference.rgba.count)
+                t.check(!(try PixelComparison.compare(reference: reference.rgba, candidate: blank, width: 48, height: 32)).isExact)
+                var wrong = reference.rgba
+                wrong[(5 * 48 + 4) * 4] ^= 1
+                t.check(!(try PixelComparison.compare(reference: reference.rgba, candidate: wrong, width: 48, height: 32)).isExact)
+                t.equal(attachment.callbackReport.observation.callbacks, callbacks)
+                t.equal(attachment.callbackReport.observation.failure, nil)
+                return actual.rgba
+            }
+        }
+        guard let readback else { throw CocoaError(.coderReadCorrupt) }
+        return try readback.get()
+    }
+
+    private static func componentCallbacks(_ plan: PartitionPlan, _ count: Int) -> [Int] {
+        plan.layers.map { if case .baseSlice = $0.content { return 0 }; return count }
+    }
+
+    private static func checkComponentDestinations(_ attachment: LayerRuntime.NativeStage, _ count: Int,
+                                                    _ t: AppTestRunner) {
+        let observation = attachment.callbackReport.observation
+        t.equal(attachment.partition, .acceptedComponents)
+        t.equal(observation.callbacks, componentCallbacks(attachment.plan, count))
+        t.equal(observation.failure, nil)
+        var slices: [CGImage] = []
+        for (index, layer) in attachment.plan.layers.enumerated() {
+            if case .group = layer.content {
+                let destination = observation.destinations[index]
+                t.equal(destination?.layer, layer.id)
+                t.equal(destination?.width, layer.rect.width)
+                t.equal(destination?.height, layer.rect.height)
+                t.check(destination?.target?.colorSpace.map { CFEqual($0, attachment.colorSpace) } == true)
+                let map = CGAffineTransform(a: attachment.scale, b: 0, c: 0, d: attachment.scale,
+                    tx: -CGFloat(layer.rect.minX), ty: -CGFloat(layer.rect.minY))
+                t.equal(destination?.target?.userToDevice, map)
+            } else if case .baseSlice = layer.content {
+                t.check(observation.destinations[index] == nil, "base pieces copy one owned image without a native draw")
+                let contents = attachment.root.sublayers?[index].contents
+                if let contents, CFGetTypeID(contents as CFTypeRef) == CGImage.typeID { slices.append(contents as! CGImage) }
+                else { t.check(false, "a base slice must retain actual image bytes") }
+            } else { t.check(false, "component qualification cannot quietly select a full-scene leaf") }
+        }
+        t.check(slices.count > 1)
+        if let first = slices.first {
+            t.check(slices.allSatisfy { $0 === first }, "one full-window base bitmap is shared by all complement pieces")
+            t.equal(first.width, attachment.plan.window.width)
+            t.equal(first.height, attachment.plan.window.height)
+            t.check(first.colorSpace.map { CFEqual($0, attachment.colorSpace) } == true)
+        }
+    }
+
+    private static func nativeComponentFrames(_ source: String, groupIDs: [LayerPlan.Identity],
+                                               lastMembers: [String], _ t: AppTestRunner) throws {
+        let app = try app(t, threading: .engine, source: source)
+        defer { app.stopAllForTermination(); app.endEngineThread() }
+        let window = try nativeFrameWindow(app, t, selection: nativeComponentMode)
+        guard readyNativeFrames(window, t), let worker = window.runtime.executor as? SkinThreadExecutor,
+              let attachment = window.content.visibleNativeStage, let space = window.facts.colorSpace,
+              let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "actual group owner and profile are required") }
+        let renderer = try OffscreenRenderer(width: 48, height: 32, device: device,
+            maximumReadbackBytes: 48 * 32 * 4, colorSpace: space)
+        let (anchor, reference) = try publicationReference(window, worker, t)
+        t.equal(anchor.fallback, nil)
+        t.equal(attachment.plan, anchor.plan)
+        let groups = attachment.plan.layers.filter { if case .group = $0.content { return true }; return false }
+        t.equal(groups.count, groupIDs.count, "the literal layout determines component count")
+        t.equal(groups.map(\.id), groupIDs)
+        t.equal(attachment.plan.baseMembers.map(\.name), ["back"])
+        if case let .group(members)? = groups.last?.content { t.equal(members.map(\.name), lastMembers) }
+        else { t.check(false, "the container remains one top-level atomic recipe") }
+        let layers = attachment.root.sublayers ?? [], presented = window.content.state.presented
+        let logical = window.runtime.exclusive { _ in window.runtime.frames.framesDrawn }
+        checkComponentDestinations(attachment, 1, t)
+        var pixels = [try readPublishedNative(window, reference, renderer, t,
+            componentCallbacks: componentCallbacks(attachment.plan, 1))]
+        for (index, tint) in ["17,89,233,153", "217,61,139,157"].enumerated() {
+            ownerWork(worker, t) {
+                t.check(worker.isOnThread && SkinThreadExecutor.isSkinThread && !Thread.isMainThread)
+                window.runtime.skin.execute("[!SetVariable Tint \(tint)]", from: nil)
+                window.runtime.skin.update()
+                window.runtime.frames.runLoopTurn(.beforeWaiting)
+                let frame = window.runtime.frames.layerRuntime?.nativeFrame(attachment)
+                t.equal(frame?.sequence, anchor.sequence + UInt64(index + 1))
+                t.equal(frame?.observation.callbacks, componentCallbacks(attachment.plan, index + 2))
+                t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, anchor.sequence)
+                t.check(sameImages(window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image), anchor.contents.map(\.image)))
+                t.equal(window.runtime.frames.framesDrawn, (logical ?? -10) + index + 1)
+                t.check(!window.runtime.frames.needsFrame && !window.runtime.frames.hasLayerWriter)
+            }
+            let (_, fresh) = try publicationReference(window, worker, t)
+            pixels.append(try readPublishedNative(window, fresh, renderer, t,
+                componentCallbacks: componentCallbacks(attachment.plan, index + 2)))
+            checkComponentDestinations(attachment, index + 2, t)
+            t.check(window.content.visibleNativeStage === attachment)
+            t.check(layers.count == attachment.root.sublayers?.count &&
+                zip(layers, attachment.root.sublayers ?? []).allSatisfy { $0.0 === $0.1 })
+            t.equal(window.content.state.presented, presented, "native frames do not republish C images")
+        }
+        t.check(pixels[0] != pixels[1], "the colored B foreground is a nonempty native positive control")
+        t.equal(pixels[0], pixels[2])
+        t.check(renderer.hasVerifiedCanary)
+        window.rollbackNativeSingle() // Existing Main rollback applies to the visible attachment, not a plan name.
+        t.equal(window.content.contentOpacity, Float(1))
+    }
+
+    private static func nativeComponentTests(_ t: AppTestRunner) {
+        t.suite("App: layer window native components: physical group backing stays exact through A/B/A") {
+            try nativeComponentFrames(nativeComponentText, groupIDs: [.group(fileIndex: 1), .group(fileIndex: 2)],
+                lastMembers: ["mask"], t)
+        }
+        t.suite("App: layer window native components: merged atomic original layout stays exact through A/B/A") {
+            try nativeComponentFrames(nativeMergedComponentText, groupIDs: [.group(fileIndex: 1)],
+                lastMembers: ["moving", "mask"], t)
+        }
+        t.suite("App: layer window native components: changed geometry waits for rollback before latest C and replacement") {
+            let app = try app(t, threading: .engine, source: nativeComponentText)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try nativeFrameWindow(app, t, selection: nativeComponentMode)
+            guard readyNativeFrames(window, t), let worker = window.runtime.executor as? SkinThreadExecutor,
+                  let old = window.content.visibleNativeStage else { return t.check(false, "actual initial components") }
+            let anchor = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            let callbacks = old.callbackReport.observation.callbacks
+            var held: (SkinNativeStage, SkinNativeStageFailure)?
+            var deliver: ((SkinNativeStage, SkinNativeStageFailure) -> Void)?
+            var deliveries = 0
+            ownerWork(worker, t) {
+                deliver = window.runtime.frames.requestNativeRollback
+                window.runtime.frames.requestNativeRollback = { stage, failure in
+                    deliveries += 1
+                    held = (stage, failure)
+                }
+            }
+            defer {
+                ownerWork(worker, t) { window.runtime.frames.requestNativeRollback = deliver }
+                if let held { deliver?(held.0, held.1) }
+            }
+            ownerWork(worker, t) {
+                for left in [28, 36] {
+                    window.runtime.skin.execute("[!SetVariable Left \(left)][!SetVariable Tint 17,89,233,153]", from: nil)
+                    window.runtime.skin.update()
+                    window.runtime.frames.runLoopTurn(.beforeWaiting)
+                    t.equal(old.callbackReport.observation.callbacks, callbacks, "new group bounds decline before live paint")
+                    t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, anchor?.sequence)
+                    t.check(sameImages(window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image), anchor?.contents.map(\.image)))
+                    t.check(window.runtime.frames.needsFrame && !window.runtime.frames.hasLayerWriter)
+                    t.check(window.runtime.frames.layerRuntime?.nativePublicationHoldsWriter == true)
+                }
+            }
+            t.equal(deliveries, 1, "dirty coalesces behind one real Main rollback delivery")
+            guard let pending = held, let deliver else { return t.check(false, "actual rollback request was held") }
+            t.check(pending.0.attachment === old && !pending.0.hasPublicationRollback && !pending.0.hasOwnerRelease)
+            t.check(window.content.visibleNativeStage === old)
+            t.equal(window.content.contentOpacity, Float(0))
+            ownerWork(worker, t) { window.runtime.frames.requestNativeRollback = deliver }
+            held = nil
+            deliver(pending.0, pending.1) // Calls the original Main rollback path, not a synthetic ack.
+            t.equal(window.content.contentOpacity, Float(1))
+            guard readyNativeFrames(window, t), let replacement = window.content.visibleNativeStage else { return }
+            t.check(replacement !== old)
+            t.check(pending.0.hasPublicationRollback && pending.0.hasOwnerRelease)
+            t.check(old.root.superlayer == nil)
+            let next = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            t.equal(next?.sequence, (anchor?.sequence ?? 0) + 1)
+            t.equal(replacement.plan, next?.plan)
+            t.check(replacement.plan != old.plan)
+            t.equal(replacement.plan.layers.filter { if case .group = $0.content { return true }; return false }.count, 1)
+            window.content.rollbackNativeStage(old)
+            window.content.detachNativeStage(old)
+            window.runtime.send(.nativeFramesReady(pending.0))
+            window.runtime.send(.nativeStageDetached(pending.0))
+            t.check(window.content.visibleNativeStage === replacement, "old identities never release a newer component writer")
+            guard let space = window.facts.colorSpace, let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "native oracle") }
+            let renderer = try OffscreenRenderer(width: 48, height: 32, device: device,
+                maximumReadbackBytes: 48 * 32 * 4, colorSpace: space)
+            let (_, reference) = try publicationReference(window, worker, t)
+            _ = try readPublishedNative(window, reference, renderer, t,
+                componentCallbacks: replacement.callbackReport.observation.callbacks)
+        }
+        t.suite("App: layer window native components: real failed group restores C without owner churn") {
+            let app = try app(t, threading: .engine, source: nativeComponentText)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try nativeFrameWindow(app, t, selection: nativeComponentMode)
+            guard readyNativeFrames(window, t), let worker = window.runtime.executor as? SkinThreadExecutor,
+                  let old = window.content.visibleNativeStage,
+                  let index = old.plan.layers.firstIndex(where: { if case .group = $0.content { return true }; return false }),
+                  let leaf = old.root.sublayers?[index] else { return t.check(false, "a real group leaf is required") }
+            let anchor = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            ownerWork(worker, t) {
+                window.runtime.skin.execute("[!SetVariable Tint 17,89,233,153]", from: nil)
+                window.runtime.skin.update()
+                window.runtime.frames.runLoopTurn(.beforeWaiting)
+                t.equal(old.callbackReport.observation.callbacks, componentCallbacks(old.plan, 2))
+            }
+            leaf.setNeedsDisplay(); leaf.displayIfNeeded()
+            t.equal(old.callbackReport.observation.failure, .wrongOwner)
+            t.equal(old.callbackReport.observation.callbacks[index], 3, "the actual off-owner entry is counted")
+            t.check(AppSelfTest.spin(timeout: 30) {
+                window.content.visibleNativeStage == nil && window.content.stagedNativeHost == nil &&
+                    window.runtime.exclusive { _ in
+                        !window.runtime.frames.hasNativeStage && !window.runtime.frames.needsFrame &&
+                        window.runtime.frames.layerRuntime?.currentFrame?.sequence == (anchor?.sequence ?? 0) + 1
+                    } == true
+            }, "Main restores C, acknowledges rollback, releases E and redraws latest values")
+            t.equal(window.content.contentOpacity, Float(1))
+            for _ in 0..<2 {
+                ownerWork(worker, t) {
+                    window.runtime.skin.update(); window.runtime.frames.runLoopTurn(.beforeWaiting)
+                    t.check(!window.runtime.frames.hasNativeStage)
+                }
+            }
+            try checkCurrentTree(window, 48, t)
+        }
+        t.suite("App: layer window native components: held ready profile panel and physical stop keep exact owner identities") {
+            let app = try app(t, threading: .engine, source: nativeComponentText)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            var gate: NativePublicationGate?
+            let window = try nativeFrameWindow(app, t, gate: { window in
+                let pending = NativePublicationGate(window)
+                pending.holdsFinished = true
+                gate = pending
+                window.runtime.window = pending
+            }, selection: nativeComponentMode)
+            guard let gate, let worker = window.runtime.executor as? SkinThreadExecutor else { return t.check(false, "actual gate/worker") }
+            defer { gate.releaseFinished(); window.runtime.window = window }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.finished != nil })
+            guard let held = gate.finished else { return t.check(false, "actual publication result is held") }
+            ownerWork(worker, t) {
+                t.check(!window.runtime.frames.hasNativeFrameOwner)
+                window.runtime.skin.execute("[!SetVariable Tint 17,89,233,153]", from: nil)
+                window.runtime.skin.update(); window.runtime.frames.runLoopTurn(.beforeWaiting)
+                t.check(window.runtime.frames.needsFrame)
+                t.equal(held.0.attachment.callbackReport.observation.callbacks, componentCallbacks(held.0.attachment.plan, 1))
+            }
+            gate.holdsFinished = false
+            guard readyNativeFrames(window, t), let old = window.content.visibleNativeStage else { return }
+            t.check(old !== held.0.attachment && held.0.hasOwnerRelease)
+            gate.releaseFinished()
+            window.runtime.send(.nativeFramesReady(held.0))
+            t.check(window.content.visibleNativeStage === old)
+            // Change the actual private fixture window's profile, never the display's or user's profile.
+            guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB) else { return t.check(false, "named RGB profile is required") }
+            let previous = window.facts.colorSpace
+            window.window.colorSpace = .sRGB
+            window.publishFacts(force: true)
+            guard readyNativeFrames(window, t), let afterProfile = window.content.visibleNativeStage else { return }
+            if previous.map({ CFEqual($0, sRGB) }) == false { t.check(afterProfile !== old) }
+            t.check(CFEqual(afterProfile.colorSpace, sRGB))
+            let panel = window.window
+            window.runtime.send(.run("[!ClickThrough 1][!ClickThrough 0]"))
+            t.check(AppSelfTest.spin(timeout: 30) { window.window !== panel })
+            guard readyNativeFrames(window, t), let current = window.content.visibleNativeStage,
+                  let envelope = gate.stage,
+                  let index = current.plan.layers.firstIndex(where: { if case .group = $0.content { return true }; return false }),
+                  let leaf = current.root.sublayers?[index], let root = window.content.installedLayerRoot else { return }
+            t.check(current !== afterProfile && envelope.attachment === current)
+            window.content.rollbackNativeStage(afterProfile)
+            window.content.detachNativeStage(afterProfile)
+            t.check(window.content.visibleNativeStage === current)
+            window.stop(fadeOut: true, keepsWindow: true)
+            t.equal(window.content.contentOpacity, Float(1))
+            ownerWork(worker, t) {
+                t.check(!window.runtime.frames.hasNativeStage && envelope.hasStoppedOwnerRelease && envelope.hasOwnerRelease)
+            }
+            window.window.orderOut(nil); window.window.close(); window.runtime.teardownContent()
+            ownerWork(worker, t) {}
+            app.endEngineThread()
+            t.check(AppSelfTest.spin(timeout: 30) { worker.hasExited })
+            window.apply(.attachNativeStage(envelope), from: window.runtime)
+            window.apply(.nativeStagePublicationFinished(held.0, held.1), from: window.runtime)
+            leaf.setNeedsDisplay(); leaf.displayIfNeeded()
+            t.equal(current.callbackReport.observation.failure, .ownerReleased)
+            t.check(AppSelfTest.spin(timeout: 30) { window.content.installedLayerRoot == nil && window.content.stagedNativeHost == nil })
+            t.check(root.sublayers?.isEmpty != false)
+        }
+        t.suite("App: layer window native components: fallback Main and explicit budgets allocate no shadow owner") {
+            let tiny = SkinFrameContentMode.layers(partition: .candidateComponents, maximumOwnedBitmapBytes: 1_000_000,
+                backend: .nativeComponents(maximumCallbackBitmapBytes: 1))
+            for (threading, source, selection) in [(SkinThreading.engine, text, nativeComponentMode),
+                (.main, nativeComponentText, nativeComponentMode), (.engine, nativeComponentText, tiny)] {
+                let app = try app(t, threading: threading, source: source)
+                defer { app.stopAllForTermination(); app.endEngineThread() }
+                let window = try nativeFrameWindow(app, t, selection: selection)
+                t.check(AppSelfTest.spin(timeout: 30) { window.runtime.exclusive { _ in !window.runtime.frames.needsFrame } == true })
+                if let worker = window.runtime.executor as? SkinThreadExecutor { ownerWork(worker, t) {} }
+                else { t.check(AppSelfTest.spin(timeout: 30) { window.runtime.frames.nativeFrameFailure != nil }) }
+                t.check(window.content.stagedNativeHost == nil && window.content.visibleNativeStage == nil)
+                t.equal(window.runtime.exclusive { _ in !window.runtime.frames.hasNativeStage }, true)
+                t.equal(window.content.contentOpacity, Float(1))
+                t.check(window.content.installedLayerRoot != nil)
+                if source == text {
+                    t.check(window.runtime.exclusive { _ in
+                        if case .unresolvedInk? = window.runtime.frames.layerRuntime?.currentFrame?.fallback { return true }
+                        return false
+                    } == true, "original unknown String is a real typed C Single fallback")
+                    t.equal(window.runtime.exclusive { _ in window.runtime.frames.nativeFrameFailure }, .notReady)
+                } else if threading == .main {
+                    t.equal(window.runtime.exclusive { _ in window.runtime.frames.nativeFrameFailure }, .unsupportedExecutor)
+                } else {
+                    t.check(window.runtime.exclusive { _ in window.runtime.frames.nativeFrameFailure != nil } == true)
                 }
             }
         }

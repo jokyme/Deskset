@@ -791,7 +791,10 @@ final class SkinFrameProducer {
     /// Only the explicit native backend asks for an attachment. No default/C/Main shadow scene or E allocation.
     func automaticNativeFrameRequest() -> SkinNativeStageRequest? {
         guard contentMode.requestsNativeFrames else { return nil }
-        guard let budget = contentMode.nativeFrameBudget else { nativeFrameFailure = .unsupportedMode; return nil }
+        guard let budget = contentMode.nativeFrameBudget, let partition = contentMode.nativeFramePartition else {
+            nativeFrameFailure = .unsupportedMode
+            return nil
+        }
         guard let worker = executor as? SkinThreadExecutor, worker.isOnThread, !Thread.isMainThread else {
             nativeFrameFailure = .unsupportedExecutor
             return nil
@@ -799,11 +802,19 @@ final class SkinFrameProducer {
         guard
               !isStopped, !explicitlyHidden, !needsFrame, !hasNativeStage, !hasLayerWriter,
               layerInstalled, let destination = layerDestination, let actualSpace else { return nil }
+        if partition == .acceptedComponents {
+            guard let frame = layerRuntime?.currentFrame, frame.fallback == nil,
+                  let mode = try? LayerContentBuilder.validateGeometry(frame.plan), case .components = mode else {
+                // The actual C result, including typed Single fallback, remains visible without a shadow owner.
+                nativeFrameFailure = .notReady
+                return nil
+            }
+        }
         if let failedNativeEpoch,
            failedNativeEpoch.panelGeneration == panelGeneration, failedNativeEpoch.size == destination.size,
            failedNativeEpoch.scale == scale, failedNativeEpoch.appearance == appearance,
            CFEqual(failedNativeEpoch.colorSpace, actualSpace) { return nil }
-        return SkinNativeStageRequest(maximumCallbackBitmapBytes: budget, publishesSingle: true,
+        return SkinNativeStageRequest(maximumCallbackBitmapBytes: budget, nativePartition: partition,
                                       continuesFrames: true, completion: { _ in })
     }
 
@@ -967,7 +978,8 @@ final class SkinFrameProducer {
         let attachment: LayerRuntime.NativeStage
         do {
             attachment = try layerRuntime.prepareNativeStage(maximumCallbackBitmapBytes: request.maximumCallbackBitmapBytes,
-                                                             cycle: skin.updateCount, supportsFrames: request.continuesFrames)
+                                                             cycle: skin.updateCount, supportsFrames: request.continuesFrames,
+                                                             partition: request.nativePartition)
         } catch LayerRuntime.NativeStageFailure.busy { throw SkinNativeStageFailure.busy }
         catch LayerRuntime.NativeStageFailure.notReady { throw SkinNativeStageFailure.notReady }
         let stage = SkinNativeStage(attachment: attachment, provider: provider,
@@ -1029,7 +1041,7 @@ final class SkinFrameProducer {
     private func cancelNativeStage() {
         guard let stage = pendingNativeStage else { return }
         stage.request.cancel()
-        if stage.request.publishesSingle, layerRuntime?.nativePublicationHoldsWriter == true {
+        if stage.request.publishesContent, layerRuntime?.nativePublicationHoldsWriter == true {
             guard !stage.rollbackQueued else { return }
             stage.rollbackQueued = true
             requestNativeRollback?(stage, .cancelled)
@@ -1042,7 +1054,7 @@ final class SkinFrameProducer {
     /// subsequent logic turns still coalesce needsFrame, without preparing/exporting another C ScenePatch.
     func beginNativePublication(_ stage: SkinNativeStage) throws {
         precondition(Thread.isMainThread && executor?.isCurrent == true)
-        guard nativeStageIsCurrent(stage), stage.request.publishesSingle, !stage.hasPublicationRollback,
+        guard nativeStageIsCurrent(stage), stage.request.publishesContent, !stage.hasPublicationRollback,
               let layerRuntime else { throw SkinNativeStageFailure.cancelled }
         try layerRuntime.beginNativePublication(stage.attachment)
     }

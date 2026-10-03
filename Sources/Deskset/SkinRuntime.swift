@@ -491,7 +491,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         }
         do {
             let stage = try frames.prepareNativeStage(request)
-            if request.publishesSingle {
+            if request.publishesContent {
                 stage.attachment.callbackReport.observeFirstFailure { [weak self, weak stage] failure in
                     guard let self, let stage else { return }
                     self.request(.nativeStageCallbackFailed(stage, .rendering(String(describing: failure))))
@@ -528,11 +528,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         // A queued success/attach cannot turn it back into readiness or require another stopped-owner work item.
         if stage.hasStoppedOwnerRelease {
             stage.request.complete(.failure(.cancelled))
-            if stage.request.publishesSingle { rollbackNativePublication(stage, failure: .cancelled) }
+            if stage.request.publishesContent { rollbackNativePublication(stage, failure: .cancelled) }
             stage.provider.detachNativeStage(stage.attachment)
             return
         }
-        if stage.request.publishesSingle {
+        if stage.request.publishesContent {
             completeNativePublication(stage, result: result, facts: facts, size: size)
             return
         }
@@ -635,7 +635,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     /// but cannot hide a newer provider attachment or advance any newer panel/scene acknowledgment.
     func rollbackNativePublication(_ stage: SkinNativeStage, failure: SkinNativeStageFailure) {
         precondition(Thread.isMainThread)
-        guard stage.request.publishesSingle else { return }
+        guard stage.request.publishesContent else { return }
         let hadAck = stage.hasPublicationRollback
         let hidden = stage.provider.rollbackNativeStage(stage.attachment)
         guard hidden || !stage.wasPublished || stage.hasOwnerRelease else { return }
@@ -732,7 +732,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         switch request {
         case .nativeStageReleased(let stage):
             guard stage.hasOwnerRelease else { return }
-            if stage.request.publishesSingle { rollbackNativePublication(stage, failure: .cancelled) }
+            if stage.request.publishesContent { rollbackNativePublication(stage, failure: .cancelled) }
             if stage.hasStoppedOwnerRelease { stage.request.complete(.failure(.cancelled)) }
             stage.provider.detachNativeStage(stage.attachment)
             if !stage.hasStoppedOwnerRelease { enqueue(.nativeStageDetached(stage)) }
