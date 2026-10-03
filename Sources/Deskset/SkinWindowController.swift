@@ -1071,6 +1071,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             }
             publishFacts()
         }
+        runtime.beginNativeFrames()
     }
 
     /// The skin published a snapshot in which something changed that the main thread acts on.

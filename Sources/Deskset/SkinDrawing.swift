@@ -341,9 +341,13 @@ final class SkinFrameProducer {
     var requestNativeStopRelease: ((SkinNativeStage) -> Void)?
     var requestNativePublicationFinished: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
     var requestNativeRollback: ((SkinNativeStage, SkinNativeStageFailure) -> Void)?
+    var requestNativeFrames: (() -> Void)?
+    private(set) var nativeFrameFailure: SkinNativeStageFailure?
+    private var failedNativeEpoch: SkinNativeStage.Epoch?
     private var pendingNativeStage: SkinNativeStage?
     /// The slot remains occupied until owner release AND main detach have been acknowledged.
     var hasNativeStage: Bool { pendingNativeStage != nil }
+    var hasNativeFrameOwner: Bool { pendingNativeStage?.nativeFramesReady == true }
     private var pendingScenePatch: SkinScenePatch?
     private var panelGeneration: UInt64 = 0
     private var presentationGeneration: UInt64 = 0
@@ -496,7 +500,9 @@ final class SkinFrameProducer {
     /// The skin redrew: a frame at the end of the turn, if the window can be seen then.
     func setNeedsFrame() {
         guard !isStopped else { return }
-        cancelNativeStage()
+        // A ready persistent native owner samples the new frame before deciding whether its host is unchanged.
+        // Old explicit stages retain their source-cycle cancellation rule.
+        if pendingNativeStage?.nativeFramesReady != true { cancelNativeStage() }
         if !needsFrame { askedAt = ProcessInfo.processInfo.systemUptime }
         needsFrame = true
     }
@@ -625,12 +631,22 @@ final class SkinFrameProducer {
     private func draw() {
         // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
         guard pendingScenePatch == nil else { return }
-        if layerRuntime?.nativePublicationHoldsWriter == true {
+        let nativeStage: SkinNativeStage?
+        if let stage = pendingNativeStage, stage.nativeFramesReady,
+           layerRuntime?.nativePublicationHoldsWriter == true, !stage.hasPublicationRollback,
+           !stage.hasOwnerRelease, !stage.request.isCancelled {
+            nativeStage = stage
+        } else {
+            nativeStage = nil
+        }
+        if nativeStage == nil, layerRuntime?.nativePublicationHoldsWriter == true {
             cancelNativeStage()
             return // Keep needsFrame and host debt. Only the matching Main rollback ack permits new C writes.
         }
-        cancelNativeStage()
-        needsFrame = false
+        if nativeStage == nil {
+            cancelNativeStage()
+            needsFrame = false
+        }
         guard let provider, let skin = skin() else { return }
         workActivity?.begin(.drawing)
         defer { workActivity?.end() }
@@ -642,8 +658,12 @@ final class SkinFrameProducer {
             drawingTime += took
             longestFrame = max(longestFrame, took)
         }
+        if let nativeStage {
+            drawNativeFrame(nativeStage, skin: skin, size: size, began: began)
+            return
+        }
         var picture: CGImage?
-        if case let .layers(partition, budget) = contentMode {
+        if case let .layers(partition, budget, _) = contentMode {
             drawLayerContent(skin, size: size, partition: partition, budget: budget, began: began)
             return
         }
@@ -698,19 +718,9 @@ final class SkinFrameProducer {
             var preparation: LayerRuntime.Preparation?
             var capturedScene: WidgetScene?
             try SkinFrameProducer.withAppearanceThrowing(appearance) {
-                let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+                let prepared = try prepareLayerScene(skin, context: context, environment: environment, space: space)
+                let scene = prepared.scene
                 capturedScene = scene
-                // A one-pixel owned query destination captures the exact canonical whole-window userToDevice
-                // mapping and actual supplied profile. It draws no pixels and does not provide raster coverage.
-                guard let bitmap = SkinBitmapDrawing.makeContext(1, 1, space) else {
-                    throw Rasterizer.Failure.resourceFailure("Cannot prepare the owned destination mapping")
-                }
-                bitmap.translateBy(x: 0, y: 1)
-                bitmap.scaleBy(x: scale, y: -scale)
-                let target = DrawTarget.prepareOwnedBitmap(bitmap, glass: .hitArea)
-                guard target.userToDevice == CGAffineTransform(scaleX: scale, y: scale),
-                      target.colorSpace.map({ CFEqual($0, space) }) == true else { throw Rasterizer.Failure.invalidMapping }
-                let prepared = ScenePreparer.prepare(scene, context: context.drawing, target: target)
                 preparation = try layerRuntime.prepare(prepared, in: window, scale: scale, colorSpace: space,
                     partition: partition, context: context.drawing, cycle: skin.updateCount, glass: .hitArea,
                     forcePresentation: !layerInstalled || size != presentedSize || scene.glass != presentedGlass
@@ -753,12 +763,114 @@ final class SkinFrameProducer {
                 publishLayerHitMap?(scene.hitMap, generation, panelGeneration)
                 recordPresented(began: began, source: skin.config)
                 if wasReleased { requestLayerInstallation?() }
+                requestNativeFrames?()
             } else if !layerInstallRequested {
                 layerInstallRequested = true
                 requestLayerInstallation?()
             }
         } catch {
             layerFailure = .rendering(String(describing: error))
+        }
+    }
+
+    /// Shared pure preparation: C and native frames use the same canonical mapping, actual space and scene.
+    private func prepareLayerScene(_ skin: Skin, context: SkinRenderContext, environment: AppSceneEnvironment,
+                                   space: CGColorSpace) throws -> SceneInkCandidates {
+        let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+        guard let bitmap = SkinBitmapDrawing.makeContext(1, 1, space) else {
+            throw Rasterizer.Failure.resourceFailure("Cannot prepare the owned destination mapping")
+        }
+        bitmap.translateBy(x: 0, y: 1)
+        bitmap.scaleBy(x: scale, y: -scale)
+        let target = DrawTarget.prepareOwnedBitmap(bitmap, glass: .hitArea)
+        guard target.userToDevice == CGAffineTransform(scaleX: scale, y: scale),
+              target.colorSpace.map({ CFEqual($0, space) }) == true else { throw Rasterizer.Failure.invalidMapping }
+        return ScenePreparer.prepare(scene, context: context.drawing, target: target)
+    }
+
+    /// Only the explicit native backend asks for an attachment. No default/C/Main shadow scene or E allocation.
+    func automaticNativeFrameRequest() -> SkinNativeStageRequest? {
+        guard contentMode.requestsNativeFrames else { return nil }
+        guard let budget = contentMode.nativeFrameBudget else { nativeFrameFailure = .unsupportedMode; return nil }
+        guard let worker = executor as? SkinThreadExecutor, worker.isOnThread, !Thread.isMainThread else {
+            nativeFrameFailure = .unsupportedExecutor
+            return nil
+        }
+        guard
+              !isStopped, !explicitlyHidden, !needsFrame, !hasNativeStage, !hasLayerWriter,
+              layerInstalled, let destination = layerDestination, let actualSpace else { return nil }
+        if let failedNativeEpoch,
+           failedNativeEpoch.panelGeneration == panelGeneration, failedNativeEpoch.size == destination.size,
+           failedNativeEpoch.scale == scale, failedNativeEpoch.appearance == appearance,
+           CFEqual(failedNativeEpoch.colorSpace, actualSpace) { return nil }
+        return SkinNativeStageRequest(maximumCallbackBitmapBytes: budget, publishesSingle: true,
+                                      continuesFrames: true, completion: { _ in })
+    }
+
+    func rejectAutomaticNativeFrames(_ request: SkinNativeStageRequest, failure: SkinNativeStageFailure) {
+        precondition(executor?.isCurrent == true)
+        guard request.continuesFrames else { return }
+        nativeFrameFailure = failure
+        if case .rendering = failure, let destination = layerDestination, let actualSpace {
+            failedNativeEpoch = SkinNativeStage.Epoch(panelGeneration: panelGeneration, size: destination.size,
+                scale: scale, colorSpace: actualSpace, appearance: appearance, presentationGeneration: presentationGeneration)
+        }
+    }
+
+    /// The Main result is consumed once on the owner before ordinary native drawing can start.
+    func enableNativeFrames(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard !stage.nativeFramesReady else { return }
+        guard stage.request.continuesFrames, nativeStageIsCurrent(stage), let layerRuntime, let skin = skin() else {
+            if pendingNativeStage === stage { cancelNativeStage() }
+            return
+        }
+        do {
+            try layerRuntime.enableNativeFrames(stage.attachment, cycle: skin.updateCount)
+            stage.nativeFramesReady = true
+            nativeFrameFailure = nil
+        } catch { requestNativeRollback?(stage, .rendering(String(describing: error))) }
+    }
+
+    /// Ordinary native commits never touch C or host values. Host changes wait for matching Main rollback first.
+    private func drawNativeFrame(_ stage: SkinNativeStage, skin: Skin, size: CGSize, began: TimeInterval) {
+        guard let worker = executor as? SkinThreadExecutor, worker.isOnThread, !Thread.isMainThread,
+              let layerRuntime, let actualSpace, !isStopped, !explicitlyHidden else {
+            cancelNativeStage()
+            return
+        }
+        guard stage.epoch.panelGeneration == panelGeneration, stage.epoch.size == size,
+              stage.epoch.scale == scale, stage.epoch.appearance == appearance,
+              CFEqual(stage.epoch.colorSpace, actualSpace) else { cancelNativeStage(); return }
+        do {
+            let context = SkinRenderContext.of(skin)
+            let environment = AppSceneEnvironment(scale: Double(scale),
+                appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: appearance)
+            var native: LayerRuntime.NativeFrame?
+            try Self.withAppearanceThrowing(appearance) {
+                let prepared = try prepareLayerScene(skin, context: context, environment: environment, space: actualSpace)
+                guard prepared.scene.glass == stage.attachment.sourceGlass,
+                      prepared.scene.hitMap == stage.attachment.sourceHitMap else {
+                    throw LayerRuntime.NativeStageFailure.staleSource
+                }
+                native = try layerRuntime.displayNativeFrame(stage.attachment, prepared: prepared,
+                    context: context.drawing, cycle: skin.updateCount, glass: .hitArea)
+            }
+            guard native != nil else { return }
+            needsFrame = false
+            layerFailure = nil
+            lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+            recordPresented(began: began, source: skin.config)
+        } catch LayerRuntime.NativeStageFailure.staleSource {
+            cancelNativeStage()
+        } catch {
+            let failure = SkinNativeStageFailure.rendering(String(describing: error))
+            nativeFrameFailure = failure
+            failedNativeEpoch = stage.epoch
+            if !stage.rollbackQueued {
+                stage.rollbackQueued = true
+                requestNativeRollback?(stage, failure)
+            }
         }
     }
 
@@ -804,6 +916,7 @@ final class SkinFrameProducer {
             if isStopped, layerRuntime.state != .closed { try layerRuntime.beginClose() }
             else if needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
             writerReleased?()
+            if !isStopped, !needsFrame { requestNativeFrames?() }
             if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
         } catch { layerFailure = .rendering(String(describing: error)) }
     }
@@ -854,7 +967,7 @@ final class SkinFrameProducer {
         let attachment: LayerRuntime.NativeStage
         do {
             attachment = try layerRuntime.prepareNativeStage(maximumCallbackBitmapBytes: request.maximumCallbackBitmapBytes,
-                                                             cycle: skin.updateCount)
+                                                             cycle: skin.updateCount, supportsFrames: request.continuesFrames)
         } catch LayerRuntime.NativeStageFailure.busy { throw SkinNativeStageFailure.busy }
         catch LayerRuntime.NativeStageFailure.notReady { throw SkinNativeStageFailure.notReady }
         let stage = SkinNativeStage(attachment: attachment, provider: provider,
@@ -959,6 +1072,15 @@ final class SkinFrameProducer {
     func rolledBackNativePublication(_ stage: SkinNativeStage) -> Bool {
         precondition(executor?.isCurrent == true)
         guard pendingNativeStage === stage, stage.hasPublicationRollback else { return stage.hasOwnerRelease }
+        if stage.request.continuesFrames {
+            if let failure = stage.publicationFailure {
+                nativeFrameFailure = failure
+                if case .rendering = failure { failedNativeEpoch = stage.epoch }
+            }
+            // The fallback is the original C anchor, not the last native scene. After rollback the owner must
+            // render the latest values, including Update=-1 skins that will receive no timer-driven request.
+            if !isStopped { setNeedsFrame() }
+        }
         guard releaseNativeStage(stage) else { return false }
         if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
         if !isStopped, needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
@@ -1009,6 +1131,7 @@ final class SkinFrameProducer {
         guard pendingNativeStage === stage, stage.hasOwnerRelease else { return }
         pendingNativeStage = nil
         writerReleased?()
+        if !isStopped, !needsFrame { requestNativeFrames?() }
     }
 
     /// Owner cleanup is queued only when main has finished displaying/fading the old frame. Its acknowledgment
