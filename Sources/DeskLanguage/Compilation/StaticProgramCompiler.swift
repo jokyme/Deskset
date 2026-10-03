@@ -136,6 +136,10 @@ struct StaticProgramCompiler {
             guard allowedModifiers.contains(modifier.name.token.text), modifier.block == nil else {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
+            if modifier.name.token.text == "color",
+               (modifier.arguments?.arguments ?? []).contains(where: { ["light", "dark"].contains($0.label?.name ?? "") }) {
+                throw issue(.unsupported, modifier.node, "Separate light/dark colors are not implemented")
+            }
         }
         let allowedFacets: Set<String> = image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
@@ -207,17 +211,16 @@ struct StaticProgramCompiler {
                     throw issue(.unsupported, node, "Rounded requires an explicit radius; the catalog supplies no default")
                 }
             }
-            let value: Value
-            if let own = try facet(facts, "fill", at: node) { value = own }
+            let fill: ProgramColor
+            if let own = try facet(facts, "fill", at: node) { fill = try color(own, at: node) }
             // D115: the explicit outline suppresses the implicit fill, including transparent/zero strokes.
-            else if stroke != nil { value = .choice("clear") }
+            else if stroke != nil { fill = .literal(.clear) }
             else {
                 guard let source = spec.defaults[FacetID("fill")] else {
                     throw issue(.invalidCheckedModel, node, "The checking catalog has no \(facts.component) fill default")
                 }
-                value = try fixed(source, at: node)
+                fill = try color(fixed(source, at: node), at: node)
             }
-            let fill = try color(value, at: node)
             switch facts.component {
             case "Circle": content = .shape(kind: .circle, fill: fill)
             case "Ellipse": content = .shape(kind: .ellipse, fill: fill)
@@ -416,16 +419,17 @@ struct StaticProgramCompiler {
     private func color(_ value: Value, at node: PositionedNode) throws -> ProgramColor {
         switch value {
         case .choice(let n):
+            guard catalog.index.namedValues["Color.\(n)"] != nil,
+                  let palette = ProgramPaletteColor(rawValue: n) else {
+                throw issue(.unsupported, node, "Unsupported catalog color \(n)")
+            }
             switch n {
             case "text": return .text
             case "dim": return .dim
             case "faint": return .faint
             case "accent": return .accent
             case "separator": return .separator
-            case "black": return .literal(.black)
-            case "white": return .literal(.white)
-            case "clear": return .literal(.clear)
-            default: throw issue(.unsupported, node, "System palette color \(n) requires a platform color provider")
+            default: return .palette(palette)
             }
         case .string(let hex):
             let bytes = Array(hex.utf8)

@@ -15,6 +15,7 @@ private func programFailure(_ t: TestRunner, _ expected: ProgramRuntimeError, _ 
 }
 
 func runProgramRuntimeTests(_ t: TestRunner) {
+    runProgramPaletteTests(t)
     func rectangle(_ index: Int, width: ProgramLength = .fill, height: ProgramLength = .fill,
                    minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                    ideal: SkinSize = SkinSize(width: 10, height: 10), hidden: Bool = false) -> ProgramElement {
@@ -650,4 +651,91 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         t.equal(overflowing.generation, 0)
     }
 
+}
+
+private func runProgramPaletteTests(_ t: TestRunner) {
+    let color = RGBA(r: 17, g: 31, b: 45, a: 96)
+    let input = ProgramColorInput(colors: Dictionary(uniqueKeysWithValues: ProgramPaletteColor.allCases.map { ($0, color) }))
+    func legacy(_ key: ProgramPaletteColor) -> ProgramColor {
+        switch key {
+        case .text: return .text
+        case .dim: return .dim
+        case .faint: return .faint
+        case .accent: return .accent
+        case .separator: return .separator
+        default: return .palette(key)
+        }
+    }
+    t.suite("Program: palette: every named color feeds the measured text fill and outline from one input") {
+        for key in ProgramPaletteColor.allCases {
+            let text = ProgramElement(id: ElementID(name: "text", index: 1), content: .text(ProgramText("色😀", color: legacy(key))))
+            let fill = ProgramElement(id: ElementID(name: "fill", index: 2), content: .rectangle(fill: legacy(key)), width: .fixed(12), height: .fixed(10))
+            let outline = ProgramElement(id: ElementID(name: "outline", index: 3), content: .rectangle(fill: .literal(.clear)),
+                                         width: .fixed(12), height: .fixed(10), stroke: ProgramShapeStroke(color: legacy(key), width: 2))
+            let root = ProgramElement(id: ElementID(name: "row", index: 0), content: .row(spacing: 2, align: .top, children: [text, fill, outline]))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Palette", root: root))
+            var measured: TextStyle?
+            let scene = try runtime.project(environment: programEnvironment(), colorInput: input) { _, style, _ in
+                measured = style; t.equal(style.color, color)
+                return SkinSize(width: 8, height: 10)
+            }
+            guard scene.drawingItems.count == 3, case .fill(_, let paint) = scene.drawingItems[1],
+                  case .shape(let drawing) = scene.drawingItems[2] else { return t.check(false, "complete palette recipe") }
+            t.equal(programDraws(scene)[0].style, measured)
+            t.equal(paint.color, color); t.equal(drawing.shapes[0].stroke, .color(color))
+            t.equal(drawing.shapes[0].fill, .color(.clear))
+        }
+        let literal = RGBA(r: 1, g: 2, b: 3, a: 4)
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Literal", root:
+            ProgramElement(id: ElementID(name: "text", index: 0), content: .text(ProgramText("A", color: .literal(literal))))))
+        let scene = try runtime.project(environment: programEnvironment(), colorInput: input) { _, _, _ in SkinSize(width: 8, height: 10) }
+        t.equal(programDraws(scene)[0].style.color, literal, "a platform palette never replaces a literal")
+    }
+    t.suite("Program: palette: absent input preserves the original eight colors and refuses new system hues") {
+        let originals: [(ProgramPaletteColor, RGBA)] = [(.text, SkinAppearance.light.labelColor), (.dim, SkinAppearance.light.secondaryLabelColor),
+            (.faint, SkinAppearance.light.tertiaryLabelColor), (.accent, SkinAppearance.light.accentColor), (.separator, SkinAppearance.light.separatorColor),
+            (.white, .white), (.black, .black), (.clear, .clear)]
+        for key in ProgramPaletteColor.allCases {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: key.rawValue, root:
+                ProgramElement(id: ElementID(name: "text", index: 0), content: .text(ProgramText("A", color: legacy(key))))))
+            if let expected = originals.first(where: { $0.0 == key })?.1 {
+                let scene = try runtime.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 8, height: 10) }
+                t.equal(programDraws(scene)[0].style.color, expected)
+            } else {
+                programFailure(t, .missingColorInput(key)) { _ = try runtime.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 8, height: 10) } }
+                t.equal(runtime.generation, 0)
+            }
+        }
+    }
+    t.suite("Program: palette: incomplete or invalid inputs retain neither startup nor failed click state") {
+        let id = ElementID(name: "text", index: 0)
+        let node = ProgramElement(id: id, content: .text(ProgramText(value:
+            .conditional(.declaration(0), then: .string("On"), otherwise: .string("Off")), color: .palette(.blue))),
+            onClick: [ProgramAssignment(declaration: 0, value: .not(.declaration(0)))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rollback", root: node,
+            declarations: [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false))],
+            onLoad: [ProgramAssignment(declaration: 0, value: .not(.declaration(0)))]))
+        var incomplete = input.colors; incomplete.removeValue(forKey: .clear)
+        var bad = [ProgramColorInput(colors: [:]), ProgramColorInput(colors: incomplete)]
+        for component in [Double.nan, .infinity, -1, 256] {
+            var colors = input.colors; colors[.blue] = RGBA(r: 17, g: component, b: 45, a: 96)
+            bad.append(ProgramColorInput(colors: colors))
+        }
+        for colors in bad {
+            programFailure(t, .invalidColorInput) { _ = try runtime.project(environment: programEnvironment(), colorInput: colors) { _, _, _ in SkinSize(width: 8, height: 10) } }
+            t.equal(runtime.generation, 0)
+        }
+        let scene = try runtime.project(environment: programEnvironment(), colorInput: input) { _, _, _ in SkinSize(width: 8, height: 10) }
+        t.equal(programDraws(scene).map(\.text), ["On"]); t.equal(scene.generation, 1)
+        for colors in bad {
+            programFailure(t, .invalidColorInput) {
+                _ = try runtime.click(at: SkinPoint(x: 4, y: 4), expectedGeneration: 1, environment: programEnvironment(), colorInput: colors) { _, _, _ in SkinSize(width: 8, height: 10) }
+            }
+            t.equal(runtime.generation, 1); t.equal(runtime.clockPrecision, nil)
+        }
+        let recovered = try runtime.project(environment: programEnvironment(.dark), colorInput: input) { _, _, _ in SkinSize(width: 8, height: 10) }
+        t.equal(programDraws(recovered).map(\.text), ["On"], "neither rejected assignments nor repeated onLoad changed the variable")
+        let clicked = try runtime.click(at: SkinPoint(x: 4, y: 4), expectedGeneration: recovered.generation, environment: programEnvironment(.dark), colorInput: input) { _, _, _ in SkinSize(width: 8, height: 10) }
+        t.equal(clicked.map { programDraws($0).map(\.text) }, ["Off"])
+    }
 }

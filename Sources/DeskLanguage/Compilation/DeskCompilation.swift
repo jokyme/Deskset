@@ -33,6 +33,7 @@ public extension Desk {
     /// dimensionless arithmetic/comparisons with typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark, root onLoad and Text/basic-shape onClick variable assignments, proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, and constant box/style properties.
+    /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
     /// Dimensioned numbers, system numeric data, relative/subsecond Date formats and other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).

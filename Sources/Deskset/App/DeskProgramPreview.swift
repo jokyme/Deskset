@@ -26,6 +26,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private let clock: SkinClock
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
+    private let colorSource: (NSAppearance) throws -> MacAppearance.ProgramValues
+    private var lastColors: ProgramColorInput?
     private let tickScheduler = TickScheduler()
     private var visible = false
     var isClosed: Bool { state == .closed }
@@ -36,10 +38,12 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     init(resources: @escaping (DeskSnapshot) -> DeskProgramResources.Input = { _ in .ready([:]) },
          clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
          dateLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+         colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
         self.dateLocale = dateLocale
+        self.colorSource = colors
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
@@ -167,22 +171,26 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         } catch { clear(.unavailable(String(describing: error))) }
     }
 
-    private func environment() -> EnvironmentStamp {
-        AppSceneEnvironment(scale: Double(canvas.window?.backingScaleFactor ?? 1),
-                            appearance: MacAppearance.values(for: canvas.effectiveAppearance),
-                            appearanceName: canvas.effectiveAppearance.name.rawValue).stamp
+    private func environment() throws -> (stamp: EnvironmentStamp, colors: ProgramColorInput) {
+        let appearance = canvas.effectiveAppearance
+        let values = try colorSource(appearance)
+        let stamp = AppSceneEnvironment(scale: Double(canvas.window?.backingScaleFactor ?? 1), appearance: values.appearance,
+                                        appearanceName: appearance.name.rawValue).stamp
+        return (stamp, values.colors)
     }
 
-    private func project(click: (point: SkinPoint, generation: UInt64)? = nil) {
+    private func project(click: (point: SkinPoint, generation: UInt64)? = nil,
+                         captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
               var runtime else { return }
         projecting = true
         defer { projecting = false }
         let context = canvas.context ?? DrawContext(fonts: AppFontResolver())
         canvas.context = context
-        let stamp = environment()
         let dateInput = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
         do {
+            let input = try captured ?? environment()
+            let stamp = input.stamp
             let images: [String: ProgramImageResource]
             switch resources?(snapshot) ?? .pending {
             case .pending: clear(.checking); return
@@ -201,10 +209,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             let next: WidgetScene
             if let click {
                 guard let clicked = try runtime.click(at: click.point, expectedGeneration: click.generation,
-                                                     environment: stamp, images: images, dateInput: dateInput, measure: measure) else { return }
+                                                     environment: stamp, images: images, dateInput: dateInput,
+                                                     colorInput: input.colors, measure: measure) else { return }
                 next = clicked
             } else {
-                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, measure: measure)
+                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, colorInput: input.colors, measure: measure)
             }
             let size = next.size
             guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0 else { throw PreviewFailure.extent }
@@ -213,6 +222,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw PreviewFailure.extent }
             guard accepts?(snapshot) == true else { clear(.checking); return }
             self.runtime = runtime
+            lastColors = input.colors
             scene = next
             canvas.scene = next
             // AppKit maps this enclosing paint viewport; the shared scene and its layout coordinates stay intact.
@@ -276,7 +286,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     func refreshEnvironment() {
         guard !projecting, let snapshot, accepts?(snapshot) == true else { return }
-        if scene?.environment != environment() { project() }
+        do {
+            let input = try environment()
+            if scene?.environment != input.stamp || lastColors != input.colors { project(captured: input) }
+        } catch { clear(.unavailable(String(describing: error)), keepingProgram: true) }
     }
 
     private func prepareToDraw() -> Bool {
@@ -320,6 +333,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             runtime = nil
         }
         scene = nil
+        lastColors = nil
         canvas.scene = nil
         canvas.context = nil
         canvas.isHidden = true
