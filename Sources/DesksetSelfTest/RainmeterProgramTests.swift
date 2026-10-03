@@ -50,6 +50,14 @@ private final class RainmeterUnqualifiedTime: Measure {
     }
 }
 
+private final class RainmeterUnqualifiedCalc: Measure {
+    static var constructions = 0
+    required init(name: String, section: IniSection, skin: Skin, type: String) {
+        Self.constructions += 1
+        super.init(name: name, section: section, skin: skin, type: type)
+    }
+}
+
 func runRainmeterProgramTests(_ t: TestRunner) {
     func input(_ suffix: String, relative: String = "Engine/Compat/Anchors.ini") throws -> (URL, URL, Data) {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -364,6 +372,253 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         runtime.close()
     }
 
+    for name in ["Counter", "Observer"] {
+        t.suite("Engine: Rainmeter program: original \(name) preserves its numeric timeline without a Skin owner") {
+            let config = "App\\" + name
+            let (skins, file, bytes) = try input(name, relative: "App/\(name)/\(name).ini")
+            let conversionTime = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try convert(file, skins, conversionTime, effects, config: config)
+            t.equal(program.sourceBytes, bytes)
+            t.equal(program.sections.compactMap(\.kernel).filter { $0 == .calc }.count, name == "Counter" ? 1 : 2)
+            t.equal(conversionTime.pendingCount, 0)
+            t.equal(conversionTime.background.reports, [])
+            let environment = RainmeterFixtureEnvironment(), originalText = RainmeterFixtureText()
+            let host = RainmeterFixtureHost(originalText)
+            let manual = name == "Observer", last = manual ? 62 : 60
+            var scenes: [WidgetScene] = [], states: [[SkinRuntimeState.MeasureState]] = []
+            var logs: [[String]] = []
+            weak var oldOwner: Skin?
+            do {
+                let time = try clock(), projector = SceneProjector()
+                let skin = Skin(config: config, fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: host)
+                oldOwner = skin
+                skin.runInVirtualTime(time); skin.sideEffects = effects; skin.random = SkinRandom(seed: 1)
+                try skin.load()
+                t.equal(skin.updateCount, 0); t.equal(skin.counter, 0)
+                t.check(originalText.calls.isEmpty)
+                let scheduler = TickScheduler(), target = RainmeterSkinTick(skin)
+                skin.update(); scheduler.startTimer(for: target)
+                for index in 0...last {
+                    if index > 0 && index <= 60 { time.advance(by: 1) }
+                    if index > 60 { skin.update() } // Observer has no timer; these are explicit updates after 60s.
+                    scenes.append(projector.project(skin, environment: environment))
+                    states.append(skin.measures.map(\.runtimeSnapshot)); logs.append(host.logs)
+                    let count = manual ? max(1, index - 59) : index + 1
+                    t.equal(skin.updateCount, count)
+                    t.equal(skin.measures.map(\.value), manual ? [Double(count), Double(count)] : [Double(index)])
+                }
+                t.equal(time.now, 60)
+                scheduler.cancel(); skin.close()
+                t.equal(time.pendingCount, 0)
+            }
+            t.check(oldOwner == nil, "the complete live oracle has released before the independent timeline")
+            let time = try clock()
+            var service: RainmeterFixtureText? = RainmeterFixtureText()
+            weak var weakService = service
+            var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(
+                program: program, executor: time, clock: time.clock, environment: RecordingSkinHost.fixedEnvironment,
+                system: FakeSystem(), effects: effects, text: service)
+            weak var owner = runtime
+            weak var measure = runtime?.orderedMeasures.first
+            weak var meter = runtime?.meters.first
+            t.equal(runtime?.updateCount, 0)
+            try runtime?.update(); try runtime?.startTimer()
+            for index in 0...last {
+                if index > 0 && index <= 60 { time.advance(by: 1) }
+                if index > 60 { try runtime?.update() }
+                t.equal(try runtime?.project(environment: environment), scenes[index])
+                t.equal(runtime?.orderedMeasures.map(\.runtimeSnapshot), states[index])
+                t.equal(runtime?.logs, logs[index])
+                t.equal(runtime?.updateCount, manual ? max(1, index - 59) : index + 1)
+            }
+            t.equal(time.now, 60)
+            t.equal(service?.calls, originalText.calls)
+            t.equal(runtime?.failure, nil)
+            t.equal(effects.records, [])
+            t.equal(time.background.reports, [])
+            runtime?.close()
+            time.advance(by: 20)
+            t.equal(runtime?.updateCount, manual ? 3 : 61)
+            t.equal(time.pendingCount, 0)
+            runtime = nil; service = nil
+            t.check(owner == nil && measure == nil && meter == nil && weakService == nil)
+            t.equal(try Data(contentsOf: file), bytes)
+        }
+    }
+
+    t.suite("Engine: Rainmeter program: numeric graph retains order cadence history and original errors") {
+        let (skins, file, _) = try input("numeric-graph")
+        let source = """
+        [Rainmeter]
+        Update=1000
+        [A]
+        Measure=Calc
+        Formula=B+1
+        [B]
+        Measure=Calc
+        Formula=A+1
+        [Slow]
+        Measure=Calc
+        Formula=Slow+1
+        UpdateDivider=2
+        [Once]
+        Measure=Calc
+        Formula=Counter+7
+        UpdateDivider=-1
+        [Disabled]
+        Measure=Calc
+        Formula=Missing
+        Disabled=1
+        [Paused]
+        Measure=Calc
+        Formula=9
+        Paused=1
+        [Mean]
+        Measure=Calc
+        Formula=Counter*2
+        AverageSize=2
+        MinValue=0
+        MaxValue=10
+        InvertMeasure=1
+        [Tracked]
+        Measure=Calc
+        Formula=Counter*2
+        AverageSize=2
+        [Failure]
+        Measure=Calc
+        Formula=Counter=0 ? 6 : Missing
+        AverageSize=2
+        MinValue=0
+        MaxValue=10
+        InvertMeasure=1
+        [Bad]
+        Measure=Calc
+        Formula=(
+        [Random]
+        Measure=Calc
+        Formula=Random
+        LowBound=1
+        HighBound=3
+        UpdateRandom=1
+        UniqueRandom=1
+        [Sub]
+        Measure=Calc
+        Formula=0
+        Substitute="^0":"zero"
+        RegExpSubstitute=1
+        [Binding]
+        MeasureName2= B
+        [Output]
+        Meter=String
+        MeterStyle=Binding
+        MeasureName2=
+        MeasureName4=Missing
+        Text=%2
+        """
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let keys = ["A", "B", "Slow", "Once", "Disabled", "Paused", "Mean", "Tracked", "Failure", "Bad", "Random", "Sub"]
+        let effects = RecordingSideEffects(skinsDirectory: skins), environment = RainmeterFixtureEnvironment()
+        let host = RainmeterFixtureHost(RainmeterFixtureText()), time = try clock()
+        var states: [[SkinRuntimeState.MeasureState]] = [], logs: [[String]] = [], scenes: [WidgetScene] = []
+        var ranges: [[Double]] = [], strings: [[String]] = [], updateCounts: [[Int]] = []
+        weak var oldOwner: Skin?
+        do {
+            let skin = Skin(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: host)
+            oldOwner = skin
+            skin.runInVirtualTime(time); skin.sideEffects = effects; skin.random = SkinRandom(seed: 1)
+            try skin.load()
+            let projector = SceneProjector()
+            var randoms: [Double] = []
+            for index in 0..<4 {
+                skin.update()
+                let values = keys.map { skin.measure(named: $0)?.value ?? .nan }
+                t.equal(Array(values.prefix(10)), [Double(index * 2 + 1), Double(index * 2 + 2),
+                    Double(index / 2 + 1), 7, 0, 0, [10.0, 9, 7, 5][index], [0.0, 1, 3, 5][index], 4, 0])
+                randoms.append(values[10])
+                t.equal(skin.measure(named: "Sub")?.stringValue, "zero")
+                t.equal(text(skin, "Output"), String(index * 2 + 2), "empty own slot inherits style slot 2; the gap stops slot 4")
+                states.append(skin.measures.map(\.runtimeSnapshot)); logs.append(host.logs)
+                scenes.append(projector.project(skin, environment: environment))
+                ranges.append(skin.measures.flatMap { [$0.minValue, $0.maxValue] })
+                strings.append(skin.measures.map(\.stringValue)); updateCounts.append(skin.measures.map(\.updateCount))
+            }
+            t.equal(Set(randoms.prefix(3)), Set([1.0, 2, 3]), "UniqueRandom actually consumes a complete pool")
+            t.equal(host.logs.filter { $0.contains("invalid Formula") }.count, 1)
+            t.equal(host.logs.filter { $0.contains("cannot evaluate Formula") }.count, 1)
+            t.check(!host.logs.contains { $0.contains("not found") }, "ignored slot 4 never queries Missing")
+            skin.close()
+        }
+        t.check(oldOwner == nil)
+        let conversionTime = try clock()
+        let program = try convert(file, skins, conversionTime, effects)
+        t.equal(program.sourceBytes, Data(source.utf8))
+        t.equal(conversionTime.pendingCount, 0)
+        let independentTime = try clock()
+        var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(
+            program: program, executor: independentTime, clock: independentTime.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: RainmeterFixtureText())
+        weak var owner = runtime
+        weak var measure = runtime?.orderedMeasures.first
+        for index in 0..<4 {
+            try runtime?.update()
+            t.equal(runtime?.orderedMeasures.map(\.runtimeSnapshot), states[index])
+            t.equal(runtime?.orderedMeasures.flatMap { [$0.minValue, $0.maxValue] }, ranges[index])
+            t.equal(runtime?.orderedMeasures.map(\.stringValue), strings[index])
+            t.equal(runtime?.orderedMeasures.map(\.updateCount), updateCounts[index])
+            t.equal(runtime?.logs, logs[index], "including load-time compile error, then one runtime evaluation error")
+            t.equal(try runtime?.project(environment: environment), scenes[index])
+        }
+        t.equal(runtime?.failure, nil)
+        t.equal(effects.records, [])
+        t.equal(independentTime.background.reports, [])
+        runtime?.close(); runtime = nil
+        t.check(owner == nil && measure == nil)
+
+        // Reverse the declarations while keeping their formulas: a topological/simultaneous evaluator would miss this.
+        let reversed = source.replacingOccurrences(of: "[A]\nMeasure=Calc\nFormula=B+1\n[B]\nMeasure=Calc\nFormula=A+1",
+            with: "[B]\nMeasure=Calc\nFormula=A+1\n[A]\nMeasure=Calc\nFormula=B+1")
+        t.check(reversed != source)
+        try reversed.write(to: file, atomically: true, encoding: .utf8)
+        let reversedTime = try clock(), reversedHost = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: reversedHost)
+        skin.runInVirtualTime(reversedTime); skin.random = SkinRandom(seed: 1); skin.sideEffects = effects
+        try skin.load(); skin.update()
+        t.equal([skin.measure(named: "A")?.value, skin.measure(named: "B")?.value], [2, 1])
+        let reversedProgram = try convert(file, skins, conversionTime, effects)
+        let reversedRuntime = try RainmeterProgramRuntime(program: reversedProgram, executor: independentTime,
+            clock: independentTime.clock, environment: RecordingSkinHost.fixedEnvironment,
+            system: FakeSystem(), effects: effects, text: RainmeterFixtureText())
+        try reversedRuntime.update()
+        t.equal(reversedRuntime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+        reversedRuntime.close(); skin.close()
+    }
+
+    t.suite("Engine: Rainmeter program: numeric admission keeps action resource and binding gaps explicit") {
+        let time = try clock()
+        for relative in ["Engine/Compat/EarlyGeometry.ini", "Plugins/RunCommand/RunCommand.ini"] {
+            let (skins, file, bytes) = try input("numeric-decline-" + URL(fileURLWithPath: relative).deletingPathExtension().lastPathComponent, relative: relative)
+            let effects = RecordingSideEffects(skinsDirectory: skins)
+            do { _ = try convert(file, skins, time, effects); t.check(false, "unqualified original input must be declined") }
+            catch RainmeterProgramError.outsideInitialProfile(_, _, let source, _) { t.check(source != nil) }
+            t.equal(try Data(contentsOf: file), bytes)
+            t.equal(effects.records, []); t.equal(time.background.reports, []); t.equal(time.pendingCount, 0)
+        }
+        let (skins, file, _) = try input("numeric-decline")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for (suffix, key) in [("OnUpdateAction=[!Log wrong]", "OnUpdateAction"),
+                              ("IfCondition=Counter>1", "IfCondition"),
+                              ("Formula=[Other:]", "Formula"),
+                              ("[Text]\nMeter=String\nMeasureName2=Missing", "MeasureName2")] {
+            let source = "[Value]\nMeasure=Calc\n" + suffix + "\n"
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            do { _ = try convert(file, skins, time, effects); t.check(false, "must decline \(key)") }
+            catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(effects.records, []); t.equal(time.background.reports, []); t.equal(time.pendingCount, 0)
+        }
+    }
+
     // This mutates the process registry. Run only as its exact standalone filter; never as part of the profile
     // prefix or an unfiltered corpus. The API has no unregister operation: a nil starting entry is reported,
     // then the suite's explicit TimeMeasure baseline is restored, rather than claiming to restore that nil slot.
@@ -396,6 +651,32 @@ func runRainmeterProgramTests(_ t: TestRunner) {
             let restored = try convert(file, skins, time, effects)
             t.equal(restored.sections.compactMap(\.kernel).filter { $0 == .time }.count, 2)
             t.equal(RainmeterUnqualifiedTime.constructions, 0)
+        }
+    }
+
+    let calcRegistrySuite = "Engine: Rainmeter registry: substituted Calc is declined before its constructor"
+    if CommandLine.arguments.dropFirst().first == calcRegistrySuite {
+        t.suite(calcRegistrySuite) {
+            print("    Registry entry before isolated suite: \(MeasureRegistry.measure(named: "calc").map { String(describing: $0) } ?? "nil (built-in switch)")")
+            MeasureRegistry.registerMeasure("Calc", CalcMeasure.self)
+            defer { MeasureRegistry.registerMeasure("Calc", CalcMeasure.self) }
+            let (skins, file, _) = try input("calc-registry", relative: "App/Counter/Counter.ini")
+            let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+            _ = try convert(file, skins, time, effects, config: "App\\Counter")
+            RainmeterUnqualifiedCalc.constructions = 0
+            MeasureRegistry.registerMeasure("Calc", RainmeterUnqualifiedCalc.self)
+            do { _ = try convert(file, skins, time, effects, config: "App\\Counter"); t.check(false) }
+            catch RainmeterProgramError.outsideInitialProfile(let section, let key, let source, let reason) {
+                t.equal(section, "MeasureCounter"); t.equal(key, "Measure"); t.check(source != nil)
+                t.equal(reason, "registered measure implementation")
+            }
+            t.equal(RainmeterUnqualifiedCalc.constructions, 0)
+            t.equal(effects.records, []); t.equal(time.pendingCount, 0); t.equal(time.background.reports, [])
+            MeasureRegistry.registerMeasure("Calc", CalcMeasure.self)
+            let restored = try convert(file, skins, time, effects, config: "App\\Counter")
+            t.equal(restored.sections.compactMap(\.kernel).filter { $0 == .calc }.count, 1)
+            t.equal(MeasureRegistry.measure(named: "calc").map(ObjectIdentifier.init), ObjectIdentifier(CalcMeasure.self))
+            t.equal(RainmeterUnqualifiedCalc.constructions, 0)
         }
     }
 

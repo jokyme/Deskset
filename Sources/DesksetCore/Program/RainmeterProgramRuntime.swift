@@ -63,8 +63,12 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         for section in program.sections {
             let ini = section.ini
             switch section.kernel {
-            case .time:
-                let node = TimeMeasure(name: section.name, section: ini, context: self, type: "time")
+            case .time, .calc:
+                guard let kernel = section.kernel, let selectedClass = kernel.measureClass,
+                      let node = makeContextBuiltinMeasure(selectedClass, name: section.name, section: ini,
+                                                           context: self, type: kernel.rawValue) else {
+                    throw RainmeterProgramError.inconsistentFrozenInput
+                }
                 orderedMeasures.append(node); measureIndex[section.name.lowercased()] = node
             case .string:
                 let node = StringMeter(name: section.name, section: ini, context: self, type: "string")
@@ -185,7 +189,8 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
     func imageFilePath(_ name: String, imagePath: String) -> String { reject("imageFilePath"); return "" }
     func allowsWebParserFileAccess(_ path: String) -> Bool { reject("WebParser file access"); return false }
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double? {
-        reject("formula identifier \(identifier)"); return nil
+        // Read at the kernel's original evaluation point: forward and self references see their previous value.
+        measureIndex[identifier.lowercased()]?.value
     }
     func noteService(_ kind: BackgroundWorkKind) { reject("service \(kind)") }
     func execute(_ actionText: String, from section: SkinSection?) { reject("action") }
