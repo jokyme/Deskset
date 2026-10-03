@@ -484,7 +484,7 @@ extension Checker {
                 v.deps.insert(.variable(name))
                 v.bind = .variable(name)
             }
-            v.open = decl.open
+            v.open = activeOpenSlot(v.open ?? decl.open)
             v.isConstant = false
             return v
         }

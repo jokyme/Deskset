@@ -57,6 +57,7 @@ private func deskReuseOutline(_ symbols: [DeskDocumentSymbol]) -> [String] {
 }
 
 func runDeskServiceReuseTests(_ t: TestRunner) {
+    runDeskNumericMetadataReuseTests(t)
     t.suite("Desk: service — subtree reuse") {
         var random = DeskRandom(seed: 0x5AB7_2026)
         var total = SubtreeReuseStats()
@@ -396,5 +397,59 @@ func runDeskServiceReuseTests(_ t: TestRunner) {
             t.check(latest.tree.resolve(id) == nil && latest.tree.quickResolve(id) == nil)
             t.equal(latest.nodeTable.indexes(of: id), [])
         }
+    }
+}
+
+
+private func runDeskNumericMetadataReuseTests(_ t: TestRunner) {
+    t.suite("Desk: service — settled numeric metadata across edits") {
+        struct Metadata: Equatable {
+            let kind: SyntaxKind
+            let start: Int
+            let end: Int?
+            let type: SemType
+            let constant: Double?
+            let coercion: NumericCoercion?
+        }
+        func metadata(_ checked: CheckedFile) -> [Metadata] {
+            checked.types.map { key, type in
+                Metadata(kind: key.kind, start: key.utf8Start, end: key.utf8End, type: type,
+                         constant: checked.canonicalNumericValues[key], coercion: checked.numericCoercions[key])
+            }.sorted {
+                if $0.start != $1.start { return $0.start < $1.start }
+                if $0.end != $1.end { return ($0.end ?? -1) < ($1.end ?? -1) }
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
+        }
+        let file = DeskFileID("Numeric.desk")
+        let text = "widget { variable b = 1KB; Text(\"{b + 1}\").onClick { b = 1KiB } }"
+        let service = DeskLanguageService(openFile: file, files: [file: text])
+        let original = service.snapshot
+        t.check(original.isChecked)
+        t.check(!original.checked.canonicalNumericValues.isEmpty)
+        t.equal(original.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        let prefix = "// 中😀\n"
+        t.check(prefix.utf8.count != prefix.utf16.count)
+        let work = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: prefix)], version: 1)
+        let syntax = service.snapshot
+        t.check(!syntax.isChecked)
+        t.check(syntax.checked.types.isEmpty)
+        t.check(syntax.checked.canonicalNumericValues.isEmpty && syntax.checked.numericCoercions.isEmpty)
+        guard let current = service.accept(work.run()) else { t.check(false, "current check is accepted"); return }
+        let fresh = DeskLanguageService(openFile: file, files: [file: prefix + text]).snapshot
+        t.equal(current.diagnostics, fresh.diagnostics)
+        t.equal(metadata(current.checked), metadata(fresh.checked))
+        for key in original.checked.canonicalNumericValues.keys {
+            t.check(current.checked.canonicalNumericValues[key] == nil && current.tree.resolve(key) == nil)
+        }
+        let stale = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// old\n")], version: 2)
+        let newest = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// fresh\n")], version: 3)
+        t.check(service.accept(stale.run()) == nil)
+        guard let latest = service.accept(newest.run()) else { t.check(false, "latest check is accepted"); return }
+        let latestFresh = DeskLanguageService(openFile: file, files: [file: latest.text]).snapshot
+        t.equal(latest.diagnostics, latestFresh.diagnostics)
+        t.equal(metadata(latest.checked), metadata(latestFresh.checked))
+        t.equal(latest.checked.canonicalNumericValues.count, original.checked.canonicalNumericValues.count)
+        t.equal(latest.checked.numericCoercions.count, original.checked.numericCoercions.count)
     }
 }
