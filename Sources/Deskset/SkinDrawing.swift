@@ -90,15 +90,32 @@ final class SkinBitmapDrawing {
     /// Frames that differed from a full drawing (`verifies`; tests).
     private(set) var differences = 0
 
-    /// The skin as it is now, `size` points at `scale` pixels per point; nil for an empty size.
-    func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
+    /// One owner-confined bitmap frame. The context holds graphics caches, never a live engine owner.
+    struct Capture {
+        let scene: WidgetScene
+        let context: SkinRenderContext
+        let cycle: Int
+        let size: CGSize
+        let source: String
+    }
+
+    static func capture(_ skin: Skin, size: CGSize, scale: CGFloat, appearance: String) -> Capture {
         let context = SkinRenderContext.of(skin)
         let environment = AppSceneEnvironment(scale: Double(scale),
                                               appearance: skin.host?.environment(for: skin).appearance ?? .light,
                                               appearanceName: appearance)
         let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
-        return picture(scene: scene, context: context, cycle: skin.updateCount, size: size, scale: scale,
-                       space: space, source: skin.config)
+        return Capture(scene: scene, context: context, cycle: skin.updateCount, size: size, source: skin.config)
+    }
+
+    /// The skin as it is now, `size` points at `scale` pixels per point; nil for an empty size.
+    func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
+        picture(Self.capture(skin, size: size, scale: scale, appearance: appearance), scale: scale, space: space)
+    }
+
+    func picture(_ frame: Capture, scale: CGFloat, space: CGColorSpace) -> CGImage? {
+        picture(scene: frame.scene, context: frame.context, cycle: frame.cycle, size: frame.size,
+                scale: scale, space: space, source: frame.source)
     }
 
     /// Draws and keeps only captured values. The context contains graphics caches, with no live engine objects.
@@ -383,6 +400,7 @@ final class SkinFrameProducer {
     private var layerInstallRequested = false
     /// The skin, as long as the runtime has it.
     private let skin: () -> Skin?
+    private let bitmapCapture: ((CGFloat, String) -> SkinBitmapDrawing.Capture?)?
     private let workActivity: SkinWorkWatchdog.Activity?
 
     /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
@@ -445,8 +463,19 @@ final class SkinFrameProducer {
          workActivity: SkinWorkWatchdog.Activity? = nil) {
         self.provider = provider
         self.skin = skin
+        bitmapCapture = nil
         self.contentMode = contentMode
         self.workActivity = workActivity
+    }
+
+    /// The independent compatibility owner currently supports bitmap presentation only. Layer paths still require
+    /// their original Skin preparation and writer lifecycle; this initializer cannot select either of them.
+    init(provider: ContentProvider?, bitmapCapture: @escaping (CGFloat, String) -> SkinBitmapDrawing.Capture?) {
+        self.provider = provider
+        skin = { nil }
+        self.bitmapCapture = bitmapCapture
+        contentMode = .bitmap
+        workActivity = nil
     }
 
     deinit {
@@ -669,10 +698,12 @@ final class SkinFrameProducer {
             cancelNativeStage()
             needsFrame = false
         }
-        guard let provider, let skin = skin() else { return }
+        guard let provider else { return }
+        let skin = skin()
+        guard skin != nil || bitmapCapture != nil else { return }
         workActivity?.begin(.drawing)
         defer { workActivity?.end() }
-        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        let size = skin.map { SkinRuntime.windowSize(width: $0.width, height: $0.height) }
         let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
         let began = ProcessInfo.processInfo.systemUptime
         defer {
@@ -680,22 +711,32 @@ final class SkinFrameProducer {
             drawingTime += took
             longestFrame = max(longestFrame, took)
         }
-        if let nativeStage {
+        if let nativeStage, let skin, let size {
             drawNativeFrame(nativeStage, skin: skin, size: size, began: began)
             return
         }
         var picture: CGImage?
         if case let .layers(partition, budget, _) = contentMode {
+            guard let skin, let size else { return }
             drawLayerContent(skin, size: size, partition: partition, budget: budget, began: began)
             return
         }
-        // The drawing appearance AppKit set while the view drew.
+        // The drawing appearance AppKit set while the view drew. Both owners use this same bitmap path.
+        var source = ""
         SkinFrameProducer.withAppearance(appearance) {
-            picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: appearance)
+            let capture: SkinBitmapDrawing.Capture?
+            if let skin, let size {
+                capture = SkinBitmapDrawing.capture(skin, size: size, scale: scale, appearance: appearance)
+            } else {
+                capture = bitmapCapture?(scale, appearance)
+            }
+            guard let capture else { return }
+            source = capture.source
+            picture = drawing.picture(capture, scale: scale, space: space)
         }
         guard let picture else { return }
         provider.present(SkinFrame(image: picture, scale: scale))
-        recordPresented(began: began, source: skin.config)
+        recordPresented(began: began, source: source)
     }
 
     private func recordPresented(began: TimeInterval, source: String) {

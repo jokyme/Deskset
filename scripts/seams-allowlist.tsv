@@ -343,6 +343,7 @@ mono.systemUptime	Sources/Deskset/SkinDrawing.swift	7	frame scheduling/timing an
 timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be seen lets go of its kept pictures after a while (on the skin's executor); memory, not a skin input
 
 background.executorAsync	Sources/Deskset/SkinRuntime.swift	4	runtime owner delivery/lifetime and C-root cleanup after main finishes the last frame; no worker waits for main
+background.executorAsync	Sources/Deskset/App/RainmeterProgramHost.swift	1	off-thread final App release returns the complete compatibility owner bundle to its injected executor for close and destruction
 background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
