@@ -4,6 +4,7 @@ import DesksetCore
 /// `Deskset --self-test [filter]`: checks of the app layer (DesksetSelfTest links only DesksetCore). Suites are named
 /// "App: …"; skin windows are created headless (never shown), files go to temporary folders, the user's state and
 /// log are not touched. Uses the fixtures in TestSkins/App and DefaultSkins when run from the repository.
+/// Only an exact `App: layer performance: …` filter opts into the separate real-window measurement fixture.
 enum AppSelfTest {
     static func run(filter: String?) -> Int32 {
         let t = AppTestRunner(filter: filter)
@@ -22,6 +23,7 @@ enum AppSelfTest {
         // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
         // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
         MediaUICache.root = t.temporaryDirectory("caches")
+        if LayerPerformanceMeasurements.runIfRequested(t, filter: filter) { return t.finish() }
         // Suites copy the repository's skins before running them in an app: skins write their own files.
         let shipped = DefaultSkinsSelfTests.fingerprint()
         geometryTests(t)

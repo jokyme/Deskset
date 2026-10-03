@@ -139,6 +139,11 @@ random.UUID	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, M
 timer.Timer	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+effect.fileWrite	Sources/Deskset/App/LayerPerformanceMeasurements.swift	5	exact-filter measurement fixture only: preparing its private input directories, copies and overrides, never user skin files
+mono.systemUptime	Sources/Deskset/App/LayerPerformanceMeasurements.swift	7	exact-filter measurement fixture only: monotonic process sample, setup, warm and single native RunLoop interval boundaries
+random.pid	Sources/Deskset/App/LayerPerformanceMeasurements.swift	2	exact-filter measurement fixture only: this process's rusage query and report identity, not a skin input
+wait.runLoop	Sources/Deskset/App/LayerPerformanceMeasurements.swift	1	exact-filter measurement fixture only: one native RunLoop wait call for each explicit warm or observation interval, no polling
+
 random.hashSeed	Sources/Deskset/App/LayerThumbnails.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 wall.Date()	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's clock; DesksetCore has no such defaults
