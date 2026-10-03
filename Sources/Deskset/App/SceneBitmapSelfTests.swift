@@ -1,8 +1,10 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 enum SceneBitmapSelfTests {
     static func run(_ t: AppTestRunner) {
+        viewportTests(t)
         t.suite("Runtime: scene bitmap: retained runs use captured inputs after the engine owner is released") {
             weak var releasedSkin: Skin?
             weak var releasedMeter: Meter?
@@ -91,6 +93,78 @@ enum SceneBitmapSelfTests {
             t.check(drawing.picture(scene: scenes[0], context: context, cycle: 1,
                                     size: CGSize(width: -90, height: -70), scale: -2, space: space) == nil)
         }
+    }
+
+    private static func viewportTests(_ t: AppTestRunner) {
+        t.suite("Runtime: scene bitmap viewport: direct kept full and verification share the captured point origin") {
+            let oldVerify = SkinBitmapDrawing.verifies
+            SkinBitmapDrawing.verifies = true
+            defer { SkinBitmapDrawing.verifies = oldVerify }
+            let space = SkinFrameProducer.sRGB, size = CGSize(width: 12, height: 10)
+            let rect = SkinRect(x: -1, y: -2, width: 6, height: 5)
+            let color = RGBA(r: 35, g: 141, b: 218)
+            for scale in [CGFloat(1), 2] {
+                let stamp = AppSceneEnvironment(scale: Double(scale), appearance: .light, appearanceName: "bitmap viewport").stamp
+                let scene = WidgetScene(generation: 1, size: SkinSize(width: 12, height: 10),
+                    background: [.fill(rect, Paint(color: color))], backgroundImageDependencies: [], glass: [],
+                    elements: [], hitMap: SkinHitMap(), environment: stamp)
+                let context = SkinRenderContext(), drawing = SkinBitmapDrawing()
+                let w = Int(size.width * scale), h = Int(size.height * scale)
+                func reference(_ origin: SkinPoint) throws -> Data {
+                    guard let ctx = SkinBitmapDrawing.makeContext(w, h, space) else { throw CocoaError(.coderInvalidValue) }
+                    ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+                    ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: scale, y: -scale)
+                    ctx.translateBy(x: -origin.x, y: -origin.y)
+                    _ = DrawTarget.prepareOwnedBitmap(ctx, glass: .none)
+                    ctx.setFillColor(red: color.r / 255, green: color.g / 255, blue: color.b / 255, alpha: 1)
+                    ctx.fill(CGRect(x: -1, y: -2, width: 6, height: 5))
+                    return try activeBytes(ctx.makeImage())
+                }
+                var retained: CGImage?, retainedBytes: Data?
+                let origins = [SkinPoint(x: -2, y: -3), SkinPoint(x: -3, y: -2),
+                               SkinPoint(x: -2.25, y: -3.5), SkinPoint(x: -2, y: -3)]
+                for origin in origins {
+                    let capture = SkinBitmapDrawing.Capture(scene: scene, context: context, cycle: 1, size: size,
+                                                           source: "viewport", origin: origin)
+                    let expected = try reference(origin)
+                    let direct = drawing.picture(capture, scale: scale, space: space)
+                    t.equal(try activeBytes(direct), expected, "same-size changed origin invalidates old cached pictures")
+                    t.equal(drawing.lastStats.copied, 0)
+                    t.check(stride(from: 3, to: expected.count, by: 4).contains { expected[$0] != 0 })
+                    t.check(expected != (try reference(SkinPoint())), "omitting the translation is an effective negative control")
+                    for _ in 0..<2 { t.equal(try activeBytes(drawing.picture(capture, scale: scale, space: space)), expected) }
+                    t.check(drawing.lastStats.copied > 0, "the strict control actually copies a kept run")
+                    let full = SkinBitmapDrawing.fullDrawing(scene: scene, context: context, cycle: 1, w, h,
+                                                            scale: scale, space: space, origin: origin)
+                    t.equal(try activeBytes(full?.makeImage()), expected, "cold full and warm direct/copy use one viewport")
+                    t.equal(drawing.differences, 0, "the enabled full verifier also receives the origin")
+                    if retained == nil { retained = direct; retainedBytes = expected }
+                    t.equal(try activeBytes(retained), retainedBytes, "later origins do not mutate an already presented image")
+                }
+                let zero = SkinBitmapDrawing.Capture(scene: scene, context: context, cycle: 1, size: size, source: "zero")
+                t.equal(zero.origin, SkinPoint())
+                t.equal(try activeBytes(drawing.picture(zero, scale: scale, space: space)), try reference(SkinPoint()))
+                t.equal(try activeBytes(drawing.picture(scene: scene, context: context, cycle: 1, size: size,
+                    scale: scale, space: space)), try reference(SkinPoint()), "the old API still means the original zero origin")
+                for bad in [SkinPoint(x: .nan), SkinPoint(y: .infinity)] {
+                    t.check(drawing.picture(scene: scene, context: context, cycle: 1, size: size, scale: scale,
+                        space: space, origin: bad) == nil)
+                    t.check(SkinBitmapDrawing.fullDrawing(scene: scene, context: context, cycle: 1, w, h,
+                        scale: scale, space: space, origin: bad) == nil)
+                }
+            }
+        }
+    }
+
+    private static func activeBytes(_ image: CGImage?) throws -> Data {
+        guard let image, image.bitsPerPixel == 32, image.bitsPerComponent == 8,
+              let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data), image.height > 0,
+              CFDataGetLength(data) >= (image.height - 1) * image.bytesPerRow + image.width * 4 else {
+            throw CocoaError(.coderInvalidValue)
+        }
+        var result = Data()
+        for y in 0..<image.height { result.append(bytes + y * image.bytesPerRow, count: image.width * 4) }
+        return result
     }
 
     private static func pixels(_ image: CGImage?) throws -> Data {
