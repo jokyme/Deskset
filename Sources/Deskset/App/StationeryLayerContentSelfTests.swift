@@ -633,6 +633,11 @@ enum StationeryLayerContentSelfTests {
         for name in uncoveredNames {
             t.suite("Runtime: Stationery G2 uncovered: \(name)") { try qualifyUncovered(name, t) }
         }
+        // The original C-content suites sample these three skins after two updates. These entries qualify their first
+        // eligible update and the complete fixed-destination timeline using the same strict native contract.
+        for name in names {
+            t.suite("Runtime: Stationery G2 first update: \(name)") { try qualifyUncovered(name, t) }
+        }
     }
 
     private static func qualifyUncovered(_ name: String, _ t: AppTestRunner) throws {
