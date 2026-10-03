@@ -311,8 +311,10 @@ struct ProgramExpressionCompiler {
             guard labels.insert(label).inserted else { throw issue(.unsupported, option.node, "Duplicate number format option") }
             switch label {
             case "decimals":
-                guard dimension != .duration,
-                      let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.anyNumber] }),
+                guard dimension != .duration else {
+                    throw issue(.unsupported, option.node, "Duration decimals are not implemented")
+                }
+                guard let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.anyNumber] }),
                       spec.type == .plainNumber, spec.range == 0...10,
                       checked.types[checked.tree.id(of: option.value.node)]?.type == .plainNumber,
                       let literal = NumberLiteralSyntax(option.value.node), literal.unit == nil,
