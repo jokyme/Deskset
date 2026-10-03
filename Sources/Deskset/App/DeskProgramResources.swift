@@ -14,10 +14,48 @@ enum DeskProgramResources {
         case failed(String)
     }
 
-    struct Source: Sendable {
+    struct Source: Equatable, Sendable {
         let literal: String
         let resolved: String
         let stamp: ImageStamp
+    }
+
+    /// The explicitly opened Desk file, read through the same no-follow traversal as its pictures. A caller can
+    /// freeze its exact UTF-8 bytes without loading other Desk files or a package manifest from the user folder.
+    struct Document: Sendable {
+        let file: URL
+        let source: Source
+        let bytes: Data
+
+        func unchanged(maximumBytes: Int) -> Bool {
+            guard let current = try? DeskProgramResources.document(at: file, maximumBytes: maximumBytes) else { return false }
+            return current.source == source && current.bytes == bytes
+        }
+    }
+
+    static func document(at file: URL, maximumBytes: Int) throws -> Document {
+        let opened = try openFile(in: file.deletingLastPathComponent(), literal: file.lastPathComponent)
+        defer { Darwin.close(opened.fd) }
+        let bytes = try read(opened, maximumBytes: maximumBytes, literal: file.lastPathComponent)
+        return Document(file: file, source: Source(literal: file.lastPathComponent, resolved: opened.path, stamp: opened.stamp),
+                        bytes: bytes)
+    }
+
+    /// Installation copies the owner's immutable preparation, not the original user path. The descriptor and its
+    /// recorded generation stay valid for the entire copy; no encoded image is decoded or rewritten here.
+    static func withPreparedImage(_ source: Source, in prepared: Prepared, _ body: (Int32, Int) throws -> Void) throws {
+        guard let folder = prepared.folder, let image = prepared.images[source.literal],
+              image.path == folder.appendingPathComponent((image.path as NSString).lastPathComponent).path else {
+            throw Failure.changed(source.literal)
+        }
+        let opened = try openFile(in: folder, literal: (image.path as NSString).lastPathComponent)
+        defer { Darwin.close(opened.fd) }
+        guard opened.stamp == image.stamp, opened.stamp.size >= 0, opened.stamp.size <= Int64(Int.max) else {
+            throw Failure.changed(source.literal)
+        }
+        try body(opened.fd, Int(opened.stamp.size))
+        var after = stat()
+        guard fstat(opened.fd, &after) == 0, stamp(after) == opened.stamp else { throw Failure.changed(source.literal) }
     }
 
     struct Prepared: Sendable {
@@ -135,6 +173,26 @@ enum DeskProgramResources {
         throw Failure.outside(literal)
     }
 
+    private static func read(_ file: Opened, maximumBytes: Int, literal: String) throws -> Data {
+        guard maximumBytes >= 0, file.stamp.size >= 0, file.stamp.size <= Int64(maximumBytes) else {
+            throw Failure.oversized(literal)
+        }
+        let count = Int(file.stamp.size)
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while data.count <= count {
+            let remaining = count - data.count
+            let want = remaining >= buffer.count ? buffer.count : remaining + 1
+            let got = buffer.withUnsafeMutableBytes { Darwin.read(file.fd, $0.baseAddress, want) }
+            if got < 0 && errno == EINTR { continue }
+            guard got >= 0 else { throw Failure.unreadable(literal) }
+            if got == 0 { break }
+            data.append(contentsOf: buffer.prefix(got))
+        }
+        var after = stat()
+        guard data.count == count, fstat(file.fd, &after) == 0, stamp(after) == file.stamp else { throw Failure.changed(literal) }
+        return data
+    }
+
     /// File count/bytes are the referenced collection's package budget, not the separate web image limits.
     /// A failed collection retains existence metadata for DK4029, but publishes no partial render inputs.
     static func prepare(root: URL, literals: [String], maximumBytes: Int, maximumFiles: Int,
@@ -162,18 +220,7 @@ enum DeskProgramResources {
                 guard byteLimit >= 0, maximumFiles >= 0, files.count <= maximumFiles,
                       file.stamp.size <= Int64(byteLimit - total), let folder else { throw Failure.oversized(literal) }
                 let count = Int(file.stamp.size)
-                var data = Data(), buffer = [UInt8](repeating: 0, count: 64 * 1024)
-                while data.count <= count {
-                    let want = min(buffer.count, count - data.count + 1)
-                    let got = buffer.withUnsafeMutableBytes { Darwin.read(file.fd, $0.baseAddress, want) }
-                    guard got >= 0 else { throw Failure.unreadable(literal) }
-                    if got == 0 { break }
-                    data.append(contentsOf: buffer.prefix(got))
-                }
-                var after = stat()
-                guard data.count == count, fstat(file.fd, &after) == 0, stamp(after) == file.stamp else {
-                    throw Failure.changed(literal)
-                }
+                let data = try read(file, maximumBytes: byteLimit - total, literal: literal)
                 total += count
                 let suffix = (file.path as NSString).pathExtension
                 let copy = folder.appendingPathComponent("image-\(resolved.count)." + suffix)
