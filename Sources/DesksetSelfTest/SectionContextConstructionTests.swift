@@ -57,6 +57,16 @@ private class IndependentSectionContext: SectionContext {
     let directory: URL
     var skinsDirectory: URL { preconditionFailure("Unqualified skins directory in the construction fixture") }
     var orderedMeasures: [Measure] { preconditionFailure("Unqualified measure order in the construction fixture") }
+    var resourcesDirectory: URL { preconditionFailure("Unqualified resources directory in the construction fixture") }
+    func imageFilePath(_ name: String, imagePath: String) -> String {
+        preconditionFailure("Unqualified image path in the construction fixture")
+    }
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)? {
+        preconditionFailure("Unqualified text measurement in the construction fixture")
+    }
+    func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+        preconditionFailure("Unqualified shown glass in the construction fixture")
+    }
     let sideEffects: SideEffects
     var styles: [String: IniSection] = [:]
     var variables: [String: String] = [:]
@@ -875,6 +885,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextSynchronousPluginTests(t)
     runContextFilePluginTests(t)
     runContextServicePluginTests(t)
+    runContextMeterTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -2364,5 +2375,336 @@ private func runContextRegistryTests(_ t: TestRunner) {
         skin.update(); legacy.performUpdate()
         t.equal(selected.stringValue, "/fixture/new.heic")
         t.equal(alias.rawString, legacy.rawString)
+    }
+}
+
+/// Only the String/Image services exercised below are supplied. The owner keeps kernels, while every kernel
+/// borrows the owner; neither the image fake nor a lowered value has a Skin hidden behind this boundary.
+private final class IndependentMeterContext: IndependentSectionContext {
+    struct TextRequest {
+        let text: String
+        let style: TextStyle
+        let wrapWidth: Double?
+    }
+    var meters: [Meter] = []
+    var resourceRoot: URL?
+    private(set) var resourceReads = 0
+    var measuredSize: SkinSize?
+    private(set) var textRequests: [TextRequest] = []
+    var paths: [String: String] = [:]
+    private(set) var pathRequests: [String] = []
+    var glass: [String: GlassRegion] = [:]
+
+    override var resourcesDirectory: URL {
+        resourceReads += 1
+        return resourceRoot ?? directory.appendingPathComponent("@Resources", isDirectory: true)
+    }
+    override func measure(named name: String) -> Measure? { measures[name.lowercased()] }
+    override func imageFilePath(_ name: String, imagePath: String) -> String {
+        assertOwned(#function)
+        let key = imagePath + "|" + name
+        pathRequests.append(key)
+        guard let path = paths[key] else { preconditionFailure("Unqualified image name: \(key)") }
+        return path
+    }
+    override func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)? {
+        assertOwned(#function)
+        textRequests.append(TextRequest(text: text, style: style, wrapWidth: wrapWidth))
+        return measuredSize.map { ($0.width, $0.height) }
+    }
+    override func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+        assertOwned(#function)
+        return glass[meter.name]
+    }
+}
+
+private final class ContextMeterImages: FakeHost, SkinImageQueries {
+    var sizes: [String: SkinSize] = [:]
+    var orientations: [String: Int] = [:]
+    private(set) var sizeRequests: [String] = []
+    private(set) var orientationRequests: [String] = []
+    private(set) var alphaRequests: [String] = []
+    override func imageSize(atPath path: String) -> (width: Double, height: Double)? {
+        sizeRequests.append(path)
+        return sizes[path].map { ($0.width, $0.height) }
+    }
+    func imageExifOrientation(atPath path: String) -> Int {
+        orientationRequests.append(path)
+        return orientations[path] ?? 1
+    }
+    func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
+        alphaRequests.append("\(path)|\(x),\(y)|\(exifOriented)")
+        return 0
+    }
+}
+
+private final class ContextUnavailableMeasure: Measure {
+    override var valueUnavailable: Bool { true }
+    override func computeValue() -> Double { rawString = ""; return 0 }
+}
+
+private func contextString(_ name: String, _ value: String, in context: IndependentMeterContext) -> StringMeasure {
+    let measure = StringMeasure(name: name, section: constructionSection(name, [("String", value)]),
+                                context: context, type: "string")
+    context.measures[name.lowercased()] = measure
+    measure.readOptionsIfNeeded()
+    measure.performUpdate()
+    return measure
+}
+
+private func runContextMeterTests(_ t: TestRunner) {
+    t.suite("Engine: context meters: live options and styles lower to independent text values") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-text"))
+        context.settings.accurateText = false
+        context.variables["tag"] = "a:"
+        let firstResources = context.directory.appendingPathComponent("@Resources", isDirectory: true)
+        context.styles["base"] = constructionSection("Base", [
+            ("FontFace", "Helvetica"), ("FontSize", "12"), ("FontColor", "20,30,40"),
+            ("Text", "style %1"), ("StringAlign", "Right"), ("ClipString", "2"),
+            ("ClipStringW", "80"), ("ClipStringH", "18"),
+        ])
+        let value = contextString("Value", "alpha", in: context)
+        let meter = StringMeter(name: "Label", section: constructionSection("Label", [
+            ("MeterStyle", "Base"), ("MeasureName", "Value"), ("Text", "own %1"), ("Prefix", "#tag#"),
+            ("X", "100"), ("Y", "7"), ("Padding", "2,3,4,5"), ("DynamicVariables", "1"),
+        ]), context: context, type: "string")
+        context.meters = [meter]
+        context.measuredSize = SkinSize(width: 91, height: 23)
+        meter.readOptionsIfNeeded()
+        context.optionsLoaded = true
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let first = meter.lower()
+        t.equal(first.text, "a:own alpha")
+        t.equal(first.frame, SkinRect(x: 14, y: 7, width: 86, height: 26))
+        t.equal(first.contentFrame, SkinRect(x: 16, y: 10, width: 80, height: 18))
+        t.equal(first.anchor, SkinPoint(x: 100, y: 7))
+        t.equal(context.textRequests.count, 1, "lowering does not measure again")
+        t.equal(context.textRequests.first?.text, "a:own alpha")
+        t.equal(context.textRequests.first?.wrapWidth, 80)
+        t.equal(context.textRequests.first?.style, first.style)
+        t.equal(first.style.fontFolder, firstResources.appendingPathComponent("Fonts").path)
+        t.check(!first.style.accurateText)
+
+        value.overrides["string"] = "beta"
+        value.needsOptionRead = true
+        value.readOptionsIfNeeded()
+        value.performUpdate()
+        context.variables["tag"] = "b:"
+        context.styles["base"] = constructionSection("Base", [
+            ("Text", "later %1"), ("FontSize", "12"), ("StringAlign", "Right"),
+            ("ClipString", "2"), ("ClipStringW", "80"), ("ClipStringH", "18"),
+        ])
+        context.resourceRoot = context.directory.appendingPathComponent("later-resources")
+        meter.overrides["text"] = ""
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let second = meter.lower()
+        t.equal(second.text, "b:later beta", "an empty override removes the own option before the live style query")
+        t.equal(first.text, "a:own alpha")
+        t.equal(context.textRequests.map(\.text), ["a:own alpha", "b:later beta"])
+        t.equal(second.style.fontFolder, first.style.fontFolder, "the font folder keeps its original lazy read")
+        t.equal(context.resourceReads, 1)
+        t.equal(context.logs, [])
+    }
+
+    t.suite("Engine: context meters: absent text service and unavailable values retain their size rules") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-estimate"))
+        let meter = StringMeter(name: "Estimate", section: constructionSection("Estimate", [
+            ("Text", "abcd"), ("FontSize", "12"), ("ClipString", "2"), ("ClipStringW", "1"),
+        ]), context: context, type: "string")
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        let size = meter.naturalSize()
+        t.close(size.width, 38.4, "a missing service retains the unclamped legacy estimate")
+        t.close(size.height, 19.2)
+        t.equal(context.textRequests.count, 1)
+        t.equal(context.textRequests.first?.wrapWidth, 1)
+        let empty = StringMeter(name: "Empty", section: constructionSection("Empty", []),
+                                context: context, type: "string")
+        empty.readOptionsIfNeeded()
+        empty.updateMeter()
+        t.equal(empty.naturalSize().width, 0)
+        t.equal(empty.naturalSize().height, 0)
+        t.equal(context.textRequests.count, 1, "ordinary empty text never calls the measurement service")
+
+        let unavailable = ContextUnavailableMeasure(name: "Unavailable", section: constructionSection("Unavailable", []),
+                                                    context: context, type: "fixture")
+        context.measures["unavailable"] = unavailable
+        unavailable.readOptionsIfNeeded()
+        unavailable.performUpdate()
+        let line = StringMeter(name: "Line", section: constructionSection("Line", [
+            ("MeasureName", "Unavailable"), ("FontSize", "12"), ("InlineSetting", "Size | 80"),
+        ]), context: context, type: "string")
+        line.readOptionsIfNeeded()
+        line.updateMeter()
+        let estimate = line.naturalSize()
+        t.equal(line.text, "")
+        t.equal(estimate.width, 0)
+        t.close(estimate.height, 19.2)
+        context.measuredSize = SkinSize(width: 5, height: 27)
+        let measured = line.naturalSize()
+        t.equal(measured.width, 0)
+        t.equal(measured.height, 27)
+        t.equal(context.textRequests.last?.text, "X")
+        t.equal(context.textRequests.last?.style.inlineSpans, [])
+        t.equal(context.textRequests.last?.wrapWidth, nil)
+    }
+
+    t.suite("Engine: context meters: image paths masks and queries follow the current owner") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-image"))
+        let host = ContextMeterImages()
+        context.host = host
+        let cover = context.directory.appendingPathComponent("cover.png").path
+        let other = context.directory.appendingPathComponent("other.png").path
+        let mask = context.directory.appendingPathComponent("mask.png").path
+        context.paths = ["Images|cover": cover, "Images|other": other, "Masks|mask": mask]
+        host.sizes = [cover: SkinSize(width: 120, height: 60), other: SkinSize(width: 90, height: 30),
+                      mask: SkinSize(width: 80, height: 40)]
+        let value = contextString("Picture", "cover", in: context)
+        let meter = ImageMeter(name: "PictureMeter", section: constructionSection("PictureMeter", [
+            ("MeasureName", "Picture"), ("ImageName", "%1"), ("ImagePath", "Images"),
+            ("MaskImageName", "mask"), ("MaskImagePath", "Masks"), ("W", "40"),
+            ("PreserveAspectRatio", "1"), ("ImageTint", "10,20,30,128"), ("Greyscale", "1"),
+        ]), context: context, type: "image")
+        context.meters = [meter]
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        let first = meter.lower()
+        t.equal(context.pathRequests, ["Masks|mask", "Images|cover", "Images|cover"])
+        t.equal(host.sizeRequests, [cover, mask])
+        t.equal(first.path, cover)
+        t.equal(first.maskPath, mask)
+        t.equal(first.contentFrame, SkinRect(width: 40, height: 20))
+        t.check(first.options.greyscale)
+        t.equal(first.options.tint, RGBA(r: 10, g: 20, b: 30, a: 128))
+        value.overrides["string"] = "other"
+        value.needsOptionRead = true
+        value.readOptionsIfNeeded()
+        value.performUpdate()
+        meter.updateMeter()
+        t.equal(meter.lower().path, other)
+        t.equal(first.path, cover, "the old drawing does not follow its measure")
+        t.equal(meter.lower().maskPath, mask)
+        t.equal(context.pathRequests.last, "Images|other")
+
+        meter.overrides["maskimagename"] = ""
+        meter.overrides["useexiforientation"] = "1"
+        meter.needsOptionRead = true
+        host.orientations[other] = 6
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.layout(after: nil)
+        t.equal(meter.lower().contentFrame, SkinRect(width: 40, height: 120))
+        t.equal(host.orientationRequests, [other])
+        t.equal(meter.imagePixelAlpha(other, x: 2, y: 3, exifOriented: true), 0)
+        t.equal(host.alphaRequests, ["\(other)|2,3|true"])
+        context.host = nil
+        t.equal(meter.naturalSize().width, 0)
+        t.equal(meter.naturalSize().height, 0)
+        t.equal(first.contentFrame, SkinRect(width: 40, height: 20))
+        t.equal(context.logs, [])
+    }
+
+    t.suite("Engine: context meters: missing symbols glass and hit facts do not require a Skin") {
+        let context = try IndependentMeterContext(directory: t.temporaryDirectory("context-meter-errors"))
+        let host = ContextMeterImages()
+        context.host = host
+        let meter = ImageMeter(name: "Glyph", section: constructionSection("Glyph", [
+            ("ImageName", "sf:fixture.missing"), ("MacGlass", "invalid"),
+            ("DynamicVariables", "1"), ("W", "20"), ("H", "10"),
+        ]), context: context, type: "image")
+        context.meters = [meter]
+        for _ in 0..<2 {
+            meter.readOptionsIfNeeded()
+            meter.updateMeter()
+            meter.layout(after: nil)
+        }
+        let missing = meter.lower()
+        t.equal(context.logs.count, 2)
+        t.equal(context.issues.count, 1)
+        t.check(context.logs.contains { $0.contains("MacGlass=invalid on [Glyph]") })
+        t.check(context.issues.contains { $0.contains("sf:fixture.missing") })
+        t.equal(context.pathRequests, [], "symbols never pass through file-path resolution")
+        let good = MacSymbol(name: "fixture.present").path
+        host.sizes[good] = SkinSize(width: 10, height: 10)
+        meter.overrides["imagename"] = "sf:fixture.present"
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        t.equal(meter.lower().path, good)
+        t.equal(context.issues, [])
+        t.equal(context.logs.count, 2)
+        t.check(missing.path != meter.lower().path)
+        meter.overrides["imagename"] = ""
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        t.equal(meter.lower().path, nil)
+
+        context.glass["Glyph"] = GlassRegion(id: "Glyph", rect: SkinRect(x: -5, y: -5, width: 30, height: 20))
+        t.check(!meter.hitTest(x: -2, y: 2))
+        t.check(meter.isOnGlass(x: -2, y: 2))
+        t.check(meter.isHit(x: -2, y: 2, precise: true))
+        context.glass = [:]
+        t.check(!meter.isOnGlass(x: -2, y: 2))
+        t.check(!meter.isHit(x: -2, y: 2, precise: true))
+        let file = context.directory.appendingPathComponent("missing.png").path
+        context.paths["|missing"] = file
+        meter.overrides["imagename"] = "missing"
+        meter.readOptionsIfNeeded()
+        meter.updateMeter()
+        meter.updateMeter()
+        t.equal(context.logs.filter { $0.contains("Unable to open image: \(file)") }.count, 1)
+        t.equal(context.issues, [])
+    }
+
+    t.suite("Engine: context meters: borrowed owners and hosts release while draw values survive") {
+        var context: IndependentMeterContext? = try IndependentMeterContext(
+            directory: t.temporaryDirectory("context-meter-release"))
+        weak var weakContext = context
+        var host: ContextMeterImages? = ContextMeterImages()
+        weak var weakHost = host
+        context?.host = host
+        var heldMeter: StringMeter?
+        weak var weakMeter: StringMeter?
+        weak var weakMeasure: Measure?
+        weak var weakImage: ImageMeter?
+        var textDraw: TextDraw?
+        var imageDraw: ImageDraw?
+        if let owner = context {
+            let value = contextString("Value", "saved", in: owner)
+            weakMeasure = value
+            let meter = StringMeter(name: "Label", section: constructionSection("Label", [
+                ("MeasureName", "Value"), ("W", "30"), ("H", "12"),
+            ]), context: owner, type: "string")
+            meter.readOptionsIfNeeded()
+            meter.updateMeter()
+            meter.layout(after: nil)
+            let image = ImageMeter(name: "Image", section: constructionSection("Image", [
+                ("ImageName", "sf:fixture.saved"), ("W", "8"), ("H", "6"),
+            ]), context: owner, type: "image")
+            image.readOptionsIfNeeded()
+            image.updateMeter()
+            image.layout(after: nil)
+            owner.meters = [meter, image]
+            heldMeter = meter
+            weakMeter = meter
+            weakImage = image
+            textDraw = meter.lower()
+            imageDraw = image.lower()
+        }
+        host = nil
+        t.check(weakHost == nil && context?.host == nil, "meters and their owner do not retain the service host")
+        context = nil
+        t.check(weakContext == nil, "a still-live borrowed meter does not retain its owner")
+        t.check(weakImage == nil)
+        withExtendedLifetime(heldMeter) { t.check(weakMeter != nil) }
+        heldMeter = nil
+        t.check(weakMeter == nil && weakMeasure == nil)
+        t.equal(textDraw?.text, "saved")
+        t.equal(textDraw?.contentFrame, SkinRect(width: 30, height: 12))
+        t.equal(imageDraw?.path, MacSymbol(name: "fixture.saved").path)
+        t.equal(imageDraw?.contentFrame, SkinRect(width: 8, height: 6))
     }
 }

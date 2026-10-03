@@ -161,13 +161,18 @@ public struct ImageOptions: Hashable, Sendable {
     /// before the measure has a value — is nil like an empty name: nothing is drawn, and it is not a missing symbol.
     public static func filePath(_ name: String, imagePath: String, skin: Skin,
                                 symbol: MacSymbol.Style = MacSymbol.Style()) -> String? {
+        filePath(name, imagePath: imagePath, context: skin, symbol: symbol)
+    }
+
+    static func filePath(_ name: String, imagePath: String, context: any SectionContext,
+                         symbol: MacSymbol.Style = MacSymbol.Style()) -> String? {
         var n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if n.count >= 2, n.hasPrefix("\""), n.hasSuffix("\"") { n = String(n.dropFirst().dropLast()) }
         guard !n.isEmpty else { return nil }
         if let symbolName = MacSymbol.symbolName(in: n) {
             return symbolName.isEmpty ? nil : MacSymbol(name: symbolName, style: symbol).path
         }
-        let path = skin.imageFilePath(n, imagePath: imagePath)
+        let path = context.imageFilePath(n, imagePath: imagePath)
         let last = (path as NSString).lastPathComponent
         let ext = (last as NSString).pathExtension.lowercased()
         // No extension left: an existing extensionless file, or a folder name ending in a separator.
@@ -368,7 +373,7 @@ extension Meter {
     /// Raw pixel size of an image file from the host, after EXIF orientation when `options` asks for it, crop and
     /// rotation (`ImageOptions.displaySize`). Nil when the host cannot load it.
     func imageDisplaySize(_ path: String?, _ options: ImageOptions) -> (width: Double, height: Double)? {
-        guard let path, let host = skin.host else { return nil }
+        guard let path, let host = sectionContext.host else { return nil }
         guard let raw = host.imageSize(atPath: path) else {
             noteMissingSymbol(path)
             return nil
@@ -380,6 +385,6 @@ extension Meter {
 
     /// Alpha of an image pixel via `SkinImageQueries` (nil = unknown, treat as opaque).
     func imagePixelAlpha(_ path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
-        (skin.host as? SkinImageQueries)?.imagePixelAlpha(atPath: path, x: x, y: y, exifOriented: exifOriented)
+        (sectionContext.host as? SkinImageQueries)?.imagePixelAlpha(atPath: path, x: x, y: y, exifOriented: exifOriented)
     }
 }

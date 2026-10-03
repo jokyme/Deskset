@@ -88,7 +88,7 @@ public final class ImageMeter: Meter {
         }
 
         let maskName = string("MaskImageName")
-        maskImagePath = ImageOptions.filePath(maskName, imagePath: string("MaskImagePath"), skin: skin,
+        maskImagePath = ImageOptions.filePath(maskName, imagePath: string("MaskImagePath"), context: sectionContext,
                                               symbol: imageOptions.symbol)
         var mask = ImageOptions()
         mask.flip = ImageOptions.Flip.parse(string("MaskImageFlip", "None"))
@@ -108,12 +108,12 @@ public final class ImageMeter: Meter {
                 withdrawMissingSymbol(lastCheckedPath)
             }
             lastCheckedPath = imagePath
-            if let imagePath, let host = skin.host, host.imageSize(atPath: imagePath) == nil {
+            if let imagePath, let host = sectionContext.host, host.imageSize(atPath: imagePath) == nil {
                 // A symbol macOS does not have is a compatibility note, not a missing file.
                 if MacSymbol.isSymbolPath(imagePath) {
                     noteMissingSymbol(imagePath)
                 } else {
-                    skin.log("[\(name)] Unable to open image: \(imagePath)", level: .warning)
+                    sectionContext.log("[\(name)] Unable to open image: \(imagePath)", level: .warning)
                 }
             }
         }
@@ -145,7 +145,7 @@ public final class ImageMeter: Meter {
     }
 
     private func resolveImagePath() {
-        imagePath = ImageOptions.filePath(imageName(), imagePath: imagePathOption, skin: skin, symbol: imageOptions.symbol)
+        imagePath = ImageOptions.filePath(imageName(), imagePath: imagePathOption, context: sectionContext, symbol: imageOptions.symbol)
     }
 
     /// Size of the image after EXIF orientation, crop and rotation (nil when it cannot be loaded).

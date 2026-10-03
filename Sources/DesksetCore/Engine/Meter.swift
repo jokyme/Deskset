@@ -70,7 +70,7 @@ open class Meter: SkinSection {
 
     /// Something the mouse finds, or what it does there, may have changed: the skin's snapshot is built again
     /// (`Skin.snapshotGeneration`). The properties the hit map reads call it when they change (`SkinHitMap`).
-    func noteMouseChange() { skin.noteSnapshotChange() }
+    func noteMouseChange() { sectionContext.noteSnapshotChange() }
 
     /// Adds what the meter's drawing reads when it is drawn, besides the meter's own state that `drawGeneration`
     /// counts: nothing for most meters; a Histogram's bound measures' value range. A kept picture of the meter stays
@@ -172,6 +172,12 @@ open class Meter: SkinSection {
         super.init(name: name, section: section, skin: skin)
     }
 
+    /// The context owns this meter; the reverse reference remains borrowed like the legacy Skin initializer.
+    init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        self.type = type
+        super.init(name: name, section: section, context: context)
+    }
+
     /// Content area (frame minus padding).
     public var contentFrame: SkinRect {
         SkinRect(x: frame.x + padding.left, y: frame.y + padding.top,
@@ -201,7 +207,7 @@ open class Meter: SkinSection {
     /// Whether the mouse is over this meter at the point (skin coordinates), ignoring Hidden and Container (see
     /// `isHit`): whether `mouseShape` contains the point.
     public func hitTest(x: Double, y: Double) -> Bool {
-        mouseShape.contains(x: x, y: y, images: skin.host as? SkinImageQueries)
+        mouseShape.contains(x: x, y: y, images: sectionContext.host as? SkinImageQueries)
     }
 
     /// Visible, not hidden by its container, and hit at the point (skin coordinates): where the meter's mouse actions,
@@ -224,9 +230,9 @@ open class Meter: SkinSection {
     public func isHit(x: Double, y: Double, precise: Bool) -> Bool {
         guard !hidden else { return false }
         return MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: handlesMouseItself,
-                              glass: skin.shownGlassRegion(of: self), frame: frame, shape: { mouseShape },
+                              glass: sectionContext.shownGlassRegion(of: self), frame: frame, shape: { mouseShape },
                               container: { container.map { $0.hidden ? .nowhere : $0.mouseShape } },
-                              images: skin.host as? SkinImageQueries)
+                              images: sectionContext.host as? SkinImageQueries)
     }
 
     // MARK: Subclass hooks
@@ -270,7 +276,7 @@ open class Meter: SkinSection {
             styleOption = own.value(forKey: "MeterStyle") ?? ""
         }
         let styleSectionVariables = bool("DynamicVariables", false) || readingAfterLoad
-        let styleText = skin.resolve(styleOption, in: self, sectionVariables: styleSectionVariables)
+        let styleText = sectionContext.resolve(styleOption, in: self, sectionVariables: styleSectionVariables)
         styles = OptionValue.list(styleText)
         // `MeterStyle=A | B[MeasureX]` read without section variables (the load-time read of a section without
         // DynamicVariables in the meter itself): read once more at the first update, like any other option.
@@ -319,8 +325,8 @@ open class Meter: SkinSection {
         toolTipBalloon = bool("ToolTipType", false)
         toolTipWidth = double("ToolTipWidth", 1000).clamped(1, 1e5)
         toolTipHidden = bool("ToolTipHidden", false)
-        mouseActionCursor = bool("MouseActionCursor", skin.settings.mouseActionCursor)
-        mouseActionCursorName = string("MouseActionCursorName", skin.settings.mouseActionCursorName)
+        mouseActionCursor = bool("MouseActionCursor", sectionContext.settings.mouseActionCursor)
+        mouseActionCursorName = string("MouseActionCursorName", sectionContext.settings.mouseActionCursorName)
             .trimmingCharacters(in: .whitespaces)
 
         // "There must be exactly 6 values separated by semicolons".
@@ -343,18 +349,18 @@ open class Meter: SkinSection {
     /// first read after the skin loaded that resolves section variables (the first update); names written without
     /// section variables are checked right away.
     private func reportMissingStyles(_ styleOption: String, sectionVariablesResolved: Bool) {
-        var missing = styles.filter { skin.styleSection(named: $0) == nil }
+        var missing = styles.filter { sectionContext.styleSection(named: $0) == nil }
         guard !missing.isEmpty else { return }
-        if !(sectionVariablesResolved && skin.optionsLoaded), styleOption.utf8.contains(UInt8(ascii: "[")) {
-            let written = OptionValue.list(skin.resolve(styleOption, in: self, sectionVariables: false))
-            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && skin.mentionsSectionVariable($0) }
+        if !(sectionVariablesResolved && sectionContext.optionsLoaded), styleOption.utf8.contains(UInt8(ascii: "[")) {
+            let written = OptionValue.list(sectionContext.resolve(styleOption, in: self, sectionVariables: false))
+            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && sectionContext.mentionsSectionVariable($0) }
             if !pending.isEmpty {
                 let settled = Set(written.filter { !pending.contains($0) }.map { $0.lowercased() })
                 missing = missing.filter { settled.contains($0.lowercased()) }
             }
         }
         for style in missing {
-            skin.logOnce("MeterStyle \"\(style)\" used by [\(name)] does not exist", level: .warning)
+            sectionContext.logOnce("MeterStyle \"\(style)\" used by [\(name)] does not exist", level: .warning)
         }
     }
 
@@ -366,11 +372,11 @@ open class Meter: SkinSection {
             let measureName = entry.value.trimmingCharacters(in: .whitespaces)
             var found: Measure?
             if !measureName.isEmpty {
-                found = skin.measure(named: measureName)
+                found = sectionContext.measure(named: measureName)
                 if found == nil, reportedMissingMeasures.count < Meter.maxReportedMissingMeasures {
                     let option = "MeasureName\(entry.index == 1 ? "" : String(entry.index))=\(measureName)"
                     if reportedMissingMeasures.insert(option.lowercased()).inserted {
-                        skin.log("[\(name)] \(option) not found", level: .warning)
+                        sectionContext.log("[\(name)] \(option) not found", level: .warning)
                     }
                 }
             }

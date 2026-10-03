@@ -22,7 +22,7 @@ public struct TextDraw: Equatable, Sendable {
 public extension StringMeter {
     /// Capture on the skin's owner after layout. Subsequent updates and closing the skin cannot change this drawing.
     func lower() -> TextDraw {
-        skin.assertOwned()
+        sectionContext.assertOwned(#function)
         let anchor = anchorPoint
         return TextDraw(text: text, style: style, frame: frame, contentFrame: contentFrame,
                         anchor: SkinPoint(x: anchor.x, y: anchor.y))
