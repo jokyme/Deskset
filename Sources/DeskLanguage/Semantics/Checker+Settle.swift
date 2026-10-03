@@ -208,8 +208,9 @@ extension Checker {
             guard let value = values[key], value.isConstant, let node = numericNodes[key],
                   resolvingConstants.insert(key).inserted else { return nil }
             defer { resolvingConstants.remove(key) }
-            guard !poisonedInitializers.contains(where: { $0.overlaps(node.textRange) }),
-                  !diagnostics.contains(where: { $0.severity == .error && $0.range.overlaps(node.textRange) }) else { return nil }
+            let textRange = node.textRange
+            guard !poisonedInitializers.contains(where: { $0.overlaps(textRange) }),
+                  !diagnostics.contains(where: { $0.severity == .error && $0.range.overlaps(textRange) }) else { return nil }
             var result: Double?
             if node.kind == .numberLiteral {
                 result = value.literalValue ?? value.plainLiteral
