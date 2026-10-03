@@ -900,6 +900,12 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return WindowMessageMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(VirtualDesktopsMeasure.self):
         return VirtualDesktopsMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(QuoteMeasure.self):
+        return QuoteMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FolderInfoMeasure.self):
+        return FolderInfoMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FileViewMeasure.self):
+        return FileViewMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }

@@ -199,6 +199,12 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         rawString = ""
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        parentResolver = { [unowned context] in context.measure(named: $0) as? FileViewMeasure }
+        rawString = ""
+    }
+
     public func skinWillClose() { closed = true }
 
     // MARK: Options

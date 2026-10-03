@@ -873,6 +873,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextWebParserTests(t)
     runContextScheduledPluginTests(t)
     runContextSynchronousPluginTests(t)
+    runContextFilePluginTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -1792,6 +1793,229 @@ private func runContextSynchronousPluginTests(_ t: TestRunner) {
             legacy.readOptionsIfNeeded(); legacy.performUpdate()
             t.equal(registered.value, legacy.value)
             t.equal(registered.rawString, legacy.rawString)
+        }
+    }
+}
+
+/// Real scans of explicitly granted temporary files, with delivery queued on the same virtual owner.
+/// Holding results changes only delivery order; it never replaces a scan's result with invented metadata.
+private final class IndependentFilePluginContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var allowedReads: Set<String> = []
+    var jobs: [BackgroundWorkKind] = []
+    var holdResults = false
+    var heldResults: [() -> Void] = []
+    var actionValues: [[String: String]] = []
+
+    init(directory: URL) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, clock: { virtual.uptime }, skinClock: virtual.clock, executor: virtual)
+    }
+    func allow(_ url: URL) { allowedReads.insert(url.resolvingSymlinksInPath().standardizedFileURL.path) }
+    override func measure(named name: String) -> Measure? {
+        measures[name.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionValues.append(measures.mapValues(\.stringValue))
+        super.execute(actionText, from: section)
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition([BackgroundWorkKind.quote, .folderInfo, .fileViewListing].contains(job.kind))
+        guard let path = job.reads, let produce = job.inline else {
+            preconditionFailure("Only explicit fixture file work is qualified")
+        }
+        precondition(allowedReads.contains(URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path))
+        jobs.append(job.kind)
+        let result = produce()
+        let deliver = { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+        if holdResults { heldResults.append(deliver) } else { executor.async(deliver) }
+    }
+    func deliverResults() {
+        let pending = heldResults
+        heldResults = []
+        for delivery in pending { executor.async(delivery) }
+    }
+}
+
+private func runContextFilePluginTests(_ t: TestRunner) {
+    t.suite("Engine: context file plugins: Quote uses owner random, clock and stale-result guards") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-quote"))
+        let first = context.directory.appendingPathComponent("first.txt")
+        let second = context.directory.appendingPathComponent("second.txt")
+        try "alpha\nbeta\n".write(to: first, atomically: true, encoding: .utf8)
+        try "replacement\n".write(to: second, atomically: true, encoding: .utf8)
+        context.allow(first); context.allow(second)
+        let quote = try extendedNode(QuoteMeasure.self, "Quote", "quoteplugin", [("PathName", first.path)], in: context)
+        quote.readOptionsIfNeeded(); quote.performUpdate()
+        t.check(quote.isLoading)
+        t.equal(quote.stringValue, "")
+        context.virtual.runUntilIdle()
+        t.equal(quote.itemCount, 2)
+        t.check(["alpha", "beta"].contains(quote.stringValue))
+        let initial = quote.stringValue
+        quote.performUpdate()
+        t.check(quote.stringValue != initial, "the shared random source retains the kernel's nonrepeat rule")
+        t.equal(context.jobs.count, 1)
+        try "changed\n".write(to: first, atomically: true, encoding: .utf8)
+        context.virtual.advance(by: 61)
+        context.holdResults = true
+        quote.performUpdate()
+        t.equal(context.heldResults.count, 1)
+        quote.overrides["pathname"] = second.path
+        quote.needsOptionRead = true
+        quote.readOptionsIfNeeded(); quote.performUpdate()
+        t.equal(context.heldResults.count, 2)
+        context.deliverResults(); context.virtual.runUntilIdle()
+        t.equal(quote.itemCount, 1)
+        t.equal(quote.stringValue, "replacement", "the older path's completed read cannot replace the current one")
+        t.equal(context.jobs, [.quote, .quote, .quote])
+        quote.skinWillClose()
+    }
+
+    t.suite("Engine: context file plugins: FolderInfo children look up the current parent without a Skin") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-folder-parent"))
+        let folder = context.directory.appendingPathComponent("Files")
+        let other = context.directory.appendingPathComponent("Other")
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("Sub"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: folder.appendingPathComponent("a.txt"))
+        try Data([4, 5]).write(to: folder.appendingPathComponent("b.txt"))
+        try Data([6]).write(to: other.appendingPathComponent("c.txt"))
+        context.allow(folder); context.allow(other)
+        let parent = try extendedNode(FolderInfoMeasure.self, "Parent", "folderinfo", [
+            ("Folder", folder.path), ("InfoType", "FileCount"),
+        ], in: context)
+        let child = try extendedNode(FolderInfoMeasure.self, "Child", "folderinfo", [
+            ("Folder", "[pArEnT]"), ("InfoType", "FolderSize"),
+        ], in: context)
+        parent.readOptionsIfNeeded(); child.readOptionsIfNeeded()
+        parent.performUpdate(); child.performUpdate()
+        t.check(parent.isScanning)
+        t.equal(child.value, 0)
+        context.virtual.runUntilIdle()
+        t.equal(parent.latestResult.files, 2)
+        t.equal(parent.latestResult.folders, 1)
+        t.equal(parent.latestResult.size, 5)
+        child.performUpdate()
+        t.equal(child.value, 5)
+        t.equal(context.jobs, [.folderInfo], "a child shares its parent's scan")
+        let replacement = try extendedNode(FolderInfoMeasure.self, "Parent", "folderinfo", [
+            ("Folder", other.path), ("InfoType", "FileCount"),
+        ], in: context)
+        replacement.readOptionsIfNeeded(); replacement.performUpdate()
+        context.virtual.runUntilIdle(); child.performUpdate()
+        t.equal(child.value, 1, "the resolver borrows the owner's current lookup rather than capturing the old parent")
+        t.equal(parent.latestResult.size, 5)
+        context.measures.removeValue(forKey: "parent")
+        child.performUpdate()
+        t.equal(child.value, 0, "a removed parent retains the existing empty-result fallback")
+        parent.skinWillClose(); replacement.skinWillClose(); child.skinWillClose()
+    }
+
+    t.suite("Engine: context file plugins: FileView publishes children before its finish action") {
+        let context = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-fileview"))
+        let folder = context.directory.appendingPathComponent("Files")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data([1, 2]).write(to: folder.appendingPathComponent("a.txt"))
+        try Data([3]).write(to: folder.appendingPathComponent("b.txt"))
+        context.allow(folder)
+        let parent = try extendedNode(FileViewMeasure.self, "Parent", "fileview", [
+            ("Path", folder.path), ("ShowDotDot", "0"), ("Count", "2"), ("FinishAction", "[!Log ready]"),
+        ], in: context)
+        let child = try extendedNode(FileViewMeasure.self, "Child", "fileview", [
+            ("Path", "[pArEnT]"), ("Type", "FileName"), ("Index", "1"),
+        ], in: context)
+        let count = try extendedNode(FileViewMeasure.self, "Count", "fileview", [
+            ("Path", "[Parent]"), ("Type", "FileCount"),
+        ], in: context)
+        t.equal(parent.rawString, "")
+        for measure in [parent, child, count] { measure.readOptionsIfNeeded(); measure.performUpdate() }
+        t.check(parent.isReading)
+        t.check(child.isChild && count.isChild)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(parent.value, 2)
+        t.equal(child.stringValue, "a.txt")
+        t.equal(count.value, 2)
+        t.equal(context.actionValues.first?["child"], "a.txt")
+        t.equal(context.actionValues.first?["count"], "2")
+        t.equal(context.jobs, [.fileViewListing])
+        context.holdResults = true
+        parent.execute(command: "Update")
+        t.equal(context.heldResults.count, 1)
+        parent.skinWillClose(); child.skinWillClose(); count.skinWillClose()
+        context.deliverResults(); context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1)
+        t.equal(child.stringValue, "a.txt")
+    }
+
+    t.suite("Engine: context file plugins: closed and released owners discard queued scans") {
+        for kind in ["quote", "folder", "view"] {
+            var context: IndependentFilePluginContext? = try IndependentFilePluginContext(directory: t.temporaryDirectory("context-file-release"))
+            guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            weak var releasedOwner = context
+            weak var releasedMeasure: Measure?
+            weak var releasedPending: Measure?
+            if let context {
+                let file = context.directory.appendingPathComponent("value.txt")
+                try "value".write(to: file, atomically: true, encoding: .utf8)
+                context.allow(file); context.allow(context.directory)
+                func makeNode(_ name: String) throws -> Measure {
+                    switch kind {
+                    case "quote": return try extendedNode(QuoteMeasure.self, name, "quoteplugin", [("PathName", file.path)], in: context)
+                    case "folder": return try extendedNode(FolderInfoMeasure.self, name, "folderinfo", [("Folder", context.directory.path)], in: context)
+                    default: return try extendedNode(FileViewMeasure.self, name, "fileview", [
+                        ("Path", context.directory.path), ("ShowDotDot", "0"), ("FinishAction", "[!Log stale]"),
+                    ], in: context)
+                    }
+                }
+                let node = try makeNode("Node")
+                releasedMeasure = node
+                node.readOptionsIfNeeded(); node.performUpdate()
+                t.equal(context.jobs.count, 1)
+                (node as? PluginLifecycle)?.skinWillClose()
+                executor.runUntilIdle()
+                t.equal(context.actions.count, 0)
+                t.equal(node.value, 0)
+                // A second, open node leaves an actual result pending while the whole owner is released.
+                let pending = try makeNode("Pending")
+                releasedPending = pending
+                pending.readOptionsIfNeeded(); pending.performUpdate()
+                t.equal(executor.pendingCount, 1)
+            }
+            context = nil
+            t.check(releasedOwner == nil)
+            t.check(releasedMeasure == nil)
+            t.check(releasedPending == nil)
+            executor.runUntilIdle()
+            t.equal(executor.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: context file plugins: exact registry aliases retain old initializers") {
+        let classes: [(Measure.Type, String)] = [(QuoteMeasure.self, "Quote"), (FolderInfoMeasure.self, "Folder"), (FileViewMeasure.self, "View")]
+        for (selected, name) in classes {
+            let alias = "ContextFile" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let (skin, _) = try makeSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n")
+            defer { skin.close() }
+            guard let node = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Legacy", section: constructionSection("Legacy", []), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: node)) == ObjectIdentifier(selected))
+            t.check(node.skin === skin && legacy.skin === skin)
+            t.equal(node.value, legacy.value)
+            t.equal(node.rawString, legacy.rawString)
+            t.equal(node.type, alias.lowercased())
+            if let folder = legacy as? FolderInfoMeasure { t.check(folder.parentResolver("Node") === node) }
+            if let view = legacy as? FileViewMeasure { t.check(view.parentResolver("Node") === node) }
         }
     }
 }

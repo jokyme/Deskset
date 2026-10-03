@@ -226,6 +226,11 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         parentResolver = { [unowned skin] in skin.measure(named: $0) as? FolderInfoMeasure }
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        parentResolver = { [unowned context] in context.measure(named: $0) as? FolderInfoMeasure }
+    }
+
     public func skinWillClose() { closed = true }
 
     public override func readMeasureOptions() {
