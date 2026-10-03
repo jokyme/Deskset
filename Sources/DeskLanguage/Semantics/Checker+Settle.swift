@@ -6,6 +6,214 @@ import Foundation
 // declaration and a local enum (with DK3032) for a Picker.
 
 extension Checker {
+    func activeOpenSlot(_ slot: Int?) -> Int? { openSlotsSettled ? nil : slot }
+
+    /// A base slot leaves the dimension known; only dimension/type slots defer the algebra.
+    func hasOpenDimension(_ value: Val) -> Bool {
+        guard let slot = value.open, slot < openSlots.count else { return false }
+        return openSlots[slot].kind != .base
+    }
+
+    func recordNumericValue(_ value: Val, _ node: PositionedNode) {
+        guard mute == 0, value.isNumber, !value.error else { return }
+        let key = id(node)
+        numericValues[key] = value
+        numericNodes[key] = node
+        if let slot = value.open { numericSlots[key] = slot }
+        if value.dimension == .bytes || value.dimension == .bytesPerSecond {
+            var inputs: [PositionedNode] = []
+            switch node.kind {
+            case .parenExpr: inputs = [ParenExprSyntax(unchecked: node).value.node]
+            case .prefixExpr: inputs = [PrefixExprSyntax(unchecked: node).operand.node]
+            case .binaryExpr:
+                let binary = BinaryExprSyntax(unchecked: node)
+                inputs = [binary.left.node, binary.right.node]
+            case .ternaryExpr:
+                let ternary = TernaryExprSyntax(unchecked: node)
+                inputs = [ternary.then.node, ternary.otherwise.node]
+            case .callExpr:
+                let call = CallExprSyntax(unchecked: node)
+                let name = text(call.callee.node).split(separator: ".").last.map(String.init)
+                if let name, ["min", "max", "clamp", "ifMissing", "round", "floor", "ceil", "abs"].contains(name) {
+                    inputs = Array(node.childNodes)
+                }
+            default: break
+            }
+            var sources: [NodeID] = []
+            func collect(_ child: PositionedNode) {
+                let childID = id(child)
+                if let value = numericValues[childID] {
+                    if value.dimension == .bytes || value.dimension == .bytesPerSecond { sources.append(childID) }
+                    return
+                }
+                for nested in child.childNodes { collect(nested) }
+            }
+            for input in inputs { collect(input) }
+            numericBaseSources[key] = sources
+        }
+    }
+
+    /// Preserve the originally confirmed constant while recording the type/base chosen at this use.
+    func recordNumericAdoption(_ value: Val, _ node: PositionedNode) {
+        guard mute == 0, var original = numericValues[id(node)] else { return }
+        original.type = value.type
+        original.base = value.base
+        original.error = value.error
+        numericValues[id(node)] = original
+    }
+
+    func recordPercentAsFraction(_ value: Val, _ node: PositionedNode) {
+        guard mute == 0, !value.error, value.dimension == .percent else { return }
+        var converted = value
+        converted.type = .number(.plain)
+        recordNumericAdoption(converted, node)
+        numericCoercions[id(node)] = .percentAsFraction
+    }
+
+    func recordNumericCoercion(_ value: Val, _ node: PositionedNode, to expected: DeskType) {
+        guard mute == 0, !value.error else { return }
+        if expected == .fraction, value.dimension == .percent {
+            recordPercentAsFraction(value, node)
+        } else if case .number(let dimension) = expected, dimension != .plain,
+                  !dimension.needsWrittenUnit, value.plainLiteral != nil {
+            var adopted = value
+            adopted.type = .number(dimension)
+            recordNumericAdoption(adopted, node)
+        }
+    }
+
+    func bindNumericSlot(_ slot: Int, to node: PositionedNode) {
+        guard mute == 0, slot < openSlots.count else { return }
+        let key = id(node)
+        var visited = Set<NodeID>()
+        func link(_ key: NodeID) {
+            guard visited.insert(key).inserted else { return }
+            if let other = numericSlots[key], other != slot {
+                openSlots[slot].links.append(other)
+                openSlots[other].links.append(slot)
+            }
+            if openSlots[slot].kind == .base {
+                for source in numericBaseSources[key] ?? [] { link(source) }
+            }
+        }
+        link(key)
+        if numericValues[key] != nil { numericSlots[key] = slot }
+    }
+
+    /// Materialize only facts/relations recorded by inference. No names are resolved and no algebra is rerun.
+    func completeNumericMetadata() {
+        // Slider/Stepper slots are opened by the option checker after their arguments have been checked.
+        for slot in openSlots.indices {
+            guard case .option = openSlots[slot].owner, openSlots[slot].kind == .dimension else { continue }
+            for literal in openSlots[slot].literals {
+                for (key, node) in numericNodes where range(node) == literal.range { numericSlots[key] = slot }
+            }
+        }
+        var values = numericValues
+        for key in values.keys {
+            guard var value = values[key] else { continue }
+            if let slot = numericSlots[key], slot < openSlots.count {
+                let open = openSlots[slot]
+                if case .declaration(let decl) = open.owner, decl.poisoned { values.removeValue(forKey: key); continue }
+                if open.kind == .dimension, let settled = open.settled { value.type = settled }
+                if let base = open.settledBase { value.base = base }
+            }
+            if numericCoercions[key] == .percentAsFraction { value.type = .number(.plain) }
+            if value.error { values.removeValue(forKey: key) } else { values[key] = value }
+        }
+        // A chosen expression/declaration base reaches only its still-open byte operands, not fixed KiB or data.
+        func supplyBase(_ key: NodeID, _ base: Int, _ visited: inout Set<NodeID>) {
+            guard visited.insert(key).inserted else { return }
+            for child in numericBaseSources[key] ?? [] {
+                guard var value = values[child], value.adoptsBase, value.base == nil else { continue }
+                value.base = base
+                values[child] = value
+                supplyBase(child, base, &visited)
+            }
+        }
+        for (key, value) in values {
+            guard let base = value.base else { continue }
+            var visited = Set<NodeID>()
+            supplyBase(key, base, &visited)
+        }
+        var resolvedBases = Set<NodeID>(), resolvingBases = Set<NodeID>()
+        func resolveBase(_ key: NodeID) -> Int? {
+            guard var value = values[key] else { return nil }
+            if resolvedBases.contains(key) { return value.base }
+            guard resolvingBases.insert(key).inserted else { return nil }
+            defer { resolvingBases.remove(key); resolvedBases.insert(key) }
+            if value.base == nil, value.dimension == .bytes || value.dimension == .bytesPerSecond {
+                for child in numericBaseSources[key] ?? [] {
+                    if let base = resolveBase(child) { value.base = base; break }
+                }
+                if value.base == nil, value.adoptsBase || numericNodes[key]?.kind == .numberLiteral { value.base = 1000 }
+            }
+            values[key] = value
+            return value.base
+        }
+        for key in values.keys { _ = resolveBase(key) }
+        for (key, original) in numericValues {
+            guard let value = values[key] else {
+                types.removeValue(forKey: key)
+                numericCoercions.removeValue(forKey: key)
+                continue
+            }
+            types[key] = SemType(type: value.type, displayBase: value.base, range: original.range)
+        }
+        var resolvingConstants = Set<NodeID>()
+        let poisonedInitializers = declOrder.filter(\.poisoned).map { range(DeclarationSyntax(unchecked: $0.node).initializer.node) }
+        func constant(_ key: NodeID) -> Double? {
+            if let found = canonicalNumericValues[key] { return found }
+            guard let value = values[key], value.isConstant, let node = numericNodes[key],
+                  resolvingConstants.insert(key).inserted else { return nil }
+            defer { resolvingConstants.remove(key) }
+            guard !poisonedInitializers.contains(where: { $0.overlaps(node.textRange) }),
+                  !diagnostics.contains(where: { $0.severity == .error && $0.range.overlaps(node.textRange) }) else { return nil }
+            var result: Double?
+            if node.kind == .numberLiteral {
+                result = value.literalValue ?? value.plainLiteral
+                let literal = NumberLiteralSyntax(unchecked: node)
+                if let written = literal.unit, let number = literal.value,
+                   let unit = catalog.unit(spelling: value.literalUnit ?? written.text), result != nil {
+                    result = number * unit.factor(base: value.base ?? 1000)
+                        + (value.dimension == .temperatureDelta ? 0 : unit.offset)
+                }
+            } else if node.kind == .binaryExpr {
+                // Only the existing plain arithmetic fold confirms a binary result. Other paths can
+                // retain an operand's literalValue while deciding types (including temperature hints).
+                result = value.plainLiteral
+            } else if node.kind == .parenExpr {
+                result = constant(id(ParenExprSyntax(unchecked: node).value.node))
+            } else if node.kind == .prefixExpr {
+                let prefix = PrefixExprSyntax(unchecked: node)
+                guard prefix.operator.kind == .minus else { return nil }
+                let operand = prefix.operand.node
+                result = constant(id(operand)).map { -$0 }
+                if let literal = NumberLiteralSyntax(operand), let written = literal.unit, let number = literal.value,
+                   let unit = catalog.unit(spelling: written.text), result != nil {
+                    result = -number * unit.factor(base: value.base ?? 1000)
+                        + (value.dimension == .temperatureDelta ? 0 : unit.offset)
+                }
+            } else {
+                // Inference can carry a branch or argument value without selecting/folding it.
+                return nil
+            }
+            if numericCoercions[key] == .percentAsFraction { result = result.map { $0 / 100 } }
+            guard let result, result.isFinite else { return nil }
+            canonicalNumericValues[key] = result
+            return result
+        }
+        for key in values.keys { _ = constant(key) }
+        for decl in declOrder where !decl.poisoned {
+            let key = id(DeclarationSyntax(unchecked: decl.node).initializer.node)
+            if let value = values[key] {
+                decl.val?.type = value.type
+                decl.val?.base = value.base
+                decl.val?.open = nil
+            }
+        }
+    }
+
     /// Opens a slot when an initializer leaves part of its type open.
     func openSlot(for initializer: PositionedNode, val: Val, owner: OpenSlot.Owner) -> Int? {
         var kind: OpenSlot.Kind?
@@ -28,7 +236,9 @@ extension Checker {
         collectPlainLiterals(initializer, into: &literals)
         openSlots.append(OpenSlot(kind: kind, owner: owner, literals: literals, candidates: candidates, memberName: memberName,
                                   memberRange: memberRange))
-        return openSlots.count - 1
+        let slot = openSlots.count - 1
+        bindNumericSlot(slot, to: initializer)
+        return slot
     }
 
     func collectPlainLiterals(_ node: PositionedNode, into literals: inout [(range: Range<Int>, value: Double)]) {
@@ -48,7 +258,9 @@ extension Checker {
                 openSlots[slot].links.append(otherSlot)
                 openSlots[otherSlot].links.append(slot)
             }
-            return
+            // A base-open value already has a dimension. Linking must not hide that known constraint
+            // from a dimension-open value (`a = 1; b = 1KB; a == b`).
+            if openSlots[otherSlot].kind != .base { return }
         }
         if other.error || other.isJson { return }
         if other.plainLiteral != nil && openSlots[slot].kind == .dimension { return }
@@ -98,6 +310,7 @@ extension Checker {
             }
             settleGroup(group.sorted())
         }
+        openSlotsSettled = true
     }
 
     private func settleGroup(_ group: [Int]) {
@@ -166,7 +379,10 @@ extension Checker {
             guard let d = dimension(of: use.expected) else { continue }
             if !seen.contains(d) { seen.append(d); firstUse[d] = use }
         }
-        guard let d = seen.first else { return }
+        guard let d = seen.first else {
+            openSlots[s].settled = .number(.plain)
+            return
+        }
         if seen.count > 1 {
             let list = seen.compactMap { firstUse[$0] }.map { use in
                 DiagnosticArgument.text(LocalizedText("\(use.description.en) on line \(line(use.range.lowerBound))",
@@ -182,6 +398,9 @@ extension Checker {
             return
         }
         openSlots[s].settled = .number(d)
+        let bases = Array(Set(uses.compactMap(\.base)))
+        let base: Int? = (d == .bytes || d == .bytesPerSecond) ? (bases.count == 1 ? bases[0] : 1000) : nil
+        openSlots[s].settledBase = base
         if d.needsWrittenUnit {
             // D134: a declaration or option that settles to time, temperature… must write its unit.
             for literal in slot.literals {
@@ -190,7 +409,7 @@ extension Checker {
                 reportUnitNeededAt(literal.range, dimension: d)
             }
         }
-        applySettled(slot, type: .number(d), base: nil)
+        applySettled(slot, type: .number(d), base: base)
     }
 
     /// DK4011 at a range (for literals of a settled declaration).
@@ -226,10 +445,13 @@ extension Checker {
                 fixIts.append(fix("replaceWith", [edit(r, replaced)], ["text": .code(replaced)]))
             }
             report(.byteBaseDisagrees, ownerRange(slot), ["name": .code(slot.name), "fixed": .code(fixed)], fixIts: fixIts)
+            openSlots[s].settledBase = 1000
             applySettled(slot, type: nil, base: 1000)
             return
         }
-        applySettled(slot, type: nil, base: bases.first ?? 1000)
+        let base = bases.first ?? 1000
+        openSlots[s].settledBase = base
+        applySettled(slot, type: nil, base: base)
     }
 
     private func settleType(_ s: Int, uses: [OpenSlot.Use]) {
