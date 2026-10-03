@@ -1,5 +1,18 @@
 import Foundation
 
+/// Current facts borrowed for a synchronous layout pass; the driver never retains this owner.
+protocol LayoutSource: AnyObject {
+    var meters: [Meter] { get }
+    var isClosed: Bool { get }
+    var optionsLoaded: Bool { get }
+    var settings: SkinSettings { get }
+    var updateCount: Int { get }
+    func meter(named name: String) -> Meter?
+    func logOnce(_ message: String, level: SkinLogLevel)
+}
+
+extension Skin: LayoutSource {}
+
 /// Owns the existing Skin layout schedule. Skin owns this object; it holds no Skin, Meter or escaping callback.
 /// Every pass has a local cursor, so an action or option read can synchronously re-enter layout without replacing
 /// the outer pass's cursor. The current adapter still operates on Skin meters, on their owner.
@@ -19,7 +32,7 @@ final class LayoutDriver {
 
     /// Updates and places meters in file order. The callback is synchronous and is never retained. False means an
     /// action closed the skin: no remaining placements, readiness changes or size calculation are performed.
-    func updateMeterPass(in skin: Skin, updateMeter: (Meter) -> Void) -> Bool {
+    func updateMeterPass(in skin: any LayoutSource, updateMeter: (Meter) -> Void) -> Bool {
         resolveContainers(in: skin)
         var needsSecondPass = false
         var placement = Cursor()
@@ -36,14 +49,14 @@ final class LayoutDriver {
     }
 
     /// The public Skin.layout wrapper still owns its assert/work boundary and the following size calculation.
-    func layout(in skin: Skin) {
+    func layout(in skin: any LayoutSource) {
         pending = false
         resolveContainers(in: skin)
         layoutMeters(in: skin)
     }
 
     /// Before the first update, geometry readers get provisional frames without fixing the window size early.
-    func ensureMeterGeometry(in skin: Skin) {
+    func ensureMeterGeometry(in skin: any LayoutSource) {
         guard !framesReady, !skin.isClosed else { return }
         // Set before option reads: inline Lua or another section variable may ask for geometry synchronously.
         framesReady = true
@@ -78,7 +91,7 @@ final class LayoutDriver {
         }
     }
 
-    private func layoutMeters(in skin: Skin) {
+    private func layoutMeters(in skin: any LayoutSource) {
         framesReady = true
         var needsSecondPass = false
         var state = Cursor()
@@ -90,7 +103,7 @@ final class LayoutDriver {
     }
 
     /// Validates Container names at the original call sites, before an ordinary update reads dynamic options.
-    private func resolveContainers(in skin: Skin) {
+    private func resolveContainers(in skin: any LayoutSource) {
         var anyContainer = false
         for m in skin.meters where !m.containerName.isEmpty {
             anyContainer = true
@@ -118,7 +131,7 @@ final class LayoutDriver {
 
     /// Returns a new window size only at the original size-policy points. Background resources are queried after
     /// the frames have been read, then the current fixed dimensions are read. The callback is never stored.
-    func windowSize(in skin: Skin, force: Bool = false,
+    func windowSize(in skin: any LayoutSource, force: Bool = false,
                     backgroundSize: () -> (width: Double, height: Double)?) -> SkinSize? {
         guard force || !sizeComputed || skin.settings.dynamicWindowSize else { return nil }
         guard skin.updateCount > 0 else { return nil }
@@ -130,13 +143,13 @@ final class LayoutDriver {
                                           fixedWidth: skin.settings.skinWidth, fixedHeight: skin.settings.skinHeight)
     }
 
-    func contentBounds(in skin: Skin, backgroundSize: () -> (width: Double, height: Double)?) -> SkinRect {
+    func contentBounds(in skin: any LayoutSource, backgroundSize: () -> (width: Double, height: Double)?) -> SkinRect {
         let frames = visibleFrames(in: skin)
         let background = backgroundSize().map { SkinSize(width: $0.width, height: $0.height) }
         return RainmeterLayout.contentBounds(frames, background: background)
     }
 
-    private func visibleFrames(in skin: Skin) -> [SkinRect] {
+    private func visibleFrames(in skin: any LayoutSource) -> [SkinRect] {
         skin.meters.compactMap { meter in
             guard !meter.hidden && meter.container == nil else { return nil }
             return meter.frame
