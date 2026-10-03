@@ -127,6 +127,7 @@ enum StudioText {
         case deskPreviewEmpty = "desk.preview.empty"
         case deskPreviewUnavailable = "desk.preview.unavailable"
         case deskPreviewTooLarge = "desk.preview.tooLarge"
+        case deskPreviewInvalidText = "desk.preview.invalidText"
         case deskImageOutside = "desk.image.outside"
         case deskImageUnreadable = "desk.image.unreadable"
         case deskImageAmbiguous = "desk.image.ambiguous"
@@ -731,6 +732,8 @@ enum StudioText {
         .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
         .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",
                                "排版或字体超出了预览每边 16,384 像素的上限。"),
+        .deskPreviewInvalidText: ("Text content or style is invalid. Check the text, color and font; font size must be finite and greater than zero.",
+                                 "文字内容或样式无效。请检查文字、颜色与字体；字号必须为大于 0 的有限数值。"),
         .deskImageOutside: ("Image must stay inside the widget folder: %@", "图片必须位于小组件文件夹内：%@"),
         .deskImageUnreadable: ("Cannot read a regular image in the widget folder: %@", "无法读取小组件文件夹内的图片文件：%@"),
         .deskImageAmbiguous: ("Image path has clashing case or Unicode spellings: %@", "图片路径的大小写或 Unicode 拼写存在冲突：%@"),

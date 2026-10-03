@@ -168,7 +168,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             runtime = next
             canvas.context = DrawContext(fonts: AppFontResolver())
             project()
-        } catch { clear(.unavailable(String(describing: error))) }
+        } catch { clear(.unavailable(previewMessage(for: error))) }
     }
 
     private func environment() throws -> (stamp: EnvironmentStamp, colors: ProgramColorInput) {
@@ -257,7 +257,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 tickScheduler.startClockBoundary(after: try precision.delayToNextBoundary(after: dateInput.instant), for: self)
             }
         } catch PreviewFailure.extent { clear(.unavailable(StudioText[.deskPreviewTooLarge]), keepingProgram: true) }
-        catch { clear(.unavailable(String(describing: error)), keepingProgram: true) }
+        catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+    }
+
+    private func previewMessage(for error: Error) -> String {
+        if let error = error as? ProgramRuntimeError, case .invalidText = error {
+            return StudioText[.deskPreviewInvalidText]
+        }
+        return String(describing: error)
     }
 
     private enum PreviewFailure: Error { case extent }

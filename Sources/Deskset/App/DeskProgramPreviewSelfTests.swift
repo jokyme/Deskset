@@ -1207,6 +1207,27 @@ enum DeskProgramPreviewSelfTests {
 
     private static func runFontSizePreviewTests(_ t: AppTestRunner) {
         let source = #"widget { variable size = 20; Text("甲😀").font(size).color(.accent).padding(8).onClick { size = size + 4 } }"#
+        t.suite("Desk: font size preview: invalid live sizes explain the error in the Studio language and recover") {
+            let oldLanguage = StudioText.languageOverride
+            defer { StudioText.languageOverride = oldLanguage }
+            let messages: [(StudioLanguage, String)] = [
+                (.english, "Text content or style is invalid. Check the text, color and font; font size must be finite and greater than zero."),
+                (.chinese, "文字内容或样式无效。请检查文字、颜色与字体；字号必须为大于 0 的有限数值。")
+            ]
+            for (language, message) in messages {
+                StudioText.languageOverride = language
+                let f = try fixture(t, source), p = f.preview
+                t.equal(p.state, .ready)
+                replace(source.replacingOccurrences(of: "size = 20", with: "size = 0"), in: f)
+                t.check(settled(f))
+                t.equal(p.state, .unavailable(message))
+                t.check(p.scene == nil && p.canvas.isHidden)
+                replace(source, in: f)
+                t.check(settled(f))
+                t.equal(p.state, .ready)
+                t.check(p.scene != nil && !p.canvas.isHidden)
+            }
+        }
         t.suite("Desk: font size preview: native clicks grow point fonts with independent literal pixels") {
             let f = try fixture(t, source), p = f.preview
             p.setVisible(true)
