@@ -4,9 +4,17 @@ import Foundation
 private enum RainmeterFixtureError: Error { case utc, missingNode }
 
 private final class RainmeterFixtureText: RainmeterTextMeasuring {
+    struct Call: Equatable {
+        let text: String
+        let style: TextStyle
+        let wrapWidth: Double?
+        let cycle: Int
+    }
     var cycles: [Int] = []
+    var calls: [Call] = []
     func measure(_ text: String, style: TextStyle, wrapWidth: Double?, cycle: Int) -> SkinSize? {
         cycles.append(cycle)
+        calls.append(Call(text: text, style: style, wrapWidth: wrapWidth, cycle: cycle))
         return SkinSize(width: Double(text.count) * 7, height: text.isEmpty ? 0 : 14)
     }
 }
@@ -43,12 +51,12 @@ private final class RainmeterUnqualifiedTime: Measure {
 }
 
 func runRainmeterProgramTests(_ t: TestRunner) {
-    func input(_ suffix: String) throws -> (URL, URL, Data) {
+    func input(_ suffix: String, relative: String = "Engine/Compat/Anchors.ini") throws -> (URL, URL, Data) {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("TestSkins/Engine/Compat/Anchors.ini")
+            .deletingLastPathComponent().appendingPathComponent("TestSkins").appendingPathComponent(relative)
         let data = try Data(contentsOf: source)
         let skins = t.temporaryDirectory("rainmeter-program-" + suffix)
-        let file = skins.appendingPathComponent("Engine/Compat/Anchors.ini")
+        let file = skins.appendingPathComponent(relative)
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: file)
         return (skins, file, data)
@@ -59,8 +67,9 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         result.background.allowsUnfakedWork = false
         return result
     }
-    func convert(_ file: URL, _ skins: URL, _ time: VirtualTimeExecutor, _ effects: RecordingSideEffects) throws -> RainmeterProgram {
-        try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+    func convert(_ file: URL, _ skins: URL, _ time: VirtualTimeExecutor, _ effects: RecordingSideEffects,
+                 config: String = "Engine\\Compat") throws -> RainmeterProgram {
+        try IniProgramConverter.convert(config: config, fileURL: file, skinsDirectory: skins,
                                         system: FakeSystem(), environment: RecordingSkinHost.fixedEnvironment,
                                         clock: time.clock, executor: time, effects: effects)
     }
@@ -156,6 +165,164 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         runtime = nil; service = nil
         t.check(weakOwner == nil && weakMeasure == nil && weakMeter == nil && weakService == nil)
         t.check(!scenes[0].drawingItems.isEmpty, "old values survive both runtime and kernel release")
+    }
+
+    for (name, width, height, strings, images) in [("Align", 460.0, 330.0, 14, 9), ("Clip", 520.0, 360.0, 13, 0)] {
+        t.suite("Engine: Rainmeter program: original \(name) preserves static text layout without a Skin owner") {
+            let config = "String\\" + name
+            let (skins, file, bytes) = try input(name, relative: "String/\(name)/\(name).ini")
+            let conversionTime = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try convert(file, skins, conversionTime, effects, config: config)
+            t.equal(program.sourceBytes, bytes)
+            t.equal(program.sections.compactMap(\.kernel).filter { $0 == .string }.count, strings)
+            t.equal(program.sections.compactMap(\.kernel).filter { $0 == .image }.count, images)
+            t.equal(program.sections.compactMap(\.kernel).filter { $0 == .time }.count, 0)
+            t.equal(conversionTime.pendingCount, 0)
+            let environment = RainmeterFixtureEnvironment(), originalText = RainmeterFixtureText()
+            let host = RainmeterFixtureHost(originalText)
+            var scenes: [WidgetScene] = []
+            weak var original: Skin?
+            do {
+                let time = try clock(), projector = SceneProjector()
+                let skin = Skin(config: config, fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: host)
+                original = skin
+                skin.runInVirtualTime(time); skin.sideEffects = effects
+                try skin.load()
+                t.equal(skin.updateCount, 0)
+                t.check(originalText.calls.isEmpty)
+                let scheduler = TickScheduler(), target = RainmeterSkinTick(skin)
+                skin.update(); scheduler.startTimer(for: target)
+                t.equal(skin.updateCount, 1)
+                t.equal(time.now, 0)
+                for index in 0...60 {
+                    if index > 0 { time.advance(by: 1) }
+                    scenes.append(projector.project(skin, environment: environment))
+                }
+                t.equal(skin.updateCount, 61)
+                t.equal(time.now, 60)
+                t.equal(skin.width, width); t.equal(skin.height, height)
+                t.equal(skin.issues, [])
+                scheduler.cancel(); skin.close()
+                t.equal(time.pendingCount, 0)
+            }
+            t.check(original == nil, "the live oracle is released before independent execution")
+            let time = try clock()
+            var service: RainmeterFixtureText? = RainmeterFixtureText()
+            weak var weakService = service
+            var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(
+                program: program, executor: time, clock: time.clock, environment: RecordingSkinHost.fixedEnvironment,
+                system: FakeSystem(), effects: effects, text: service)
+            weak var owner = runtime
+            weak var meter = runtime?.meters.first
+            t.equal(runtime?.updateCount, 0)
+            t.check(service?.calls.isEmpty == true)
+            try runtime?.update(); try runtime?.startTimer()
+            for index in 0...60 {
+                if index > 0 { time.advance(by: 1) }
+                t.equal(runtime?.updateCount, index + 1)
+                t.equal(try runtime?.project(environment: environment), scenes[index], "full scene at \(index)s")
+            }
+            t.equal(time.now, 60)
+            t.equal(runtime?.width, width); t.equal(runtime?.height, height)
+            t.equal(service?.calls, originalText.calls, "same text, style, wrapping, order and cycle")
+            t.equal(runtime?.failure, nil)
+            t.equal(runtime?.logs, host.logs)
+            t.equal(effects.records, [])
+            t.equal(time.background.reports, [])
+            runtime?.close(); runtime = nil; service = nil
+            t.check(owner == nil && meter == nil && weakService == nil)
+            t.equal(time.pendingCount, 0)
+            t.check(!scenes[0].drawingItems.isEmpty)
+            t.equal(try Data(contentsOf: file), bytes)
+        }
+    }
+
+    t.suite("Engine: Rainmeter program: static text options preserve empty and inherited boundaries") {
+        let (skins, file, _) = try input("static-boundaries")
+        let source = """
+        [Rainmeter]
+        AccurateText=1
+        SkinWidth=0
+        SkinHeight=-3
+        [Style]
+        Padding=2,,4,
+        ClipString=2
+        ClipStringW=80
+        ClipStringH=0
+        TrailingSpaces=1
+        Text="  ab  "
+        [Inherited]
+        Meter=String
+        MeterStyle=Style
+        W=20
+        H=10
+        [Empty]
+        Meter=String
+        MeterStyle=Style
+        Padding=
+        ClipStringW=-4
+        ClipStringH=
+        [UnstyledEmpty]
+        Meter=String
+        Padding=
+        ClipString=2
+        ClipStringW=
+        ClipStringH=
+        Text=ab
+        [Signed]
+        Meter=String
+        MeterStyle=Style
+        Padding=-2,3,(1+3),0
+        ClipString=1
+        W=40
+        H=10
+        """
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        let program = try convert(file, skins, time, effects)
+        let text = RainmeterFixtureText(), host = RainmeterFixtureHost(text)
+        let skin = Skin(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: host)
+        skin.runInVirtualTime(time); skin.sideEffects = effects
+        defer { skin.close() }
+        try skin.load(); skin.update()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: RainmeterFixtureText())
+        defer { runtime.close() }
+        try runtime.update()
+        let environment = RainmeterFixtureEnvironment()
+        t.equal(try runtime.project(environment: environment), SceneProjector().project(skin, environment: environment))
+        t.equal(runtime.settings.skinWidth, nil); t.equal(runtime.settings.skinHeight, nil)
+        let inherited = runtime.meter(named: "Inherited") as? StringMeter
+        t.equal(inherited?.padding, SkinInsets(left: 2, top: 0, right: 4, bottom: 0))
+        t.equal(inherited?.frame.width, 26); t.equal(inherited?.frame.height, 10)
+        t.equal(inherited?.text, "  ab  ")
+        t.equal(inherited?.style.accurateText, true)
+        let empty = runtime.meter(named: "Empty") as? StringMeter
+        t.equal(empty?.padding, SkinInsets(left: 2, top: 0, right: 4, bottom: 0), "empty own Padding inherits the style")
+        t.equal(empty?.style.wrap, false, "negative W is unset; empty H inherits style zero, which is also unset")
+        t.equal(empty?.frame.width, 48); t.equal(empty?.frame.height, 14)
+        let unstyled = runtime.meter(named: "UnstyledEmpty") as? StringMeter
+        t.equal(unstyled?.padding, .zero, "without a style, empty Padding supplies no insets")
+        t.equal(unstyled?.style.wrap, false)
+        t.equal(unstyled?.frame.width, 14); t.equal(unstyled?.frame.height, 14)
+        t.equal(runtime.meter(named: "Signed")?.frame.width, 42)
+        t.equal(runtime.meter(named: "Signed")?.frame.height, 13)
+        t.equal(effects.records, [])
+        for (section, key, value) in [("Rainmeter", "SkinWidth", "(Counter+1)"),
+                                      ("Rainmeter", "AccurateText", "[Other]"),
+                                      ("Style", "Padding", "1,(Counter+1),3,4"),
+                                      ("Style", "ClipStringW", "(Other+1)"),
+                                      ("Style", "TrailingSpaces", "#MACAPPEARANCE#")] {
+            let invalid = "[\(section)]\n\(key)=\(value)\n[N]\nMeter=String\nMeterStyle=Style\nText=visible\n"
+            try invalid.write(to: file, atomically: true, encoding: .utf8)
+            do { _ = try convert(file, skins, time, effects); t.check(false, "must decline \(key)") }
+            catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(time.pendingCount, 0)
+            t.equal(time.background.reports, [])
+            t.equal(effects.records, [])
+        }
     }
 
     t.suite("Engine: Rainmeter program: preflight rejects capability and input gaps before constructing kernels") {

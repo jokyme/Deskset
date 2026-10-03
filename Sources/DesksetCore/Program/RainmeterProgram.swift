@@ -27,12 +27,18 @@ package struct RainmeterProgram: Equatable, Sendable {
         package let updateMilliseconds: Int
         package let backgroundMode: Int
         package let solidColor: RGBA
+        package let accurateText: Bool
+        package let skinWidth: Double?
+        package let skinHeight: Double?
 
         var settings: SkinSettings {
             var value = SkinSettings()
             value.update = updateMilliseconds
             value.backgroundMode = backgroundMode
             value.solidColor = solidColor
+            value.accurateText = accurateText
+            value.skinWidth = skinWidth
+            value.skinHeight = skinHeight
             return value
         }
     }

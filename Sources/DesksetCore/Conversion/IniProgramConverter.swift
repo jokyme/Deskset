@@ -87,18 +87,22 @@ package enum IniProgramConverter {
             }, source: location(skin.sources.location(section: section.name)), kernel: kernels[section.name.lowercased()])
         }, staticBuiltins: builtins,
         window: RainmeterProgram.Window(updateMilliseconds: skin.settings.update,
-                                        backgroundMode: skin.settings.backgroundMode, solidColor: skin.settings.solidColor))
+                                        backgroundMode: skin.settings.backgroundMode, solidColor: skin.settings.solidColor,
+                                        accurateText: skin.settings.accurateText, skinWidth: skin.settings.skinWidth,
+                                        skinHeight: skin.settings.skinHeight))
     }
 
     private static func preflight(_ document: IniDocument, sources: IniSourceMap,
                                   builtins: [String: String]) throws -> [String: RainmeterProgram.Kernel] {
-        let rootKeys: Set<String> = ["update", "backgroundmode", "solidcolor"]
-        let common: Set<String> = ["x", "y", "w", "h", "solidcolor", "antialias", "meterstyle", "updatedivider", "hidden"]
+        let rootKeys: Set<String> = ["update", "backgroundmode", "solidcolor", "accuratetext", "skinwidth", "skinheight"]
+        let common: Set<String> = ["x", "y", "w", "h", "solidcolor", "antialias", "meterstyle", "updatedivider", "hidden", "padding"]
         let stringKeys = common.union(["meter", "measurename", "text", "fontface", "fontsize", "fontcolor",
-                                       "stringstyle", "stringalign", "stringcase"])
+                                       "stringstyle", "stringalign", "stringcase", "clipstring", "clipstringw", "clipstringh",
+                                       "trailingspaces"])
         let imageKeys = common.union(["meter", "imagename"])
         let timeKeys: Set<String> = ["measure", "format", "updatedivider"]
-        let numeric: Set<String> = ["x", "y", "w", "h", "fontsize", "updatedivider", "hidden", "antialias", "update"]
+        let numeric: Set<String> = ["x", "y", "w", "h", "fontsize", "updatedivider", "hidden", "antialias", "update",
+                                   "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -154,6 +158,12 @@ package enum IniProgramConverter {
                     if !number.isEmpty, OptionValue.number(number) == nil {
                         throw decline(section, entry, "nonconstant numeric expression")
                     }
+                }
+                // Preserve the meter reader's empty components and missing values. Unlike numbers(), this
+                // admission check must not turn an unresolved formula into a successfully qualified zero.
+                if name != "variables", key == "padding",
+                   !OptionValue.split(resolved, separator: ",").allSatisfy({ $0.isEmpty || OptionValue.number($0) != nil }) {
+                    throw decline(section, entry, "nonconstant numeric expression")
                 }
                 if key == "imagename", !resolved.isEmpty { throw decline(section, entry, "image resource") }
                 if name == "rainmeter", key == "backgroundmode", ![1.0, 2.0].contains(OptionValue.number(resolved) ?? -1) {
