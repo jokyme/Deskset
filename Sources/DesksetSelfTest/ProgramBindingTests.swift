@@ -192,10 +192,13 @@ func runProgramBindingTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: bindings: unsupported data actions persistence and formatting retain source issues") {
+        let percent = try checkedBindingProgram(t, #"widget { Text(1%) }"#)
+        var runtime = try ProgramRuntime(program: percent)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["1"])
         let cases = [#"widget { variable x = "A"; Text(x).onWake { x = "B" } }"#,
                      #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
-                     #"widget { Text(true) }"#, #"widget { Text(1%) }"#,
+                     #"widget { Text(true) }"#, #"widget { Text(1°C) }"#,
                      #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
                      #"widget { Text(system.name) }"#,
                      #"widget { variable x = true; Text("A").color(.dim, if: x) }"#]
