@@ -66,6 +66,7 @@ final class SkinBitmapDrawing {
         let width: Int
         let height: Int
         let scale: CGFloat
+        let origin: SkinPoint
         /// Compared as color spaces (`CFEqual`), not by name: a display's own profile has none.
         let space: CGColorSpace
         let environment: EnvironmentStamp
@@ -97,6 +98,7 @@ final class SkinBitmapDrawing {
         let cycle: Int
         let size: CGSize
         let source: String
+        var origin = SkinPoint()
     }
 
     static func capture(_ skin: Skin, size: CGSize, scale: CGFloat, appearance: String) -> Capture {
@@ -113,21 +115,24 @@ final class SkinBitmapDrawing {
         picture(Self.capture(skin, size: size, scale: scale, appearance: appearance), scale: scale, space: space)
     }
 
-    func picture(_ frame: Capture, scale: CGFloat, space: CGColorSpace) -> CGImage? {
+    func picture(_ frame: Capture, scale: CGFloat, space: CGColorSpace,
+                 beforeDrawing: ((CGContext) -> Bool)? = nil) -> CGImage? {
         picture(scene: frame.scene, context: frame.context, cycle: frame.cycle, size: frame.size,
-                scale: scale, space: space, source: frame.source)
+                scale: scale, space: space, source: frame.source, origin: frame.origin, beforeDrawing: beforeDrawing)
     }
 
     /// Draws and keeps only captured values. The context contains graphics caches, with no live engine objects.
     func picture(scene: WidgetScene, context: SkinRenderContext, cycle: Int, size: CGSize, scale: CGFloat,
-                 space: CGColorSpace, source: String = "") -> CGImage? {
+                 space: CGColorSpace, source: String = "", origin: SkinPoint = SkinPoint(),
+                 beforeDrawing: ((CGContext) -> Bool)? = nil) -> CGImage? {
         guard size.width.isFinite, size.height.isFinite, scale.isFinite,
+              origin.x.isFinite, origin.y.isFinite,
               size.width > 0, size.height > 0, scale > 0 else { return nil }
         let pixelWidth = (size.width * scale).rounded(.up), pixelHeight = (size.height * scale).rounded(.up)
         guard pixelWidth.isFinite, pixelHeight.isFinite, pixelWidth > 0, pixelHeight > 0,
               pixelWidth <= 16384, pixelHeight <= 16384 else { return nil }
         let w = Int(pixelWidth), h = Int(pixelHeight)
-        let key = ResetKey(context: ObjectIdentifier(context), width: w, height: h, scale: scale, space: space,
+        let key = ResetKey(context: ObjectIdentifier(context), width: w, height: h, scale: scale, origin: origin, space: space,
                            environment: scene.environment)
         if key != drawnFor {
             drawnFor = key
@@ -141,6 +146,17 @@ final class SkinBitmapDrawing {
         guard bitmaps.count == 2 else { return nil }
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
+        if let beforeDrawing {
+            // Image qualification sees the same destination mapping as the actual leaf, before any old picture
+            // is reused. Legacy owners do not install this callback and retain their original failure behavior.
+            ctx.saveGState()
+            ctx.translateBy(x: 0, y: CGFloat(h))
+            ctx.scaleBy(x: scale, y: -scale)
+            ctx.translateBy(x: -origin.x, y: -origin.y)
+            let ready = beforeDrawing(ctx)
+            ctx.restoreGState()
+            guard ready else { return nil }
+        }
         let topLevel = scene.topLevelElements
         let drawingRuns = scene.drawingRuns
         var items = [Item(id: .base, drawing: scene.background, dependencies: scene.backgroundImageDependencies, revisions: [])]
@@ -160,7 +176,7 @@ final class SkinBitmapDrawing {
         func drawDirectly(_ range: Range<Int>) {
             if !started { ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)) }
             started = true
-            SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: ctx, height: h, scale: scale)
+            SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: ctx, height: h, scale: scale, origin: origin)
             stats.drawn += range.count
         }
         func place(_ image: CGImage) {
@@ -185,7 +201,7 @@ final class SkinBitmapDrawing {
                       let picture = SkinBitmapDrawing.makeContext(w, h, space) {
                 let range = index..<end
                 let files = Images.recordingFiles {
-                    SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: picture, height: h, scale: scale)
+                    SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: picture, height: h, scale: scale, origin: origin)
                 }
                 if let image = picture.makeImage() {
                     place(image)
@@ -203,7 +219,7 @@ final class SkinBitmapDrawing {
         runs = kept
         lastStats = stats
         let image = ctx.makeImage()
-        if SkinBitmapDrawing.verifies, stats.copied > 0, let image { verify(image, scene, context, cycle, w, h, scale, space, source: source) }
+        if SkinBitmapDrawing.verifies, stats.copied > 0, let image { verify(image, scene, context, cycle, w, h, scale, space, origin: origin, source: source) }
         return image
     }
 
@@ -214,10 +230,11 @@ final class SkinBitmapDrawing {
 
     /// Draws captured runs (0 is the base) in skin coordinates: top-left origin, points.
     static func draw(items range: Range<Int>, _ runs: [[DrawItem]], context: SkinRenderContext, cycle: Int,
-                     into ctx: CGContext, height: Int, scale: CGFloat) {
+                     into ctx: CGContext, height: Int, scale: CGFloat, origin: SkinPoint = SkinPoint()) {
         ctx.saveGState()
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: scale, y: -scale)
+        ctx.translateBy(x: -origin.x, y: -origin.y)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
         let target = DrawTarget.prepareOwnedBitmap(ctx, glass: .hitArea)
@@ -244,9 +261,9 @@ final class SkinBitmapDrawing {
 
     /// Compares `image` with the skin drawn in full (see `tolerance`).
     private func verify(_ image: CGImage, _ scene: WidgetScene, _ context: SkinRenderContext, _ cycle: Int,
-                        _ w: Int, _ h: Int, _ scale: CGFloat, _ space: CGColorSpace, source: String) {
+                        _ w: Int, _ h: Int, _ scale: CGFloat, _ space: CGColorSpace, origin: SkinPoint, source: String) {
         guard let full = SkinBitmapDrawing.fullDrawing(scene: scene, context: context, cycle: cycle,
-                                                       w, h, scale: scale, space: space),
+                                                       w, h, scale: scale, space: space, origin: origin),
               let found = SkinBitmapDrawing.difference(image, full) else { return }
         guard found.worst > SkinBitmapDrawing.tolerance else { return }
         differences += 1
@@ -268,11 +285,11 @@ final class SkinBitmapDrawing {
     }
 
     static func fullDrawing(scene: WidgetScene, context: SkinRenderContext, cycle: Int, _ w: Int, _ h: Int,
-                            scale: CGFloat, space: CGColorSpace) -> CGContext? {
-        guard let ctx = makeContext(w, h, space) else { return nil }
+                            scale: CGFloat, space: CGColorSpace, origin: SkinPoint = SkinPoint()) -> CGContext? {
+        guard origin.x.isFinite, origin.y.isFinite, let ctx = makeContext(w, h, space) else { return nil }
         ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
         let runs = scene.drawingRuns
-        draw(items: 0..<runs.count, runs, context: context, cycle: cycle, into: ctx, height: h, scale: scale)
+        draw(items: 0..<runs.count, runs, context: context, cycle: cycle, into: ctx, height: h, scale: scale, origin: origin)
         return ctx
     }
 
@@ -401,6 +418,10 @@ final class SkinFrameProducer {
     /// The skin, as long as the runtime has it.
     private let skin: () -> Skin?
     private let bitmapCapture: ((CGFloat, String) -> SkinBitmapDrawing.Capture?)?
+    private let bitmapValidation: ((SkinBitmapDrawing.Capture, CGContext) -> Bool)?
+    enum BitmapResult { case presented(SkinBitmapDrawing.Capture), failed }
+    /// Synchronous on the producer's owner, after presentation or a failed bitmap. Callers capture owners weakly.
+    var bitmapResult: ((BitmapResult) -> Void)?
     private let workActivity: SkinWorkWatchdog.Activity?
 
     /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
@@ -464,16 +485,19 @@ final class SkinFrameProducer {
         self.provider = provider
         self.skin = skin
         bitmapCapture = nil
+        bitmapValidation = nil
         self.contentMode = contentMode
         self.workActivity = workActivity
     }
 
     /// The independent compatibility owner currently supports bitmap presentation only. Layer paths still require
     /// their original Skin preparation and writer lifecycle; this initializer cannot select either of them.
-    init(provider: ContentProvider?, bitmapCapture: @escaping (CGFloat, String) -> SkinBitmapDrawing.Capture?) {
+    init(provider: ContentProvider?, bitmapCapture: @escaping (CGFloat, String) -> SkinBitmapDrawing.Capture?,
+         bitmapValidation: ((SkinBitmapDrawing.Capture, CGContext) -> Bool)? = nil) {
         self.provider = provider
         skin = { nil }
         self.bitmapCapture = bitmapCapture
+        self.bitmapValidation = bitmapValidation
         contentMode = .bitmap
         workActivity = nil
     }
@@ -543,6 +567,17 @@ final class SkinFrameProducer {
             catch { layerFailure = .rendering(String(describing: error)) }
         }
         if endedNativeStage { writerReleased?() }
+    }
+
+    /// A Desk bitmap failed or closed. It must not leave an earlier scene visible or reuse its pictures on recovery.
+    /// Layer publication and legacy owners keep their own existing release and last-good-frame contracts.
+    func clearBitmapContents() {
+        precondition(contentMode == .bitmap)
+        needsFrame = false
+        drawnForShowing = false
+        drawing.releaseKept()
+        provider?.releaseContents()
+        contentsReleased = true
     }
 
     /// Whether the window can be seen, as far as its facts tell.
@@ -723,6 +758,7 @@ final class SkinFrameProducer {
         }
         // The drawing appearance AppKit set while the view drew. Both owners use this same bitmap path.
         var source = ""
+        var captured: SkinBitmapDrawing.Capture?
         SkinFrameProducer.withAppearance(appearance) {
             let capture: SkinBitmapDrawing.Capture?
             if let skin, let size {
@@ -731,12 +767,16 @@ final class SkinFrameProducer {
                 capture = bitmapCapture?(scale, appearance)
             }
             guard let capture else { return }
+            captured = capture
             source = capture.source
-            picture = drawing.picture(capture, scale: scale, space: space)
+            picture = drawing.picture(capture, scale: scale, space: space, beforeDrawing: bitmapValidation.map { validate in
+                { ctx in validate(capture, ctx) }
+            })
         }
-        guard let picture else { return }
+        guard let picture else { bitmapResult?(.failed); return }
         provider.present(SkinFrame(image: picture, scale: scale))
         recordPresented(began: began, source: source)
+        if let captured { bitmapResult?(.presented(captured)) }
     }
 
     private func recordPresented(began: TimeInterval, source: String) {

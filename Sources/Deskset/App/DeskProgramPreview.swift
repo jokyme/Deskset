@@ -272,23 +272,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     /// These static programs emit known path geometry, so its captured visual bounds can enclose centered strokes.
     /// This is a preview viewport, not a new layout, clipping rule or generic ink-coverage claim.
     private func paintExtent(_ scene: WidgetScene) throws -> CGRect {
-        var result = CGRect(x: 0, y: 0, width: max(scene.size.width, 1), height: max(scene.size.height, 1))
-        for item in scene.drawingItems {
-            guard case .shape(let draw) = item else { continue }
-            for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {
-                let b = shape.visualBounds
-                let x0 = draw.contentFrame.x + b.minX, y0 = draw.contentFrame.y + b.minY
-                let x1 = draw.contentFrame.x + b.maxX, y1 = draw.contentFrame.y + b.maxY
-                guard [x0, y0, x1, y1, x1 - x0, y1 - y0].allSatisfy(\.isFinite), x1 >= x0, y1 >= y0 else {
-                    throw PreviewFailure.extent
-                }
-                result = result.union(CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0))
-            }
-        }
-        guard [result.minX, result.minY, result.maxX, result.maxY, result.width, result.height].allSatisfy(\.isFinite) else {
-            throw PreviewFailure.extent
-        }
-        return result
+        do { return try DeskProgramViewport.extent(scene) }
+        catch { throw PreviewFailure.extent }
     }
 
     func refreshEnvironment() {
