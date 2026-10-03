@@ -35,6 +35,7 @@ extension Checker {
         }
         if mute == 0 && !val.error && val.namespace == nil && val.qualifier == nil && val.component == nil {
             types[id(node)] = SemType(type: val.type, displayBase: val.base, range: val.range)
+            recordNumericValue(val, node)
         }
         return val
     }
@@ -566,7 +567,7 @@ extension Checker {
         v.deps.insert(.option(name))
         v.bind = .option(name)
         v.optionName = name
-        v.open = option.open
+        v.open = activeOpenSlot(option.open)
         v.isConstant = false
         v.secret = option.control == "Secret"
         return v

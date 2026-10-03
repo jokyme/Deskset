@@ -154,6 +154,13 @@ public struct SemType: Sendable, Hashable {
     }
 }
 
+/// A numeric conversion selected by the checker at this use, before the enclosing operation.
+public enum NumericCoercion: Sendable, Hashable {
+    /// The original Percent value is divided by 100 to produce a plain fraction. Percent-times-dimension
+    /// arithmetic does not use this conversion: its operands remain Percent and the arithmetic scales once.
+    case percentAsFraction
+}
+
 /// When a facet's candidate applies.
 public indirect enum CandidateCondition: Sendable, Hashable {
     /// While this `if:` condition holds.
@@ -483,6 +490,12 @@ public struct CheckedFile: Sendable {
     /// The type each `variable`, `saved` and `computed` declaration settled to (by its initializer, or by its uses
     /// when the initializer left it open), keyed by the declaration; absent where no use decided it.
     public var declarationTypes: [NodeID: SemType] = [:]
+    /// Confirmed literal/constant values in the canonical unit of `types`, including selected use conversions.
+    /// A missing entry is not a constant. Variable reads, poisoned values and nonfinite constants are absent.
+    public var canonicalNumericValues: [NodeID: Double] = [:]
+    /// Selected use conversions for lowering nonconstant expressions. A canonical constant entry already
+    /// includes the conversion and must be consumed directly, without applying it again.
+    public var numericCoercions: [NodeID: NumericCoercion] = [:]
 
     public init(tree: SyntaxTree, diagnostics: [Diagnostic], symbols: [NodeID: Symbol], types: [NodeID: SemType],
                 elements: [NodeID: ElementFacts], dataUses: [DataUse], dependencies: [NodeID: Set<DepKey>],
