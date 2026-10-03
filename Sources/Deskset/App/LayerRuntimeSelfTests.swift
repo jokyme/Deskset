@@ -30,6 +30,7 @@ enum LayerRuntimeSelfTests {
         preparationTests(t)
         preparationLifecycleTests(t)
         nativeFrameOwnerTests(t)
+        nativeComponentTests(t)
     }
 
     private static func preparationTests(_ t: AppTestRunner) {
@@ -1936,6 +1937,126 @@ enum LayerRuntimeSelfTests {
             } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .notReady) }
             t.check(try owner.releaseNativeStage(legacy))
             withExtendedLifetime(tree) {}
+        }
+    }
+    private static func nativeComponentTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: native components: accepted group identities reuse backing and match Single") {
+            guard let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "native renderer unavailable") }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let context = DrawContext(fonts: AppFontResolver()), owner = try runtime()
+                let original = fixture(0, scale, false, gradient: false)
+                let anchor = try submitted(owner.update(prepare(original, context, scale, space, .none), in: window,
+                    scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                t.equal(anchor.fallback, nil)
+                let groups = anchor.plan.layers.filter { if case .group = $0.content { return true }; return false }
+                t.equal(groups.map(\.id), [.group(fileIndex: 4), .group(fileIndex: 12)])
+                let stage = try owner.prepareNativeStage(maximumCallbackBitmapBytes: budget, cycle: 0,
+                    supportsFrames: true, partition: .acceptedComponents)
+                let tree = host(stage.root, scale)
+                let single = try ELayerContent(plan: SinglePartition.plan(in: window), scale: CGFloat(scale), colorSpace: space,
+                    maximumBaseBitmapBytes: budget, maximumCallbackBitmapBytes: budget, executor: MainSkinExecutor.shared)
+                let singleTree = host(single.root, scale)
+                t.equal(stage.plan, anchor.plan)
+                t.equal(stage.partition, .acceptedComponents)
+                try owner.attachedNativeStage(stage)
+                _ = try owner.displayNativeStage(stage, cycle: 0)
+                try owner.beginNativePublication(stage)
+                try owner.acknowledgeNativePublication(stage)
+                try owner.enableNativeFrames(stage, cycle: 0)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                    maximumReadbackBytes: window.width * window.height * 4)
+                let groupLayers = stage.root.sublayers ?? []
+                var pixels: [[UInt8]] = []
+                func callbacks(_ count: Int) -> [Int] {
+                    stage.plan.layers.map { if case .baseSlice = $0.content { return 0 }; return count }
+                }
+                for (cycle, variant) in [0, 1, 0].enumerated() {
+                    let scene = fixture(variant, scale, false, gradient: false)
+                    if cycle > 0 {
+                        let frame = try owner.displayNativeFrame(stage, prepared: prepare(scene, context, scale, space, .none),
+                            context: context, cycle: cycle, glass: .none)
+                        t.equal(frame.sequence, anchor.sequence + UInt64(cycle))
+                    }
+                    do {
+                        CATransaction.begin(); CATransaction.setDisableActions(true)
+                        defer { CATransaction.commit() }
+                        try single.display(scene, context: context, cycle: cycle, glass: .none)
+                    }
+                    let cPixels = try renderer.render(cTree(baseline(scene, context, cycle, scale, space, .none), scale),
+                        at: 0, deadline: .now() + .seconds(30)).rgba
+                    let ePixels = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+                    let eSingle = try renderer.render(singleTree, at: 0, deadline: .now() + .seconds(30)).rgba
+                    checkFixture(ePixels, window, t)
+                    t.equal(ePixels, cPixels, "component callbacks / independent C Single exact active bytes")
+                    t.equal(ePixels, eSingle, "component callbacks / native E Single exact active bytes")
+                    t.equal(stage.callbackReport.observation.callbacks, callbacks(cycle + 1))
+                    t.equal(stage.callbackReport.observation.failure, nil)
+                    t.equal(single.callbackReport.observation.failure, nil)
+                    t.check(zip(groupLayers, stage.root.sublayers ?? []).allSatisfy { $0.0 === $0.1 })
+                    t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                    t.check(zip(owner.currentFrame?.contents ?? [], anchor.contents).allSatisfy { $0.0.image === $0.1.image })
+                    for (index, layer) in stage.plan.layers.enumerated() {
+                        if case .group = layer.content {
+                            let destination = stage.callbackReport.observation.destinations[index]
+                            t.equal(destination?.layer, layer.id)
+                            t.equal(destination?.width, layer.rect.width)
+                            t.equal(destination?.height, layer.rect.height)
+                            t.check(destination?.target?.colorSpace.map { CFEqual($0, space) } == true)
+                        } else {
+                            t.check(stage.callbackReport.observation.destinations[index] == nil)
+                        }
+                    }
+                    pixels.append(ePixels)
+                }
+                t.check(pixels[0] != pixels[1])
+                t.equal(pixels[0], pixels[2])
+                let before = stage.callbackReport.observation.callbacks
+                var moved = original
+                moved.elements[1].items = [fill(20, 3, 8, 6, RGBA(r: 229, g: 37, b: 19, a: 187))]
+                do {
+                    _ = try owner.displayNativeFrame(stage, prepared: prepare(moved, context, scale, space, .none),
+                        context: context, cycle: 3, glass: .none)
+                    t.check(false, "changed group membership/rectangle requires C rollback before native paint")
+                } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .staleSource) }
+                t.equal(stage.callbackReport.observation.callbacks, before, "structural decline precedes every live native callback")
+                t.equal(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba, pixels[2])
+                t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                t.check(owner.nativePublicationHoldsWriter)
+                do {
+                    _ = try owner.releaseNativeStage(stage)
+                    t.check(false, "components cannot release the C writer before matching rollback ack")
+                } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .awaitingRollback) }
+                t.check(try owner.releaseNativeStage(stage, rollbackAcknowledged: true))
+                stage.root.removeFromSuperlayer() // Package protocol control; the App suite proves the real Main ack.
+                t.check(!owner.nativePublicationHoldsWriter)
+                t.check(renderer.hasVerifiedCanary)
+                withExtendedLifetime([tree, singleTree]) {}
+            }
+        }
+        t.suite("Runtime: layer runtime: native components: fallback and callback budgets preserve accepted C") {
+            let space = try rgb(CGColorSpace.sRGB), context = DrawContext(fonts: AppFontResolver())
+            let window = try rect(0, 0, width, height)
+            for unknown in [false, true] {
+                let owner = try runtime()
+                var scene = fixture(0, 1, false, gradient: false)
+                if unknown { scene.elements[1].items = [text()] }
+                let anchor = try submitted(owner.update(prepare(scene, context, 1, space, .none), in: window,
+                    scale: 1, colorSpace: space, partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                if unknown { t.check(anchor.fallback != nil) } else { t.equal(anchor.fallback, nil) }
+                do {
+                    _ = try owner.prepareNativeStage(maximumCallbackBitmapBytes: unknown ? budget : 1,
+                        cycle: 0, supportsFrames: true, partition: .acceptedComponents)
+                    t.check(false, "unqualified plan/backing budget cannot produce a native attachment")
+                } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .notReady) }
+                catch let failure as ELayerContent.Failure {
+                    if case .resourceLimit = failure { t.check(!unknown) } else { t.check(false, "unexpected callback failure: \(failure)") }
+                }
+                t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                t.check(!owner.nativePublicationHoldsWriter)
+                t.check(zip(owner.currentFrame?.contents ?? [], anchor.contents).allSatisfy { $0.0.image === $0.1.image })
+            }
         }
     }
 }

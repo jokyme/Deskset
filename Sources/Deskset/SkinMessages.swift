@@ -355,7 +355,9 @@ typealias SkinNativeStageResult = Result<SkinNativeStageObservation, SkinNativeS
 
 final class SkinNativeStageRequest {
     let maximumCallbackBitmapBytes: Int
-    let publishesSingle: Bool
+    let publishesContent: Bool
+    let nativePartition: LayerRuntime.NativePartition
+    var publishesSingle: Bool { publishesContent && nativePartition == .single }
     let continuesFrames: Bool
     private let completion: (SkinNativeStageResult) -> Void
     private let lock = NSLock()
@@ -365,7 +367,18 @@ final class SkinNativeStageRequest {
     init(maximumCallbackBitmapBytes: Int, publishesSingle: Bool = false, continuesFrames: Bool = false,
          completion: @escaping (SkinNativeStageResult) -> Void) {
         self.maximumCallbackBitmapBytes = maximumCallbackBitmapBytes
-        self.publishesSingle = publishesSingle
+        self.publishesContent = publishesSingle
+        nativePartition = .single
+        self.continuesFrames = continuesFrames
+        self.completion = completion
+    }
+
+    /// Publication intent and native plan are separate from the attachment's executor permissions.
+    init(maximumCallbackBitmapBytes: Int, nativePartition: LayerRuntime.NativePartition, continuesFrames: Bool,
+         completion: @escaping (SkinNativeStageResult) -> Void) {
+        self.maximumCallbackBitmapBytes = maximumCallbackBitmapBytes
+        publishesContent = true
+        self.nativePartition = nativePartition
         self.continuesFrames = continuesFrames
         self.completion = completion
     }

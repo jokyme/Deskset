@@ -9,6 +9,8 @@ enum SkinLayerFrameBackend: Equatable {
     case c
     /// Internal activation opt-in, initially only Single on a physical worker. This is not a total CA budget.
     case nativeSingle(maximumCallbackBitmapBytes: Int)
+    /// Experimental fixed accepted component plan; no generic ink-coverage or per-group dirty policy.
+    case nativeComponents(maximumCallbackBitmapBytes: Int)
 }
 
 enum SkinFrameContentMode: Equatable {
@@ -18,11 +20,22 @@ enum SkinFrameContentMode: Equatable {
     var usesLayers: Bool { if case .layers = self { return true }; return false }
     var requestsNativeFrames: Bool {
         if case .layers(_, _, .nativeSingle) = self { return true }
+        if case .layers(_, _, .nativeComponents) = self { return true }
         return false
     }
     var nativeFrameBudget: Int? {
-        guard case let .layers(.single, _, .nativeSingle(bytes)) = self else { return nil }
-        return bytes
+        switch self {
+        case let .layers(.single, _, .nativeSingle(bytes)),
+             let .layers(.candidateComponents, _, .nativeComponents(bytes)): return bytes
+        default: return nil
+        }
+    }
+    var nativeFramePartition: LayerRuntime.NativePartition? {
+        switch self {
+        case .layers(.single, _, .nativeSingle): return .single
+        case .layers(.candidateComponents, _, .nativeComponents): return .acceptedComponents
+        default: return nil
+        }
     }
 }
 
