@@ -5,11 +5,25 @@ import DesksetRuntime
 /// Internal, explicit selection at AppController.activate. Bitmap remains the default. The C budget belongs to
 /// LayerRuntime's owned bitmaps, not all retained images, preparation storage or the process. Components remain
 /// candidates; callers opt into that experimental partition independently of the safe Single presentation.
+enum SkinLayerFrameBackend: Equatable {
+    case c
+    /// Internal activation opt-in, initially only Single on a physical worker. This is not a total CA budget.
+    case nativeSingle(maximumCallbackBitmapBytes: Int)
+}
+
 enum SkinFrameContentMode: Equatable {
     case bitmap
-    case layers(partition: LayerRuntime.Partition, maximumOwnedBitmapBytes: Int)
+    case layers(partition: LayerRuntime.Partition, maximumOwnedBitmapBytes: Int, backend: SkinLayerFrameBackend = .c)
 
     var usesLayers: Bool { if case .layers = self { return true }; return false }
+    var requestsNativeFrames: Bool {
+        if case .layers(_, _, .nativeSingle) = self { return true }
+        return false
+    }
+    var nativeFrameBudget: Int? {
+        guard case let .layers(.single, _, .nativeSingle(bytes)) = self else { return nil }
+        return bytes
+    }
 }
 
 // Where a skin's frames go on screen (docs/skin-threading.md §7.3, §15 "Phase 2: plan"). The skin's runtime draws each

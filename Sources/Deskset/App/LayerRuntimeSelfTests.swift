@@ -29,6 +29,7 @@ enum LayerRuntimeSelfTests {
         transferTests(t)
         preparationTests(t)
         preparationLifecycleTests(t)
+        nativeFrameOwnerTests(t)
     }
 
     private static func preparationTests(_ t: AppTestRunner) {
@@ -1867,5 +1868,74 @@ enum LayerRuntimeSelfTests {
                                 syntheticBold: false, characterMap: nil, slant: 0, lineMetrics: nil)
         }
         func changeToCourier() { lock.lock(); defer { lock.unlock() }; courier = true; version += 1 }
+    }
+    private static func nativeFrameOwnerTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: native frames: persistent metadata keeps the C writer frozen and resources explicit") {
+            let space = try rgb(CGColorSpace.sRGB), context = DrawContext(fonts: AppFontResolver()), owner = try runtime()
+            let window = try rect(0, 0, width, height)
+            let original = fixture(0, 1, false, gradient: false)
+            let anchor = try submitted(owner.update(prepare(original, context, 1, space, .none), in: window,
+                scale: 1, colorSpace: space, partition: .single, context: context, cycle: 0, glass: .none))
+            let stage = try owner.prepareNativeStage(maximumCallbackBitmapBytes: budget, cycle: 0, supportsFrames: true)
+            let tree = host(stage.root, 1)
+            try owner.attachedNativeStage(stage)
+            _ = try owner.displayNativeStage(stage, cycle: 0)
+            try owner.beginNativePublication(stage)
+            try owner.acknowledgeNativePublication(stage)
+            try owner.enableNativeFrames(stage, cycle: 0)
+            t.check(stage.supportsFrames)
+            t.equal(stage.sourceSequence, anchor.sequence)
+            t.check(owner.nativeFrame(stage) == nil)
+            for (cycle, variant) in [(1, 1), (2, 0)] {
+                let scene = fixture(variant, 1, false, gradient: false)
+                let frame = try owner.displayNativeFrame(stage, prepared: prepare(scene, context, 1, space, .none),
+                    context: context, cycle: cycle, glass: .none)
+                t.equal(frame.sequence, anchor.sequence + UInt64(cycle))
+                t.equal(frame.cycle, cycle)
+                t.equal(frame.observation.callbacks, [cycle + 1])
+                t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                let retained = owner.currentFrame?.contents.map(\.image) ?? []
+                let expected = anchor.contents.map(\.image)
+                t.check(retained.count == expected.count && zip(retained, expected).allSatisfy { $0.0 === $0.1 })
+                do {
+                    _ = try owner.prepare(prepare(scene, context, 1, space, .none), in: window, scale: 1,
+                        colorSpace: space, partition: .single, context: context, cycle: cycle, glass: .none)
+                    t.check(false, "a published native owner must not permit preparation of a second C writer")
+                } catch let failure as LayerRuntime.Failure { t.equal(failure, .transferredWriter) }
+            }
+            var resource = original
+            resource.elements[1].imageDependencies = [ImageDependency(path: "synthetic:native-resource", stamp: nil)]
+            let prepared = try prepare(resource, context, 1, space, .none)
+            for count in [3, 4] {
+                let frame = try owner.displayNativeFrame(stage, prepared: prepared, context: context, cycle: 2, glass: .none)
+                t.equal(frame.sequence, anchor.sequence + UInt64(count))
+                t.equal(frame.change, .all(.missingImageStamp("synthetic:native-resource")))
+                t.equal(frame.observation.callbacks, [count + 1], "nil stamps do not turn equal input into a cache hit")
+            }
+            var malformed = prepared
+            malformed = SceneInkCandidates(scene: resource, elementInk: [], runInk: prepared.runInk)
+            try expectRasterizer(.invalidPlan, t) {
+                _ = try owner.displayNativeFrame(stage, prepared: malformed, context: context, cycle: 2, glass: .none)
+            }
+            t.equal(owner.nativeFrame(stage)?.sequence, anchor.sequence + 4)
+            do {
+                _ = try owner.releaseNativeStage(stage)
+                t.check(false, "release before matching Main rollback cannot restore C write permission")
+            } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .awaitingRollback) }
+            t.check(try owner.releaseNativeStage(stage, rollbackAcknowledged: true))
+            t.check(owner.nativeFrame(stage) == nil)
+            stage.root.removeFromSuperlayer() // Manual package protocol control; actual Main ack is tested by the window suite.
+            let next = try submitted(owner.update(prepare(original, context, 1, space, .none), in: window,
+                scale: 1, colorSpace: space, partition: .single, context: context, cycle: 3, glass: .none))
+            t.equal(next.sequence, anchor.sequence + 1, "native metadata never increments the C sequence")
+            let legacy = try owner.prepareNativeStage(maximumCallbackBitmapBytes: budget, cycle: 3)
+            t.check(!legacy.supportsFrames)
+            do {
+                try owner.enableNativeFrames(legacy, cycle: 3)
+                t.check(false, "a one-shot attachment is not permission for a persistent frame writer")
+            } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .notReady) }
+            t.check(try owner.releaseNativeStage(legacy))
+            withExtendedLifetime(tree) {}
+        }
     }
 }

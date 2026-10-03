@@ -113,6 +113,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
             }
             frames.requestNativeRollback = { [weak self] stage, failure in self?.request(.nativeStageRollback(stage, failure)) }
         }
+        if contentMode.requestsNativeFrames {
+            frames.requestNativeFrames = { [weak self] in self?.enqueue(.nativeFramesRequested) }
+        }
         frames.start(on: executor)
     }
 
@@ -258,22 +261,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         messageObserver?(message)
         switch message {
         case .nativeStageRequested(let request):
-            guard !isClosing, !isClosed else {
-                self.request(.nativeStageRejected(request, .cancelled))
-                return false
-            }
-            do {
-                let stage = try frames.prepareNativeStage(request)
-                if request.publishesSingle {
-                    stage.attachment.callbackReport.observeFirstFailure { [weak self, weak stage] failure in
-                        guard let self, let stage else { return }
-                        self.request(.nativeStageCallbackFailed(stage, .rendering(String(describing: failure))))
-                    }
-                }
-                self.request(.attachNativeStage(stage))
-            }
-            catch let failure as SkinNativeStageFailure { self.request(.nativeStageRejected(request, failure)) }
-            catch { self.request(.nativeStageRejected(request, .rendering(String(describing: error)))) }
+            return prepareNativeRequest(request)
+        case .nativeFramesRequested:
+            guard !isClosing, !isClosed, let request = frames.automaticNativeFrameRequest() else { return false }
+            return prepareNativeRequest(request)
+        case .nativeFramesReady(let stage):
+            frames.enableNativeFrames(stage)
             return true
         case .nativeStageAttached(let stage):
             frames.displayNativeStage(stage)
@@ -386,7 +379,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
             frames.setNeedsFrame()
         case .mirrorInput, .windowFacts, .patch, .scenePatchFinished,
              .nativeStageRequested, .nativeStageAttached, .nativeStageRelease, .nativeStageDetached,
-             .nativeStagePublicationCommitted, .nativeStageRolledBack:
+             .nativeStagePublicationCommitted, .nativeStageRolledBack, .nativeFramesRequested, .nativeFramesReady:
             break
         }
         return true
@@ -481,6 +474,36 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         // Even inside a main exclusive callback, display/creation must run later on the physical worker.
         enqueue(.nativeStageRequested(SkinNativeStageRequest(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes,
                                                             publishesSingle: publishesSingle, completion: completion)))
+    }
+
+    /// The controller calls after actual C installation. Existing C/bitmap activation queues nothing extra.
+    func beginNativeFrames() {
+        precondition(Thread.isMainThread)
+        guard frames.contentMode.requestsNativeFrames, !didClose else { return }
+        enqueue(.nativeFramesRequested)
+    }
+
+    private func prepareNativeRequest(_ request: SkinNativeStageRequest) -> Bool {
+        precondition(executor.isCurrent)
+        guard !isClosing, !isClosed else {
+            self.request(.nativeStageRejected(request, .cancelled))
+            return false
+        }
+        do {
+            let stage = try frames.prepareNativeStage(request)
+            if request.publishesSingle {
+                stage.attachment.callbackReport.observeFirstFailure { [weak self, weak stage] failure in
+                    guard let self, let stage else { return }
+                    self.request(.nativeStageCallbackFailed(stage, .rendering(String(describing: failure))))
+                }
+            }
+            self.request(.attachNativeStage(stage))
+        } catch {
+            let failure = (error as? SkinNativeStageFailure) ?? .rendering(String(describing: error))
+            frames.rejectAutomaticNativeFrames(request, failure: failure)
+            self.request(.nativeStageRejected(request, failure))
+        }
+        return true
     }
 
     func nativeStageAttached(_ stage: SkinNativeStage) {
@@ -579,6 +602,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     func finishNativePublication(_ stage: SkinNativeStage, result: SkinNativeStageResult,
                                  facts: SkinWindowFacts, size: CGSize) {
         precondition(Thread.isMainThread)
+        // A replay of initial readiness cannot cancel a persistent attachment's newer ordinary native frames.
+        if stage.request.continuesFrames && stage.request.isCompleted { return }
         guard publishedNativePublication === stage, !stage.hasPublicationRollback, !stage.hasOwnerRelease,
               stage.epoch.matches(facts, size: size) else {
             rollbackNativePublication(stage, failure: .staleDestination)
@@ -599,7 +624,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
                 }
             }
             guard let checked else { throw SkinNativeStageFailure.attachmentTimedOut }
-            stage.request.complete(.success(try checked.get()))
+            if stage.request.complete(.success(try checked.get())), stage.request.continuesFrames {
+                enqueue(.nativeFramesReady(stage))
+            }
         } catch let failure as SkinNativeStageFailure { rollbackNativePublication(stage, failure: failure) }
         catch { rollbackNativePublication(stage, failure: .rendering(String(describing: error))) }
     }
@@ -612,7 +639,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         let hadAck = stage.hasPublicationRollback
         let hidden = stage.provider.rollbackNativeStage(stage.attachment)
         guard hidden || !stage.wasPublished || stage.hasOwnerRelease else { return }
-        stage.recordPublicationRollback()
+        stage.recordPublicationRollback(failure: failure)
         if publishedNativePublication === stage { publishedNativePublication = nil }
         stage.request.complete(.failure(failure))
         if !hadAck, !stage.hasStoppedOwnerRelease { enqueue(.nativeStageRolledBack(stage)) }

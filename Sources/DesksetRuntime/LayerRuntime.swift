@@ -43,6 +43,14 @@ package final class LayerRuntime {
     }
     package enum Update { case submitted(Frame), unchanged(Frame), suppressed }
 
+    /// Metadata of one native ordinary frame, not a C frame, image, attachment or writer capability.
+    package struct NativeFrame {
+        package let sequence: UInt64
+        package let cycle: Int
+        package let change: Change
+        package let observation: ELayerContent.Observation
+    }
+
     /// Finished immutable contents, not a committed frame or a cross-thread ownership lease. The proposed sequence
     /// can occur again after cancellation; only commit advances the owner's sequence. No owner/context is retained.
     package final class PreparedFrame {
@@ -61,14 +69,20 @@ package final class LayerRuntime {
         package let scale: CGFloat
         package let colorSpace: CGColorSpace
         package let callbackReport: ELayerContent.CallbackReport
+        package let supportsFrames: Bool
+        package let sourceHitMap: SkinHitMap
+        package let sourceGlass: [GlassRegion]
 
-        fileprivate init(_ content: ELayerContent, fallbackRoot: CALayer, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace) {
+        fileprivate init(_ content: ELayerContent, fallbackRoot: CALayer, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace, sourceHitMap: SkinHitMap, sourceGlass: [GlassRegion], supportsFrames: Bool) {
             root = content.root
             self.fallbackRoot = fallbackRoot
             sourceSequence = sequence
             self.scale = scale
             self.colorSpace = colorSpace
             callbackReport = content.callbackReport
+            self.supportsFrames = supportsFrames
+            self.sourceHitMap = sourceHitMap
+            self.sourceGlass = sourceGlass
         }
     }
     package enum NativeStageFailure: Error, Equatable { case notReady, busy, staleSource, notAttached, awaitingRollback }
@@ -129,11 +143,19 @@ package final class LayerRuntime {
         var attached = false
         var displayed = false
         var publication = Publication.scoped
+        var framesEnabled = false
+        var frameKey: Key
+        var frameSequence: UInt64
+        var frame: NativeFrame?
 
-        init(_ content: ELayerContent, fallbackRoot: CALayer, source: Key, sequence: UInt64) {
+        init(_ content: ELayerContent, fallbackRoot: CALayer, source: Key, sequence: UInt64, supportsFrames: Bool) {
             self.content = content
             self.source = source
-            attachment = NativeStage(content, fallbackRoot: fallbackRoot, sequence: sequence, scale: source.scale, colorSpace: source.colorSpace)
+            frameKey = source
+            frameSequence = sequence
+            attachment = NativeStage(content, fallbackRoot: fallbackRoot, sequence: sequence, scale: source.scale,
+                                     colorSpace: source.colorSpace, sourceHitMap: source.prepared.scene.hitMap,
+                                     sourceGlass: source.prepared.scene.glass, supportsFrames: supportsFrames)
         }
     }
 
@@ -378,15 +400,16 @@ package final class LayerRuntime {
     /// Explicit, one-shot Single staging from an already accepted C frame. There is no automatic call from update,
     /// no ready cache and no C tree/sequence mutation. App must additionally require a physical worker and validate
     /// its current actual-window epoch; this package operation cannot establish those AppKit facts by itself.
-    package func prepareNativeStage(maximumCallbackBitmapBytes: Int, cycle: Int) throws -> NativeStage {
+    package func prepareNativeStage(maximumCallbackBitmapBytes: Int, cycle: Int, supportsFrames: Bool = false) throws -> NativeStage {
         try checkMutable()
         guard nativeCandidate == nil else { throw NativeStageFailure.busy }
         guard state == .live, pending == nil, let key, key.context != nil, key.cycle == cycle,
               let frame = currentFrame else { throw NativeStageFailure.notReady }
+        guard !supportsFrames || key.partition == .single else { throw NativeStageFailure.notReady }
         let content = try ELayerContent(plan: SinglePartition.plan(in: key.window), scale: key.scale,
             colorSpace: key.colorSpace, maximumBaseBitmapBytes: maximumOwnedBitmapBytes,
             maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, executor: executor)
-        let candidate = NativeCandidate(content, fallbackRoot: root, source: key, sequence: frame.sequence)
+        let candidate = NativeCandidate(content, fallbackRoot: root, source: key, sequence: frame.sequence, supportsFrames: supportsFrames)
         nativeCandidate = candidate
         return candidate.attachment
     }
@@ -459,6 +482,72 @@ package final class LayerRuntime {
         }
         nativeCandidate = nil
         return true
+    }
+
+    /// One actual Main completion has accepted this attachment. This does not relax the old one-shot checks.
+    package func enableNativeFrames(_ stage: NativeStage, cycle: Int) throws {
+        try checkOwner()
+        guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
+        let candidate = try currentNativeCandidate(stage)
+        guard stage.supportsFrames, candidate.publication == .published, candidate.source.cycle == cycle,
+              candidate.displayed else { throw NativeStageFailure.notReady }
+        candidate.framesEnabled = true
+    }
+
+    package func nativeFrame(_ stage: NativeStage) -> NativeFrame? {
+        precondition(executor.isCurrent)
+        guard let candidate = nativeCandidate, candidate.attachment === stage else { return nil }
+        return candidate.frame
+    }
+
+    /// Only the physical App frame route consumes this operation. C remains frozen, with its original sequence.
+    /// A failed live native display may have altered its backing; Main rollback restores the accepted C anchor.
+    package func displayNativeFrame(_ stage: NativeStage, prepared: SceneInkCandidates,
+                                    context: DrawContext, cycle: Int, glass: GlassPaint) throws -> NativeFrame {
+        try checkOwner()
+        guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
+        let candidate = try currentNativeCandidate(stage)
+        guard candidate.framesEnabled, candidate.publication == .published else { throw NativeStageFailure.notReady }
+        let scene = prepared.scene
+        guard prepared.elementInk.count == scene.elements.count,
+              prepared.runInk.count == scene.topLevelElements.count + 1,
+              Set(scene.elements.map(\.id)).count == scene.elements.count,
+              Set(scene.elements.map { $0.id.index }).count == scene.elements.count else {
+            throw Rasterizer.Failure.invalidPlan("Native preparation must retain unique complete scene order")
+        }
+        guard scene.glass == stage.sourceGlass, scene.hitMap == stage.sourceHitMap else {
+            throw NativeStageFailure.staleSource
+        }
+        let source = candidate.source
+        let next = Key(prepared, window: source.window, scale: source.scale, colorSpace: source.colorSpace,
+                       partition: .single, context: context, cycle: cycle, glass: glass)
+        let reason = reason(from: candidate.frameKey, to: next, plan: SinglePartition.plan(in: source.window))
+        if let failure = stage.callbackReport.observation.failure { throw failure }
+        if reason == nil, let frame = candidate.frame {
+            return NativeFrame(sequence: frame.sequence, cycle: cycle, change: .unchanged,
+                               observation: stage.callbackReport.observation)
+        }
+        let (sequence, overflow) = candidate.frameSequence.addingReportingOverflow(1)
+        guard !overflow else { throw Failure.sequenceOverflow }
+        updating = true
+        defer { updating = false }
+        var failure: Error?
+        transaction {
+            do { try candidate.content.display(scene, context: context, cycle: cycle, glass: glass) }
+            catch { failure = error }
+        }
+        if let failure { throw failure }
+        guard nativeCandidate === candidate, state == .live, candidate.publication == .published else {
+            throw NativeStageFailure.staleSource
+        }
+        let frame = NativeFrame(sequence: sequence, cycle: cycle, change: .all(reason ?? .initial),
+                                observation: stage.callbackReport.observation)
+        candidate.frameKey = next
+        candidate.frameSequence = sequence
+        candidate.frame = frame
+        return frame
     }
 
     private func currentNativeCandidate(_ stage: NativeStage) throws -> NativeCandidate {

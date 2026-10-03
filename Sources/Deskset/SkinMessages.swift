@@ -108,6 +108,9 @@ enum SkinMessage {
     case scenePatchFinished(SkinScenePatch)
     /// Explicit experimental native staging, never requested automatically by a C frame.
     case nativeStageRequested(SkinNativeStageRequest)
+    /// Internal opt-in only; no capture/allocation in bitmap, C or Main mode.
+    case nativeFramesRequested
+    case nativeFramesReady(SkinNativeStage)
     case nativeStageAttached(SkinNativeStage)
     case nativeStageRelease(SkinNativeStage)
     case nativeStageDetached(SkinNativeStage)
@@ -353,15 +356,17 @@ typealias SkinNativeStageResult = Result<SkinNativeStageObservation, SkinNativeS
 final class SkinNativeStageRequest {
     let maximumCallbackBitmapBytes: Int
     let publishesSingle: Bool
+    let continuesFrames: Bool
     private let completion: (SkinNativeStageResult) -> Void
     private let lock = NSLock()
     private var cancelled = false
     private var completed = false
 
-    init(maximumCallbackBitmapBytes: Int, publishesSingle: Bool = false,
+    init(maximumCallbackBitmapBytes: Int, publishesSingle: Bool = false, continuesFrames: Bool = false,
          completion: @escaping (SkinNativeStageResult) -> Void) {
         self.maximumCallbackBitmapBytes = maximumCallbackBitmapBytes
         self.publishesSingle = publishesSingle
+        self.continuesFrames = continuesFrames
         self.completion = completion
     }
 
@@ -375,6 +380,12 @@ final class SkinNativeStageRequest {
         lock.lock()
         defer { lock.unlock() }
         return cancelled
+    }
+
+    var isCompleted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return completed
     }
 
     /// Exactly once on main, with cancellation taking precedence over an already queued observation.
@@ -417,6 +428,9 @@ final class SkinNativeStage {
     private var stoppedOwnerReleased = false
     private var publicationCommitted = false
     private var publicationRollback = false
+    private var rollbackFailure: SkinNativeStageFailure?
+    /// Changed only on the real owner, after the initial Main completion acknowledgment.
+    var nativeFramesReady = false
     /// The real executor alone changes this flag. Main completes through the request's locked once gate.
     var completionQueued = false
     var rollbackQueued = false
@@ -458,10 +472,11 @@ final class SkinNativeStage {
     }
 
     /// Main may acknowledge only after the provider has actually hidden this attachment (or never installed it).
-    func recordPublicationRollback() {
+    func recordPublicationRollback(failure: SkinNativeStageFailure? = nil) {
         precondition(Thread.isMainThread)
         releaseLock.lock()
         publicationRollback = true
+        if rollbackFailure == nil { rollbackFailure = failure }
         releaseLock.unlock()
     }
 
@@ -469,6 +484,12 @@ final class SkinNativeStage {
         releaseLock.lock()
         defer { releaseLock.unlock() }
         return publicationCommitted
+    }
+
+    var publicationFailure: SkinNativeStageFailure? {
+        releaseLock.lock()
+        defer { releaseLock.unlock() }
+        return rollbackFailure
     }
 
     var hasPublicationRollback: Bool {
