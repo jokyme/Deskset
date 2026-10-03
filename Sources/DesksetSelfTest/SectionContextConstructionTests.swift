@@ -872,6 +872,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextRegistryTests(t)
     runContextWebParserTests(t)
     runContextScheduledPluginTests(t)
+    runContextSynchronousPluginTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -1645,6 +1646,153 @@ private func runContextBuiltinExtendedTests(_ t: TestRunner) {
         skin.measure(named: "Time")?.performUpdate()
         t.equal(skin.measure(named: "Time")?.value, 13_443_264_000)
         t.equal(skin.resolve("[Time:TimeStamp]", in: nil, sectionVariables: true), "13443263998", "the real resolver still reads the old stored timestamp after frozen show")
+    }
+}
+
+private func runContextSynchronousPluginTests(_ t: TestRunner) {
+    t.suite("Engine: context synchronous plugins: sensor kernels read the live owner source") {
+        let system = ContextBuiltinSystem()
+        system.sensors = [SensorKeys.cpu: 50, SensorKeys.cpuCore(2): 62.5,
+                          SensorKeys.fan(1): 1000, SensorKeys.fan(2): 2300,
+                          SensorKeys.gpuMemory: 12 * 1_048_576]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-values"), system: system)
+        let core = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [
+            ("CoreTempType", "Temperature"), ("CoreTempIndex", "1"),
+        ], in: context)
+        let temperature = try extendedNode(SpeedFanMeasure.self, "Temperature", "speedfanplugin", [
+            ("SpeedFanScale", "F"), ("SpeedFanNumber", "0"),
+        ], in: context)
+        let fan = try extendedNode(SpeedFanMeasure.self, "Fan", "speedfanplugin", [
+            ("SpeedFanType", "Fan"), ("SpeedFanNumber", "1"),
+        ], in: context)
+        let gpuMemory = try extendedNode(MSIAfterburnerMeasure.self, "GPU", "msiafterburner", [
+            ("DataSource", "GPU memory usage"),
+        ], in: context)
+        for measure in [core, temperature, fan, gpuMemory] as [Measure] {
+            measure.readOptionsIfNeeded(); measure.performUpdate()
+        }
+        t.equal(core.value, 62.5)
+        t.equal(temperature.value, 122)
+        t.equal(fan.value, 2300)
+        t.equal(gpuMemory.value, 12)
+        system.sensors[SensorKeys.cpuCore(2)] = 70
+        system.sensors[SensorKeys.cpu] = 60
+        system.sensors[SensorKeys.fan(2)] = 2500
+        system.sensors[SensorKeys.gpuMemory] = 16 * 1_048_576
+        for measure in [core, temperature, fan, gpuMemory] as [Measure] { measure.performUpdate() }
+        t.equal(core.value, 70)
+        t.equal(temperature.value, 140)
+        t.equal(fan.value, 2500)
+        t.equal(gpuMemory.value, 16)
+        t.equal(core.maxValue, 70)
+        t.equal(fan.maxValue, 2500)
+        t.check(system.calls.contains("sensor:cpu.core.2"))
+        t.check(system.calls.contains("sensor:gpu.memory"))
+        t.equal(context.logs, [])
+        t.check(context.services.contains(.sensors))
+        t.check(context.services.contains(.system))
+    }
+
+    t.suite("Engine: context synchronous plugins: missing sensors log once and recover on the same owner") {
+        let system = ContextBuiltinSystem()
+        system.sensors = [:]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-missing"), system: system)
+        let core = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [], in: context)
+        let fan = try extendedNode(SpeedFanMeasure.self, "Fan", "speedfanplugin", [
+            ("SpeedFanType", "Fan"), ("SpeedFanNumber", "9"),
+        ], in: context)
+        let gpu = try extendedNode(MSIAfterburnerMeasure.self, "GPU", "msiafterburner", [
+            ("DataSource", "GPU temperature"),
+        ], in: context)
+        for measure in [core, fan, gpu] as [Measure] {
+            measure.readOptionsIfNeeded(); measure.performUpdate(); measure.performUpdate()
+            t.equal(measure.value, 0)
+        }
+        t.equal(context.logs.count, 3)
+        system.sensors[SensorKeys.cpu] = 55
+        system.sensors[SensorKeys.gpu] = 45
+        fan.overrides["speedfannumber"] = "0"
+        fan.needsOptionRead = true
+        system.sensors[SensorKeys.fan(1)] = 1800
+        fan.readOptionsIfNeeded()
+        for measure in [core, fan, gpu] as [Measure] { measure.performUpdate() }
+        t.equal(core.value, 55)
+        t.equal(fan.value, 1800)
+        t.equal(gpu.value, 45)
+        t.equal(context.logs.count, 3)
+        let otherSystem = ContextBuiltinSystem()
+        otherSystem.sensors = [SensorKeys.cpu: 20]
+        let other = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-other"), system: otherSystem)
+        let otherCore = try extendedNode(CoreTempMeasure.self, "Core", "coretemp", [], in: other)
+        otherCore.readOptionsIfNeeded(); otherCore.performUpdate()
+        t.equal(otherCore.value, 20)
+        t.equal(core.value, 55, "the second owner's source cannot replace the first owner's reading")
+    }
+
+    t.suite("Engine: context synchronous plugins: compatibility values and command logs need no Skin") {
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-compatibility-plugins"))
+        let window = try extendedNode(WindowMessageMeasure.self, "Window", "windowmessageplugin", [
+            ("WindowName", "Fixture"),
+        ], in: context)
+        window.readOptionsIfNeeded(); window.performUpdate()
+        t.equal(window.value, 0)
+        t.equal(window.rawString, "")
+        t.check(context.logs.first?.contains("Fixture") == true)
+        window.needsOptionRead = true
+        window.readOptionsIfNeeded()
+        t.equal(context.logs.count, 1)
+        window.execute(command: "SendMessage 1 2 3")
+        window.execute(command: "SendMessage 1 2 3")
+        t.equal(context.logs.count, 2)
+        let desktop = try extendedNode(VirtualDesktopsMeasure.self, "Desktop", "virtualdesktops", [
+            ("VDMeasureType", "DesktopName"),
+        ], in: context)
+        desktop.readOptionsIfNeeded(); desktop.performUpdate()
+        t.equal(desktop.value, 0)
+        t.equal(desktop.stringValue, "Desktop 1")
+        desktop.overrides["vdmeasuretype"] = "DesktopCount"
+        desktop.needsOptionRead = true
+        desktop.readOptionsIfNeeded(); desktop.performUpdate()
+        t.equal(desktop.value, 1)
+        t.equal(desktop.rawString, nil)
+        desktop.execute(command: "SwitchDesktop 2")
+        desktop.execute(command: "SwitchDesktop 2")
+        t.equal(context.logs.count, 3)
+        t.equal(context.services, [])
+        t.equal(context.actions, [])
+    }
+
+    t.suite("Engine: context synchronous plugins: registered aliases preserve exact classes and legacy construction") {
+        let classes: [(Measure.Type, String, [(String, String)])] = [
+            (CoreTempMeasure.self, "CoreTemp", [("CoreTempType", "MaxTemperature")]),
+            (SpeedFanMeasure.self, "SpeedFan", [("SpeedFanType", "Fan")]),
+            (MSIAfterburnerMeasure.self, "MSI", [("DataSource", "CPU temperature")]),
+            (WindowMessageMeasure.self, "Window", []),
+            (VirtualDesktopsMeasure.self, "Desktop", [("VDMeasureType", "DesktopCount")]),
+        ]
+        let system = ContextBuiltinSystem()
+        system.sensors = [SensorKeys.cpu: 45, SensorKeys.fan(1): 1700]
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-sensor-registry"), system: system)
+        let host = EnvironmentHost()
+        for (selected, name, options) in classes {
+            let alias = "ContextSynchronous" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let body = options.map { "\($0.0)=\($0.1)" }.joined(separator: "\n")
+            let skin = try extendedConsumerSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n\(body)\n",
+                                                system: system, host: host, clock: context.skinClock)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            guard let registered = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Direct", section: constructionSection("Direct", options), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: registered)) == ObjectIdentifier(selected))
+            t.check(registered.skin === skin && legacy.skin === skin)
+            t.equal(registered.type, alias.lowercased())
+            t.equal(registered.value, legacy.value)
+            t.equal(registered.rawString, legacy.rawString)
+            registered.readOptionsIfNeeded(); registered.performUpdate()
+            legacy.readOptionsIfNeeded(); legacy.performUpdate()
+            t.equal(registered.value, legacy.value)
+            t.equal(registered.rawString, legacy.rawString)
+        }
     }
 }
 

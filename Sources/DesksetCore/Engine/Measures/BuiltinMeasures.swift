@@ -890,6 +890,16 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return ActionTimerMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(RunCommandMeasure.self):
         return RunCommandMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(CoreTempMeasure.self):
+        return CoreTempMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(SpeedFanMeasure.self):
+        return SpeedFanMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MSIAfterburnerMeasure.self):
+        return MSIAfterburnerMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(WindowMessageMeasure.self):
+        return WindowMessageMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(VirtualDesktopsMeasure.self):
+        return VirtualDesktopsMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }
