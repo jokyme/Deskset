@@ -70,6 +70,12 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         value = -1
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        rawString = ""
+        value = -1
+    }
+
     deinit {
         waits.forEach { $0.cancel() }
         guard hidden else { return }

@@ -70,7 +70,7 @@ private class IndependentSectionContext: SectionContext {
 
     init(directory: URL, system: SystemDataSource = SectionConstructionSystem(),
          clock: @escaping () -> TimeInterval = { 86_400 }, skinClock: SkinClock? = nil,
-         locale: Locale = Locale(identifier: "en_US_POSIX")) throws {
+         locale: Locale = Locale(identifier: "en_US_POSIX"), executor: SkinExecutor? = nil) throws {
         guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
         let date = Date(timeIntervalSince1970: 1_798_761_598)
         self.directory = directory
@@ -78,7 +78,7 @@ private class IndependentSectionContext: SectionContext {
         self.clock = clock
         self.skinClock = skinClock ?? .fixed(date, timeZone: utc)
         self.locale = locale
-        executor = VirtualTimeExecutor(start: date, timeZone: utc)
+        self.executor = executor ?? VirtualTimeExecutor(start: date, timeZone: utc)
         sideEffects = RecordingSideEffects(directory: directory.appendingPathComponent("effects"))
     }
 
@@ -170,6 +170,263 @@ private class IndependentSectionContext: SectionContext {
 
 private func constructionSection(_ name: String, _ options: [(String, String)]) -> IniSection {
     IniSection(name: name, entries: options.map { IniEntry(key: $0.0, value: $0.1) })
+}
+
+/// One coherent virtual clock and recorded processes. Only output delivery can be held; the real kernel still
+/// decodes and writes the recording's file before publishing its result. No process or background queue starts.
+private final class IndependentScheduledContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var jobs: [BackgroundWorkKind] = []
+    var holdOutput = false
+    var heldOutput: [() -> Void] = []
+    var actionTimes: [TimeInterval] = []
+    var onAction: ((SkinSection?) -> Void)?
+
+    init(directory: URL) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, clock: { virtual.uptime }, skinClock: virtual.clock, executor: virtual)
+    }
+
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionTimes.append(virtual.now)
+        super.execute(actionText, from: section)
+        onAction?(section)
+    }
+    override func async(_ work: @escaping () -> Void) {
+        executor.async { [self] in
+            assertOwned(#function)
+            work()
+        }
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition(!sideEffects.isLive && (job.kind == .runCommandProcess || job.kind == .runCommandOutput))
+        guard let produce = job.inline else { preconditionFailure("Only recorded process work is qualified") }
+        jobs.append(job.kind)
+        let result = produce()
+        let deliver = { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+        if holdOutput && job.kind == .runCommandOutput { heldOutput.append(deliver) }
+        else { executor.async(deliver) }
+    }
+    func deliverOutput() {
+        let pending = heldOutput
+        heldOutput = []
+        for delivery in pending { executor.async(delivery) }
+    }
+}
+
+private func runContextScheduledPluginTests(_ t: TestRunner) {
+    t.suite("Engine: context scheduled plugins: timer uses its owner's clock and cancels lists on close") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-timer-clock"))
+        let timer = try extendedNode(ActionTimerMeasure.self, "Timer", "actiontimer", [
+            ("ActionList1", "A | Wait 100 | Repeat B, 50, 2 | C"),
+            ("A", "[!Log A]"), ("B", "[!Log B]"), ("C", "[!Log C]"),
+        ], in: context)
+        timer.execute(command: "Execute 1")
+        t.equal(timer.value, 0)
+        t.equal(timer.runningLists, [1])
+        t.equal(context.actions.count, 0, "the first action is queued after Execute")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.map(\.args), [["A"]])
+        context.virtual.advance(by: 0.1)
+        t.equal(context.actions.map(\.args), [["A"], ["B"]])
+        context.virtual.advance(by: 0.05)
+        t.equal(context.actions.map(\.args), [["A"], ["B"], ["B"], ["C"]])
+        t.equal(context.actionTimes, [0, 0.1, 0.15, 0.15])
+        t.equal(timer.runningLists, [])
+        timer.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 5)
+        timer.skinWillClose()
+        t.equal(timer.runningLists, [])
+        t.equal(context.virtual.pendingCount, 0)
+        timer.execute(command: "Execute 1")
+        context.virtual.advance(by: 10)
+        t.equal(context.actions.count, 5)
+        t.equal(context.jobs, [])
+    }
+
+    t.suite("Engine: context scheduled plugins: timer reentry and release leave no scheduled work") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-timer-release"))
+        var timer: ActionTimerMeasure? = try extendedNode(ActionTimerMeasure.self, "Timer", "actiontimer", [
+            ("ActionList1", "A | Wait 100 | B"), ("A", "[!Log A]"), ("B", "[!Log B]"),
+        ], in: context)
+        context.onAction = { [weak timer] _ in timer?.execute(command: "Stop 1") }
+        timer?.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(timer?.runningLists, [])
+        t.equal(context.actions.map(\.args), [["A"]])
+        t.equal(context.virtual.pendingCount, 0)
+        context.onAction = nil
+        timer?.execute(command: "Execute 1")
+        context.virtual.runUntilIdle()
+        t.equal(context.virtual.pendingCount, 1)
+        weak var released = timer
+        context.measures.removeAll()
+        timer = nil
+        t.check(released == nil)
+        t.equal(context.virtual.pendingCount, 0)
+        context.virtual.advance(by: 10)
+        t.equal(context.actions.map(\.args), [["A"], ["A"]])
+    }
+
+    t.suite("Engine: context scheduled plugins: command publishes saved output before FinishAction") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-output"))
+        guard let effects = context.sideEffects as? RecordingSideEffects else { throw SectionConstructionError.unexpectedKernel }
+        effects.programOutput = { _ in Data("hello 🐈\n".utf8) }
+        context.holdOutput = true
+        let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+            ("Parameter", "printf fixture"), ("OutputFile", "output.txt"), ("OutputType", "UTF8"),
+            ("Timeout", "5000"), ("FinishAction", "[!Log complete]"),
+        ], in: context)
+        let original = context.directory.appendingPathComponent("output.txt")
+        let saved = effects.destination(forWriting: original)
+        t.equal(command.value, -1)
+        t.equal(command.rawString, "")
+        var actionValues: [Double] = []
+        var actionText: [String] = []
+        var actionFiles: [Data?] = []
+        context.onAction = { section in
+            guard let measure = section as? RunCommandMeasure else { return }
+            actionValues.append(measure.value)
+            actionText.append(measure.stringValue)
+            actionFiles.append(try? Data(contentsOf: saved))
+        }
+        command.execute(command: "Run")
+        t.equal(command.value, 0)
+        t.check(command.isRunning)
+        t.equal(context.jobs, [.runCommandProcess])
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.jobs, [.runCommandProcess, .runCommandOutput])
+        t.equal(context.heldOutput.count, 1)
+        t.equal(command.value, 0)
+        t.equal(try Data(contentsOf: saved), Data("hello 🐈\n".utf8))
+        t.check(!FileManager.default.fileExists(atPath: original.path), "only the recording's copy was written")
+        command.execute(command: "Run")
+        t.equal(command.value, 101)
+        t.equal(context.jobs.count, 2, "a duplicate Run cannot start a second process during output delivery")
+        context.deliverOutput()
+        context.virtual.runUntilIdle()
+        t.equal(command.value, 1)
+        t.equal(command.stringValue, "hello 🐈\n")
+        t.check(!command.isRunning)
+        t.equal(actionValues, [1])
+        t.equal(actionText, ["hello 🐈\n"])
+        t.equal(actionFiles, [Data("hello 🐈\n".utf8)])
+        command.skinWillClose()
+        t.equal(context.virtual.pendingCount, 0)
+    }
+
+    t.suite("Engine: context scheduled plugins: close suppresses queued process and decoded output results") {
+        for afterDecode in [false, true] {
+            let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-close"))
+            context.holdOutput = true
+            let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+                ("Parameter", "printf fixture"), ("Timeout", "5000"), ("FinishAction", "[!Log stale]"),
+            ], in: context)
+            command.execute(command: "Run")
+            if afterDecode { context.virtual.runUntilIdle() }
+            t.equal(context.heldOutput.count, afterDecode ? 1 : 0)
+            command.skinWillClose()
+            context.deliverOutput()
+            context.virtual.advance(by: 10)
+            t.equal(command.runningJobCount, 0)
+            t.equal(command.value, 0, "late results do not publish into a closed owner")
+            t.equal(context.actions.count, 0)
+            t.equal(context.virtual.pendingCount, 0)
+            command.execute(command: "Run")
+            t.equal(context.jobs.count, afterDecode ? 2 : 1)
+        }
+    }
+
+    t.suite("Engine: context scheduled plugins: background result does not retain a released owner") {
+        var context: IndependentScheduledContext? = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-release"))
+        guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+        weak var releasedOwner = context
+        weak var releasedMeasure: RunCommandMeasure?
+        if let context {
+            let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+                ("Parameter", "printf fixture"), ("Timeout", "5000"), ("FinishAction", "[!Log stale]"),
+            ], in: context)
+            releasedMeasure = command
+            command.execute(command: "Run")
+            t.equal(context.jobs, [.runCommandProcess])
+        }
+        context = nil
+        t.check(releasedOwner == nil)
+        t.check(releasedMeasure == nil)
+        executor.advance(by: 10)
+        t.equal(executor.pendingCount, 0)
+    }
+
+    t.suite("Engine: context scheduled plugins: failed starts use owner time and close cancels the action") {
+        let context = try IndependentScheduledContext(directory: t.temporaryDirectory("context-command-failure"))
+        let command = try extendedNode(RunCommandMeasure.self, "Command", "runcommand", [
+            ("Program", "PowerShell"), ("FinishAction", "[!Log failed]"),
+        ], in: context)
+        command.execute(command: "Run")
+        t.equal(command.value, 103)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1)
+        context.virtual.advance(by: 0.5)
+        command.execute(command: "Run")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 1, "a repeated failure within one owner-clock second is throttled")
+        context.virtual.advance(by: 1)
+        command.execute(command: "Run")
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 2)
+        context.virtual.advance(by: 1)
+        command.execute(command: "Run")
+        command.skinWillClose()
+        context.virtual.runUntilIdle()
+        t.equal(context.actions.count, 2)
+        t.equal(context.jobs, [], "an unsupported program never starts background work")
+    }
+
+    t.suite("Engine: context scheduled plugins: real registry aliases and legacy initializers stay compatible") {
+        MeasureRegistry.registerMeasure("ContextScheduledTimerAlias", ActionTimerMeasure.self)
+        MeasureRegistry.registerMeasure("ContextScheduledCommandAlias", RunCommandMeasure.self)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Timer]
+        Measure=Plugin
+        Plugin=ActionTimer
+        [Command]
+        Measure=Plugin
+        Plugin=RunCommand
+        [TimerAlias]
+        Measure=ContextScheduledTimerAlias
+        [CommandAlias]
+        Measure=ContextScheduledCommandAlias
+        """)
+        defer { skin.close() }
+        t.check(skin.measure(named: "Timer") is ActionTimerMeasure)
+        t.check(skin.measure(named: "Command") is RunCommandMeasure)
+        t.check(skin.measure(named: "TimerAlias") is ActionTimerMeasure)
+        t.check(skin.measure(named: "CommandAlias") is RunCommandMeasure)
+        t.equal(skin.measure(named: "TimerAlias")?.type, "contextscheduledtimeralias")
+        t.equal(skin.measure(named: "CommandAlias")?.type, "contextscheduledcommandalias")
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        let timer = ActionTimerMeasure(name: "DirectTimer", section: constructionSection("DirectTimer", []), skin: skin, type: "actiontimer")
+        let command = RunCommandMeasure(name: "DirectCommand", section: constructionSection("DirectCommand", []), skin: skin, type: "runcommand")
+        t.check(timer.skin === skin && command.skin === skin)
+        t.equal(timer.runningLists, [])
+        t.equal(timer.value, 0)
+        t.equal(command.value, -1)
+        t.equal(command.rawString, "")
+        t.equal(command.runningJobCount, 0)
+    }
 }
 
 /// A file-only test owner. Real WebParser parsing and file writes run unchanged; results are deliberately
@@ -614,6 +871,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextBuiltinExtendedTests(t)
     runContextRegistryTests(t)
     runContextWebParserTests(t)
+    runContextScheduledPluginTests(t)
 }
 
 private class ContextFactoryOverride: Measure {

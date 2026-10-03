@@ -886,6 +886,10 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return RegistryMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(WebParserMeasure.self):
         return WebParserMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(ActionTimerMeasure.self):
+        return ActionTimerMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RunCommandMeasure.self):
+        return RunCommandMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }
