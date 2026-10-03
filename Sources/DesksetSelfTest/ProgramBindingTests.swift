@@ -1213,7 +1213,8 @@ private func runDeskUnitTests(_ t: TestRunner) {
         runtime = try ProgramRuntime(program: checkedBindingProgram(t, missing))
         let shown = try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
         t.equal(bindingStrings(shown), ["空😀|Yes|1,024 B"])
-        for source in [#"widget { Text("{1s, decimals: 1}") }"#, #"widget { Text(1KB / 1s) }"#, #"widget { Text(1°C) }"#,
+        let durationDecimals = #"widget { Text("{1s, decimals: 1}") }"#
+        for source in [durationDecimals, #"widget { Text(1KB / 1s) }"#, #"widget { Text(1°C) }"#,
                        #"widget { Text("{time.now < time.now}") }"#, #"widget { Text(cpu.usage) }"#,
                        #"widget { Text(true ? 1KB : 2KB).margin(1) }"#,
                        #"widget { Text(true ? 1KB : round(2KB)) }"#] {
@@ -1221,6 +1222,9 @@ private func runDeskUnitTests(_ t: TestRunner) {
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
             t.equal(result.diagnostics, checked.diagnostics); t.check(result.imageSources.isEmpty)
+            if source == durationDecimals {
+                t.equal(result.issues.map(\.message), ["Duration decimals are not implemented"])
+            }
         }
         let checked = deskCheck(#"widget { Text(1KB) }"#)
         var damaged = checked
