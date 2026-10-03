@@ -100,6 +100,14 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.equal(numericDraw.text, "1")
         t.equal(numericDraw.style.inlineSpans, [InlineSpan(location: 0, length: 1, setting: .typography(feature: "tnum", value: 1))])
 
+        let percentage = try compileFixture(t, #"widget { computed value = 1%; Text(value) }"#)
+        t.equal(percentage.declarations, [ProgramDeclaration(name: "value", kind: .computed, initial: .quantity(ProgramNumber(1, dimension: .percent)))])
+        var percentRuntime = try ProgramRuntime(program: percentage)
+        let percentScene = try percentRuntime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 10, height: 16) }
+        guard let percentDraw = compiledDraws(percentScene).first else { throw CompilationFixtureError.missingProgram }
+        t.equal(percentDraw.text, "1")
+        t.equal(percentDraw.style.inlineSpans, [InlineSpan(location: 0, length: 1, setting: .typography(feature: "tnum", value: 1))])
+
         let preset = try compileFixture(t, #"widget { Text("A").font(.largeNumber) }"#)
         var presetRuntime = try ProgramRuntime(program: preset)
         var measuredStyle: TextStyle?
@@ -128,7 +136,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"widget { Text("A").color(.dim, if: true) }"#,
                      #"widget { Text("A").font(.largeNumber).margin(1) }"#,
                      #"widget { Text("{cpu.usage}") }"#,
-                     #"widget { computed value = 1%; Text(value) }"#,
+                     #"widget { computed value = 1KB / 1s; Text(value) }"#,
                      #"widget { Row(align: .baseline) { Text("A") } }"#]
         for source in cases {
             let checked = deskCheck(source)

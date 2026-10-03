@@ -1001,6 +1001,7 @@ enum DeskProgramPreviewSelfTests {
         }
 
         runPalettePreviewTests(t)
+        runUnitPreviewTests(t)
         runNumericPreviewTests(t)
         runClockPreviewTests(t)
         runClickPreviewTests(t)
@@ -1203,6 +1204,92 @@ enum DeskProgramPreviewSelfTests {
     }
 
 
+    private static func runUnitPreviewTests(_ t: AppTestRunner) {
+        let source = "\u{FEFF}" + #"widget { variable percent = 50%; variable bytes = 1KB; variable elapsed = 90s; Text("😀7|{percent}|{bytes}|{elapsed, style: .clock}").font(20).color(.accent).size(520, 60).padding(8).onClick { percent = percent + 5%; bytes = bytes + 1KB; elapsed = elapsed + 1s } }"# + "\r\n"
+        t.suite("Desk: units preview: primary clicks paint percent bytes and duration with literal native ranges") {
+            let original = try fixture(t, #"widget { Text(1%) }"#, locale: { Locale(identifier: "en_US") })
+            t.equal(original.preview.state, .ready); t.equal(clockTexts(original.preview), ["1"])
+            let f = try fixture(t, source, locale: { Locale(identifier: "en_US") }), p = f.preview
+            p.setVisible(true)
+            let ranges = [NSRange(location: 4, length: 2), NSRange(location: 7, length: 3),
+                          NSRange(location: 14, length: 1), NSRange(location: 16, length: 2)]
+            try numericPixels(t, "😀7|50|1.0 KB|1:30", ranges: ranges, in: f)
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                f.controller.window?.appearance = NSAppearance(named: appearance); p.refreshEnvironment()
+                try click(at: NSPoint(x: 20, y: 20), in: f)
+                try numericPixels(t, appearance == .aqua ? "😀7|55|2.0 KB|1:31" : "😀7|60|3.0 KB|1:32", ranges: ranges, in: f)
+            }
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            t.check(f.app.sortedControllers.isEmpty, "local unit state activates no Skin or data service")
+        }
+
+        t.suite("Desk: units preview: locale changes preserve frozen unit text and expose numeric fields only") {
+            var locale = Locale(identifier: "en_US")
+            let text = #"widget { variable p = 12.5%; variable b = 12500B; variable frozen = "{b}"; Text("😀7|{p, decimals: 1}|{frozen}|{b}|{90s, style: .clock}").font(20).color(.accent).size(520, 60).padding(8).onClick { b = b + 100B; frozen = "{b}" } }"#
+            let f = try fixture(t, text, locale: { locale }), p = f.preview
+            p.setVisible(true)
+            let ranges = [NSRange(location: 4, length: 4), NSRange(location: 9, length: 4),
+                          NSRange(location: 17, length: 4), NSRange(location: 25, length: 1), NSRange(location: 27, length: 2)]
+            try numericPixels(t, "😀7|12.5|12.5 KB|12.5 KB|1:30", ranges: ranges, in: f)
+            locale = Locale(identifier: "de_DE"); p.refreshDateInput()
+            try numericPixels(t, "😀7|12,5|12.5 KB|12,5 KB|1:30", ranges: ranges, in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀7|12,5|12,6 KB|12,6 KB|1:30", ranges: ranges, in: f)
+            for policy in ["normal", "equalWidth"] {
+                replace(text.replacingOccurrences(of: ".font(20)", with: ".digits(." + policy + ").font(20)"), in: f)
+                t.check(settled(f)); t.equal(p.state, .ready)
+                try numericPixels(t, "😀7|12,5|12,5 KB|12,5 KB|1:30", ranges: policy == "normal" ? [] : [NSRange(location: 0, length: 29)], in: f)
+            }
+        }
+
+        t.suite("Desk: units preview: typed missing and rejected unit programs clear old native content") {
+            let text = #"widget { variable b = 1KB; Text("😀{b, missing: "空😀"}|{b.isMissing}|{(b < 0B).ifMissing(true)}").font(20).color(.accent).size(520, 60).padding(8).onClick { b = b.isMissing ? 2KB : 1KB / 0 } }"#
+            let f = try fixture(t, text, locale: { Locale(identifier: "en_US") }), p = f.preview
+            p.setVisible(true)
+            try numericPixels(t, "😀1.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀空😀|Yes|Yes", ranges: [], in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀2.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            let previous = checking.snapshot
+            for invalid in [#"widget { Text(1KB / 1s) }"#, #"widget { Text("{1s, decimals: 1}") }"#,
+                            #"widget { Text(50% * 25%) }"#, #"widget { Text(memory.used) }"#] {
+                replace(invalid, in: f); t.check(settled(f))
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported or invalid units must report a real reason") }
+                t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                t.check(!checking.publish(previous))
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+                let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try ink(cleared), 0)
+            }
+            replace(text, in: f); t.check(settled(f)); p.setVisible(true)
+            try numericPixels(t, "😀1.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            f.controller.window?.close(); try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.state, .closed); t.check(p.scene == nil)
+        }
+
+        t.suite("Desk: units preview: live date differences use one boundary while frozen and hidden duration stays idle") {
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let text = #"widget { variable opened = time.now; computed elapsed = time.now - opened; Text("😀7|{elapsed, style: .clock}").font(20).color(.accent).size(520, 60).padding(8) }"#
+            let f = try fixture(t, text, clock: executor.clock, executor: executor, locale: { Locale(identifier: "en_US") }), p = f.preview
+            p.setVisible(true)
+            try numericPixels(t, "😀7|0:00", ranges: [NSRange(location: 4, length: 1), NSRange(location: 6, length: 2)], in: f)
+            t.equal(executor.pendingCount, 1); executor.advance(by: 90)
+            try numericPixels(t, "😀7|1:30", ranges: [NSRange(location: 4, length: 1), NSRange(location: 6, length: 2)], in: f)
+            p.setVisible(false); t.equal(executor.pendingCount, 0); executor.advance(by: 30)
+            p.setVisible(true)
+            try numericPixels(t, "😀7|2:00", ranges: [NSRange(location: 4, length: 1), NSRange(location: 6, length: 2)], in: f)
+            let frozen = #"widget { variable d = time.now - time.now; Text("😀7|{d, style: .clock}").font(20).color(.accent).size(520, 60).padding(8) }"#
+            replace(frozen, in: f); t.check(settled(f)); t.equal(executor.pendingCount, 0)
+            executor.advance(by: 60); p.refreshDateInput()
+            try numericPixels(t, "😀7|0:00", ranges: [NSRange(location: 4, length: 1), NSRange(location: 6, length: 2)], in: f)
+            replace(text.replacingOccurrences(of: ".font(20)", with: ".hidden().font(20)"), in: f)
+            t.check(settled(f)); t.equal(p.state, .empty); t.equal(executor.pendingCount, 0)
+            f.controller.window?.close(); executor.advance(by: 3)
+            t.equal(p.state, .closed); t.equal(executor.pendingCount, 0)
+        }
+    }
+
     private static func runNumericPreviewTests(_ t: AppTestRunner) {
         let source = "\u{FEFF}" + #"widget { variable n = 0; computed twice = n * 2; Text("😀7|{n}|{twice}").font(20).color(.accent).size(520, 60).padding(8).onClick { n = n + 1 } }"# + "\r\n"
         t.suite("Desk: numeric preview: real primary clicks draw counters and precise emoji numeric ranges") {
@@ -1252,7 +1339,8 @@ enum DeskProgramPreviewSelfTests {
             try numericPixels(t, "😀2.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
             guard let checking = f.controller.deskChecking else { throw Failure.fixture }
             let old = checking.snapshot
-            for invalid in [#"widget { Text(1%) }"#, #"widget { Text(cpu.usage) }"#] {
+            // The original Percent literal is retained unchanged in runUnitPreviewTests' positive control.
+            for invalid in [#"widget { Text(1°C) }"#, #"widget { Text(cpu.usage) }"#] {
                 replace(invalid, in: f); t.check(settled(f))
                 guard case .unavailable(let reason) = p.state else { return t.check(false, "dimensioned or service numeric data must report unsupported") }
                 t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
