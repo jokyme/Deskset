@@ -209,6 +209,7 @@ enum LegacyRenderSelfTests {
     static func withInputs<Value>(_ file: URL, skinsDir: String? = nil, data dataURL: URL,
                                   webFixtures: LegacyRenderWebFixtures? = nil, closeTimeout: TimeInterval = 5,
                                   prepare: ((Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Void)? = nil,
+                                  driveUpdates: ((Skin, RecordingSideEffects, VirtualTimeExecutor, RenderData) throws -> Void)? = nil,
                                   _ body: (Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Value)
         throws -> (value: Value, missing: [String]) {
         let data = try SkinInputData.load(dataURL.path, directory: dataURL.deletingLastPathComponent())
@@ -245,6 +246,7 @@ enum LegacyRenderSelfTests {
         MediaUICache.root = scratch.appendingPathComponent("Caches")
         EnvironmentStore.shared.settingsPath = settings.path + "/"
         virtual.background.allowFixtureReads(under: settings)
+        virtual.background.allowFixtureReads(under: MediaUICache.root)
         FileViewIcons.renderer = { _, size, _ in iconPNG(size: size) }
         virtual.background.setFake(.service, for: .fileViewIcon)
         inputs.install(for: skin, virtual: virtual, locale: host.fixed.locale)
@@ -341,11 +343,17 @@ enum LegacyRenderSelfTests {
             }
         }
         Fonts.registerFonts(for: skin)
-        skin.update()
-        RenderCommand.step(virtual, until: 1, deadline: Date().addingTimeInterval(5))
-        inputs.advance()
-        skin.update()
-        RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
+        if let driveUpdates {
+            // A synchronous DEBUG harness can observe the first real update with the same installed inputs.
+            // Existing callers retain exactly the original two-update history below.
+            try driveUpdates(skin, recording, virtual, inputs)
+        } else {
+            skin.update()
+            RenderCommand.step(virtual, until: 1, deadline: Date().addingTimeInterval(5))
+            inputs.advance()
+            skin.update()
+            RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
+        }
         let value = try body(skin, recording, virtual)
         close()
         missing += missingPrograms.current
@@ -605,6 +613,72 @@ enum LegacyRenderSelfTests {
             t.check(releasedExecutor == nil, "the render's virtual executor is released")
             t.check(releasedRecording == nil, "the recording and its scratch files are released")
             t.check(releasedWorker == nil, "the demo player's worker is released")
+        }
+
+        t.suite("Runtime: legacy renderer: private generated covers are readable without allowing their parent") {
+            guard let source = Paths.repositoryFolder("TestSkins") else {
+                return t.check(false, "TestSkins are required for the private cover boundary")
+            }
+            let skins = t.temporaryDirectory("legacy-cover-inputs")
+            let file = skins.appendingPathComponent("Cover.ini")
+            try """
+            [Cover]
+            Measure=NowPlaying
+            PlayerName=Music
+            PlayerType=Cover
+            [Palette]
+            Measure=Plugin
+            Plugin=Chameleon
+            Type=File
+            Path=[Cover]
+            DynamicVariables=1
+            Disabled=1
+            [Outside]
+            Measure=Plugin
+            Plugin=Chameleon
+            Type=File
+            Disabled=1
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let checked = try withInputs(file, skinsDir: skins.path,
+                data: source.appendingPathComponent("Runtime/Data/mac.json")) { skin, _, virtual -> String in
+                guard let palette = skin.measure(named: "Palette") as? ChameleonMeasure,
+                      let outside = skin.measure(named: "Outside") as? ChameleonMeasure else {
+                    t.check(false, "the actual Chameleon measures must load")
+                    return ""
+                }
+                let cover = skin.measure(named: "Cover")?.stringValue ?? ""
+                t.check(cover.hasPrefix(MediaUICache.root.appendingPathComponent("NowPlaying").path + "/"))
+                let bytes = try Data(contentsOf: URL(fileURLWithPath: cover))
+                t.equal(bytes, try Data(contentsOf: source.appendingPathComponent("Runtime/Data/cover.png")),
+                        "the generated cover retains the supplied fake player's image bytes")
+                t.check(Images.cgImage(atPath: cover) != nil, "the fake player produced a real decodable cover")
+                t.check(palette.palette == nil, "the disabled measure has not analyzed the cover yet")
+                skin.execute("[!EnableMeasure Palette][!UpdateMeasure Palette]", from: nil)
+                RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
+                t.equal(palette.imagePath, cover)
+                t.check(palette.palette != nil, "Chameleon actually analyzed the generated cover")
+                t.check(virtual.background.reports.contains { $0.kind == .desktopImage && $0.subject == cover && $0.faked })
+                t.equal(virtual.background.unverifiable.count, 0)
+
+                // A readable image beside Caches is still outside the authorized tree. Granting Caches' parent
+                // would make this negative control fail, even though both files belong only to this test run.
+                let denied = MediaUICache.root.deletingLastPathComponent().appendingPathComponent("outside-cover.png")
+                try bytes.write(to: denied)
+                t.check(Images.cgImage(atPath: denied.path) != nil, "the denied input is a valid image, not a missing file")
+                skin.execute("[!SetOption Outside Path \"\(denied.path)\"][!EnableMeasure Outside][!UpdateMeasure Outside]", from: nil)
+                RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
+                t.check(outside.palette == nil, "no palette is supplied for an unauthorized sibling")
+                t.check(virtual.background.unverifiable.contains {
+                    $0.kind == .desktopImage && $0.subject == denied.path && $0.reason.contains("blocked")
+                })
+                t.equal(virtual.background.unverifiable.count, 1)
+                t.equal(virtual.background.outstanding, 0, "the denied file did not start real work")
+                return denied.path
+            }
+            t.check(!checked.value.isEmpty)
+            t.equal(checked.missing.count, 1)
+            t.check(checked.missing.first?.contains(checked.value) == true,
+                    "only the unauthorized sibling prevents input qualification")
         }
 
         t.suite("Runtime: legacy renderer: a volume fake does not cover another volume backend") {
