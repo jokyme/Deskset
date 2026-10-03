@@ -111,9 +111,79 @@ struct SkinState: Codable, Equatable {
     }
 }
 
+/// Desk sources and instances have separate opaque identities. Installing a source does not activate a window.
+struct DeskWidgetSourceState: Codable, Equatable {
+    let id: UUID
+    let entry: String
+    var unknownKeys: [String: JSONValue] = [:]
+
+    init(id: UUID, entry: String) { self.id = id; self.entry = entry }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, entry }
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        entry = try c.decode(String.self, forKey: .entry)
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(entry, forKey: .entry)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
+    }
+}
+
+struct DeskWidgetInstanceState: Codable, Equatable {
+    let id: UUID
+    let sourceID: UUID
+    var active = false
+    var unknownKeys: [String: JSONValue] = [:]
+
+    init(id: UUID, sourceID: UUID) { self.id = id; self.sourceID = sourceID }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, sourceID, active }
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); sourceID = try c.decode(UUID.self, forKey: .sourceID)
+        active = ((try? c.decodeIfPresent(Bool.self, forKey: .active)) ?? nil) ?? false
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(sourceID, forKey: .sourceID); try c.encode(active, forKey: .active)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
+    }
+}
+
+struct DeskWidgetState: Codable, Equatable {
+    var sources: [String: DeskWidgetSourceState] = [:]
+    var instances: [String: DeskWidgetInstanceState] = [:]
+    var unknownKeys: [String: JSONValue] = [:]
+    var isEmpty: Bool { sources.isEmpty && instances.isEmpty && unknownKeys.isEmpty }
+
+    init() {}
+    private enum CodingKeys: String, CodingKey, CaseIterable { case sources, instances }
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sources = ((try? c.decodeIfPresent([String: DeskWidgetSourceState].self, forKey: .sources)) ?? nil) ?? [:]
+        instances = ((try? c.decodeIfPresent([String: DeskWidgetInstanceState].self, forKey: .instances)) ?? nil) ?? [:]
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(sources, forKey: .sources); try c.encode(instances, forKey: .instances)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
+    }
+}
+
 struct AppStateData: Codable {
     /// Keyed by config name (`Root\Sub`).
     var skins: [String: SkinState] = [:]
+    var deskWidgets = DeskWidgetState()
     var defaultSkinsInstalled: Int = 0
     /// The `[Variables]` of each bundled root config's `@Resources/Variables.inc` as the installed default skins
     /// shipped them (root config → lower-case key → value): an upgrade carries over only the values the user changed
@@ -132,7 +202,7 @@ struct AppStateData: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case skins, defaultSkinsInstalled, shippedVariables, editor, settingsPane
+        case skins, deskWidgets, defaultSkinsInstalled, shippedVariables, editor, settingsPane
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -142,6 +212,7 @@ struct AppStateData: Codable {
             .unknownValues(besides: AppStateData.knownKeys) ?? [:]
         let c = try decoder.container(keyedBy: CodingKeys.self)
         skins = ((try? c.decodeIfPresent([String: SkinState].self, forKey: .skins)) ?? nil) ?? [:]
+        deskWidgets = ((try? c.decodeIfPresent(DeskWidgetState.self, forKey: .deskWidgets)) ?? nil) ?? DeskWidgetState()
         defaultSkinsInstalled = ((try? c.decodeIfPresent(Int.self, forKey: .defaultSkinsInstalled)) ?? nil) ?? 0
         shippedVariables = ((try? c.decodeIfPresent([String: [String: String]].self, forKey: .shippedVariables)) ?? nil) ?? [:]
         let storedEditor = (try? c.decodeIfPresent(EditorPreferences.self, forKey: .editor)) ?? nil
@@ -153,6 +224,7 @@ struct AppStateData: Codable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(skins, forKey: .skins)
+        if !deskWidgets.isEmpty { try c.encode(deskWidgets, forKey: .deskWidgets) }
         try c.encode(defaultSkinsInstalled, forKey: .defaultSkinsInstalled)
         if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
@@ -268,14 +340,40 @@ final class AppState {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.saveNow() }
     }
 
+    enum DeskInstallationFailure: Error { case duplicateIdentity, invalidRelation }
+
+    /// The disk state is committed before memory changes. A failed save cannot leave an active or half-registered
+    /// Desk source, and this path does not change the legacy debounced writes or INI directory.
+    func registerDeskInstallation(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState) throws {
+        precondition(Thread.isMainThread)
+        let sourceKey = source.id.uuidString.lowercased(), instanceKey = instance.id.uuidString.lowercased()
+        guard data.deskWidgets.sources[sourceKey] == nil, data.deskWidgets.instances[instanceKey] == nil else {
+            throw DeskInstallationFailure.duplicateIdentity
+        }
+        let parts = source.entry.split(separator: "/", omittingEmptySubsequences: false)
+        guard instance.sourceID == source.id, !instance.active, parts.count == 2, parts[0] == sourceKey,
+              !parts[1].isEmpty, parts[1] != ".", parts[1] != "..", !parts[1].contains("\\"),
+              !source.entry.contains("\0"), parts[1].lowercased().hasSuffix(".desk") else {
+            throw DeskInstallationFailure.invalidRelation
+        }
+        var next = data
+        next.deskWidgets.sources[sourceKey] = source
+        next.deskWidgets.instances[instanceKey] = instance
+        try write(next)
+        data = next
+    }
+
     func saveNow() {
         saveScheduled = false
+        try? write(data)
+    }
+
+    private func write(_ value: AppStateData) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let raw = try? encoder.encode(data) else { return }
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        try? raw.write(to: fileURL, options: .atomic)
+        let raw = try encoder.encode(value)
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try raw.write(to: fileURL, options: .atomic)
     }
 }
 

@@ -10,6 +10,8 @@ enum Paths {
         return base.appendingPathComponent("Deskset", isDirectory: true)
     }()
     static let skins = appSupport.appendingPathComponent("Skins", isDirectory: true)
+    /// Desk installations live apart from the legacy INI library. The installer creates this only on request.
+    static let widgets = appSupport.appendingPathComponent("Widgets", isDirectory: true)
     static let layouts = appSupport.appendingPathComponent("Layouts", isDirectory: true)
     static let backups = appSupport.appendingPathComponent("Backups", isDirectory: true)
     static let state = appSupport.appendingPathComponent("state.json")
