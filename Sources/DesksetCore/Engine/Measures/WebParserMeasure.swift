@@ -94,6 +94,11 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         rawString = ""
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        rawString = ""
+    }
+
     deinit {
         fetchHandle?.cancel()
         downloadHandle?.cancel()

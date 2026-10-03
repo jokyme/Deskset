@@ -39,7 +39,7 @@ private final class SectionConstructionSystem: FakeSystem {
 
 /// A test owner of real measure kernels, with no Skin or closures that capture one. Unsupported service paths
 /// fail if called: this fixture qualifies selected built-ins, rather than pretending to implement another runtime.
-private final class IndependentSectionContext: SectionContext {
+private class IndependentSectionContext: SectionContext {
     var settings = SkinSettings()
     var sources = IniSourceMap()
     var optionsLoaded = false
@@ -170,6 +170,231 @@ private final class IndependentSectionContext: SectionContext {
 
 private func constructionSection(_ name: String, _ options: [(String, String)]) -> IniSection {
     IniSection(name: name, entries: options.map { IniEntry(key: $0.0, value: $0.1) })
+}
+
+/// A file-only test owner. Real WebParser parsing and file writes run unchanged; results are deliberately
+/// queued after production so tests can close or release the owner before delivery. No network start is allowed.
+private final class IndependentWebParserContext: IndependentSectionContext {
+    var ordered: [Measure] = []
+    var allowedFiles: Set<String> = []
+    var policyReads: [String] = []
+    var jobs: [BackgroundWorkKind] = []
+    var actionViews: [[String]] = []
+
+    override var skinsDirectory: URL { directory }
+    override var orderedMeasures: [Measure] { ordered }
+    var virtual: VirtualTimeExecutor {
+        guard let virtual = executor as? VirtualTimeExecutor else { preconditionFailure("Expected virtual executor") }
+        return virtual
+    }
+    override func measure(named name: String) -> Measure? {
+        measures[name.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+    override func allowsWebParserFileAccess(_ path: String) -> Bool {
+        policyReads.append(path)
+        return allowedFiles.contains(path)
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionViews.append(ordered.map(\.stringValue))
+        super.execute(actionText, from: section)
+    }
+    override func async(_ work: @escaping () -> Void) {
+        executor.async { [self] in
+            assertOwned(#function)
+            work()
+        }
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition(job.kind == .webParserPage || job.kind == .webParserDownload)
+        if let path = job.reads {
+            precondition(allowedFiles.contains((path as NSString).standardizingPath), "Only explicit fixture files")
+        }
+        guard let produce = job.inline else { preconditionFailure("No network in independent construction tests") }
+        jobs.append(job.kind)
+        let result = produce()
+        executor.async { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+    }
+    func add(_ name: String, _ options: [(String, String)]) throws -> WebParserMeasure {
+        guard let measure = makeContextBuiltinMeasure(WebParserMeasure.self, name: name,
+            section: constructionSection(name, options), context: self, type: "webparser") as? WebParserMeasure else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        measures[name.lowercased()] = measure
+        ordered.append(measure)
+        return measure
+    }
+    func prepare() {
+        for measure in ordered { measure.readOptionsIfNeeded() }
+        optionsLoaded = true
+    }
+}
+
+private func runContextWebParserTests(_ t: TestRunner) {
+    t.suite("Engine: context WebParser: ordered parent results precede actions without a Skin") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-tree"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "42:hello".write(to: file, atomically: true, encoding: .utf8)
+        context.allowedFiles = [file.path]
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", #"(\d+):(\w+)"#), ("FinishAction", "[!Log parent]"),
+        ])
+        let second = try context.add("Second", [
+            ("URL", "[pArEnT]"), ("StringIndex", "2"), ("RegExp", "(.*)"), ("FinishAction", "[!Log second]"),
+        ])
+        let first = try context.add("First", [
+            ("URL", "[Parent]"), ("StringIndex", "1"), ("RegExp", "(.*)"), ("FinishAction", "[!Log first]"),
+        ])
+        t.equal([parent.rawString, second.rawString, first.rawString], ["", "", ""])
+        context.prepare()
+        parent.performUpdate()
+        t.check(parent.isFetching)
+        t.equal(context.ordered.map(\.stringValue), ["", "", ""])
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.check(!parent.isFetching)
+        t.equal(context.ordered.map(\.stringValue), ["42:hello", "hello", "42"])
+        t.equal(context.logs, ["Notice: parent", "Notice: second", "Notice: first"])
+        t.equal(context.actionViews, Array(repeating: ["42:hello", "hello", "42"], count: 3),
+                "all children have their result before even the parent's action")
+        t.equal(parent.captures, ["42:hello", "42", "hello"])
+        t.equal(context.jobs, [.webParserPage])
+        parent.execute(command: "Reset")
+        t.equal(context.ordered.map(\.stringValue), ["", "", ""])
+        t.equal(context.ordered.map(\.value), [0, 0, 0])
+        t.equal(context.actions.count, 3, "reset does not invent finish actions")
+    }
+
+    t.suite("Engine: context WebParser: superseded and closed results preserve the accepted state") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-generation"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "11".write(to: file, atomically: true, encoding: .utf8)
+        context.allowedFiles = [file.path]
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", "(.*)"), ("FinishAction", "[!Log accepted]"),
+        ])
+        let child = try context.add("Child", [("URL", "[Parent]"), ("StringIndex", "1"), ("Disabled", "1")])
+        context.prepare()
+        parent.performUpdate()
+        try "22".write(to: file, atomically: true, encoding: .utf8)
+        parent.execute(command: "Update")
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "22")
+        t.equal(child.stringValue, "", "disabled children keep their displayed value")
+        child.setDisabled(false)
+        child.readOptionsIfNeeded()
+        child.performUpdate()
+        t.equal(child.stringValue, "22", "the disabled child's parsed result was still stored")
+        t.equal(context.logs, ["Notice: accepted"])
+        t.equal(parent.fetchCount, 2)
+        try "33".write(to: file, atomically: true, encoding: .utf8)
+        parent.execute(command: "Update")
+        parent.skinWillClose()
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "22")
+        t.equal(child.stringValue, "22")
+        t.equal(context.logs, ["Notice: accepted"], "late results run no actions")
+        parent.execute(command: "Update")
+        t.equal(parent.fetchCount, 3, "a closed node never starts another fetch")
+    }
+
+    t.suite("Engine: context WebParser: the independent owner decides file access") {
+        let context = try IndependentWebParserContext(directory: t.temporaryDirectory("context-web-policy"))
+        let file = context.directory.appendingPathComponent("page.txt")
+        try "19".write(to: file, atomically: true, encoding: .utf8)
+        let original = WebParserMeasure.allowsFileAccess
+        var legacyPolicyCalls = 0
+        WebParserMeasure.allowsFileAccess = { _, _ in legacyPolicyCalls += 1; return false }
+        defer { WebParserMeasure.allowsFileAccess = original }
+        let parent = try context.add("Parent", [
+            ("URL", file.absoluteString), ("RegExp", "(.*)"), ("OnConnectErrorAction", "[!Log refused]"),
+        ])
+        context.prepare()
+        parent.performUpdate()
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "")
+        t.equal(context.logs.last, "Notice: refused")
+        t.equal(context.policyReads, [file.path])
+        context.allowedFiles.insert(file.path)
+        parent.execute(command: "Update")
+        context.virtual.runUntilIdle()
+        t.equal(parent.stringValue, "19")
+        t.equal(context.policyReads, [file.path, file.path])
+        t.equal(legacyPolicyCalls, 0, "independent construction never consults a Skin-only policy")
+        t.equal(context.jobs, [.webParserPage, .webParserPage])
+    }
+
+    t.suite("Engine: context WebParser: downloads release files after delivery or owner loss") {
+        func files(_ folder: URL) -> [URL] {
+            let urls = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey])?
+                .allObjects.compactMap { $0 as? URL } ?? []
+            return urls.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+        }
+        for deliver in [true, false] {
+            let directory = t.temporaryDirectory(deliver ? "context-web-download-deliver" : "context-web-download-drop")
+            var context: IndependentWebParserContext? = try IndependentWebParserContext(directory: directory)
+            guard let virtual = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            let file = directory.appendingPathComponent("source.bin")
+            let bytes = Data([1, 4, 9, 16])
+            try bytes.write(to: file)
+            context?.allowedFiles = [file.path]
+            var download = try context?.add("Download", [("URL", file.absoluteString), ("Download", "1")])
+            weak var borrowedContext = context
+            weak var borrowedDownload = download
+            context?.prepare()
+            download?.performUpdate()
+            let written = files(directory.appendingPathComponent("effects"))
+            t.equal(written.count, 1, "the real download save runs before the deferred completion")
+            if let path = written.first { t.equal(try Data(contentsOf: path), bytes) }
+            if deliver {
+                virtual.runUntilIdle()
+                t.equal(download.map { URL(fileURLWithPath: $0.stringValue).resolvingSymlinksInPath() },
+                        written.first?.resolvingSymlinksInPath(),
+                        "the delivered path names the exact saved file through the system temporary-directory alias")
+                t.check(download?.isDownloading == false)
+            }
+            download = nil
+            context = nil
+            t.check(borrowedContext == nil)
+            t.check(borrowedDownload == nil, "pending completions never retain the node or its owner")
+            virtual.runUntilIdle()
+            t.equal(files(directory.appendingPathComponent("effects")), [],
+                    "deinit or the dropped-result callback removes the private temporary download")
+            t.equal(try Data(contentsOf: file), bytes, "cleanup leaves the fixture source intact")
+        }
+    }
+
+    t.suite("Engine: context WebParser: real factory aliases retain the required constructor state") {
+        MeasureRegistry.registerMeasure("ContextFactoryWebParserAlias", WebParserMeasure.self)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Page]
+        Measure=ContextFactoryWebParserAlias
+        Disabled=1
+        URL=https://example.invalid/never-started
+        """)
+        defer { skin.close() }
+        guard let selected = skin.measure(named: "Page") as? WebParserMeasure else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        let legacy = WebParserMeasure(name: "Legacy", section: constructionSection("Legacy", [("Disabled", "1")]),
+                                      skin: skin, type: "webparser")
+        t.check(selected.skin === skin)
+        t.equal(selected.type, "contextfactorywebparseralias")
+        t.equal(selected.rawString, "")
+        t.equal(selected.rawString, legacy.rawString)
+        t.equal(selected.fetchCount, 0)
+        t.check(!selected.isFetching && !selected.isDownloading)
+        skin.update()
+        t.equal(selected.fetchCount, 0)
+        t.equal(selected.stringValue, "")
+    }
 }
 
 func runSectionContextConstructionTests(_ t: TestRunner) {
@@ -388,6 +613,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextBuiltinFactoryTests(t)
     runContextBuiltinExtendedTests(t)
     runContextRegistryTests(t)
+    runContextWebParserTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -558,8 +784,8 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
                 section: constructionSection("Custom", []), context: context, type: type) == nil,
                     "a built-in name never replaces a selected custom subclass")
         }
-        t.check(makeContextBuiltinMeasure(WebParserMeasure.self, name: "Web", section: constructionSection("Web", []),
-                                         context: context, type: "webparser") == nil, "unqualified kernels retain legacy construction")
+        t.check(makeContextBuiltinMeasure(ScriptMeasure.self, name: "Script", section: constructionSection("Script", []),
+                                         context: context, type: "script") == nil, "unqualified kernels retain legacy construction")
         // Unique names only: there is no unregister API, so canonical global registrations stay untouched.
         MeasureRegistry.registerMeasure("ContextFactoryOverrideProbe", ContextFactoryChild.self)
         MeasureRegistry.registerMeasure("ContextFactoryMemoryAlias", MemoryMeasure.self)
