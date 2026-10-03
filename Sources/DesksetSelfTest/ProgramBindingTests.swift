@@ -65,6 +65,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     runProgramUnitTests(t)
     runDeskUnitTests(t)
     runProgramNumericTests(t)
+    runProgramFontSizeTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
                             ProgramDeclaration(name: "caption", kind: .computed,
@@ -1237,5 +1238,102 @@ private func runDeskUnitTests(_ t: TestRunner) {
         catalog.typeFormats[catalog.typeFormats.firstIndex { $0.type == .percent }!].decimals = 2
         let custom = deskCheck(#"widget { Text(50%) }"#, context: CheckContext(catalog: catalog))
         t.equal(Desk.compile(custom, catalog: catalog).issues.first?.kind, .unsupported)
+    }
+}
+
+
+private func runProgramFontSizeTests(_ t: TestRunner) {
+    let id = ElementID(name: "font", index: 0)
+    func q(_ value: Double, _ dimension: ProgramNumberDimension = .length) -> ProgramExpression {
+        .quantity(ProgramNumber(value, dimension: dimension))
+    }
+    func root(_ size: ProgramExpression, hidden: Bool = false, assignments: [ProgramAssignment]? = nil) -> ProgramElement {
+        ProgramElement(id: id, content: .text(ProgramText("甲😀", fontSizeExpression: size)), hidden: hidden, onClick: assignments)
+    }
+    func measure(_ text: String, _ style: TextStyle, _ width: Double?) -> SkinSize {
+        let points = TextStyle.pixelSize(points: style.fontSize)
+        return SkinSize(width: points * 2, height: points)
+    }
+    func draws(_ scene: WidgetScene) -> [TextDraw] {
+        scene.drawingItems.compactMap { if case .text(let draw) = $0 { return draw }; return nil }
+    }
+    t.suite("Program: font size: typed points share measured drawing styles and UTF16 numeric ranges") {
+        let declaration = ProgramDeclaration(name: "points", kind: .variable, initial: q(20))
+        let text = ProgramExpression.concatenate([.string("甲😀"), .formatNumber(.declaration(0), ProgramNumberFormat())])
+        let element = ProgramElement(id: id, content: .text(ProgramText(value: text,
+                                          fontSizeExpression: .multiply(.declaration(0), .number(2)))),
+                                     width: .fixed(60), padding: SkinInsets(left: 2, top: 2, right: 2, bottom: 2))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Points", root: element, declarations: [declaration]))
+        var measured: [TextStyle] = []
+        let scene = try runtime.project(environment: bindingEnvironment(false)) { text, style, width in
+            t.equal(text, "甲😀20"); t.close(TextStyle.pixelSize(points: style.fontSize), 40)
+            measured.append(style)
+            return width == nil ? SkinSize(width: 80, height: 40) : SkinSize(width: 56, height: 80)
+        }
+        let draw = draws(scene).first!
+        t.equal(scene.size, SkinSize(width: 60, height: 84))
+        t.equal(draw.text, "甲😀20"); t.equal(draw.style, measured.last)
+        t.equal(draw.contentFrame, SkinRect(x: 2, y: 2, width: 56, height: 80))
+        t.equal(draw.style.inlineSpans, [InlineSpan(location: 3, length: 2, setting: .typography(feature: "tnum", value: 1))])
+        t.check(draw.style.wrap && measured.count == 2)
+        var evaluation = ProgramExpressionEvaluation(declarations: [], dark: false, variables: nil)
+        t.equal(try evaluation.resolveAssignmentValue(.divide(q(24), q(2))), .number(12))
+        t.equal(try evaluation.resolveAssignmentValue(.multiply(q(40), q(50, .percent))), .numeric(ProgramNumber(20, dimension: .length)))
+        t.equal(try evaluation.resolveAssignmentValue(.formatNumber(q(12.5), ProgramNumberFormat(decimals: 1))),
+                .formattedString(ProgramTextValue(text: "12.5", numberRanges: [0..<4])))
+    }
+    t.suite("Program: font size: invalid values failed startup and clicks retain the complete transaction") {
+        let declarations = [ProgramDeclaration(name: "points", kind: .variable, initial: q(20)),
+                            ProgramDeclaration(name: "bad", kind: .variable, initial: .boolean(false))]
+        let size = ProgramExpression.conditional(.declaration(1), then: q(0), otherwise: .declaration(0))
+        let element = root(size, assignments: [ProgramAssignment(declaration: 0, value: q(28)),
+                                               ProgramAssignment(declaration: 1, value: .boolean(true))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Font transaction", root: element, declarations: declarations,
+                                        onLoad: [ProgramAssignment(declaration: 0, value: q(24))]))
+        do { _ = try runtime.project(environment: bindingEnvironment(false)) { _, _, _ in throw BindingFixtureFailure.measurement }; t.check(false) }
+        catch { t.equal(error as? BindingFixtureFailure, .measurement) }
+        t.equal(runtime.generation, 0)
+        let first = try runtime.project(environment: bindingEnvironment(false), measure: measure)
+        t.close(TextStyle.pixelSize(points: draws(first)[0].style.fontSize), 24)
+        bindingFailure(t, .invalidText(id)) {
+            _ = try runtime.click(at: SkinPoint(x: 6, y: 6), expectedGeneration: first.generation,
+                                  environment: bindingEnvironment(false), measure: measure)
+        }
+        t.equal(runtime.generation, first.generation); t.equal(runtime.clockPrecision, nil)
+        let kept = try runtime.project(environment: bindingEnvironment(true), measure: measure)
+        t.close(TextStyle.pixelSize(points: draws(kept)[0].style.fontSize), 24)
+        t.equal(kept.hitMap.entries.first?.elementID, id)
+        for value in [ProgramExpression.number(0), .number(-1), q(0), .divide(q(1), .number(0)),
+                      .multiply(q(.greatestFiniteMagnitude), .number(2))] {
+            var invalid = try ProgramRuntime(program: WidgetProgram(name: "Invalid size", root: root(value)))
+            bindingFailure(t, .invalidText(id)) { _ = try invalid.project(environment: bindingEnvironment(false), measure: measure) }
+            t.equal(invalid.generation, 0)
+        }
+        for value in [ProgramExpression.string("20"), .boolean(true), .timeNow, q(20, .bytes), q(20, .duration), q(20, .percent),
+                      .number(.nan), .number(.infinity), .quantity(ProgramNumber(20, dimension: .length, displayBase: 1000)),
+                      .add(q(20), .number(4))] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid type", root: root(value))) }
+        }
+    }
+    t.suite("Program: font size: live size dependencies short circuit while hidden layout keeps space") {
+        func input(_ seconds: Double) -> ProgramDateInput {
+            ProgramDateInput(instant: Date(timeIntervalSince1970: seconds), timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_US"))
+        }
+        let started = ProgramDeclaration(name: "started", kind: .variable, initial: .timeNow)
+        let elapsed = ProgramExpression.divide(.subtract(.timeNow, .declaration(0)), q(1, .duration))
+        let size = ProgramExpression.conditional(.appearanceDark, then: .add(.number(20), elapsed), otherwise: .number(20))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Live size", root: root(size), declarations: [started]))
+        let light = try runtime.project(environment: bindingEnvironment(false), dateInput: input(0), measure: measure)
+        t.equal(light.size, SkinSize(width: 40, height: 20)); t.equal(runtime.clockPrecision, nil)
+        let dark = try runtime.project(environment: bindingEnvironment(true), dateInput: input(4), measure: measure)
+        t.equal(dark.size, SkinSize(width: 48, height: 24)); t.equal(runtime.clockPrecision, .second)
+        t.equal(try runtime.project(environment: bindingEnvironment(false), dateInput: input(8), measure: measure).size,
+                SkinSize(width: 40, height: 20)); t.equal(runtime.clockPrecision, nil)
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden size", root: root(size, hidden: true), declarations: [started]))
+        _ = try hidden.project(environment: bindingEnvironment(true), dateInput: input(0), measure: measure)
+        let hiddenScene = try hidden.project(environment: bindingEnvironment(true), dateInput: input(4), measure: measure)
+        t.equal(hiddenScene.size, dark.size); t.equal(hidden.clockPrecision, nil)
+        t.check(hiddenScene.drawingItems.isEmpty)
+        t.equal(hiddenScene.elements[0].visibility, .hiddenKeepsSpace)
     }
 }

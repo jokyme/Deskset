@@ -2,7 +2,7 @@ import Foundation
 
 /// Executable scalar expressions of the shared program. These are values, not syntax nodes or host services.
 /// Dates and numeric formatting read immutable projection inputs; assignments use the shared action executor.
-/// Numeric values use canonical units (percent points, bytes or seconds), never source-unit spellings.
+/// Numeric values use canonical units (percent points, bytes, seconds or length points), never source-unit spellings.
 public indirect enum ProgramExpression: Equatable, Sendable {
     case string(String), boolean(Bool)
     case number(Double)
@@ -41,7 +41,7 @@ public struct ProgramDeclaration: Equatable, Sendable {
     }
 }
 
-public enum ProgramNumberDimension: Equatable, Sendable { case plain, percent, bytes, duration }
+public enum ProgramNumberDimension: Equatable, Sendable { case plain, percent, bytes, duration, length }
 
 /// The one numeric value of the shared evaluator. Display base is metadata, not a unit conversion or type.
 /// A Bytes value without a deciding base uses 1000. Other dimensions cannot carry a display base.
@@ -177,6 +177,13 @@ struct ProgramExpressionValidation {
     mutating func validateText(_ expression: ProgramExpression) throws {
         try register(expression)
         guard try expressionInfo(expression, depth: 1).type == .string else { throw ProgramRuntimeError.invalidExpression }
+    }
+
+    mutating func validateFontSize(_ expression: ProgramExpression) throws {
+        try register(expression)
+        let dimension = try expressionInfo(expression, depth: 1).type.dimension
+        // The catalog permits any Plain expression as points at a Length parameter, not other units.
+        guard dimension == .plain || dimension == .length else { throw ProgramRuntimeError.invalidExpression }
     }
 
     mutating func validateAssignment(_ assignment: ProgramAssignment) throws {
@@ -347,6 +354,17 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
               value.text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
         if displayed { clockPrecision = .combined(clockPrecision, result.precision) }
         return value
+    }
+
+    mutating func fontSize(_ expression: ProgramExpression, element: ElementID, displayed: Bool) throws -> Double {
+        let result = try evaluate(expression, depth: 1)
+        guard case .numeric(let number) = result.scalar,
+              number.dimension == .plain || number.dimension == .length,
+              number.value.isFinite, number.value > 0 else { throw ProgramRuntimeError.invalidText(element) }
+        if displayed {
+            clockPrecision = .combined(clockPrecision, .combined(result.precision, result.currentDate ? .second : nil))
+        }
+        return number.value
     }
 
     mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar {

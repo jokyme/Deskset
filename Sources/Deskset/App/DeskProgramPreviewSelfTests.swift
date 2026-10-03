@@ -1000,6 +1000,7 @@ enum DeskProgramPreviewSelfTests {
             t.equal(f.app.sortedControllers.count, 0)
         }
 
+        runFontSizePreviewTests(t)
         runPalettePreviewTests(t)
         runUnitPreviewTests(t)
         runNumericPreviewTests(t)
@@ -1203,6 +1204,151 @@ enum DeskProgramPreviewSelfTests {
         try mouse(.leftMouseUp, at: point, in: f)
     }
 
+
+    private static func runFontSizePreviewTests(_ t: AppTestRunner) {
+        let source = #"widget { variable size = 20; Text("甲😀").font(size).color(.accent).padding(8).onClick { size = size + 4 } }"#
+        t.suite("Desk: font size preview: native clicks grow point fonts with independent literal pixels") {
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: f)
+            let first = p.scene?.generation
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.scene?.generation != first)
+            try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            f.controller.window?.appearance = NSAppearance(named: .darkAqua); p.refreshEnvironment()
+            try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try fontSizePixels(t, [("甲😀", 28, 400)], in: f)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            t.check(f.app.sortedControllers.isEmpty)
+        }
+        t.suite("Desk: font size preview: appearance computations inherit while literals and presets keep their own size") {
+            let source = #"widget { computed size = system.dark ? 20 : 28; Column(spacing: 3, align: .left) { Text("甲😀"); Text("B").font(13); Text("C").font(.caption) }.font(size).color(.accent).padding(8) }"#
+            let f = try fixture(t, source), p = f.preview
+            try fontSizePixels(t, [("甲😀", 28, 400), ("B", 13, 400), ("C", 11, 500)], spacing: 3, in: f)
+            let old = p.scene?.elements.map(\.id)
+            f.controller.window?.appearance = NSAppearance(named: .darkAqua); p.refreshEnvironment()
+            try fontSizePixels(t, [("甲😀", 20, 400), ("B", 13, 400), ("C", 11, 500)], spacing: 3, in: f)
+            t.equal(p.scene?.elements.map(\.id), old)
+            f.controller.window?.appearance = NSAppearance(named: .aqua); p.refreshEnvironment()
+            try fontSizePixels(t, [("甲😀", 28, 400), ("B", 13, 400), ("C", 11, 500)], spacing: 3, in: f)
+        }
+        t.suite("Desk: font size preview: live size ticks preserve a held press and close cancels the original timer") {
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let source = #"widget { variable started = time.now; computed size = 20 + (time.now - started) / 1s; Text("甲😀").font(size).color(.accent).padding(8).onClick { started = time.now } }"#
+            let f = try fixture(t, source, clock: executor.clock, executor: executor), p = f.preview
+            p.setVisible(true); t.equal(executor.pendingCount, 1)
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            executor.advance(until: 4)
+            try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: f)
+            t.equal(executor.pendingCount, 1)
+            p.close(); t.equal(executor.pendingCount, 0)
+            executor.advance(by: 5)
+            t.equal(p.state, .closed); t.check(p.scene == nil && p.canvas.isHidden)
+        }
+        t.suite("Desk: font size preview: invalid pending stale and closed sources clear old glyphs and recover") {
+            let invalid = try fixture(t, #"widget { variable bad = false; computed size = bad ? 0 : 20; Text("甲😀").font(size).color(.accent).padding(8).onClick { bad = true } }"#)
+            invalid.preview.setVisible(true)
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: invalid)
+            try click(at: NSPoint(x: 20, y: 20), in: invalid)
+            if case .unavailable(let reason) = invalid.preview.state { t.check(!reason.isEmpty) }
+            else { t.check(false, "missing/nonpositive font size fails the scene rather than silently using a default") }
+            t.check(invalid.preview.scene == nil && invalid.preview.canvas.isHidden)
+            // The failed assignment rolled back. Existing redraw/environment refresh can reproject that valid state.
+            invalid.preview.refreshEnvironment()
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: invalid)
+
+            let appearance = try fixture(t, #"widget { computed size = system.dark ? 0 : 20; Text("甲😀").font(size).color(.accent).padding(8) }"#)
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: appearance)
+            appearance.controller.window?.appearance = NSAppearance(named: .darkAqua)
+            appearance.preview.refreshEnvironment()
+            if case .unavailable(let reason) = appearance.preview.state { t.check(!reason.isEmpty) }
+            else { t.check(false, "a persistent invalid point size cannot fall back to a literal font") }
+            t.check(appearance.preview.scene == nil && appearance.preview.canvas.isHidden)
+            appearance.preview.canvas.bounds = NSRect(x: 0, y: 0, width: 8, height: 8)
+            let cleared = try paint(appearance.preview.canvas); try canaries(t, cleared); t.equal(try ink(cleared), 0)
+            t.check(appearance.preview.scene == nil && appearance.preview.canvas.isHidden)
+            appearance.controller.window?.appearance = NSAppearance(named: .aqua)
+            appearance.preview.refreshEnvironment()
+            try fontSizePixels(t, [("甲😀", 20, 400)], in: appearance)
+
+            replace(#"widget { variable size = 1000000; Text("甲😀").font(size).padding(8) }"#, in: invalid)
+            t.check(settled(invalid))
+            t.check(invalid.preview.scene == nil && invalid.preview.canvas.isHidden, "the unchanged native pixel budget rejects enormous live fonts")
+
+            let queue = DispatchQueue(label: "desk.font.pending.check")
+            let pendingSource = source + "\n//" + String(repeating: "x", count: 9_000)
+            let f = try fixture(t, pendingSource, queue: queue), p = f.preview
+            t.check(settled(f))
+            p.setVisible(true)
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            let old = checking.snapshot
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            queue.suspend(); var suspended = true
+            defer { if suspended { queue.resume() } }
+            replace(pendingSource.replacingOccurrences(of: "size = 20", with: "size = 24"), in: f)
+            t.equal(p.state, .checking); t.check(p.scene == nil && p.canvas.isHidden)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(!checking.publish(old))
+            queue.resume(); suspended = false
+            t.check(settled(f)); try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            p.show(old, readError: nil); t.check(p.scene == nil && p.canvas.isHidden)
+            p.show(checking.snapshot, readError: nil); try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            p.show(checking.snapshot, readError: "controlled read failure"); t.check(p.scene == nil && p.canvas.isHidden)
+            p.show(checking.snapshot, readError: nil); try fontSizePixels(t, [("甲😀", 24, 400)], in: f)
+            p.close(); p.show(checking.snapshot, readError: nil)
+            t.check(p.scene == nil && p.canvas.isHidden); t.equal(p.state, .closed)
+            t.check(f.app.sortedControllers.isEmpty)
+        }
+    }
+
+    /// Independent literal point-size recipes and native measurement, never copied from the candidate scene.
+    private static func fontSizePixels(_ t: AppTestRunner, _ parts: [(String, Double, Int)], spacing: Double? = nil,
+                                       in f: Fixture) throws {
+        t.equal(f.preview.state, .ready)
+        let appearance = MacAppearance.values(for: f.preview.canvas.effectiveAppearance)
+        let context = DrawContext(fonts: AppFontResolver())
+        var sizes: [SkinSize] = [], styles: [TextStyle] = []
+        for (text, points, weight) in parts {
+            var style = TextStyle()
+            style.fontFace = "System"; style.fontSize = points * 0.75; style.fontWeight = weight
+            style.color = appearance.accentColor; style.horizontalAlign = .center; style.verticalAlign = .center
+            style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+            t.close(CTFontGetSize(AppFontResolver().resolve(FontRequest(style: style)).font), points)
+            let measured = context.text.layout(text, style: style, wrapWidth: nil, cycle: 1).size
+            sizes.append(SkinSize(width: measured.width, height: measured.height))
+            styles.append(style)
+        }
+        let width = (sizes.map(\.width).max() ?? 0) + 16
+        let height = sizes.reduce(0) { $0 + $1.height } + (spacing ?? 0) * Double(parts.count - 1) + 16
+        var items: [DrawItem] = [], wrong: [DrawItem] = [], y = 8.0
+        for index in parts.indices {
+            let content = SkinRect(x: 8, y: y, width: sizes[index].width, height: sizes[index].height)
+            let frame = spacing == nil ? SkinRect(width: width, height: height) : content
+            let anchor = spacing == nil ? SkinPoint() : SkinPoint(x: 8, y: y)
+            items.append(.text(TextDraw(text: parts[index].0, style: styles[index], frame: frame, contentFrame: content, anchor: anchor)))
+            var wrongStyle = styles[index]; wrongStyle.fontSize += 0.75
+            wrong.append(.text(TextDraw(text: parts[index].0, style: wrongStyle, frame: frame, contentFrame: content, anchor: anchor)))
+            y += sizes[index].height + (spacing ?? 0)
+        }
+        t.equal(f.preview.scene?.size, SkinSize(width: width, height: height))
+        t.equal(f.preview.scene?.drawingItems, items, "the actual live style is measured and drawn with this literal point-font recipe")
+        let reference = ReferenceView(items: items, size: NSSize(width: width, height: height))
+        reference.appearance = f.controller.window?.appearance
+        let incorrect = ReferenceView(items: wrong, size: reference.frame.size); incorrect.appearance = reference.appearance
+        let blank = ReferenceView(items: [], size: reference.frame.size)
+        for scale in [1, 2] {
+            let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+            let missing = try paint(blank, scale: scale), other = try paint(incorrect, scale: scale)
+            for rep in [actual, expected, missing, other] { try canaries(t, rep) }
+            t.check(try ink(actual) > 0); t.equal(try ink(missing), 0)
+            t.equal(try bytes(actual), try bytes(expected), "complete native live font at \(scale)x")
+            t.check(try bytes(actual) != bytes(missing) && bytes(actual) != bytes(other), "blank or one-point-wrong native paint cannot qualify")
+        }
+    }
 
     private static func runUnitPreviewTests(_ t: AppTestRunner) {
         let source = "\u{FEFF}" + #"widget { variable percent = 50%; variable bytes = 1KB; variable elapsed = 90s; Text("😀7|{percent}|{bytes}|{elapsed, style: .clock}").font(20).color(.accent).size(520, 60).padding(8).onClick { percent = percent + 5%; bytes = bytes + 1KB; elapsed = elapsed + 1s } }"# + "\r\n"

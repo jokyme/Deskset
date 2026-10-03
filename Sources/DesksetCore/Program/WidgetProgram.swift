@@ -177,6 +177,8 @@ public struct ProgramText: Equatable, Sendable {
     public let fontFamily: String
     /// Desk/program points, not the String meter's 96-DPI font units.
     public let fontSize: Double
+    /// Optional live point size. Nil preserves the original constant fontSize path.
+    public let fontSizeExpression: ProgramExpression?
     public let fontWeight: Int?
     public let italic: Bool
     public let color: ProgramColor
@@ -185,16 +187,19 @@ public struct ProgramText: Equatable, Sendable {
     public let digits: Digits
 
     public init(_ text: String, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
-                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic) {
+                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic,
+                fontSizeExpression: ProgramExpression? = nil) {
         self.init(value: .string(text), fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
-                  italic: italic, color: color, align: align, digits: digits)
+                  italic: italic, color: color, align: align, digits: digits, fontSizeExpression: fontSizeExpression)
     }
 
     public init(value: ProgramExpression, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
-                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic) {
+                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic,
+                fontSizeExpression: ProgramExpression? = nil) {
         self.value = value
         self.fontFamily = fontFamily
         self.fontSize = fontSize
+        self.fontSizeExpression = fontSizeExpression
         self.fontWeight = fontWeight
         self.italic = italic
         self.color = color
@@ -203,10 +208,11 @@ public struct ProgramText: Equatable, Sendable {
     }
 
     /// Adapt once at the existing renderer boundary. Measuring and TextDraw receive this same value.
-    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, wrap: Bool, text: ProgramTextValue? = nil) throws -> TextStyle {
+    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, wrap: Bool, text: ProgramTextValue? = nil,
+                      resolvedFontSize: Double? = nil) throws -> TextStyle {
         var style = TextStyle()
         style.fontFace = fontFamily
-        style.fontSize = fontSize * (72.0 / 96.0)
+        style.fontSize = (resolvedFontSize ?? fontSize) * (72.0 / 96.0)
         style.fontWeight = fontWeight
         style.italic = italic
         style.color = try color.resolved(in: appearance, colorInput: colorInput)

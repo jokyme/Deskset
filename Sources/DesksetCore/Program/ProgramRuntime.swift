@@ -78,6 +78,7 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 try expressions.validateText(text.value)
+                if let fontSize = text.fontSizeExpression { try expressions.validateFontSize(fontSize) }
                 guard !text.fontFamily.isEmpty,
                       text.fontSize.isFinite, text.fontSize > 0,
                       text.fontWeight.map({ (1...999).contains($0) }) ?? true else {
@@ -145,7 +146,13 @@ public struct ProgramRuntime: Sendable {
             }
         }
         let box = try layout(program.root, proposedWidth: nil, proposedHeight: nil, appearance: appearance,
-                             resolve: { try evaluation.text($1, displayed: visibleText.contains($0)) }, measure: measure, state: &layoutState)
+                             resolve: { id, text in
+                                 let displayed = visibleText.contains(id)
+                                 let value = try evaluation.text(text.value, displayed: displayed)
+                                 let fontSize = try text.fontSizeExpression.map { try evaluation.fontSize($0, element: id, displayed: displayed) }
+                                 return TextInput(value: value.text, style: try text.drawingStyle(in: appearance, colorInput: colorInput,
+                                     wrap: false, text: value, resolvedFontSize: fontSize))
+                             }, measure: measure, state: &layoutState)
         var elements: [SceneElement] = []
         try append(box, at: SkinPoint(), inheritedHidden: false, into: &elements)
         var hitMap = SkinHitMap()
@@ -254,7 +261,7 @@ public struct ProgramRuntime: Sendable {
     }
 
     private func layout(_ node: ProgramElement, proposedWidth: Double?, proposedHeight: Double?, appearance: SkinAppearance,
-                        resolve: (ElementID, ProgramExpression) throws -> ProgramTextValue,
+                        resolve: (ElementID, ProgramText) throws -> TextInput,
                         measure: (String, TextStyle, Double?) throws -> SkinSize, state: inout LayoutState) throws -> Box {
         let key = ProposalKey(id: node.id, width: proposedWidth, height: proposedHeight)
         if let old = state.boxes[key] { return old }
@@ -288,8 +295,7 @@ public struct ProgramRuntime: Sendable {
             let input: TextInput
             if let old = state.text[node.id] { input = old }
             else {
-                let value = try resolve(node.id, text.value)
-                input = TextInput(value: value.text, style: try text.drawingStyle(in: appearance, colorInput: state.colors, wrap: false, text: value))
+                input = try resolve(node.id, text)
                 state.text[node.id] = input
             }
             resolvedText = input.value

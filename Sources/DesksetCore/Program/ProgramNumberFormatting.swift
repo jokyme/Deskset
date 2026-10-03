@@ -27,7 +27,7 @@ public struct ProgramNumberFormat: Equatable, Sendable {
     func validate(for dimension: ProgramNumberDimension) throws {
         try validate()
         switch dimension {
-        case .plain, .percent:
+        case .plain, .percent, .length:
             guard unit == nil, unitStyle == nil, durationStyle == nil else { throw ProgramRuntimeError.invalidExpression }
         case .bytes:
             guard durationStyle == nil else { throw ProgramRuntimeError.invalidExpression }
@@ -47,7 +47,7 @@ public struct ProgramNumberFormat: Equatable, Sendable {
         try number.validate()
         guard number.dimension == dimension else { throw ProgramRuntimeError.invalidExpression }
         switch dimension {
-        case .plain: return try decimal(number.value, places: decimals, locale: locale)
+        case .plain, .length: return try decimal(number.value, places: decimals, locale: locale)
         case .percent: return try decimal(number.value, places: decimals ?? 0, locale: locale)
         case .bytes: return try bytes(number, locale: locale)
         case .duration: return try duration(number.value, locale: locale)
