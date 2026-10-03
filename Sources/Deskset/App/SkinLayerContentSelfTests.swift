@@ -266,20 +266,30 @@ enum SkinLayerContentSelfTests {
             prepareWindow(window, t)
             guard let executor = window.runtime.executor as? SkinThreadExecutor,
                   let root = window.content.installedLayerRoot else { return t.check(false, "installed worker root") }
-            let original: [CGImage]? = executor.exclusive(timeout: 30) { window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image) } ?? nil
-            t.check(original != nil)
             // Explicit malformed facts are a negative fixture, not a claim that this real window lacks a profile.
             var missing = window.facts
             missing.colorSpace = nil
             missing.sequence += 10
-            window.runtime.send(.windowFacts(missing))
-            window.runtime.send(.redraw)
+            let observed = Guarded<(before: [CGImage]?, after: [CGImage]?, failure: SkinFrameProducer.LayerFailure?)>((nil, nil, nil))
             let done = Guarded(false)
-            executor.async { window.runtime.frames.runLoopTurn(.beforeWaiting); done.access { $0 = true } }
+            executor.async {
+                // Finish any requested normal frame before sampling. Keep this observation and the nil-profile
+                // attempt in one physical worker task: a normal redraw between separate parks may change identity.
+                window.runtime.frames.runLoopTurn(.beforeWaiting)
+                let before = window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image)
+                window.runtime.send(.windowFacts(missing))
+                window.runtime.send(.redraw)
+                window.runtime.frames.runLoopTurn(.beforeWaiting)
+                observed.access {
+                    $0 = (before, window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image),
+                          window.runtime.frames.layerFailure)
+                }
+                done.access { $0 = true }
+            }
             t.check(AppSelfTest.spin(timeout: 30) { done.current })
-            let missingFailure: SkinFrameProducer.LayerFailure? = executor.exclusive(timeout: 30) { window.runtime.frames.layerFailure } ?? nil
+            let (original, retained, missingFailure) = observed.current
+            t.check(original != nil)
             t.equal(missingFailure, .missingProfile)
-            let retained: [CGImage]? = executor.exclusive(timeout: 30) { window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image) } ?? nil
             t.check(sameImages(original, retained), "nil facts do not substitute sRGB or clear the last actual frame")
             t.check(window.content.installedLayerRoot === root)
             window.publishFacts(force: true)
