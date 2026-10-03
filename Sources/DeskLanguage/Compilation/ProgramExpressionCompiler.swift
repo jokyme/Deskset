@@ -31,7 +31,7 @@ struct ProgramExpressionCompiler {
                 throw issue(.invalidCheckedModel, declaration.node, "Missing checked declaration type")
             }
             guard supportedType(type) else {
-                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and dimensionless Number declarations are implemented")
+                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration declarations are implemented")
             }
             if kind == .variable { assignmentTypes[index] = type }
             return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
@@ -53,11 +53,11 @@ struct ProgramExpressionCompiler {
 
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
-        guard type == .string || type == .date || type == .plainNumber else {
-            throw issue(.unsupported, node, "Text requires String, Date or dimensionless Number; other value formatting is not implemented")
+        guard type == .string || type == .date || type.flatMap(numberDimension) != nil else {
+            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration; other value formatting is not implemented")
         }
         let value = try lower(node, depth: 1)
-        if type == .plainNumber { return .formatNumber(value, try numberFormat(at: node, options: [])) }
+        if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
         return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
     }
 
@@ -73,8 +73,31 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "Missing checked expression type")
         }
         guard supportedType(type) else {
-            throw issue(.unsupported, node, "Only String, Bool, Date and dimensionless Number expressions are implemented")
+            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration expressions are implemented")
         }
+        let identity = checked.tree.id(of: node)
+        let coercion = checked.numericCoercions[identity]
+        if coercion != nil && type != .plainNumber {
+            throw issue(.invalidCheckedModel, node, "A percent-as-fraction use must have final plain type")
+        }
+        // Validate the original supported subtree before folding the checker's actual constant. A constant
+        // conditional must not hide an unsupported branch, and no variable initializer is inferred here.
+        let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth)
+        if let canonical = checked.canonicalNumericValues[identity] {
+            guard let dimension = numberDimension(type), canonical.isFinite else {
+                throw issue(.invalidCheckedModel, node, "Invalid checked canonical numeric constant")
+            }
+            return try quantity(canonical, dimension: dimension, at: node)
+        }
+        if coercion == .percentAsFraction {
+            // The receipt identifies one original Percent use. Existing Percent/Percent division yields Plain;
+            // Percent-times-Bytes has no receipt and keeps the shared runtime's percentage algebra unchanged.
+            return .divide(raw, .quantity(ProgramNumber(100, dimension: .percent)))
+        }
+        return raw
+    }
+
+    private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int) throws -> ProgramExpression {
         if let value = StringLiteralSyntax(node) {
             if let text = value.literalValue {
                 guard text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
@@ -90,8 +113,8 @@ struct ProgramExpressionCompiler {
                 case .interpolation(let interpolation):
                     let expression = try lower(interpolation.value.node, depth: depth + 1)
                     let type = checked.types[checked.tree.id(of: interpolation.value.node)]?.type
-                    if type == .plainNumber {
-                        parts.append(.formatNumber(expression, try numberFormat(at: interpolation.node, options: interpolation.formatOptions)))
+                    if let type, numberDimension(type) != nil {
+                        parts.append(.formatNumber(expression, try numberFormat(at: interpolation.node, type: type, options: interpolation.formatOptions)))
                     } else if type == .date {
                         guard interpolation.formatOptions.count <= 1 else {
                             throw issue(.unsupported, interpolation.node, "Only the Date format option is implemented")
@@ -118,10 +141,19 @@ struct ProgramExpressionCompiler {
         }
         if let value = BoolLiteralSyntax(node) { return .boolean(value.value) }
         if let literal = NumberLiteralSyntax(node) {
-            guard type == .plainNumber, literal.unit == nil, let number = literal.value, number.isFinite else {
-                throw issue(.unsupported, node, "Only finite dimensionless numeric literals are implemented")
+            guard let recordedType = checked.types[checked.tree.id(of: node)]?.type, let dimension = numberDimension(recordedType),
+                  literal.value?.isFinite == true,
+                  let canonical = checked.canonicalNumericValues[checked.tree.id(of: node)], canonical.isFinite else {
+                throw issue(.invalidCheckedModel, node, "Numeric literal requires a final checked canonical value")
             }
-            return .number(number)
+            if let spelling = literal.unit, let unit = catalog.units.first(where: { $0.spelling == spelling.text }) {
+                let natural = numberDimension(.number(unit.dimension))
+                guard spelling.status == .known, natural != nil, unit.factor.isFinite, unit.offset == 0,
+                      natural == dimension || natural == .percent && dimension == .plain && checked.numericCoercions[checked.tree.id(of: node)] == .percentAsFraction else {
+                    throw issue(.unsupported, node, "Unsupported numeric unit catalog contract")
+                }
+            } else if literal.unit != nil { throw issue(.unsupported, node, "Unknown numeric unit catalog contract") }
+            return try quantity(canonical, dimension: dimension, at: node)
         }
         if let value = ParenExprSyntax(node) { return try lower(value.value.node, depth: depth + 1) }
         if IdentifierExprSyntax(node) != nil {
@@ -209,9 +241,12 @@ struct ProgramExpressionCompiler {
         }
         if let value = BinaryExprSyntax(node) {
             if ["+", "-", "*", "/", "%", "<", "<=", ">", ">="].contains(value.operator.token.text) {
-                guard checked.types[checked.tree.id(of: value.left.node)]?.type == .plainNumber,
-                      checked.types[checked.tree.id(of: value.right.node)]?.type == .plainNumber else {
-                    throw issue(.unsupported, node, "Arithmetic and ordering require checked dimensionless Number operands")
+                let left = checked.types[checked.tree.id(of: value.left.node)]?.type,
+                    right = checked.types[checked.tree.id(of: value.right.node)]?.type
+                guard let left, let right, supportedType(left), supportedType(right),
+                      (numberDimension(left) != nil || left == .date), (numberDimension(right) != nil || right == .date),
+                      !["<", "<=", ">", ">="].contains(value.operator.token.text) || numberDimension(left) != nil && numberDimension(right) != nil else {
+                    throw issue(.unsupported, node, "Arithmetic requires supported checked numeric/Date operands; Date ordering is not implemented")
                 }
             }
             let left = try lower(value.left.node, depth: depth + 1), right = try lower(value.right.node, depth: depth + 1)
@@ -241,21 +276,43 @@ struct ProgramExpressionCompiler {
     }
 
     private func supportedType(_ type: DeskType) -> Bool {
-        type == .string || type == .bool || type == .date || type == .plainNumber
+        type == .string || type == .bool || type == .date || numberDimension(type) != nil
     }
 
-    private func numberFormat(at node: PositionedNode, options: [FormatOptionSyntax]) throws -> ProgramNumberFormat {
-        guard let rule = catalog.typeFormats.first(where: { $0.type == .plainNumber }), rule.decimals == nil, rule.style == nil,
+    private func numberDimension(_ type: DeskType) -> ProgramNumberDimension? {
+        switch type {
+        case .plainNumber: return .plain
+        case .percent: return .percent
+        case .bytes: return .bytes
+        case .duration: return .duration
+        default: return nil
+        }
+    }
+
+    private func quantity(_ value: Double, dimension: ProgramNumberDimension, at node: PositionedNode) throws -> ProgramExpression {
+        let base = checked.types[checked.tree.id(of: node)]?.displayBase
+        guard dimension == .bytes ? (base == nil || base == 1000 || base == 1024) : base == nil else {
+            throw issue(.invalidCheckedModel, node, "Invalid checked numeric display base")
+        }
+        return dimension == .plain ? .number(value) : .quantity(ProgramNumber(value, dimension: dimension, displayBase: base))
+    }
+
+    private func numberFormat(at node: PositionedNode, type: DeskType, options: [FormatOptionSyntax]) throws -> ProgramNumberFormat {
+        guard let dimension = numberDimension(type), let rule = catalog.typeFormats.first(where: { $0.type == type }),
+              rule.decimals == (dimension == .percent ? 0 : nil),
+              rule.style == (dimension == .duration ? .style(".full") : nil),
               catalog.typeFormats.contains(where: { $0.type == .any && $0.decimals == nil && $0.style == nil }) else {
-            throw issue(.unsupported, node, "Unsupported catalog plain-number or missing default format")
+            throw issue(.unsupported, node, "Unsupported catalog numeric or missing default format")
         }
         var decimals: Int?, missing = "–", labels = Set<String>()
+        var unit: ProgramNumberFormat.ByteUnit?, unitStyle: ProgramNumberFormat.UnitStyle?, durationStyle: ProgramNumberFormat.DurationStyle?
         for option in options {
             let label = option.label.name
             guard labels.insert(label).inserted else { throw issue(.unsupported, option.node, "Duplicate number format option") }
             switch label {
             case "decimals":
-                guard let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.anyNumber] }),
+                guard dimension != .duration,
+                      let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.anyNumber] }),
                       spec.type == .plainNumber, spec.range == 0...10,
                       checked.types[checked.tree.id(of: option.value.node)]?.type == .plainNumber,
                       let literal = NumberLiteralSyntax(option.value.node), literal.unit == nil,
@@ -272,10 +329,30 @@ struct ProgramExpressionCompiler {
                     throw issue(.unsupported, option.node, "missing requires the catalog's literal String contract")
                 }
                 missing = text
-            default: throw issue(.unsupported, option.node, "Unsupported plain-number format option: \(label)")
+            case "unit", "unitStyle", "style":
+                let enumName = label == "unit" ? "ByteUnit" : label == "unitStyle" ? "UnitStyle" : "DurationStyle"
+                guard (label == "style" ? dimension == .duration : dimension == .bytes),
+                      let spec = catalog.formatOptions.first(where: { $0.label == label && $0.type == .enumeration(enumName) }),
+                      spec.appliesTo.contains(type), spec.range == nil,
+                      checked.types[checked.tree.id(of: option.value.node)]?.type == .enumeration(enumName),
+                      case .enumCase(let recordedEnum, let name)? = checked.symbols[checked.tree.id(of: option.value.node)],
+                      recordedEnum == enumName, catalog.enumeration(enumName)?.enumCase(named: name) != nil else {
+                    throw issue(.unsupported, option.node, "Unit/style option requires its checked catalog enum case")
+                }
+                if label == "unit" {
+                    guard let value = ProgramNumberFormat.ByteUnit(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported ByteUnit case") }
+                    unit = value
+                } else if label == "unitStyle" {
+                    guard let value = ProgramNumberFormat.UnitStyle(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported UnitStyle case") }
+                    unitStyle = value
+                } else {
+                    guard let value = ProgramNumberFormat.DurationStyle(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported DurationStyle case") }
+                    durationStyle = value
+                }
+            default: throw issue(.unsupported, option.node, "Unsupported numeric format option: \(label)")
             }
         }
-        return ProgramNumberFormat(decimals: decimals, missing: missing)
+        return ProgramNumberFormat(decimals: decimals, missing: missing, unit: unit, unitStyle: unitStyle, durationStyle: durationStyle)
     }
 
     private func defaultDateFormat(at node: PositionedNode) throws -> ProgramDateFormat {

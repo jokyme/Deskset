@@ -62,6 +62,8 @@ private func checkedBindingProgram(_ t: TestRunner, _ source: String, catalog: D
 }
 
 func runProgramBindingTests(_ t: TestRunner) {
+    runProgramUnitTests(t)
+    runDeskUnitTests(t)
     runProgramNumericTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
@@ -875,10 +877,11 @@ private func runProgramNumericTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: numeric: checked dimensions and foreign catalog formats reject the complete program") {
-        let sources = [#"widget { Text(1%) }"#, #"widget { Text(1KB) }"#, #"widget { Text(2s / 1s) }"#,
-                       #"widget { variable n = 1%; Text("{n}") }"#, #"widget { Text(cpu.usage) }"#,
+        // The original unit literals are retained unchanged in runDeskUnitTests' positive controls.
+        let sources = [#"widget { Text(1°C) }"#, #"widget { Text(1KB / 1s) }"#, #"widget { Text(2s / 1s).margin(1) }"#,
+                       #"widget { variable n = 1%; Text("{n}").margin(1) }"#, #"widget { Text(cpu.usage) }"#,
                        #"widget { Text("{time.now < time.now}") }"#,
-                       #"widget { Text(2KB / 1B) }"#, #"widget { Text(100% / 50%) }"#,
+                       #"widget { Text(2KB / 1s) }"#, #"widget { Text(100% / 50%).offset(x: 1) }"#,
                        #"widget { Text(round(1.2)) }"#, #"widget { variable places = 2; Text("{1, decimals: places}") }"#]
         for source in sources {
             let checked = deskCheck(source), result = Desk.compile(checked)
@@ -921,5 +924,311 @@ private func runProgramNumericTests(_ t: TestRunner) {
         let nested = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)
         let recipes = nested.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.style.inlineSpans }; return nil }
         t.equal(recipes, [[InlineSpan(location: 0, length: 8, setting: .typography(feature: "tnum", value: 1))], []])
+    }
+}
+
+private func runProgramUnitTests(_ t: TestRunner) {
+    func q(_ n: Double, _ dimension: ProgramNumberDimension, _ base: Int? = nil) -> ProgramExpression {
+        .quantity(ProgramNumber(n, dimension: dimension, displayBase: base))
+    }
+    func input(_ seconds: Double = 0, _ locale: String = "en_US") -> ProgramDateInput {
+        ProgramDateInput(instant: Date(timeIntervalSince1970: seconds), timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: locale))
+    }
+    func scalar(_ expression: ProgramExpression, _ date: ProgramDateInput? = nil) throws -> ProgramScalar {
+        var value = ProgramExpressionEvaluation(declarations: [], dark: false, variables: nil, dateInput: date)
+        return try value.resolveAssignmentValue(expression)
+    }
+    let missingBytes = ProgramExpression.divide(q(1, .bytes, 1024), .number(0))
+    t.suite("Program: units: canonical arithmetic preserves dimensions bases and typed missing") {
+        let cases: [(ProgramExpression, ProgramScalar)] = [
+            (.multiply(q(50, .percent), q(2000, .bytes)), .numeric(ProgramNumber(1000, dimension: .bytes))),
+            (.multiply(q(120, .duration), q(25, .percent)), .numeric(ProgramNumber(30, dimension: .duration))),
+            (.multiply(q(50, .percent), .number(3)), .numeric(ProgramNumber(150, dimension: .percent))),
+            (.multiply(.number(3), q(50, .percent)), .numeric(ProgramNumber(150, dimension: .percent))),
+            (.divide(q(100, .percent), q(50, .percent)), .number(2)),
+            (.divide(q(6, .bytes), q(2, .bytes)), .number(3)),
+            (.divide(q(90, .duration), .number(2)), .numeric(ProgramNumber(45, dimension: .duration))),
+            (.remainder(q(90, .duration), q(60, .duration)), .numeric(ProgramNumber(30, dimension: .duration))),
+            (.remainder(q(-90, .duration), q(60, .duration)), .numeric(ProgramNumber(-30, dimension: .duration))),
+            (.negate(q(12.5, .bytes)), .numeric(ProgramNumber(-12.5, dimension: .bytes))),
+            (.add(q(1000, .bytes, 1000), q(24, .bytes, 1024)), .numeric(ProgramNumber(1024, dimension: .bytes, displayBase: 1000))),
+            (.equal(q(1024, .bytes, 1000), q(1024, .bytes, 1024)), .boolean(true)),
+            (.less(q(-2, .percent), q(0, .percent)), .boolean(true)),
+            (missingBytes, .missing(.numeric(.bytes, displayBase: 1024))),
+            (.remainder(q(90, .duration), q(0, .duration)), .missing(.numeric(.duration))),
+            (.multiply(q(.greatestFiniteMagnitude, .bytes), .number(2)), .missing(.numeric(.bytes))),
+            (.add(missingBytes, q(2, .bytes)), .missing(.numeric(.bytes, displayBase: 1024))),
+            (.less(missingBytes, q(2, .bytes)), .missing(.boolean)),
+            (.ifMissing(missingBytes, q(9, .bytes, 1000)), .numeric(ProgramNumber(9, dimension: .bytes, displayBase: 1000))),
+        ]
+        for (expression, expected) in cases {
+            t.equal(try scalar(expression), expected)
+            let shown = expected.type == .boolean ? ProgramExpression.concatenate([expression]) : .formatNumber(expression, ProgramNumberFormat())
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Units", root: bindingText(shown)))
+        }
+        let base = try scalar(.add(q(1000, .bytes, 1000), q(24, .bytes, 1024)))
+        t.equal(base.type.displayBase, 1000)
+        t.equal(try scalar(missingBytes).type.displayBase, 1024)
+        for expression in [ProgramExpression.add(q(1, .bytes), .number(1)), .equal(q(1, .percent), .number(1)),
+                           .multiply(q(1, .percent), q(1, .percent)), .divide(q(1, .bytes), q(1, .duration)),
+                           .less(.timeNow, .timeNow), .subtract(q(1, .duration), .timeNow),
+                           q(.infinity, .bytes), q(.nan, .duration), q(1, .bytes, 10), q(1, .percent, 1000)] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid units", root: bindingText(.concatenate([expression])))) }
+        }
+        let unavailable = ProgramExpression.less(missingBytes, q(1, .bytes))
+        t.equal(try scalar(.and(unavailable, .boolean(false))), .boolean(false))
+        t.equal(try scalar(.or(unavailable, .boolean(true))), .boolean(true))
+        t.equal(try scalar(.conditional(unavailable, then: q(9, .bytes), otherwise: q(3, .bytes))), .numeric(ProgramNumber(3, dimension: .bytes)))
+        t.equal(try scalar(.ifMissing(q(1, .duration), .subtract(.timeNow, .timeNow))), .numeric(ProgramNumber(1, dimension: .duration)), "lazy fallback does not read an absent date input")
+    }
+
+    t.suite("Program: units: explicit locales unit choices and native numeric fields remain distinct") {
+        let cases: [(ProgramExpression, ProgramNumberFormat, String, String, [Range<Int>])] = [
+            (q(12.5, .percent), ProgramNumberFormat(), "en_US", "12", [0..<2]),
+            (q(12.5, .percent), ProgramNumberFormat(decimals: 1), "de_DE", "12,5", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(), "en_US", "12.5 KB", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(), "zh_CN", "12.5 KB", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(), "de_DE", "12,5 KB", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(), "ar_EG", "١٢٫٥ KB", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(unitStyle: .full), "en_US", "12.5 kilobytes", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(unitStyle: .full), "zh_CN", "12.5千字节", [0..<4]),
+            (q(12500, .bytes), ProgramNumberFormat(unitStyle: .some(.none)), "de_DE", "12,5", [0..<4]),
+            (q(100000, .bytes), ProgramNumberFormat(), "en_US", "100 KB", [0..<3]),
+            (q(0, .bytes), ProgramNumberFormat(), "en_US", "0.0 B", [0..<3]),
+            (q(-12500, .bytes), ProgramNumberFormat(), "en_US", "-12.5 KB", [0..<5]),
+            (q(273852, .duration), ProgramNumberFormat(), "en_US", "3 days, 4 hours", [0..<1, 8..<9]),
+            (q(273852, .duration), ProgramNumberFormat(durationStyle: .short), "en_US", "3d 4h", [0..<1, 3..<4]),
+            (q(273852, .duration), ProgramNumberFormat(durationStyle: .clock), "en_US", "76:04:12", [0..<2, 3..<5, 6..<8]),
+            (q(90, .duration), ProgramNumberFormat(), "de_DE", "1 Minute und 30 Sekunden", [0..<1, 13..<15]),
+            (q(90, .duration), ProgramNumberFormat(durationStyle: .clock), "ar_EG", "١:٣٠", [0..<1, 2..<4]),
+            (q(-90, .duration), ProgramNumberFormat(durationStyle: .clock), "en_US", "-1:30", [0..<2, 3..<5]),
+            (q(0.125, .duration), ProgramNumberFormat(), "en_US", "0 seconds", [0..<1]),
+            (q(0, .duration), ProgramNumberFormat(durationStyle: .clock), "en_US", "0:00", [0..<1, 2..<4]),
+        ]
+        for (quantity, format, locale, expected, ranges) in cases {
+            let value = try scalar(.formatNumber(quantity, format), input(0, locale))
+            t.equal(value.text, ProgramTextValue(text: expected, numberRanges: ranges))
+        }
+        let units: [(ProgramNumberFormat.ByteUnit, String)] = [
+            (.auto, "1.0 MB"), (.bytes, "1,048,576 B"), (.kb, "1,049 KB"), (.mb, "1.0 MB"), (.gb, "0.0 GB"), (.tb, "0.0 TB"),
+            (.kib, "1,024 KiB"), (.mib, "1.0 MiB"), (.gib, "0.0 GiB"), (.tib, "0.0 TiB"),
+        ]
+        t.equal(Set(units.map(\.0)), Set(ProgramNumberFormat.ByteUnit.allCases))
+        for (unit, expected) in units {
+            t.equal(try scalar(.formatNumber(q(1048576, .bytes), ProgramNumberFormat(unit: unit)), input()).text?.text, expected)
+        }
+        t.equal(try scalar(.formatNumber(q(1024, .bytes, 1024), ProgramNumberFormat()), input()).text?.text, "1.0 KB")
+        let missing = try scalar(.formatNumber(missingBytes, ProgramNumberFormat(missing: "空😀")), input())
+        t.equal(missing.text, ProgramTextValue(text: "空😀"))
+        let huge = try scalar(.formatNumber(q(.greatestFiniteMagnitude, .bytes), ProgramNumberFormat(unit: .bytes)), input())
+        t.check((huge.text?.text.utf16.count ?? 0) >= 309 && !(huge.text?.text.contains("∞") ?? true))
+        for (value, format) in [(q(1, .duration), ProgramNumberFormat(decimals: 0)),
+                                (q(1, .percent), ProgramNumberFormat(unit: .auto)),
+                                (q(1, .bytes), ProgramNumberFormat(durationStyle: .full)),
+                                (ProgramExpression.number(1), ProgramNumberFormat(unitStyle: .some(.none)))] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid format", root: bindingText(.formatNumber(value, format)))) }
+        }
+        var unrepresentable = try ProgramRuntime(program: WidgetProgram(name: "Long duration", root: bindingText(.formatNumber(q(.greatestFiniteMagnitude, .duration), ProgramNumberFormat()))))
+        bindingFailure(t, .invalidExpression) { _ = try unrepresentable.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) }
+        t.equal(unrepresentable.generation, 0)
+    }
+
+    t.suite("Program: units: frozen UTF16 spans and unit assignments publish with one scene transaction") {
+        let text = ProgramExpression.concatenate([.string("😀7|"), .formatNumber(.declaration(0), ProgramNumberFormat()), .string("\r\n"),
+                                                .formatNumber(.declaration(1), ProgramNumberFormat(durationStyle: .clock))])
+        let declarations = [ProgramDeclaration(name: "bytes", kind: .variable, initial: q(1000, .bytes)),
+                            ProgramDeclaration(name: "duration", kind: .variable, initial: q(90, .duration)),
+                            ProgramDeclaration(name: "frozen", kind: .variable, initial: text)]
+        let assignments = [ProgramAssignment(declaration: 0, value: q(1024, .bytes, 1024)),
+                           ProgramAssignment(declaration: 1, value: .add(.declaration(1), q(1, .duration))),
+                           ProgramAssignment(declaration: 2, value: text)]
+        let root = ProgramElement(id: ElementID(name: "text", index: 0), content: .text(ProgramText(value: .declaration(2))), onClick: assignments)
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Transaction", root: root, declarations: declarations))
+        var measured: [TextStyle] = []
+        let first = try runtime.project(environment: bindingEnvironment(false), dateInput: input()) { _, style, _ in
+            measured.append(style); return SkinSize(width: 120, height: 40)
+        }
+        t.equal(bindingStrings(first), ["😀7|1.0 KB\r\n1:30"])
+        let ranges = [InlineSpan(location: 4, length: 3, setting: .typography(feature: "tnum", value: 1)),
+                      InlineSpan(location: 12, length: 1, setting: .typography(feature: "tnum", value: 1)),
+                      InlineSpan(location: 14, length: 2, setting: .typography(feature: "tnum", value: 1))]
+        t.equal(measured.first?.inlineSpans, ranges)
+        guard case .text(let draw)? = first.drawingItems.first else { throw BindingFixtureFailure.program }
+        t.equal(draw.style, measured.first)
+        t.throwsError { _ = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: first.generation,
+                                            environment: bindingEnvironment(false), dateInput: input()) { _, _, _ in throw BindingFixtureFailure.measurement } }
+        t.equal(runtime.generation, first.generation)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)), ["😀7|1.0 KB\r\n1:30"])
+        guard let changed = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: runtime.generation,
+                                              environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(changed), ["😀7|1.0 KB\r\n1:31"])
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(true), dateInput: input(60, "de_DE"), measure: bindingMeasure)), ["😀7|1.0 KB\r\n1:31"], "a String freezes locale and the numeric ranges")
+        bindingFailure(t, .invalidAssignment(0)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Wrong unit", root: root, declarations: declarations,
+                                                   onLoad: [ProgramAssignment(declaration: 0, value: q(1, .percent))])) }
+    }
+
+    t.suite("Program: units: date arithmetic keeps zones and live duration demand without freezing a timer") {
+        let now = input(0)
+        t.equal(try scalar(.subtract(.timeNow, .timeNow), now), .numeric(ProgramNumber(0, dimension: .duration)))
+        let zoned = ProgramExpression.dateIn(.timeNow, timeZone: "Asia/Tokyo")
+        let plus = try scalar(.add(zoned, q(90, .duration)), now)
+        t.equal(plus, .date(ProgramDateValue(instant: Date(timeIntervalSince1970: 90), timeZone: TimeZone(identifier: "Asia/Tokyo")!)))
+        t.equal(try scalar(.add(q(90, .duration), zoned), now), plus)
+        t.equal(try scalar(.subtract(zoned, q(90, .duration)), now), .date(ProgramDateValue(instant: Date(timeIntervalSince1970: -90), timeZone: TimeZone(identifier: "Asia/Tokyo")!)))
+        let declarations = [ProgramDeclaration(name: "started", kind: .variable, initial: .timeNow),
+                            ProgramDeclaration(name: "elapsed", kind: .computed, initial: .subtract(.timeNow, .declaration(0)))]
+        let caption = ProgramExpression.formatNumber(.declaration(1), ProgramNumberFormat(durationStyle: .clock))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Elapsed", root: bindingText(caption), declarations: declarations))
+        t.throwsError { _ = try runtime.project(environment: bindingEnvironment(false), dateInput: now) { _, _, _ in throw BindingFixtureFailure.measurement } }
+        t.check(runtime.clockPrecision == nil); t.equal(runtime.generation, 0)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(1), measure: bindingMeasure)), ["0:00"])
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(91), measure: bindingMeasure)), ["1:30"])
+        t.equal(runtime.clockPrecision, .second)
+        var frozen = try ProgramRuntime(program: WidgetProgram(name: "Frozen", root: bindingText(.formatNumber(.declaration(0), ProgramNumberFormat())),
+            declarations: [ProgramDeclaration(name: "duration", kind: .variable, initial: .subtract(.timeNow, .timeNow))]))
+        _ = try frozen.project(environment: bindingEnvironment(false), dateInput: now, measure: bindingMeasure)
+        _ = try frozen.project(environment: bindingEnvironment(false), dateInput: input(90), measure: bindingMeasure)
+        t.check(frozen.clockPrecision == nil)
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden", root: bindingText(caption, hidden: true), declarations: declarations))
+        _ = try hidden.project(environment: bindingEnvironment(false), dateInput: now, measure: bindingMeasure)
+        t.check(hidden.clockPrecision == nil)
+        var minute = try ProgramRuntime(program: WidgetProgram(name: "Minute", root: bindingText(.formatDate(.add(.timeNow, q(90, .duration)), .pattern("HH:mm")))))
+        t.equal(bindingStrings(try minute.project(environment: bindingEnvironment(false), dateInput: now, measure: bindingMeasure)), ["00:01"])
+        t.equal(minute.clockPrecision, .minute)
+        var overflow = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: bindingText(.formatDate(.add(.timeNow, q(.greatestFiniteMagnitude, .duration)), .preset(.time)))))
+        t.equal(bindingStrings(try overflow.project(environment: bindingEnvironment(false), dateInput: input(.greatestFiniteMagnitude), measure: bindingMeasure)), ["–"])
+    }
+}
+
+private func runDeskUnitTests(_ t: TestRunner) {
+    func input(_ seconds: Double = 0, _ locale: String = "en_US") -> ProgramDateInput {
+        ProgramDateInput(instant: Date(timeIntervalSince1970: seconds), timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: locale))
+    }
+    t.suite("Desk: units: original unit literals and settled canonical values produce shared scenes") {
+        let originals = [(#"widget { Text(1%) }"#, "1"), (#"widget { Text(1KB) }"#, "1.0 KB"),
+                         (#"widget { Text(2s / 1s) }"#, "2"), (#"widget { variable n = 1%; Text("{n}") }"#, "1"),
+                         (#"widget { Text(2KB / 1B) }"#, "2,000"), (#"widget { Text(100% / 50%) }"#, "2")]
+        for (source, expected) in originals {
+            var runtime = try ProgramRuntime(program: checkedBindingProgram(t, source))
+            t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)), [expected], source)
+        }
+        let cases = [(#"widget { computed b = 1KB + 1KiB; Text("{b, unit: .bytes}") }"#, "2,048 B"),
+                     (#"widget { variable b = 1KB; Text("{b + 1, unit: .bytes}") }"#, "1,001 B"),
+                     (#"widget { Text("{(1 + 2) + 1B, unit: .bytes}") }"#, "4.0 B"),
+                     (#"widget { Text("{50% * 2KB, unit: .bytes}|{120s * 25%, style: .clock}") }"#, "1,000 B|0:30"),
+                     (#"widget { Text("{1GB, unit: .bytes}|{1GiB, unit: .bytes}") }"#, "1,000,000,000 B|1,073,741,824 B"),
+                     (#"widget { Text("{150%}|{-90s, style: .clock}|{0s, style: .short}") }"#, "150|-1:30|0s")]
+        for (source, expected) in cases {
+            var runtime = try ProgramRuntime(program: checkedBindingProgram(t, source))
+            t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)), [expected], source)
+        }
+        let source = #"widget { variable b = 1KB; Text("{b, unit: .bytes}").onClick { b = 1KiB } }"#
+        let program = try checkedBindingProgram(t, source)
+        t.equal(program.declarations[0].initial, .quantity(ProgramNumber(1024, dimension: .bytes, displayBase: 1024)))
+        var runtime = try ProgramRuntime(program: program)
+        let initial = try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(initial), ["1,024 B"])
+        guard let next = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: initial.generation,
+                                          environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(next), ["1,024 B"])
+        let leftBare = #"widget { variable b = 1KB; Text("{1 + b, unit: .kb, decimals: 3}").onClick { b = 1KiB } }"#
+        runtime = try ProgramRuntime(program: checkedBindingProgram(t, leftBare))
+        let leftFirst = try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(leftFirst), ["1.001 KB"], "the bare left operand uses the settled 1024 base")
+        guard let leftNext = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: leftFirst.generation,
+                                              environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) else {
+            throw BindingFixtureFailure.program
+        }
+        t.equal(bindingStrings(leftNext), ["1.001 KB"])
+    }
+
+    t.suite("Desk: units: explicit constant and dynamic fraction receipts convert once without folding variables") {
+        // An ordinary Plain is not implicitly a 0...1 fraction. Write the shared Percent/Percent quotient.
+        let source = #"widget { variable p = 50%; computed n = p / 100%; Text("{50% / 100% == n}|{p / 100% == n}|{(p + 10%) / 100% > n}|{p * 2KB, unit: .bytes}").onClick { p = p + 25% } }"#
+        let program = try checkedBindingProgram(t, source)
+        t.equal(program.declarations[0].initial, .quantity(ProgramNumber(50, dimension: .percent)))
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(first), ["Yes|Yes|Yes|1,000 B"])
+        t.throwsError { _ = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: first.generation,
+                                            environment: bindingEnvironment(false), dateInput: input()) { _, _, _ in throw BindingFixtureFailure.measurement } }
+        t.equal(runtime.generation, first.generation)
+        guard let next = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: first.generation,
+                                          environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(next), ["No|Yes|Yes|1,500 B"])
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(true), dateInput: input(), measure: bindingMeasure)), ["No|Yes|Yes|1,500 B"])
+
+        // Qualify real use-site lowering without claiming support for the complete opacity facet/document.
+        // These are the checker's actual constant and dynamic Fraction parameter uses, never fabricated maps.
+        let fractions = deskCheck(#"widget { variable p = 50%; Text("A").opacity(p).onClick { p = p + 25% }; Text("A").opacity(50%); Text("A").opacity(p + 10%); Text("{p}") }"#)
+        t.check(fractions.diagnostics(.error).isEmpty, deskDescribe(fractions))
+        t.equal(Desk.compile(fractions).issues.first?.kind, .unsupported, "opacity remains a whole-program capability boundary")
+        guard let widgetNode = fractions.tree.rootNode.childNodes.first(where: { $0.kind == .widgetBlock }),
+              let widget = TopLevelBlockSyntax(widgetNode) else { throw BindingFixtureFailure.program }
+        let calls = widget.block.items.compactMap(CallStmtSyntax.init)
+        let uses = calls.flatMap(\.modifiers).filter { $0.name.token.name == "opacity" }
+            .compactMap { $0.arguments?.arguments.first?.value.node }
+        guard uses.count == 3, let last = calls.last?.arguments?.arguments.first?.value.node,
+              let click = calls.first?.modifiers.first(where: { $0.name.token.name == "onClick" }),
+              let statement = click.block?.items.first, let syntax = AssignmentSyntax(statement) else {
+            throw BindingFixtureFailure.program
+        }
+        let dynamicID = fractions.tree.id(of: uses[0]), constantID = fractions.tree.id(of: uses[1])
+        t.equal(fractions.types[dynamicID]?.type, .plainNumber)
+        t.equal(fractions.numericCoercions[dynamicID], .percentAsFraction)
+        t.equal(fractions.canonicalNumericValues[dynamicID], nil, "mutable reads are not folded from their initializer")
+        t.equal(fractions.canonicalNumericValues[constantID], 0.5)
+        t.equal(fractions.numericCoercions[constantID], .percentAsFraction)
+        var compiler = ProgramExpressionCompiler(checked: fractions, catalog: .current)
+        let declarations = try compiler.declarations(widget.block.items.compactMap(DeclarationSyntax.init))
+        let dynamic = try compiler.text(uses[0]), constant = try compiler.text(uses[1]),
+            compound = try compiler.text(uses[2]), percent = try compiler.text(last)
+        let assignment = try compiler.assignment(syntax)
+        let expression = ProgramExpression.concatenate([dynamic, .string("|"), constant, .string("|"), compound, .string("|"), percent])
+        let root = ProgramElement(id: ElementID(name: "checked fraction uses", index: 0),
+                                  content: .text(ProgramText(value: expression)), onClick: [assignment])
+        var qualified = try ProgramRuntime(program: WidgetProgram(name: "Expression qualification", root: root, declarations: declarations))
+        let qualifiedFirst = try qualified.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(qualifiedFirst), ["0.5|0.5|0.6|50"], "constant, dynamic and compound use conversions occur exactly once")
+        guard let qualifiedNext = try qualified.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: qualifiedFirst.generation,
+                                                     environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure) else {
+            throw BindingFixtureFailure.program
+        }
+        t.equal(bindingStrings(qualifiedNext), ["0.75|0.5|0.85|75"], "one shared assignment updates the real Percent declaration")
+        let notFraction = deskCheck(#"widget { variable p = 50%; computed n = p / 100%; Text("{p == n}") }"#)
+        t.check(!notFraction.diagnostics(.error).isEmpty, "ordinary Plain does not acquire a fraction range")
+        t.check(Desk.compile(notFraction).program == nil)
+        let date = #"widget { variable opened = time.now; Text("{time.now - opened, style: .clock}|{time.now + 90s, format: "HH:mm:ss"}") }"#
+        var clock = try ProgramRuntime(program: checkedBindingProgram(t, date))
+        t.equal(bindingStrings(try clock.project(environment: bindingEnvironment(false), dateInput: input(0), measure: bindingMeasure)), ["0:00|00:01:30"])
+        t.equal(bindingStrings(try clock.project(environment: bindingEnvironment(false), dateInput: input(90), measure: bindingMeasure)), ["1:30|00:03:00"])
+        t.equal(clock.clockPrecision, .second)
+    }
+
+    t.suite("Desk: units: formats honor catalog enums while unsupported dimensions and missing receipts reject fully") {
+        let source = #"widget { Text("{1KB, unit: .bytes, unitStyle: .none, decimals: 2}|{90s, style: .short}|{50%, decimals: 1}") }"#
+        var runtime = try ProgramRuntime(program: checkedBindingProgram(t, source))
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)), ["1,000.00|1m 30s|50.0"])
+        let missing = #"widget { variable b = 1KB; Text("{b, missing: "空😀"}|{b.isMissing}|{b.ifMissing(1KiB), unit: .bytes}").onLoad { b = 1KB / 0 } }"#
+        runtime = try ProgramRuntime(program: checkedBindingProgram(t, missing))
+        let shown = try runtime.project(environment: bindingEnvironment(false), dateInput: input(), measure: bindingMeasure)
+        t.equal(bindingStrings(shown), ["空😀|Yes|1,024 B"])
+        for source in [#"widget { Text("{1s, decimals: 1}") }"#, #"widget { Text(1KB / 1s) }"#, #"widget { Text(1°C) }"#,
+                       #"widget { Text("{time.now < time.now}") }"#, #"widget { Text(cpu.usage) }"#,
+                       #"widget { Text(true ? 1KB : 2KB).margin(1) }"#,
+                       #"widget { Text(true ? 1KB : round(2KB)) }"#] {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
+            t.equal(result.diagnostics, checked.diagnostics); t.check(result.imageSources.isEmpty)
+        }
+        let checked = deskCheck(#"widget { Text(1KB) }"#)
+        var damaged = checked
+        damaged.canonicalNumericValues.removeAll()
+        t.equal(Desk.compile(damaged).issues.first?.kind, .invalidCheckedModel)
+        var catalog = DeskCatalog.current
+        catalog.typeFormats[catalog.typeFormats.firstIndex { $0.type == .percent }!].decimals = 2
+        let custom = deskCheck(#"widget { Text(50%) }"#, context: CheckContext(catalog: catalog))
+        t.equal(Desk.compile(custom, catalog: catalog).issues.first?.kind, .unsupported)
     }
 }

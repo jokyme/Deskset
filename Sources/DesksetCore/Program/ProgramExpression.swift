@@ -2,10 +2,12 @@ import Foundation
 
 /// Executable scalar expressions of the shared program. These are values, not syntax nodes or host services.
 /// Dates and numeric formatting read immutable projection inputs; assignments use the shared action executor.
-/// Numbers here are dimensionless. A language producer must reject unsupported units before lowering.
+/// Numeric values use canonical units (percent points, bytes or seconds), never source-unit spellings.
 public indirect enum ProgramExpression: Equatable, Sendable {
     case string(String), boolean(Bool)
     case number(Double)
+    /// Additive unit entry; the original dimensionless .number(Double) remains unchanged.
+    case quantity(ProgramNumber)
     /// Declaration occurrence in WidgetProgram.declarations, in original source order.
     case declaration(Int)
     case appearanceDark
@@ -39,18 +41,55 @@ public struct ProgramDeclaration: Equatable, Sendable {
     }
 }
 
-enum ProgramScalarType: Equatable, Sendable { case string, boolean, date, number }
+public enum ProgramNumberDimension: Equatable, Sendable { case plain, percent, bytes, duration }
+
+/// The one numeric value of the shared evaluator. Display base is metadata, not a unit conversion or type.
+/// A Bytes value without a deciding base uses 1000. Other dimensions cannot carry a display base.
+public struct ProgramNumber: Equatable, Sendable {
+    public let value: Double
+    public let dimension: ProgramNumberDimension
+    public let displayBase: Int?
+
+    public init(_ value: Double, dimension: ProgramNumberDimension, displayBase: Int? = nil) {
+        self.value = value; self.dimension = dimension; self.displayBase = displayBase
+    }
+
+    func validate() throws {
+        guard value.isFinite, dimension == .bytes ? (displayBase == nil || displayBase == 1000 || displayBase == 1024) : displayBase == nil else {
+            throw ProgramRuntimeError.invalidExpression
+        }
+    }
+
+    var type: ProgramScalarType { .numeric(dimension, displayBase: displayBase) }
+}
+
+enum ProgramScalarType: Equatable, Sendable {
+    case string, boolean, date
+    case numeric(ProgramNumberDimension, displayBase: Int? = nil)
+    static var number: Self { .numeric(.plain) }
+    var dimension: ProgramNumberDimension? { if case .numeric(let d, _) = self { return d }; return nil }
+    var displayBase: Int? { if case .numeric(_, let b) = self { return b }; return nil }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case (.string, .string), (.boolean, .boolean), (.date, .date): return true
+        case (.numeric(let a, _), .numeric(let b, _)): return a == b
+        default: return false
+        }
+    }
+}
 
 enum ProgramScalar: Equatable, Sendable {
     case string(String), boolean(Bool), date(ProgramDateValue)
-    case number(Double), missing(ProgramScalarType), formattedString(ProgramTextValue)
+    case numeric(ProgramNumber), missing(ProgramScalarType), formattedString(ProgramTextValue)
+    static func number(_ value: Double) -> Self { .numeric(ProgramNumber(value, dimension: .plain)) }
 
     var type: ProgramScalarType {
         switch self {
         case .string, .formattedString: return .string
         case .boolean: return .boolean
         case .date: return .date
-        case .number: return .number
+        case .numeric(let value): return value.type
         case .missing(let type): return type
         }
     }
@@ -70,9 +109,44 @@ enum ProgramScalar: Equatable, Sendable {
         switch (lhs, rhs) {
         case (.boolean(let a), .boolean(let b)): return a == b
         case (.date(let a), .date(let b)): return a == b
-        case (.number(let a), .number(let b)): return a == b
+        case (.numeric(let a), .numeric(let b)): return a.dimension == b.dimension && a.value == b.value
         case (.missing(let a), .missing(let b)): return a == b
         default: return false
+        }
+    }
+}
+
+/// The same unit algebra validates a program and determines the type of arithmetic missing values.
+private enum ProgramArithmetic {
+    static func result(_ expression: ProgramExpression, _ a: ProgramScalarType, _ b: ProgramScalarType) throws -> ProgramScalarType {
+        func invalid() throws -> ProgramScalarType { throw ProgramRuntimeError.invalidExpression }
+        switch expression {
+        case .less, .lessOrEqual, .greater, .greaterOrEqual:
+            guard a.dimension != nil, a == b else { return try invalid() }
+            return .boolean
+        case .add, .subtract:
+            if a == .date && b == .numeric(.duration) { return .date }
+            if case .add = expression, a == .numeric(.duration) && b == .date { return .date }
+            if case .subtract = expression, a == .date && b == .date { return .numeric(.duration) }
+            fallthrough
+        case .remainder:
+            guard let dimension = a.dimension, a == b else { return try invalid() }
+            return .numeric(dimension, displayBase: a.displayBase ?? b.displayBase)
+        case .multiply:
+            guard let x = a.dimension, let y = b.dimension else { return try invalid() }
+            let dimension: ProgramNumberDimension
+            if x == .plain { dimension = y }
+            else if y == .plain { dimension = x }
+            else if x == .percent && y != .percent { dimension = y }
+            else if y == .percent && x != .percent { dimension = x }
+            else { return try invalid() }
+            return .numeric(dimension, displayBase: dimension == .bytes ? a.displayBase ?? b.displayBase : nil)
+        case .divide:
+            guard let x = a.dimension, let y = b.dimension else { return try invalid() }
+            if y == .plain { return .numeric(x, displayBase: a.displayBase) }
+            if x == y { return .number }
+            return try invalid()
+        default: return try invalid()
         }
     }
 }
@@ -126,6 +200,7 @@ struct ProgramExpressionValidation {
                 guard text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
             case .number(let value):
                 guard value.isFinite else { throw ProgramRuntimeError.invalidExpression }
+            case .quantity(let value): try value.validate()
             case .declaration(let index):
                 guard declarations.indices.contains(index) else { throw ProgramRuntimeError.invalidDeclaration(index) }
             case .not(let child), .negate(let child), .isMissing(let child): pending.append((child, depth + 1))
@@ -172,6 +247,7 @@ struct ProgramExpressionValidation {
         switch expression {
         case .string: result = Info(type: .string, height: 1)
         case .number: result = Info(type: .number, height: 1)
+        case .quantity(let number): result = Info(type: number.type, height: 1)
         case .boolean, .appearanceDark: result = Info(type: .boolean, height: 1)
         case .timeNow: result = Info(type: .date, height: 1)
         case .dateIn(let child, _), .formatDate(let child, _):
@@ -179,16 +255,20 @@ struct ProgramExpressionValidation {
             guard value.type == .date else { throw ProgramRuntimeError.invalidExpression }
             if case .dateIn = expression { result = Info(type: .date, height: value.height + 1) }
             else { result = Info(type: .string, height: value.height + 1) }
-        case .formatNumber(let child, _), .negate(let child):
+        case .formatNumber(let child, let format):
             let value = try expressionInfo(child, depth: depth + 1)
-            guard value.type == .number else { throw ProgramRuntimeError.invalidExpression }
-            if case .formatNumber = expression { result = Info(type: .string, height: value.height + 1) }
-            else { result = Info(type: .number, height: value.height + 1) }
+            guard let dimension = value.type.dimension else { throw ProgramRuntimeError.invalidExpression }
+            try format.validate(for: dimension)
+            result = Info(type: .string, height: value.height + 1)
+        case .negate(let child):
+            let value = try expressionInfo(child, depth: depth + 1)
+            guard value.type.dimension != nil else { throw ProgramRuntimeError.invalidExpression }
+            result = Info(type: value.type, height: value.height + 1)
         case .concatenate(let parts):
             var height = 1
             for part in parts {
                 let value = try expressionInfo(part, depth: depth + 1)
-                guard value.type == .string || value.type == .boolean || value.type == .number else { throw ProgramRuntimeError.invalidExpression }
+                guard value.type == .string || value.type == .boolean || value.type.dimension != nil else { throw ProgramRuntimeError.invalidExpression }
                 height = max(height, value.height + 1)
             }
             result = Info(type: .string, height: height)
@@ -207,11 +287,7 @@ struct ProgramExpressionValidation {
              .divide(let left, let right), .remainder(let left, let right), .less(let left, let right),
              .lessOrEqual(let left, let right), .greater(let left, let right), .greaterOrEqual(let left, let right):
             let a = try expressionInfo(left, depth: depth + 1), b = try expressionInfo(right, depth: depth + 1)
-            guard a.type == .number, b.type == .number else { throw ProgramRuntimeError.invalidExpression }
-            switch expression {
-            case .less, .lessOrEqual, .greater, .greaterOrEqual: result = Info(type: .boolean, height: max(a.height, b.height) + 1)
-            default: result = Info(type: .number, height: max(a.height, b.height) + 1)
-            }
+            result = Info(type: try ProgramArithmetic.result(expression, a.type, b.type), height: max(a.height, b.height) + 1)
         case .isMissing(let child):
             let value = try expressionInfo(child, depth: depth + 1)
             result = Info(type: .boolean, height: value.height + 1)
@@ -291,8 +367,7 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
             guard value.text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
         case .date(let date):
             guard date.instant.timeIntervalSince1970.isFinite else { throw ProgramRuntimeError.invalidDateInput }
-        case .number(let number):
-            guard number.isFinite else { throw ProgramRuntimeError.invalidExpression }
+        case .numeric(let number): try number.validate()
         case .boolean, .missing: break
         }
         variables[index] = value
@@ -306,12 +381,14 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
         case .string(let value): return Value(scalar: .string(value))
         case .boolean(let value): return Value(scalar: .boolean(value))
         case .number(let value): return Value(scalar: .number(value))
+        case .quantity(let value): return Value(scalar: .numeric(value))
         case .appearanceDark: return Value(scalar: .boolean(dark))
         case .timeNow:
             guard let dateInput, dateInput.instant.timeIntervalSince1970.isFinite else { throw ProgramRuntimeError.invalidDateInput }
             return Value(scalar: .date(ProgramDateValue(instant: dateInput.instant, timeZone: dateInput.timeZone)), currentDate: true)
         case .dateIn(let child, let identifier):
             let value = try evaluate(child, depth: depth + 1)
+            if value.scalar.isMissing && value.scalar.type == .date { return value }
             guard case .date(let date) = value.scalar, let zone = TimeZone(identifier: identifier) else {
                 throw ProgramRuntimeError.invalidExpression
             }
@@ -319,18 +396,21 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
                          precision: value.precision, currentDate: value.currentDate)
         case .formatDate(let child, let format):
             let value = try evaluate(child, depth: depth + 1)
-            guard case .date(let date) = value.scalar else { throw ProgramRuntimeError.invalidExpression }
             guard let dateInput else { throw ProgramRuntimeError.invalidDateInput }
-            let result = try format.string(from: date, locale: dateInput.locale)
+            let result: String
+            if case .date(let date) = value.scalar { result = try format.string(from: date, locale: dateInput.locale) }
+            else if value.scalar.isMissing && value.scalar.type == .date { result = "–" }
+            else { throw ProgramRuntimeError.invalidExpression }
             let precision = ProgramClockPrecision.combined(value.precision, value.currentDate ? try format.precision : nil)
             return Value(scalar: .string(result), precision: precision)
         case .formatNumber(let child, let format):
             let value = try evaluate(child, depth: depth + 1)
-            guard value.scalar.type == .number else { throw ProgramRuntimeError.invalidExpression }
-            let number: Double?
-            if case .number(let n) = value.scalar { number = n } else { number = nil }
-            let text = try format.string(from: number, locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
-            return Value(scalar: .formattedString(text), precision: value.precision)
+            guard let dimension = value.scalar.type.dimension else { throw ProgramRuntimeError.invalidExpression }
+            let number: ProgramNumber?
+            if case .numeric(let n) = value.scalar { number = n } else { number = nil }
+            let text = try format.string(from: number, dimension: dimension, locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
+            let precision = ProgramClockPrecision.combined(value.precision, value.currentDate ? .second : nil)
+            return Value(scalar: .formattedString(text), precision: precision)
         case .concatenate(let parts):
             var text = "", length = 0, ranges: [Range<Int>] = [], precision: ProgramClockPrecision?
             for part in parts {
@@ -342,8 +422,8 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
                 case .boolean(let boolean):
                     let chinese = dateInput?.locale.languageCode == "zh"
                     addition = ProgramTextValue(text: chinese ? (boolean ? "是" : "否") : (boolean ? "Yes" : "No"))
-                case .number(let number):
-                    addition = try ProgramNumberFormat().string(from: number, locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
+                case .numeric(let number):
+                    addition = try ProgramNumberFormat().string(from: number, dimension: number.dimension, locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
                 case .missing: addition = ProgramTextValue(text: "–")
                 case .date: throw ProgramRuntimeError.invalidExpression
                 }
@@ -352,6 +432,7 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
                 ranges += addition.numberRanges.map { ($0.lowerBound + length)..<($0.upperBound + length) }
                 length += count; text += addition.text
                 precision = .combined(precision, value.precision)
+                if value.currentDate { precision = .combined(precision, .second) }
             }
             return Value(scalar: .formattedString(ProgramTextValue(text: text, numberRanges: ranges)), precision: precision)
         case .declaration(let index):
@@ -371,9 +452,10 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
             return Value(scalar: .boolean(!boolean), precision: value.precision)
         case .negate(let child):
             let value = try evaluate(child, depth: depth + 1)
-            if value.scalar == .missing(.number) { return value }
-            guard case .number(let number) = value.scalar else { throw ProgramRuntimeError.invalidExpression }
-            return Value(scalar: .number(-number), precision: value.precision)
+            if value.scalar.isMissing && value.scalar.type.dimension != nil { return value }
+            guard case .numeric(let number) = value.scalar else { throw ProgramRuntimeError.invalidExpression }
+            return Value(scalar: .numeric(ProgramNumber(-number.value, dimension: number.dimension, displayBase: number.displayBase)),
+                         precision: value.precision, currentDate: value.currentDate)
         case .isMissing(let child):
             let value = try evaluate(child, depth: depth + 1)
             return Value(scalar: .boolean(value.scalar.isMissing), precision: value.precision)
@@ -398,27 +480,46 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
             return Value(scalar: result, precision: .combined(a.precision, b.precision))
         case .equal(let left, let right), .notEqual(let left, let right):
             let a = try evaluate(left, depth: depth + 1), b = try evaluate(right, depth: depth + 1)
+            let precision = ProgramClockPrecision.combined(.combined(a.precision, b.precision),
+                                                           a.currentDate || b.currentDate ? .second : nil)
             if a.scalar.isMissing || b.scalar.isMissing {
-                return Value(scalar: .missing(.boolean), precision: .combined(a.precision, b.precision))
+                return Value(scalar: .missing(.boolean), precision: precision)
             }
             let equal: Bool
             if case .date(let first) = a.scalar, case .date(let second) = b.scalar { equal = first.instant == second.instant }
             else { equal = a.scalar == b.scalar }
-            let precision = ProgramClockPrecision.combined(.combined(a.precision, b.precision),
-                                                           a.currentDate || b.currentDate ? .second : nil)
             if case .equal = expression { return Value(scalar: .boolean(equal), precision: precision) }
             return Value(scalar: .boolean(!equal), precision: precision)
         case .add(let left, let right), .subtract(let left, let right), .multiply(let left, let right),
              .divide(let left, let right), .remainder(let left, let right), .less(let left, let right),
              .lessOrEqual(let left, let right), .greater(let left, let right), .greaterOrEqual(let left, let right):
             let a = try evaluate(left, depth: depth + 1), b = try evaluate(right, depth: depth + 1)
-            let precision = ProgramClockPrecision.combined(a.precision, b.precision)
-            let comparison: Bool
-            switch expression { case .less, .lessOrEqual, .greater, .greaterOrEqual: comparison = true; default: comparison = false }
+            let type = try ProgramArithmetic.result(expression, a.scalar.type, b.scalar.type)
+            let live = a.currentDate || b.currentDate
+            let precision = ProgramClockPrecision.combined(.combined(a.precision, b.precision), type == .boolean && live ? .second : nil)
             if a.scalar.isMissing || b.scalar.isMissing {
-                return Value(scalar: .missing(comparison ? .boolean : .number), precision: precision)
+                return Value(scalar: .missing(type), precision: precision, currentDate: live)
             }
-            guard case .number(let first) = a.scalar, case .number(let second) = b.scalar else { throw ProgramRuntimeError.invalidExpression }
+            if type == .date {
+                let date: ProgramDateValue, delta: Double
+                if case .date(let value) = a.scalar, case .numeric(let n) = b.scalar {
+                    date = value
+                    if case .subtract = expression { delta = -n.value } else { delta = n.value }
+                } else if case .numeric(let n) = a.scalar, case .date(let value) = b.scalar {
+                    date = value; delta = n.value
+                } else { throw ProgramRuntimeError.invalidExpression }
+                let instant = date.instant.timeIntervalSince1970 + delta
+                let scalar: ProgramScalar = instant.isFinite
+                    ? .date(ProgramDateValue(instant: Date(timeIntervalSince1970: instant), timeZone: date.timeZone)) : .missing(.date)
+                return Value(scalar: scalar, precision: precision, currentDate: live)
+            }
+            if case .date(let first) = a.scalar, case .date(let second) = b.scalar {
+                let difference = first.instant.timeIntervalSince1970 - second.instant.timeIntervalSince1970
+                return Value(scalar: difference.isFinite ? .numeric(ProgramNumber(difference, dimension: .duration)) : .missing(type),
+                             precision: precision, currentDate: live)
+            }
+            guard case .numeric(let firstNumber) = a.scalar, case .numeric(let secondNumber) = b.scalar else { throw ProgramRuntimeError.invalidExpression }
+            let first = firstNumber.value, second = secondNumber.value
             let result: ProgramScalar
             switch expression {
             case .less: result = .boolean(first < second)
@@ -430,14 +531,21 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
                 switch expression {
                 case .add: number = first + second
                 case .subtract: number = first - second
-                case .multiply: number = first * second
+                case .multiply:
+                    // Percent × plain scales Percent; Percent × a unit quantity takes that percentage.
+                    if firstNumber.dimension == .percent && secondNumber.dimension != .plain {
+                        number = (first / 100) * second
+                    } else if secondNumber.dimension == .percent && firstNumber.dimension != .plain {
+                        number = first * (second / 100)
+                    } else { number = first * second }
                 case .divide: number = first / second
                 case .remainder: number = first.truncatingRemainder(dividingBy: second)
                 default: throw ProgramRuntimeError.invalidExpression
                 }
-                result = number.isFinite ? .number(number) : .missing(.number)
+                guard let dimension = type.dimension else { throw ProgramRuntimeError.invalidExpression }
+                result = number.isFinite ? .numeric(ProgramNumber(number, dimension: dimension, displayBase: type.displayBase)) : .missing(type)
             }
-            return Value(scalar: result, precision: precision)
+            return Value(scalar: result, precision: precision, currentDate: type == .boolean ? false : live)
         case .conditional(let condition, let yes, let no):
             let value = try evaluate(condition, depth: depth + 1)
             guard value.scalar.type == .boolean else { throw ProgramRuntimeError.invalidExpression }
