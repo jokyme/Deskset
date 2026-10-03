@@ -874,6 +874,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
     runContextScheduledPluginTests(t)
     runContextSynchronousPluginTests(t)
     runContextFilePluginTests(t)
+    runContextServicePluginTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -2016,6 +2017,193 @@ private func runContextFilePluginTests(_ t: TestRunner) {
             t.equal(node.type, alias.lowercased())
             if let folder = legacy as? FolderInfoMeasure { t.check(folder.parentResolver("Node") === node) }
             if let view = legacy as? FileViewMeasure { t.check(view.parentResolver("Node") === node) }
+        }
+    }
+}
+
+/// Uses the production jobs' existing scripted decoders and the owner's queued result delivery.
+private final class IndependentServicePluginContext: IndependentSectionContext {
+    let virtual: VirtualTimeExecutor
+    var answers: [BackgroundWorkKind: BackgroundFakeValue] = [:]
+    var jobs: [BackgroundWorkKind] = []
+    var actionValues: [[String: Double]] = []
+
+    init(directory: URL, system: SystemDataSource = ContextBuiltinSystem()) throws {
+        guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        let virtual = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_798_761_598), timeZone: utc)
+        self.virtual = virtual
+        try super.init(directory: directory, system: system, clock: { virtual.uptime },
+                       skinClock: virtual.clock, executor: virtual)
+    }
+    override func execute(_ actionText: String, from section: SkinSection?) {
+        actionValues.append(measures.mapValues(\.value))
+        super.execute(actionText, from: section)
+    }
+    override func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                                     orElse dropped: ((T) -> Void)?) {
+        assertOwned(#function)
+        precondition([BackgroundWorkKind.ping, .sensorList, .trash].contains(job.kind))
+        guard let decode = job.scripted, let answer = answers[job.kind] else {
+            preconditionFailure("A service construction fixture requires an explicit scripted answer")
+        }
+        jobs.append(job.kind)
+        let result = decode(answer)
+        executor.async { [weak self] in
+            guard let self else { dropped?(result); return }
+            self.assertOwned(#function)
+            completion(result)
+        }
+    }
+}
+
+private func runContextServicePluginTests(_ t: TestRunner) {
+    t.suite("Engine: context service plugins: Ping publishes before actions and cancels queued results") {
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-ping"))
+        context.answers[.ping] = .number(12.6)
+        let ping = try extendedNode(PingMeasure.self, "Ping", "ping", [
+            ("DestAddress", "fixture.invalid"), ("UpdateRate", "1"), ("TimeoutValue", "999"),
+            ("FinishAction", "[!Log complete]"),
+        ], in: context)
+        ping.readOptionsIfNeeded(); ping.performUpdate(); ping.performUpdate()
+        t.equal(ping.pingCount, 1, "an outstanding reply prevents duplicate work")
+        t.check(ping.isPinging)
+        t.equal(ping.value, 0)
+        t.equal(context.actions.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(ping.value, 13)
+        t.equal(context.actionValues.first?["ping"], 13)
+        t.check(!ping.isPinging)
+        context.answers[.ping] = .failure("timeout")
+        ping.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(ping.value, 999)
+        t.equal(context.actionValues.last?["ping"], 999)
+        t.equal(context.actions.count, 2)
+        context.answers[.ping] = .number(4)
+        ping.performUpdate(); ping.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(ping.value, 999)
+        t.equal(context.actions.count, 2)
+        ping.performUpdate()
+        t.equal(context.jobs.count, 3, "closing prevents subsequent network jobs")
+        let empty = try extendedNode(PingMeasure.self, "Empty", "ping", [], in: context)
+        empty.readOptionsIfNeeded(); empty.performUpdate(); empty.performUpdate()
+        t.equal(context.logs.filter { $0.contains("DestAddress is empty") }.count, 1)
+        t.equal(context.jobs.count, 3)
+        empty.skinWillClose()
+    }
+
+    t.suite("Engine: context service plugins: MacSensors uses independent values and queued List results") {
+        let system = ContextBuiltinSystem()
+        system.sensors[SensorKeys.cpu] = 40
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-macsensors"), system: system)
+        context.answers[.sensorList] = .lines(["1 sensors:", "cpu — fixture: 40 °C"])
+        let sensor = try extendedNode(MacSensorsMeasure.self, "Sensor", "macsensors", [
+            ("Sensor", "cpu"), ("Scale", "F"), ("MacOptional", "1"),
+        ], in: context)
+        sensor.readOptionsIfNeeded(); sensor.performUpdate()
+        t.equal(sensor.value, 104)
+        t.equal(sensor.stringValue, "104 °F")
+        t.check(!sensor.valueUnavailable)
+        system.sensors[SensorKeys.cpu] = nil
+        sensor.performUpdate()
+        t.equal(sensor.value, 0)
+        t.equal(sensor.stringValue, "")
+        t.check(sensor.valueUnavailable)
+        t.equal(context.logs.count, 0, "an optional missing reading remains silent")
+        system.sensors[SensorKeys.cpu] = 50
+        sensor.performUpdate()
+        t.equal(sensor.value, 122)
+        t.check(!sensor.valueUnavailable)
+        sensor.execute(command: "List")
+        t.equal(context.logs.count, 0)
+        context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 2)
+        t.check(context.logs.last?.contains("cpu — fixture: 40 °C") == true)
+        sensor.execute(command: "List"); sensor.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 2, "a late discovery result cannot log after close")
+        t.equal(context.jobs, [.sensorList, .sensorList])
+    }
+
+    t.suite("Engine: context service plugins: RecycleManager publishes scripted readings and permission recovery") {
+        let context = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-recycle"))
+        context.answers[.trash] = .text("7 4096")
+        let count = try extendedNode(RecycleManagerMeasure.self, "Count", "recyclemanager", [], in: context)
+        let size = try extendedNode(RecycleManagerMeasure.self, "Size", "recyclemanager", [("RecycleType", "Size")], in: context)
+        for node in [count, size] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(count.value, 0)
+        t.equal(size.value, 0)
+        t.check(!count.hasReading && !size.hasReading)
+        context.virtual.runUntilIdle()
+        t.equal(count.value, 7)
+        t.equal(size.value, 4096)
+        t.check(count.hasReading && size.hasReading)
+        context.answers[.trash] = .failure("7")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 4096, "later readings wait for the next ordinary update")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 0)
+        t.equal(context.issues.count, 1)
+        t.equal(context.logs.count, 1)
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(context.logs.count, 1)
+        context.answers[.trash] = .text("2 512")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 0, "a later permission recovery retains the same update cadence")
+        size.performUpdate(); context.virtual.runUntilIdle()
+        t.equal(size.value, 512)
+        t.check(context.issues.isEmpty)
+        count.performUpdate(); size.performUpdate()
+        count.skinWillClose(); size.skinWillClose(); context.virtual.runUntilIdle()
+        t.equal(count.value, 7)
+        t.equal(size.value, 512)
+    }
+
+    t.suite("Engine: context service plugins: pending service results do not retain their owner") {
+        for kind in ["ping", "sensor", "trash"] {
+            var context: IndependentServicePluginContext? = try IndependentServicePluginContext(directory: t.temporaryDirectory("context-service-release"))
+            guard let executor = context?.virtual else { throw SectionConstructionError.unexpectedKernel }
+            weak var releasedOwner = context
+            weak var releasedNode: Measure?
+            if let context {
+                let node: Measure
+                switch kind {
+                case "ping":
+                    context.answers[.ping] = .number(5)
+                    node = try extendedNode(PingMeasure.self, "Node", "ping", [("DestAddress", "fixture.invalid")], in: context)
+                case "sensor":
+                    context.answers[.sensorList] = .lines(["late"])
+                    node = try extendedNode(MacSensorsMeasure.self, "Node", "macsensors", [], in: context)
+                default:
+                    context.answers[.trash] = .text("2 512")
+                    node = try extendedNode(RecycleManagerMeasure.self, "Node", "recyclemanager", [], in: context)
+                }
+                releasedNode = node
+                node.readOptionsIfNeeded()
+                if kind == "sensor" { node.execute(command: "List") } else { node.performUpdate() }
+                t.equal(executor.pendingCount, 1)
+            }
+            context = nil
+            t.check(releasedOwner == nil)
+            t.check(releasedNode == nil)
+            executor.runUntilIdle()
+            t.equal(executor.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: context service plugins: exact registry aliases preserve legacy construction") {
+        let classes: [(Measure.Type, String)] = [(PingMeasure.self, "Ping"), (MacSensorsMeasure.self, "Sensor"),
+                                               (RecycleManagerMeasure.self, "Trash")]
+        for (selected, name) in classes {
+            let alias = "ContextService" + name
+            MeasureRegistry.registerMeasure(alias, selected)
+            let (skin, _) = try makeSkin(t, "[Rainmeter]\nUpdate=-1\n[Node]\nMeasure=\(alias)\n")
+            defer { skin.close() }
+            guard let node = skin.measure(named: "Node") else { throw SectionConstructionError.unexpectedKernel }
+            let legacy = selected.init(name: "Legacy", section: constructionSection("Legacy", []), skin: skin, type: alias.lowercased())
+            t.check(ObjectIdentifier(type(of: node)) == ObjectIdentifier(selected))
+            t.check(node.skin === skin && legacy.skin === skin)
+            t.equal(node.value, legacy.value)
+            t.equal(node.rawString, legacy.rawString)
+            t.equal(node.type, alias.lowercased())
         }
     }
 }

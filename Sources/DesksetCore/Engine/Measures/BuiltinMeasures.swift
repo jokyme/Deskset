@@ -906,6 +906,12 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return FolderInfoMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(FileViewMeasure.self):
         return FileViewMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(PingMeasure.self):
+        return PingMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MacSensorsMeasure.self):
+        return MacSensorsMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RecycleManagerMeasure.self):
+        return RecycleManagerMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }
