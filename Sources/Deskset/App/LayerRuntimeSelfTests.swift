@@ -31,6 +31,7 @@ enum LayerRuntimeSelfTests {
         preparationLifecycleTests(t)
         nativeFrameOwnerTests(t)
         nativeComponentTests(t)
+        automaticBackendTests(t)
     }
 
     private static func preparationTests(_ t: AppTestRunner) {
@@ -2056,6 +2057,126 @@ enum LayerRuntimeSelfTests {
                 t.equal(owner.currentFrame?.sequence, anchor.sequence)
                 t.check(!owner.nativePublicationHoldsWriter)
                 t.check(zip(owner.currentFrame?.contents ?? [], anchor.contents).allSatisfy { $0.0.image === $0.1.image })
+            }
+        }
+    }
+    /// Package-level owner protocol controls. Actual Main/physical-worker transfer is exercised by the App suites.
+    private static func automaticBackendTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: automatic backend: accepted Single causes stay typed through native A/B/A") {
+            guard let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "native renderer unavailable") }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                    maximumReadbackBytes: window.width * window.height * 4)
+                for cause in 0..<3 {
+                    let context = DrawContext(fonts: AppFontResolver()), owner = try runtime()
+                    func scene(_ variant: Int) -> WidgetScene {
+                        var result = fixture(variant, scale, false, gradient: false)
+                        result.elements[2].items = [fill(6, 7, 7, 5, variant == 0
+                            ? RGBA(r: 19, g: 107, b: 221, a: 171) : RGBA(r: 219, g: 51, b: 97, a: 171))]
+                        if cause == 0 { result.elements[1].items = [text()] }
+                        else if cause == 1 {
+                            result.elements[1].items = [.roundline(RoundlineDraw(
+                                shape: .line(x1: 3.25, y1: 4.5, x2: 9.75, y2: 8.25, width: 1),
+                                color: RGBA(r: 239, g: 173, b: 29, a: 187), antiAlias: true))]
+                        } else {
+                            for index in 0..<4_996 {
+                                result.elements.append(element(ElementID(name: "Count\(index)", index: 20 + index), []))
+                            }
+                        }
+                        return result
+                    }
+                    let expectedCause: LayerRuntime.Fallback = cause == 0
+                        ? .unresolvedInk(backID, .unresolvedRasterization)
+                        : cause == 1 ? .localizedAntialiasedLine(group: .group(fileIndex: backID.index))
+                        : .elementCountExceeded(actual: 5_001, limit: 5_000)
+                    let original = scene(0)
+                    let anchor = try submitted(owner.update(prepare(original, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none))
+                    t.equal(anchor.fallback, expectedCause)
+                    t.equal(anchor.plan, SinglePartition.plan(in: window))
+                    let stage = try owner.prepareNativeStage(maximumCallbackBitmapBytes: budget, cycle: 0,
+                        supportsFrames: true, partition: .single)
+                    t.equal(stage.partition, .single)
+                    t.equal(stage.plan, anchor.plan)
+                    t.equal(stage.sourceSequence, anchor.sequence)
+                    let tree = host(stage.root, scale)
+                    try owner.attachedNativeStage(stage)
+                    _ = try owner.displayNativeStage(stage, cycle: 0)
+                    try owner.beginNativePublication(stage)
+                    try owner.acknowledgeNativePublication(stage)
+                    try owner.enableNativeFrames(stage, cycle: 0)
+                    var pixels: [[UInt8]] = []
+                    for (cycle, variant) in [(0, 0), (1, 1), (2, 0)] {
+                        let current = scene(variant)
+                        if cycle > 0 {
+                            let frame = try owner.displayNativeFrame(stage,
+                                prepared: prepare(current, context, scale, space, .none), context: context,
+                                cycle: cycle, glass: .none)
+                            t.equal(frame.sequence, anchor.sequence + UInt64(cycle))
+                        }
+                        let actual = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+                        let expected = try renderer.render(cTree(baseline(current, context, cycle, scale, space, .none), scale),
+                            at: 0, deadline: .now() + .seconds(30)).rgba
+                        t.equal(actual, expected, "typed Single fallback and independent Single retain strict active bytes")
+                        checkFixture(actual, window, t)
+                        let report = stage.callbackReport.observation
+                        t.equal(report.callbacks, [cycle + 1])
+                        t.equal(report.failure, nil)
+                        t.equal(report.destinations[0]?.target?.userToDevice, CGAffineTransform(scaleX: CGFloat(scale), y: CGFloat(scale)))
+                        t.check(report.destinations[0]?.target?.colorSpace.map { CFEqual($0, space) } == true)
+                        t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                        t.equal(owner.currentFrame?.fallback, expectedCause, "C fallback provenance is preserved, never relabeled as components")
+                        t.check(zip(owner.currentFrame?.contents ?? [], anchor.contents).allSatisfy { $0.0.image === $0.1.image })
+                        pixels.append(actual)
+                    }
+                    t.check(pixels[0] != pixels[1], "B is an actual nonempty foreground color change")
+                    t.equal(pixels[0], pixels[2])
+                    do {
+                        _ = try owner.releaseNativeStage(stage)
+                        t.check(false, "a typed fallback is not permission to reclaim the C writer before Main rollback")
+                    } catch let failure as LayerRuntime.NativeStageFailure { t.equal(failure, .awaitingRollback) }
+                    t.check(try owner.releaseNativeStage(stage, rollbackAcknowledged: true))
+                    stage.root.removeFromSuperlayer() // Manual package boundary; the App suite exercises the actual Main ack.
+                    let next = try submitted(owner.update(prepare(original, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 3, glass: .none))
+                    t.equal(next.sequence, anchor.sequence + 1)
+                    t.equal(next.fallback, expectedCause)
+                    withExtendedLifetime(tree) {}
+                }
+                t.check(renderer.hasVerifiedCanary)
+            }
+        }
+        t.suite("Runtime: layer runtime: automatic backend: Single admission cannot bypass accepted plan or callback budget") {
+            let space = try rgb(CGColorSpace.sRGB), context = DrawContext(fonts: AppFontResolver())
+            let window = try rect(0, 0, width, height)
+            for unknown in [false, true] {
+                let owner = try runtime()
+                var scene = fixture(0, 1, false, gradient: false)
+                if unknown { scene.elements[1].items = [text()] }
+                let anchor = try submitted(owner.update(prepare(scene, context, 1, space, .none), in: window,
+                    scale: 1, colorSpace: space, partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                do {
+                    _ = try owner.prepareNativeStage(maximumCallbackBitmapBytes: unknown ? 1 : budget,
+                        cycle: 0, supportsFrames: true, partition: .single)
+                    t.check(false, "a component plan or impossible Single backing budget is not qualified admission")
+                } catch let failure as LayerRuntime.NativeStageFailure { t.check(!unknown); t.equal(failure, .notReady) }
+                catch let failure as ELayerContent.Failure {
+                    t.check(unknown)
+                    if case .resourceLimit = failure {} else { t.check(false, "unexpected native failure: \(failure)") }
+                }
+                t.equal(owner.currentFrame?.sequence, anchor.sequence)
+                t.equal(owner.currentFrame?.fallback, anchor.fallback)
+                t.check(!owner.nativePublicationHoldsWriter)
+                t.check(zip(owner.currentFrame?.contents ?? [], anchor.contents).allSatisfy { $0.0.image === $0.1.image })
+                // The old one-shot Single comparison remains valid even for a component C source.
+                let legacy = try owner.prepareNativeStage(maximumCallbackBitmapBytes: budget, cycle: 0)
+                t.check(!legacy.supportsFrames)
+                t.equal(legacy.partition, .single)
+                t.check(try owner.releaseNativeStage(legacy))
             }
         }
     }

@@ -417,7 +417,12 @@ package final class LayerRuntime {
         let plan: PartitionPlan
         switch partition {
         case .single:
-            guard !supportsFrames || key.partition == .single else { throw NativeStageFailure.notReady }
+            if supportsFrames, key.partition != .single {
+                // A typed component guard may have committed a real Single C frame. Reuse that exact accepted plan;
+                // unknown ink is still unknown and the fallback cause remains on currentFrame.
+                guard frame.fallback != nil, case .single = try LayerContentBuilder.validateGeometry(frame.plan),
+                      frame.plan == SinglePartition.plan(in: key.window) else { throw NativeStageFailure.notReady }
+            }
             plan = SinglePartition.plan(in: key.window)
         case .acceptedComponents:
             guard key.partition == .candidateComponents, frame.fallback == nil,

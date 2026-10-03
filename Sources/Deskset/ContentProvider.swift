@@ -11,6 +11,9 @@ enum SkinLayerFrameBackend: Equatable {
     case nativeSingle(maximumCallbackBitmapBytes: Int)
     /// Experimental fixed accepted component plan; no generic ink-coverage or per-group dirty policy.
     case nativeComponents(maximumCallbackBitmapBytes: Int)
+    /// Internal layers intent. The owner resolves the loaded Update once; refresh keeps this intent and reselects.
+    /// Effective intervals below 100 ms use C; slower or one-shot skins use qualified E with their actual C plan.
+    case automatic(maximumCallbackBitmapBytes: Int)
 }
 
 enum SkinFrameContentMode: Equatable {
@@ -21,19 +24,22 @@ enum SkinFrameContentMode: Equatable {
     var requestsNativeFrames: Bool {
         if case .layers(_, _, .nativeSingle) = self { return true }
         if case .layers(_, _, .nativeComponents) = self { return true }
+        if case .layers(_, _, .automatic) = self { return true }
         return false
     }
     var nativeFrameBudget: Int? {
         switch self {
         case let .layers(.single, _, .nativeSingle(bytes)),
-             let .layers(.candidateComponents, _, .nativeComponents(bytes)): return bytes
+             let .layers(.candidateComponents, _, .nativeComponents(bytes)),
+             let .layers(_, _, .automatic(bytes)): return bytes
         default: return nil
         }
     }
     var nativeFramePartition: LayerRuntime.NativePartition? {
         switch self {
-        case .layers(.single, _, .nativeSingle): return .single
-        case .layers(.candidateComponents, _, .nativeComponents): return .acceptedComponents
+        case .layers(.single, _, .nativeSingle), .layers(.single, _, .automatic): return .single
+        case .layers(.candidateComponents, _, .nativeComponents),
+             .layers(.candidateComponents, _, .automatic): return .acceptedComponents
         default: return nil
         }
     }

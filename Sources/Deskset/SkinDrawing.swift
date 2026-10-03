@@ -333,6 +333,9 @@ final class SkinFrameProducer {
     let drawing = SkinBitmapDrawing()
     let provider: ContentProvider?
     let contentMode: SkinFrameContentMode
+    /// The first successful load's selection, not an observed frame rate or a transferable writer permission.
+    /// contentMode retains the automatic intent so a replacement runtime resolves its own loaded settings.
+    private(set) var loadedAutomaticBackend: SkinLayerFrameBackend?
     /// Requests only cross to main. Main parks the real executor before installing the finished owner root.
     var requestLayerInstallation: (() -> Void)?
     var requestScenePatch: ((SkinScenePatch) -> Void)?
@@ -448,6 +451,25 @@ final class SkinFrameProducer {
 
     deinit {
         turn.current?.remove(self)
+    }
+
+    /// Called on the owner after successful Skin.load, before its first update. SkinSettings already normalized
+    /// every negative Update to -1 and every nonnegative one to at least 16 ms. No later sample changes the backend.
+    func selectLoadedBackend(updateMilliseconds: Int) {
+        guard loadedAutomaticBackend == nil,
+              case let .layers(partition, _, .automatic(bytes)) = contentMode else { return }
+        precondition(skin()?.executor.isCurrent == true)
+        if updateMilliseconds >= 0 && updateMilliseconds < 100 { loadedAutomaticBackend = .c }
+        else if partition == .single { loadedAutomaticBackend = .nativeSingle(maximumCallbackBitmapBytes: bytes) }
+        else { loadedAutomaticBackend = .nativeComponents(maximumCallbackBitmapBytes: bytes) }
+    }
+
+    private var shouldRequestNativeFrames: Bool {
+        guard contentMode.requestsNativeFrames else { return false }
+        if case .layers(_, _, .automatic) = contentMode {
+            return loadedAutomaticBackend != nil && loadedAutomaticBackend != .c
+        }
+        return true
     }
 
     /// Starts drawing at the end of `executor`'s turns, with the other producers of its run loop (`SkinFrameTurn`).
@@ -763,7 +785,7 @@ final class SkinFrameProducer {
                 publishLayerHitMap?(scene.hitMap, generation, panelGeneration)
                 recordPresented(began: began, source: skin.config)
                 if wasReleased { requestLayerInstallation?() }
-                requestNativeFrames?()
+                if shouldRequestNativeFrames { requestNativeFrames?() }
             } else if !layerInstallRequested {
                 layerInstallRequested = true
                 requestLayerInstallation?()
@@ -791,7 +813,13 @@ final class SkinFrameProducer {
     /// Only the explicit native backend asks for an attachment. No default/C/Main shadow scene or E allocation.
     func automaticNativeFrameRequest() -> SkinNativeStageRequest? {
         guard contentMode.requestsNativeFrames else { return nil }
-        guard let budget = contentMode.nativeFrameBudget, let partition = contentMode.nativeFramePartition else {
+        let automatic: Bool
+        if case .layers(_, _, .automatic) = contentMode {
+            automatic = true
+            guard let loadedAutomaticBackend else { nativeFrameFailure = .notReady; return nil }
+            guard loadedAutomaticBackend != .c else { return nil }
+        } else { automatic = false }
+        guard let budget = contentMode.nativeFrameBudget, var partition = contentMode.nativeFramePartition else {
             nativeFrameFailure = .unsupportedMode
             return nil
         }
@@ -802,10 +830,20 @@ final class SkinFrameProducer {
         guard
               !isStopped, !explicitlyHidden, !needsFrame, !hasNativeStage, !hasLayerWriter,
               layerInstalled, let destination = layerDestination, let actualSpace else { return nil }
+        if automatic, layerRuntime?.currentFrame?.contents.isEmpty == true { return nil }
         if partition == .acceptedComponents {
-            guard let frame = layerRuntime?.currentFrame, frame.fallback == nil,
-                  let mode = try? LayerContentBuilder.validateGeometry(frame.plan), case .components = mode else {
-                // The actual C result, including typed Single fallback, remains visible without a shadow owner.
+            guard let frame = layerRuntime?.currentFrame,
+                  let mode = try? LayerContentBuilder.validateGeometry(frame.plan) else {
+                nativeFrameFailure = .notReady
+                return nil
+            }
+            switch mode {
+            case .components where frame.fallback == nil: break
+            case .single where automatic && frame.fallback != nil:
+                // Unknown ink stays the accepted typed Single C fallback, never an approved component plan.
+                partition = .single
+            default:
+                // Explicit components keep their original refusal; only automatic can follow a real Single fallback.
                 nativeFrameFailure = .notReady
                 return nil
             }
@@ -927,7 +965,7 @@ final class SkinFrameProducer {
             if isStopped, layerRuntime.state != .closed { try layerRuntime.beginClose() }
             else if needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
             writerReleased?()
-            if !isStopped, !needsFrame { requestNativeFrames?() }
+            if !isStopped, !needsFrame, shouldRequestNativeFrames { requestNativeFrames?() }
             if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
         } catch { layerFailure = .rendering(String(describing: error)) }
     }
@@ -1143,7 +1181,7 @@ final class SkinFrameProducer {
         guard pendingNativeStage === stage, stage.hasOwnerRelease else { return }
         pendingNativeStage = nil
         writerReleased?()
-        if !isStopped, !needsFrame { requestNativeFrames?() }
+        if !isStopped, !needsFrame, shouldRequestNativeFrames { requestNativeFrames?() }
     }
 
     /// Owner cleanup is queued only when main has finished displaying/fading the old frame. Its acknowledgment

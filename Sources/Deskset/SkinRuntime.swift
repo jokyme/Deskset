@@ -138,6 +138,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     /// Loads the skin and registers its fonts (`@Resources/Fonts`). On the executor.
     func load() throws -> LoadResult {
         try skin.load()
+        frames.selectLoadedBackend(updateMilliseconds: skin.settings.update)
         return LoadResult(registeredFonts: Fonts.registerFonts(for: skin), issues: skin.issues)
     }
 
