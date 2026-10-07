@@ -21,12 +21,16 @@ public struct BatteryStatus: Equatable, Sendable {
     public var isPluggedIn: Bool
     /// Minutes of battery life left; nil while unknown / calculating / on AC.
     public var minutesRemaining: Double?
+    /// Minutes until fully charged; nil while not charging or unknown / calculating. An explicit estimate may be zero.
+    public var minutesUntilFull: Double?
 
-    public init(percent: Double, isCharging: Bool, isPluggedIn: Bool, minutesRemaining: Double? = nil) {
+    public init(percent: Double, isCharging: Bool, isPluggedIn: Bool, minutesRemaining: Double? = nil,
+                minutesUntilFull: Double? = nil) {
         self.percent = percent
         self.isCharging = isCharging
         self.isPluggedIn = isPluggedIn
         self.minutesRemaining = minutesRemaining
+        self.minutesUntilFull = minutesUntilFull
     }
 }
 

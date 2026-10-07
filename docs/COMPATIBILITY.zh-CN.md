@@ -1220,7 +1220,9 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
     `processes`（`[{"name", "pid", "cpu": 占整台 Mac 的比例 0–100, "memory": 字节}]`：Process、UsageMonitor、AdvancedCPU、
     PerfMon）、`sysInfo`（`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`）、`cpuFrequency`（Hz）和 `graphicsAdapter`；帧里
     没写的沿用上一帧。给出 `system` 时这些读数一概不取自 Mac：没有任何帧给出的读数为 0、空或未知。
-  - `battery`：`{"level", "charging", "onAC", "timeRemaining"}`（分钟）；`null`：没有电池的 Mac。
+  - `battery`：`{"level", "charging", "onAC", "timeRemaining", "timeUntilFull"}`；两个时间字段的单位都是分钟。
+    `timeRemaining` 保留放电估计，可选的 `timeUntilFull` 提供充满估计。估计值省略或写成 `null` 表示未知；
+    `battery: null` 表示没有电池的 Mac。
   - `sensors`：按 MacSensors 键给出，如 `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}`；
     没写的传感器即这台 Mac 没有。
   - `nowPlaying`：`{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",

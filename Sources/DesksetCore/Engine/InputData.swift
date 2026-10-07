@@ -604,7 +604,8 @@ struct SkinInputDataReader {
         let charging = try bool(o["charging"], "\(key).charging") ?? false
         let onAC = try bool(o["onAC"], "\(key).onAC") ?? charging
         return BatteryStatus(percent: level, isCharging: charging, isPluggedIn: onAC,
-                             minutesRemaining: try number(o["timeRemaining"], "\(key).timeRemaining"))
+                             minutesRemaining: try number(o["timeRemaining"], "\(key).timeRemaining"),
+                             minutesUntilFull: try number(o["timeUntilFull"], "\(key).timeUntilFull"))
     }
 
     func sensors(_ v: JSONValue, _ key: String) throws -> ([String: SkinInputData.Sensor]?, Int?) {

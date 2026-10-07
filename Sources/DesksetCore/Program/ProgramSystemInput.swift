@@ -10,6 +10,8 @@ public enum ProgramSystemProperty: String, CaseIterable, Equatable, Sendable {
     case batteryLevel = "battery.level"
     case batteryCharging = "battery.charging"
     case batteryPluggedIn = "battery.pluggedIn"
+    case batteryPresent = "battery.present"
+    case batteryTimeRemaining = "battery.timeRemaining"
 }
 
 /// One projection's system data inputs. The host samples its injected system data source once; Core owns no live monitor.
@@ -22,10 +24,13 @@ public struct ProgramSystemInput: Equatable, Sendable {
     public let batteryLevel: Double? // 0...100
     public let batteryCharging: Bool?
     public let batteryPluggedIn: Bool?
+    public let batteryPresent: Bool?
+    public let batteryTimeRemaining: Double? // seconds until empty or full
 
     public init(cpuUsage: Double? = nil, cpuCoreCount: Int? = nil,
                 memoryUsed: Double? = nil, memoryTotal: Double? = nil, memoryFree: Double? = nil,
-                batteryLevel: Double? = nil, batteryCharging: Bool? = nil, batteryPluggedIn: Bool? = nil) {
+                batteryLevel: Double? = nil, batteryCharging: Bool? = nil, batteryPluggedIn: Bool? = nil,
+                batteryPresent: Bool? = nil, batteryTimeRemaining: Double? = nil) {
         self.cpuUsage = cpuUsage
         self.cpuCoreCount = cpuCoreCount
         self.memoryUsed = memoryUsed
@@ -34,6 +39,8 @@ public struct ProgramSystemInput: Equatable, Sendable {
         self.batteryLevel = batteryLevel
         self.batteryCharging = batteryCharging
         self.batteryPluggedIn = batteryPluggedIn
+        self.batteryPresent = batteryPresent
+        self.batteryTimeRemaining = batteryTimeRemaining
     }
 
     /// Pure snapshot from a SystemDataSource without retaining it. Samples only the requested properties.
@@ -79,11 +86,13 @@ public struct ProgramSystemInput: Equatable, Sendable {
             memUsed = nil; memTotal = nil; memFree = nil
         }
 
-        let batNeeded = needed.contains(.batteryLevel) || needed.contains(.batteryCharging) || needed.contains(.batteryPluggedIn)
+        let batNeeded = needed.contains(.batteryLevel) || needed.contains(.batteryCharging) || needed.contains(.batteryPluggedIn) ||
+                        needed.contains(.batteryPresent) || needed.contains(.batteryTimeRemaining)
         let batLevel: Double?
         let batCharging: Bool?
         let batPluggedIn: Bool?
-        if batNeeded, let bat = system.battery() {
+        let bat = batNeeded ? system.battery() : nil
+        if let bat {
             batLevel = (bat.percent.isFinite && bat.percent >= 0 && bat.percent <= 100) ? bat.percent : nil
             batCharging = bat.isCharging
             batPluggedIn = bat.isPluggedIn
@@ -99,7 +108,30 @@ public struct ProgramSystemInput: Equatable, Sendable {
             memoryFree: memFree,
             batteryLevel: batLevel,
             batteryCharging: batCharging,
-            batteryPluggedIn: batPluggedIn
+            batteryPluggedIn: batPluggedIn,
+            batteryPresent: needed.contains(.batteryPresent) ? bat != nil : nil,
+            batteryTimeRemaining: needed.contains(.batteryTimeRemaining) ? batteryDurationSeconds(from: bat) : nil
         )
+    }
+
+    /// Both sampling paths use the same provider policy. Charging estimates may explicitly be zero; the
+    /// existing discharge estimate uses strictly positive minutes and is unavailable on external power.
+    static func batteryDurationSeconds(from battery: BatteryStatus?) -> Double? {
+        guard let battery else { return nil }
+        let minutes: Double
+        if battery.isCharging {
+            guard let value = battery.minutesUntilFull, value.isFinite, value >= 0 else { return nil }
+            minutes = value
+        } else {
+            guard !battery.isPluggedIn, let value = battery.minutesRemaining, value.isFinite, value > 0 else { return nil }
+            minutes = value
+        }
+        return validBatteryDurationSeconds(minutes * 60)
+    }
+
+    /// Keep bad external input as typed missing before Duration formatting can perform an Int64 conversion.
+    static func validBatteryDurationSeconds(_ seconds: Double?) -> Double? {
+        guard let seconds, seconds.isFinite, seconds >= 0, seconds < Double(Int64.max) else { return nil }
+        return seconds
     }
 }

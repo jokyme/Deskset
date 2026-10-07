@@ -3,9 +3,12 @@ import Foundation
 /// An owner-scoped sampler and cache that enforces property cadences:
 /// - CPU: 1s (periodic 1s boundary)
 /// - Memory: 2s (periodic 2s boundary)
-/// - Battery level: 60s (eventAndPeriodic 60s boundary)
+/// - Battery level: eventAndPeriodic(60s), sampled at minute boundaries and after power events
+/// - Battery time remaining: periodic(60s), sampled at minute boundaries
 /// - Battery status (charging / pluggedIn): event-driven (sampled on demand, refreshed on power events)
-/// - Static properties (cpuCoreCount, memoryTotal): once (sampled on demand, never re-read)
+/// - Static properties (cpuCoreCount, memoryTotal, batteryPresent): once (sampled on demand, never re-read)
+/// Power notifications invalidate the dynamic battery snapshot for the next sample; they do not themselves
+/// trigger an immediate projection when time remaining is the only battery dependency.
 public struct ProgramSystemSampler: Sendable {
     private var lastCPUPeriod: Double?
     private var cachedCPU: Double?
@@ -21,6 +24,8 @@ public struct ProgramSystemSampler: Sendable {
     private var lastBatteryPeriod: Double?
     private var hasBattery = false
     private var cachedBatteryStatus: BatteryStatus?
+    private var hasBatteryPresent = false
+    private var cachedBatteryPresent = false
 
     private var lastInstant: TimeInterval?
 
@@ -121,11 +126,13 @@ public struct ProgramSystemSampler: Sendable {
         let memoryFree = needed.contains(.memoryFree) ? (cachedMemoryStatus.map { max($0.physicalTotal - $0.physicalUsed, 0) }) : nil
         let memoryTotal = needsMemoryTotal ? cachedMemoryTotal : nil
 
-        // 4. Battery (level: cadence 60s boundary + event; charging/pluggedIn: event-driven)
+        // 4. Battery (level / time remaining: 60s boundary; charging/pluggedIn: event-driven; present: once).
         let needsBatteryLevel = needed.contains(.batteryLevel)
+        let needsBatteryRemaining = needed.contains(.batteryTimeRemaining)
         let needsBatteryEvent = needed.contains(.batteryCharging) || needed.contains(.batteryPluggedIn)
+        let needsBatteryPresent = needed.contains(.batteryPresent) && !hasBatteryPresent
 
-        if needsBatteryLevel {
+        if needsBatteryLevel || needsBatteryRemaining {
             let p = Self.period(for: now, interval: 60.0)
             if let p, p == lastBatteryPeriod, hasBattery {
                 // use cachedBatteryStatus
@@ -134,10 +141,16 @@ public struct ProgramSystemSampler: Sendable {
                 cachedBatteryStatus = system.battery()
                 lastBatteryPeriod = p
             }
-        } else if needsBatteryEvent && !hasBattery {
+        } else if (needsBatteryEvent || needsBatteryPresent) && !hasBattery {
             hasBattery = true
             cachedBatteryStatus = system.battery()
             lastBatteryPeriod = Self.period(for: now, interval: 60.0)
+        }
+        if needsBatteryPresent {
+            // Reuse this turn's read or an existing observation, including an observed nil battery. This
+            // independent once value survives dynamic cache invalidation and is cleared only by reset.
+            hasBatteryPresent = true
+            cachedBatteryPresent = cachedBatteryStatus != nil
         }
 
         var batteryLevel: Double?
@@ -161,7 +174,9 @@ public struct ProgramSystemSampler: Sendable {
             memoryFree: memoryFree,
             batteryLevel: batteryLevel,
             batteryCharging: batteryCharging,
-            batteryPluggedIn: batteryPluggedIn
+            batteryPluggedIn: batteryPluggedIn,
+            batteryPresent: needed.contains(.batteryPresent) ? cachedBatteryPresent : nil,
+            batteryTimeRemaining: needsBatteryRemaining ? ProgramSystemInput.batteryDurationSeconds(from: cachedBatteryStatus) : nil
         )
     }
 
@@ -194,6 +209,8 @@ public struct ProgramSystemSampler: Sendable {
         lastBatteryPeriod = nil
         hasBattery = false
         cachedBatteryStatus = nil
+        hasBatteryPresent = false
+        cachedBatteryPresent = false
         lastInstant = nil
     }
 }

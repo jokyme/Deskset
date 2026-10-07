@@ -121,20 +121,24 @@ struct ProgramExpressionCompiler {
         guard let type = checked.types[checked.tree.id(of: node)]?.type else {
             throw issue(.invalidCheckedModel, node, "Missing checked copy argument type")
         }
-        if type == .bool { return .concatenate([try lower(node, depth: 1)]) }
-        guard type == .string || type == .date || numberDimension(type) != nil else {
+        guard type == .string || type == .bool || type == .date || numberDimension(type) != nil else {
             throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle display values")
         }
         return try text(node)
     }
 
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
+        try displayed(node, depth: 1)
+    }
+
+    private mutating func displayed(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
-        guard type == .string || type == .date || type.flatMap(numberDimension) != nil else {
-            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
+        guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil else {
+            throw issue(.unsupported, node, "Text requires String, Bool, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
         }
-        let value = try lower(node, depth: 1)
+        let value = try lower(node, depth: depth)
         if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
+        if type == .bool { return .concatenate([value]) }
         return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
     }
 
@@ -179,6 +183,15 @@ struct ProgramExpressionCompiler {
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
+        if checked.canonicalNumericValues[identity] != nil || coercion != nil {
+            let source = try unparenthesized(node)
+            let symbol = checked.symbols[checked.tree.id(of: source)]
+            if MemberExprSyntax(source) != nil,
+               symbol == .builtIn(.member(namespace: "battery", name: "present")) ||
+               symbol == .builtIn(.member(namespace: "battery", name: "timeRemaining")) {
+                throw issue(.invalidCheckedModel, node, "Live battery fields cannot have constant or numeric conversion receipts")
+            }
+        }
         if coercion != nil && type != .plainNumber {
             throw issue(.invalidCheckedModel, node, "A percent-as-fraction use must have final plain type")
         }
@@ -216,7 +229,7 @@ struct ProgramExpressionCompiler {
                     let expression = try lower(interpolation.value.node, depth: depth + 1)
                     let type = checked.types[checked.tree.id(of: interpolation.value.node)]?.type
                     if let type, numberDimension(type) != nil {
-                        parts.append(.formatNumber(expression, try numberFormat(at: interpolation.node, type: type, options: interpolation.formatOptions)))
+                        parts.append(.formatNumber(expression, try numberFormat(at: interpolation.value.node, type: type, options: interpolation.formatOptions)))
                     } else if type == .date {
                         guard interpolation.formatOptions.count <= 1 else {
                             throw issue(.unsupported, interpolation.node, "Only the Date format option is implemented")
@@ -393,6 +406,13 @@ struct ProgramExpressionCompiler {
             }
         }
         if let value = TernaryExprSyntax(node) {
+            if type == .string {
+                // The checker marks display-position conditionals String: each selected branch is displayed
+                // independently, including a direct data member's catalog default. Numeric conditionals stay numeric.
+                return .conditional(try lower(value.condition.node, depth: depth + 1),
+                                    then: try displayed(value.then.node, depth: depth + 1),
+                                    otherwise: try displayed(value.otherwise.node, depth: depth + 1))
+            }
             return .conditional(try lower(value.condition.node, depth: depth + 1),
                                 then: try lower(value.then.node, depth: depth + 1),
                                 otherwise: try lower(value.otherwise.node, depth: depth + 1))
@@ -433,6 +453,7 @@ struct ProgramExpressionCompiler {
         }
         var decimals: Int?, missing = "–", labels = Set<String>()
         var unit: ProgramNumberFormat.ByteUnit?, unitStyle: ProgramNumberFormat.UnitStyle?, durationStyle: ProgramNumberFormat.DurationStyle?
+        if dimension == .duration { durationStyle = try defaultDurationStyle(at: node) }
         for option in options {
             let label = option.label.name
             guard labels.insert(label).inserted else { throw issue(.unsupported, option.node, "Duplicate number format option") }
@@ -484,6 +505,33 @@ struct ProgramExpressionCompiler {
         return ProgramNumberFormat(decimals: decimals, missing: missing, unit: unit, unitStyle: unitStyle, durationStyle: durationStyle)
     }
 
+    private func unparenthesized(_ node: PositionedNode) throws -> PositionedNode {
+        var value = node, depth = 1
+        while let paren = ParenExprSyntax(value) {
+            guard depth < min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+                throw issue(.resourceLimit, node, "Shared program display-source depth exceeded")
+            }
+            value = paren.value.node
+            depth += 1
+        }
+        return value
+    }
+
+    private func defaultDurationStyle(at node: PositionedNode) throws -> ProgramNumberFormat.DurationStyle? {
+        let value = try unparenthesized(node)
+        // A display default belongs to a direct member, not to a scalar's initializer or its arithmetic history.
+        let identity = checked.tree.id(of: value)
+        guard MemberExprSyntax(value) != nil,
+              let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: value),
+              let member = catalog.member(path: property.rawValue), member.type == .duration else { return nil }
+        guard case .style(let spelling)? = member.defaultFormat, spelling.hasPrefix("."),
+              let style = ProgramNumberFormat.DurationStyle(rawValue: String(spelling.dropFirst())),
+              catalog.enumeration("DurationStyle")?.enumCase(named: style.rawValue) != nil else {
+            throw issue(.unsupported, value, "Unsupported catalog member Duration default format")
+        }
+        return style
+    }
+
     private func defaultDateFormat(at node: PositionedNode) throws -> ProgramDateFormat {
         guard let value = catalog.member(path: "time.now")?.defaultFormat ?? catalog.typeFormats.first(where: { $0.type == .date })?.style else {
             throw issue(.unsupported, node, "Missing catalog default Date format")
@@ -529,6 +577,11 @@ struct ProgramExpressionCompiler {
               validateSystemPropertyContract(property: property, member: member) else {
             throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
         }
+        if property == .batteryPresent || property == .batteryTimeRemaining {
+            guard checked.types[identity]?.type == member.type else {
+                throw issue(.invalidCheckedModel, node, "Checked battery field type does not match its catalog member")
+            }
+        }
         return property
     }
 
@@ -562,6 +615,14 @@ struct ProgramExpressionCompiler {
         case .batteryPluggedIn:
             return member.type == .bool && member.cadence == .event && !member.readsSynchronously &&
                 member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "ACLine"])
+        case .batteryPresent:
+            return member.type == .bool && member.range == .none && member.displayBase == nil && member.defaultFormat == nil &&
+                member.cadence == .once && member.readsSynchronously && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.lowering == CatalogData.nativeKernel("battery", field: "present")
+        case .batteryTimeRemaining:
+            return member.type == .duration && member.range == .none && member.displayBase == nil && member.defaultFormat == .style(".short") &&
+                member.cadence == .periodic(seconds: 60) && !member.readsSynchronously && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Lifetime"])
         }
     }
 

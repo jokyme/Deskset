@@ -802,9 +802,19 @@ final class SystemMonitor: SystemDataSource {
         let charging = d[kIOPSIsChargingKey] as? Bool ?? false
         let plugged = (d[kIOPSPowerSourceStateKey] as? String) == kIOPSACPowerValue
         let minutes = number(kIOPSTimeToEmptyKey)
+        let minutesUntilFull: Double?
+        if charging, let estimate = d[kIOPSTimeToFullChargeKey] as? NSNumber,
+           CFGetTypeID(estimate) != CFBooleanGetTypeID() {
+            let value = estimate.doubleValue
+            // IOPS reports minutes, with -1 for calculating; zero is a valid explicit estimate while charging.
+            minutesUntilFull = value.isFinite && value >= 0 ? value : nil
+        } else {
+            minutesUntilFull = nil
+        }
         let percent = maxCap > 0 ? min(max(current / maxCap * 100, 0), 100) : 0
         return BatteryStatus(percent: percent, isCharging: charging, isPluggedIn: plugged,
-                             minutesRemaining: !plugged && (minutes ?? -1) > 0 ? minutes : nil)
+                             minutesRemaining: !plugged && (minutes ?? -1) > 0 ? minutes : nil,
+                             minutesUntilFull: minutesUntilFull)
     }
 
     // MARK: Processes

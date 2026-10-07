@@ -301,7 +301,8 @@ struct ProgramExpressionValidation {
             case .cpuUsage, .memoryUsage, .batteryLevel: type = .numeric(.percent)
             case .cpuCoreCount: type = .numeric(.plain)
             case .memoryUsed, .memoryTotal, .memoryFree: type = .numeric(.bytes, displayBase: 1024)
-            case .batteryCharging, .batteryPluggedIn: type = .boolean
+            case .batteryCharging, .batteryPluggedIn, .batteryPresent: type = .boolean
+            case .batteryTimeRemaining: type = .numeric(.duration)
             }
             result = Info(type: type, height: 1)
         case .dateIn(let child, _), .formatDate(let child, _):
@@ -584,6 +585,13 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
                     return Value(scalar: .boolean(val), precision: nil)
                 }
                 return Value(scalar: .boolean(false), precision: nil)
+            case .batteryPresent:
+                return Value(scalar: .boolean(systemInput?.batteryPresent ?? false))
+            case .batteryTimeRemaining:
+                if let seconds = ProgramSystemInput.validBatteryDurationSeconds(systemInput?.batteryTimeRemaining) {
+                    return Value(scalar: .numeric(ProgramNumber(seconds, dimension: .duration)), precision: .minute)
+                }
+                return Value(scalar: .missing(.numeric(.duration)), precision: .minute)
             }
         case .dateIn(let child, let identifier):
             let value = try evaluate(child, depth: depth + 1)

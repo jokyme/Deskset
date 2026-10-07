@@ -12,6 +12,7 @@ enum DeskProgramDrawingSelfTests {
 
     static func run(_ t: AppTestRunner) {
         ownerTests(t)
+        batteryDataTests(t)
         t.suite("App: Desk program drawing: checked text uses point fonts and matches native drawing") {
             let source = #"widget { Text("Desk 中文 😀").font(20).color(.accent).padding(4) }"#
             let program = try compile(source, t)
@@ -1161,6 +1162,97 @@ enum DeskProgramDrawingSelfTests {
         }
     }
 
+    private static func batteryDataTests(_ t: AppTestRunner) {
+        t.suite("App: Desk battery data: presence is sampled once across power wake and visibility changes") {
+            let program = try compile(#"widget { Text(battery.present).font(20).color(.accent).size(160, 40).padding(4) }"#, t)
+            for present in [true, false] {
+                let input = try ownerInput(), time = try ownerClock(), system = DrawingSystemFixture()
+                system.batteryPresent = present
+                let view = NSView(), provider = BitmapProvider(view)
+                let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                                              input: input, clock: time.clock, system: system)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame(); time.advance(until: 0)
+                t.equal(host.state, .ready); t.equal(host.neededSystemProperties, [.batteryPresent])
+                t.equal(textValues(host), [present ? "Yes" : "No"])
+                t.equal(system.batteryCalls, 1); t.equal(host.clockPrecision, nil); t.equal(time.pendingCount, 0)
+                let original = try presentedBytes(provider), generation = host.scene?.generation
+                system.batteryPresent = !present
+                host.notifyPowerChange()
+                t.equal(host.scene?.generation, generation, "presence alone is not an event-driven projection")
+                host.wake(); host.frames.runLoopTurn(.beforeWaiting)
+                time.advance(until: 120)
+                t.equal(system.batteryCalls, 1, "once survives power invalidation, wake and clock boundaries")
+                t.equal(time.pendingCount, 0); t.equal(try presentedBytes(provider), original)
+                host.take(facts(input, ordered: false), input: input); host.notifyPowerChange()
+                time.advance(by: 60)
+                host.take(facts(input), input: input); host.drawFirstFrame(); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(system.batteryCalls, 1); t.equal(textValues(host), [present ? "Yes" : "No"])
+                host.close(); time.advance(by: 120); host.notifyPowerChange(); host.wake(); host.refresh()
+                t.equal(system.batteryCalls, 1); t.equal(time.pendingCount, 0)
+                t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 0)
+            }
+        }
+
+        t.suite("App: Desk battery data: duration-only waits for minute boundaries and pauses while hidden") {
+            let program = try compile(#"widget { Text("{battery.timeRemaining, style: .clock}").font(20).color(.accent).size(160, 40).padding(4) }"#, t)
+            let input = try ownerInput(), time = try ownerClock(), system = DrawingSystemFixture()
+            system.batteryPluggedIn = false; system.batteryMinutesRemaining = 90
+            let view = NSView(), provider = BitmapProvider(view)
+            let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                                          input: input, clock: time.clock, system: system)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame(); time.advance(until: 0)
+            t.equal(host.state, .ready); t.equal(textValues(host), ["1:30:00"])
+            t.equal(host.clockPrecision, .minute); t.equal(system.batteryCalls, 1)
+            t.equal(time.pendingCount, 1); t.close(time.nextDue ?? -1, 0.75)
+            let original = try presentedBytes(provider), generation = host.scene?.generation
+            system.batteryMinutesRemaining = 75
+            time.advance(until: 0.25); host.notifyPowerChange(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 1); t.equal(host.scene?.generation, generation)
+            t.equal(try presentedBytes(provider), original, "periodic-only power invalidation does not publish early")
+            time.advance(until: 0.749); t.equal(system.batteryCalls, 1)
+            time.advance(until: 0.75); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 2); t.equal(textValues(host), ["1:15:00"])
+            t.check(try presentedBytes(provider) != original, "the minute boundary replaces the native bitmap")
+            t.close(time.nextDue ?? -1, 60.75)
+            host.take(facts(input, ordered: false), input: input)
+            system.batteryMinutesRemaining = 120; host.notifyPowerChange()
+            time.advance(until: 180)
+            t.equal(system.batteryCalls, 2, "hidden minute boundaries do not sample")
+            host.take(facts(input), input: input); host.drawFirstFrame(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 3); t.equal(textValues(host), ["2:00:00"])
+            host.close(); time.advance(by: 120); host.notifyPowerChange(); host.wake(); host.refresh()
+            t.equal(system.batteryCalls, 3); t.equal(time.pendingCount, 0)
+        }
+
+        t.suite("App: Desk battery data: mixed fields share one reading and distinguish missing zero and recovery") {
+            let program = try compile(#"widget { Text("{battery.present}|{battery.charging}|{battery.pluggedIn}|{battery.timeRemaining, style: .clock}").font(20).size(520, 60).padding(8) }"#, t)
+            let input = try ownerInput(), time = try ownerClock(), system = DrawingSystemFixture()
+            system.batteryCharging = true; system.batteryMinutesUntilFull = 30
+            let view = NSView(), provider = BitmapProvider(view)
+            let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                                          input: input, clock: time.clock, system: system)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame(); time.advance(until: 0)
+            t.equal(host.state, .ready); t.equal(textValues(host), ["Yes|Yes|Yes|30:00"])
+            t.equal(system.batteryCalls, 1, "all four fields share the initial battery snapshot")
+            system.batteryMinutesUntilFull = nil; host.notifyPowerChange(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 2); t.equal(textValues(host), ["Yes|Yes|Yes|–"])
+            system.batteryMinutesUntilFull = 0; host.notifyPowerChange(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 3); t.equal(textValues(host), ["Yes|Yes|Yes|0:00"])
+            system.batteryPresent = false; host.notifyPowerChange(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 4)
+            t.equal(textValues(host), ["Yes|No|No|–"], "presence remains once while the dynamic reading becomes unavailable")
+            system.batteryPresent = true; system.batteryCharging = false; system.batteryPluggedIn = false
+            system.batteryMinutesRemaining = 75; host.notifyPowerChange(); host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.batteryCalls, 5); t.equal(textValues(host), ["Yes|No|No|1:15:00"])
+            t.equal(host.state, .ready); t.equal(host.clockPrecision, .minute)
+            host.close(); time.advance(by: 120); host.notifyPowerChange(); host.wake()
+            t.equal(system.batteryCalls, 5); t.equal(time.pendingCount, 0)
+        }
+    }
+
     private final class ReleaseProbe {
         let executor: SkinExecutor
         let result: Guarded<[(Bool, Bool)]>
@@ -1351,7 +1443,11 @@ enum DeskProgramDrawingSelfTests {
 private final class DrawingSystemFixture: SystemDataSource {
     var cpu: Double = 25.0
     var processorCount: Int = 4
+    var batteryPresent: Bool = true
     var batteryCharging: Bool = false
+    var batteryPluggedIn: Bool = true
+    var batteryMinutesRemaining: Double?
+    var batteryMinutesUntilFull: Double?
     var cpuCalls: Int = 0
     var memCalls: Int = 0
     var memoryTotal: Double = 16 * 1024 * 1024 * 1024
@@ -1364,7 +1460,12 @@ private final class DrawingSystemFixture: SystemDataSource {
     func diskSpace(path: String) -> (total: Double, free: Double)? { nil }
     func availableDiskSpace(path: String) -> Double? { nil }
     func uptime() -> TimeInterval { 3600 }
-    func battery() -> BatteryStatus? { batteryCalls += 1; return BatteryStatus(percent: 80, isCharging: batteryCharging, isPluggedIn: true) }
+    func battery() -> BatteryStatus? {
+        batteryCalls += 1
+        guard batteryPresent else { return nil }
+        return BatteryStatus(percent: 80, isCharging: batteryCharging, isPluggedIn: batteryPluggedIn,
+                             minutesRemaining: batteryMinutesRemaining, minutesUntilFull: batteryMinutesUntilFull)
+    }
     func isProcessRunning(_ name: String) -> Bool { false }
     func sysInfo(type: String, data: String) -> (number: Double, string: String?)? { nil }
     func bestNetworkInterface() -> String? { nil }

@@ -67,6 +67,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     runProgramNumericTests(t)
     runProgramFontSizeTests(t)
     runProgramSystemDataTests(t)
+    runDeskBatteryDurationTests(t)
     runProgramClickEffectTests(t)
     runDeskPointerTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
@@ -202,7 +203,7 @@ func runProgramBindingTests(_ t: TestRunner) {
         let cases = [#"widget { variable x = "A"; Text(x).onWake { x = "B" } }"#,
                      #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
-                     #"widget { Text(true) }"#, #"widget { Text(1°C) }"#,
+                     #"widget { Text(2W) }"#, #"widget { Text(1°C) }"#,
                      #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
                      #"widget { Text(system.name) }"#,
                      #"widget { variable x = true; Text("A").color(.dim, if: x) }"#]
@@ -1340,6 +1341,230 @@ private func runProgramFontSizeTests(_ t: TestRunner) {
         t.equal(hiddenScene.size, dark.size); t.equal(hidden.clockPrecision, nil)
         t.check(hiddenScene.drawingItems.isEmpty)
         t.equal(hiddenScene.elements[0].visibility, .hiddenKeepsSpace)
+    }
+}
+
+private func runDeskBatteryDurationTests(_ t: TestRunner) {
+    let environment = bindingEnvironment(false)
+    let seconds = 273_852.0
+    func date(_ locale: String = "en_US") -> ProgramDateInput {
+        ProgramDateInput(instant: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!,
+                         locale: Locale(identifier: locale))
+    }
+    func nativeDuration(short: Bool, locale: String) -> String {
+        let style = Duration.UnitsFormatStyle(allowedUnits: [.days, .hours, .minutes, .seconds],
+                                             width: short ? .narrow : .wide, maximumUnitCount: 2)
+            .locale(Locale(identifier: locale))
+        return style.format(Duration.seconds(seconds))
+    }
+
+    t.suite("Desk: battery duration: direct fields and transparent parentheses use checked member defaults") {
+        for value in ["battery.timeRemaining", "(battery.timeRemaining)", "(((battery.timeRemaining)))"] {
+            let program = try checkedBindingProgram(t, "widget { Text(\(value)) }")
+            guard case .text(let text) = program.root.content else { throw BindingFixtureFailure.program }
+            t.equal(text.value, .formatNumber(.systemProperty(.batteryTimeRemaining), ProgramNumberFormat(durationStyle: .short)))
+            var runtime = try ProgramRuntime(program: program)
+            t.equal(runtime.neededSystemProperties, [.batteryTimeRemaining])
+            let scene = try runtime.project(environment: environment, dateInput: date(),
+                systemInput: ProgramSystemInput(batteryTimeRemaining: seconds), measure: bindingMeasure)
+            t.equal(bindingStrings(scene), ["3d 4h"], value)
+            t.equal(runtime.clockPrecision, .minute)
+        }
+        let present = try checkedBindingProgram(t, "widget { Text(battery.present) }")
+        guard case .text(let text) = present.root.content else { throw BindingFixtureFailure.program }
+        t.equal(text.value, .concatenate([.systemProperty(.batteryPresent)]))
+        for (locale, yes, no) in [("en_US", "Yes", "No"), ("zh_CN", "是", "否")] {
+            var runtime = try ProgramRuntime(program: present)
+            t.equal(runtime.neededSystemProperties, [.batteryPresent])
+            let shown = try runtime.project(environment: environment, dateInput: date(locale),
+                systemInput: ProgramSystemInput(batteryPresent: true), measure: bindingMeasure)
+            t.equal(bindingStrings(shown), [yes])
+            let absent = try runtime.project(environment: environment, dateInput: date(locale),
+                systemInput: ProgramSystemInput(), measure: bindingMeasure)
+            t.equal(bindingStrings(absent), [no])
+            t.equal(runtime.clockPrecision, nil)
+            var literal = try ProgramRuntime(program: checkedBindingProgram(t, "widget { Text(true) }"))
+            t.equal(bindingStrings(try literal.project(environment: environment, dateInput: date(locale), measure: bindingMeasure)), [yes])
+        }
+    }
+
+    t.suite("Desk: battery duration: interpolation styles override defaults and locale missing recovery retains numeric ranges") {
+        let source = #"widget { Text("😀{battery.timeRemaining}|{(battery.timeRemaining), style: .full}|{battery.timeRemaining, style: .clock}|{battery.present}") }"#
+        let program = try checkedBindingProgram(t, source)
+        for (locale, yes, no) in [("en_US", "Yes", "No"), ("zh_CN", "是", "否")] {
+            var runtime = try ProgramRuntime(program: program)
+            let input = ProgramSystemInput(batteryPresent: true, batteryTimeRemaining: seconds)
+            let expected = "😀\(nativeDuration(short: true, locale: locale))|\(nativeDuration(short: false, locale: locale))|76:04:12|\(yes)"
+            let first = try runtime.project(environment: environment, dateInput: date(locale), systemInput: input, measure: bindingMeasure)
+            t.equal(bindingStrings(first), [expected], locale)
+            let missing = try runtime.project(environment: environment, dateInput: date(locale), systemInput: ProgramSystemInput(), measure: bindingMeasure)
+            t.equal(bindingStrings(missing), ["😀–|–|–|\(no)"])
+            t.equal(runtime.clockPrecision, .minute)
+            let recovered = try runtime.project(environment: environment, dateInput: date(locale), systemInput: input, measure: bindingMeasure)
+            t.equal(bindingStrings(recovered), [expected])
+            t.equal([first.generation, missing.generation, recovered.generation], [1, 2, 3])
+            if locale == "en_US", case .text(let draw)? = first.drawingItems.first {
+                t.equal(draw.style.inlineSpans, [2..<3, 5..<6, 8..<9, 16..<17, 24..<26, 27..<29, 30..<32].map {
+                    InlineSpan(location: $0.lowerBound, length: $0.count, setting: .typography(feature: "tnum", value: 1))
+                }, "units and emoji are excluded from equal-width numeric spans")
+            }
+        }
+        let explicitShort = try checkedBindingProgram(t, #"widget { Text("{battery.timeRemaining, style: .short, missing: "estimating"}") }"#)
+        var runtime = try ProgramRuntime(program: explicitShort)
+        t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: date(),
+            systemInput: ProgramSystemInput(batteryTimeRemaining: seconds), measure: bindingMeasure)), ["3d 4h"])
+        t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: date(), measure: bindingMeasure)), ["estimating"])
+    }
+
+    t.suite("Desk: battery duration: display conditionals format each branch while scalar aliases and arithmetic stay typed") {
+        let source = "widget { Text(battery.present ? battery.timeRemaining : 90s) }"
+        let program = try checkedBindingProgram(t, source)
+        guard case .text(let text) = program.root.content else { throw BindingFixtureFailure.program }
+        t.equal(text.value, .conditional(.systemProperty(.batteryPresent),
+            then: .formatNumber(.systemProperty(.batteryTimeRemaining), ProgramNumberFormat(durationStyle: .short)),
+            otherwise: .formatNumber(.quantity(ProgramNumber(90, dimension: .duration)), ProgramNumberFormat())))
+        var runtime = try ProgramRuntime(program: program)
+        t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: date(),
+            systemInput: ProgramSystemInput(batteryPresent: true, batteryTimeRemaining: seconds), measure: bindingMeasure)), ["3d 4h"])
+        t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: date(),
+            systemInput: ProgramSystemInput(batteryPresent: false, batteryTimeRemaining: seconds), measure: bindingMeasure)), ["1 minute, 30 seconds"])
+
+        for source in ["widget { computed remaining = battery.timeRemaining; Text(remaining) }",
+                       "widget { computed original = battery.timeRemaining; computed remaining = (original); Text(remaining) }",
+                       "widget { variable remaining = battery.timeRemaining; Text(remaining) }",
+                       "widget { Text(battery.timeRemaining + 0s) }",
+                       "widget { Text(battery.timeRemaining.ifMissing(90s)) }"] {
+            var scalar = try ProgramRuntime(program: checkedBindingProgram(t, source))
+            t.equal(bindingStrings(try scalar.project(environment: environment, dateInput: date(),
+                systemInput: ProgramSystemInput(batteryTimeRemaining: seconds), measure: bindingMeasure)), ["3 days, 4 hours"], source)
+        }
+        let selected = try checkedBindingProgram(t,
+            "widget { computed remaining = battery.present ? battery.timeRemaining : 90s; Text(remaining) }")
+        t.equal(selected.declarations[0].initial, .conditional(.systemProperty(.batteryPresent),
+            then: .systemProperty(.batteryTimeRemaining), otherwise: .quantity(ProgramNumber(90, dimension: .duration))))
+        var numeric = try ProgramRuntime(program: selected)
+        t.equal(bindingStrings(try numeric.project(environment: environment, dateInput: date(),
+            systemInput: ProgramSystemInput(batteryPresent: true, batteryTimeRemaining: seconds), measure: bindingMeasure)), ["3 days, 4 hours"])
+
+        for (value, yes, no) in [("battery.present ? true : \"absent\"", "Yes", "absent"),
+                                ("battery.present ? 7 : \"absent\"", "7", "absent"),
+                                ("battery.present ? (battery.timeRemaining) : (system.dark ? 90s : \"absent\")", "3d 4h", "absent")] {
+            var display = try ProgramRuntime(program: checkedBindingProgram(t, "widget { Text(\(value)) }"))
+            t.equal(bindingStrings(try display.project(environment: environment, dateInput: date(),
+                systemInput: ProgramSystemInput(batteryPresent: true, batteryTimeRemaining: seconds), measure: bindingMeasure)), [yes], value)
+            t.equal(bindingStrings(try display.project(environment: environment, dateInput: date(),
+                systemInput: ProgramSystemInput(batteryPresent: false), measure: bindingMeasure)), [no], value)
+        }
+        let stored = try checkedBindingProgram(t,
+            "widget { variable remaining = 90s; Text(remaining).onClick { remaining = battery.timeRemaining; copy(remaining) } }")
+        var assigned = try ProgramRuntime(program: stored)
+        let first = try assigned.project(environment: environment, dateInput: date(), measure: bindingMeasure)
+        let clicked = try assigned.clickWithEffects(at: SkinPoint(x: 1, y: 1), expectedGeneration: first.generation,
+            environment: environment, dateInput: date(), systemInput: ProgramSystemInput(batteryTimeRemaining: seconds), measure: bindingMeasure)
+        t.equal(clicked.map { bindingStrings($0.scene) }, ["3 days, 4 hours"])
+        t.equal(clicked?.effects, [.copy("3 days, 4 hours")])
+        t.equal(assigned.clockPrecision, nil, "a stored duration has no live data polling demand")
+    }
+
+    t.suite("Desk: battery duration: copy shares member formatting and localized Bool without post-click polling") {
+        let source = #"widget { Text("Tap").size(40, 30).onClick { copy(battery.present); copy((battery.timeRemaining)); copy("{battery.timeRemaining, style: .clock}"); copy(battery.present ? battery.timeRemaining : 90s) } }"#
+        let program = try checkedBindingProgram(t, source)
+        for (locale, yes) in [("en_US", "Yes"), ("zh_CN", "是")] {
+            var runtime = try ProgramRuntime(program: program)
+            t.equal(runtime.neededSystemProperties, [])
+            let first = try runtime.project(environment: environment, dateInput: date(locale), measure: bindingMeasure)
+            t.equal(runtime.neededSystemProperties(clickAt: SkinPoint(x: 1, y: 1)), [.batteryPresent, .batteryTimeRemaining])
+            let clicked = try runtime.clickWithEffects(at: SkinPoint(x: 1, y: 1), expectedGeneration: first.generation,
+                environment: environment, dateInput: date(locale),
+                systemInput: ProgramSystemInput(batteryPresent: true, batteryTimeRemaining: seconds), measure: bindingMeasure)
+            let short = nativeDuration(short: true, locale: locale)
+            t.equal(clicked?.effects, [.copy(yes), .copy(short), .copy("76:04:12"), .copy(short)])
+            t.equal(runtime.clockPrecision, nil)
+            t.equal(runtime.neededSystemProperties, [])
+        }
+    }
+
+    t.suite("Desk: battery duration: checked data identities catalog drift and unsupported dimensions reject the complete program") {
+        guard let namespace = DeskCatalog.current.namespaces.firstIndex(where: { $0.name == "battery" }) else {
+            throw BindingFixtureFailure.program
+        }
+        let changes: [(String, (inout MemberSpec) -> Void)] = [
+            ("type", { $0.type = .plainNumber }), ("range", { $0.range = .fixed(0...100) }),
+            ("base", { $0.displayBase = 1000 }), ("format", { $0.defaultFormat = .style(".clock") }),
+            ("cadence", { $0.cadence = .periodic(seconds: 1) }),
+            ("synchronous", { $0.readsSynchronously.toggle() }), ("permission", { $0.permission = "music" }),
+            ("settable", { $0.settable = true }), ("user-only", { $0.userInitiatedOnly = true }),
+            ("lowering", { $0.lowering = CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Percent"]) })
+        ]
+        for name in ["present", "timeRemaining"] {
+            let source = "widget { Text(battery.\(name)) }"
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            guard let member = DeskCatalog.current.namespaces[namespace].members.firstIndex(where: { $0.name == name }),
+                  let identity = checked.symbols.first(where: { $0.value == .builtIn(.member(namespace: "battery", name: name)) })?.key else {
+                throw BindingFixtureFailure.program
+            }
+            for (label, change) in changes {
+                var catalog = DeskCatalog.current
+                change(&catalog.namespaces[namespace].members[member])
+                let result = Desk.compile(checked, catalog: catalog)
+                t.check(result.program == nil && result.imageSources.isEmpty && result.elementRefs.isEmpty, "\(name): \(label)")
+                t.equal(result.issues.first?.kind, .unsupported, "\(name): \(label)")
+            }
+            var catalog = DeskCatalog.current
+            catalog.namespaces[namespace].permission = "music"
+            t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+            for damage in ["symbol", "data", "type"] {
+                var symbols = checked.symbols, types = checked.types
+                if damage == "symbol" { symbols.removeValue(forKey: identity) }
+                if damage == "type" { types[identity] = SemType(type: .plainNumber) }
+                var damaged = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols, types: types,
+                    elements: checked.elements, dataUses: damage == "data" ? [] : checked.dataUses,
+                    dependencies: checked.dependencies, reactions: checked.reactions, freeformOrders: checked.freeformOrders,
+                    stringTable: checked.stringTable, requirements: checked.requirements, root: checked.root)
+                damaged.canonicalNumericValues = checked.canonicalNumericValues
+                let result = Desk.compile(damaged)
+                t.check(result.program == nil && result.elementRefs.isEmpty, "\(name): \(damage)")
+                t.equal(result.issues.first?.kind, damage == "type" ? .invalidCheckedModel : .unsupported)
+            }
+        }
+        for source in ["widget { Text(battery.health) }", "widget { Text(2W) }"] {
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.equal(Desk.compile(checked).issues.first?.kind, .unsupported, source)
+        }
+        var catalog = DeskCatalog.current
+        guard let style = catalog.enums.firstIndex(where: { $0.id == "DurationStyle" }) else { throw BindingFixtureFailure.program }
+        catalog.enums[style].cases.removeAll { $0.name == "short" }
+        let checked = deskCheck("widget { Text(battery.timeRemaining) }")
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+        catalog = DeskCatalog.current
+        catalog.limits.maximumExpressionNesting = 2
+        let nested = deskCheck("widget { Text((((battery.timeRemaining)))) }")
+        t.equal(Desk.compile(nested, catalog: catalog).issues.first?.kind, .resourceLimit)
+
+        for name in ["present", "timeRemaining"] {
+            for value in ["battery.\(name)", "((battery.\(name)))"] {
+                let checked = deskCheck("widget { Text(\(value)) }")
+                let candidates = checked.types.keys.filter { identity in
+                    guard let node = checked.tree.resolve(identity) else { return false }
+                    return node.kind == .memberExpr || node.kind == .parenExpr
+                }
+                t.check(!candidates.isEmpty)
+                for identity in candidates {
+                    t.check(checked.canonicalNumericValues[identity] == nil && checked.numericCoercions[identity] == nil,
+                            "the real checker never marks a live field or its parentheses constant/coerced")
+                    for conversion in [false, true] {
+                        var damaged = checked
+                        if conversion { damaged.numericCoercions[identity] = .percentAsFraction }
+                        else { damaged.canonicalNumericValues[identity] = 90 }
+                        let result = Desk.compile(damaged)
+                        t.check(result.program == nil && result.elementRefs.isEmpty)
+                        t.equal(result.issues.first?.kind, .invalidCheckedModel)
+                    }
+                }
+            }
+        }
     }
 }
 

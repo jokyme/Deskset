@@ -1056,6 +1056,7 @@ enum DeskProgramPreviewSelfTests {
         runUnitPreviewTests(t)
         runNumericPreviewTests(t)
         runClockPreviewTests(t)
+        runBatteryDataPreviewTests(t)
         runClickPreviewTests(t)
         runClickActionPreviewTests(t)
         runPointerEventPreviewTests(t)
@@ -1064,6 +1065,111 @@ enum DeskProgramPreviewSelfTests {
         runProgressPreviewTests(t)
         runGaugePreviewTests(t)
         runPresetPreviewTests(t)
+    }
+
+    private static func runBatteryDataPreviewTests(_ t: AppTestRunner) {
+        let start = Date(timeIntervalSince1970: 1_790_586_059.25)
+        let utc = TimeZone(identifier: "UTC")!
+        let locale = Locale(identifier: "en_US")
+        t.suite("Desk: battery data preview: presence alone stays once across events wake and visibility") {
+            let source = #"widget { Text(battery.present).font(20).color(.accent).size(520, 60).padding(8) }"#
+            for present in [true, false] {
+                let executor = VirtualTimeExecutor(start: start, timeZone: utc), system = PreviewCountingSystem()
+                system.batteryPresent = present
+                let f = try fixture(t, source, clock: executor.clock, executor: executor, locale: { locale }, system: system)
+                let p = f.preview
+                t.check(settled(f)); p.setVisible(true)
+                t.equal(p.state, .ready); t.equal(system.batteryCalls, 1); t.equal(executor.pendingCount, 0)
+                try numericPixels(t, present ? "Yes" : "No", ranges: [], in: f)
+                let original = try bytes(paint(p.canvas)), generation = p.scene?.generation
+                system.batteryPresent = !present
+                NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+                t.equal(p.scene?.generation, generation, "presence is not an event-driven projection")
+                p.notifySystemWake(); executor.advance(until: 120)
+                t.equal(system.batteryCalls, 1, "power, wake and time do not repeat a once observation")
+                t.equal(executor.pendingCount, 0); t.equal(try bytes(paint(p.canvas)), original)
+                p.setVisible(false)
+                NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+                executor.advance(by: 60); p.setVisible(true)
+                t.equal(system.batteryCalls, 1); t.equal(executor.pendingCount, 0)
+                try numericPixels(t, present ? "Yes" : "No", ranges: [], in: f)
+                f.controller.window?.close(); executor.advance(by: 120)
+                p.notifyPowerChange(); p.notifySystemWake(); p.updateForTick()
+                t.equal(p.state, .closed); t.equal(system.batteryCalls, 1); t.equal(executor.pendingCount, 0)
+                t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 0)
+            }
+        }
+
+        t.suite("Desk: battery data preview: duration-only paints short format at minute boundaries") {
+            let source = #"widget { Text(battery.timeRemaining).font(20).color(.accent).size(520, 60).padding(8) }"#
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc), system = PreviewCountingSystem()
+            system.batteryCharging = false; system.batteryPluggedIn = false; system.batteryMinutesRemaining = 90
+            let f = try fixture(t, source, clock: executor.clock, executor: executor, locale: { locale }, system: system)
+            let p = f.preview
+            t.check(settled(f)); p.setVisible(true)
+            t.equal(p.state, .ready); t.equal(system.batteryCalls, 1)
+            t.equal(executor.pendingCount, 1); t.close(executor.nextDue ?? -1, 0.75)
+            let ranges = [NSRange(location: 0, length: 1), NSRange(location: 3, length: 2)]
+            try numericPixels(t, "1h 30m", ranges: ranges, in: f)
+            let original = try bytes(paint(p.canvas)), generation = p.scene?.generation
+            system.batteryMinutesRemaining = 75; executor.advance(until: 0.25)
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, 1); t.equal(p.scene?.generation, generation)
+            t.equal(try bytes(paint(p.canvas)), original, "periodic-only power invalidation does not repaint early")
+            executor.advance(until: 0.749); t.equal(system.batteryCalls, 1)
+            executor.advance(until: 0.75)
+            t.equal(system.batteryCalls, 2); t.close(executor.nextDue ?? -1, 60.75)
+            try numericPixels(t, "1h 15m", ranges: ranges, in: f)
+            t.check(try bytes(paint(p.canvas)) != original, "a fresh battery estimate changes actual preview pixels")
+            p.setVisible(false); t.equal(executor.pendingCount, 0)
+            system.batteryMinutesRemaining = 135
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            executor.advance(until: 180)
+            t.equal(system.batteryCalls, 2, "hidden previews do not poll the estimate")
+            p.setVisible(true)
+            t.equal(system.batteryCalls, 3); t.equal(executor.pendingCount, 1)
+            try numericPixels(t, "2h 15m", ranges: ranges, in: f)
+            f.controller.window?.close(); executor.advance(by: 120)
+            p.notifyPowerChange(); p.notifySystemWake(); p.updateForTick()
+            t.equal(p.state, .closed); t.equal(system.batteryCalls, 3); t.equal(executor.pendingCount, 0)
+        }
+
+        t.suite("Desk: battery data preview: mixed events repaint missing zero and recovered estimates") {
+            let source = #"widget { Text("{battery.present}|{battery.charging}|{battery.pluggedIn}|{battery.timeRemaining, style: .clock}").font(20).color(.accent).size(520, 60).padding(8) }"#
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc), system = PreviewCountingSystem()
+            system.batteryMinutesUntilFull = 30
+            let f = try fixture(t, source, clock: executor.clock, executor: executor, locale: { locale }, system: system)
+            let p = f.preview
+            t.check(settled(f)); p.setVisible(true)
+            t.equal(p.state, .ready); t.equal(system.batteryCalls, 1, "all four fields share the first observation")
+            try numericPixels(t, "Yes|Yes|Yes|30:00", ranges: [NSRange(location: 12, length: 2), NSRange(location: 15, length: 2)], in: f)
+            let original = try bytes(paint(p.canvas))
+            system.batteryMinutesUntilFull = nil
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, 2)
+            try numericPixels(t, "Yes|Yes|Yes|–", ranges: [], in: f)
+            let missing = try bytes(paint(p.canvas))
+            t.check(missing != original, "missing input replaces the prior visible estimate")
+            system.batteryMinutesUntilFull = 0
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, 3)
+            try numericPixels(t, "Yes|Yes|Yes|0:00", ranges: [NSRange(location: 12, length: 1), NSRange(location: 14, length: 2)], in: f)
+            t.check(try bytes(paint(p.canvas)) != missing, "explicit zero charge time is visible rather than missing")
+            system.batteryPresent = false
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, 4)
+            try numericPixels(t, "Yes|No|No|–", ranges: [], in: f)
+            system.batteryPresent = true; system.batteryCharging = false; system.batteryPluggedIn = false
+            system.batteryMinutesRemaining = 75
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, 5)
+            try numericPixels(t, "Yes|No|No|1:15:00", ranges: [NSRange(location: 10, length: 1), NSRange(location: 12, length: 2), NSRange(location: 15, length: 2)], in: f)
+            t.equal(p.state, .ready); t.equal(executor.pendingCount, 1)
+            f.controller.window?.close(); executor.advance(by: 120)
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            p.notifySystemWake(); p.updateForTick()
+            t.equal(p.state, .closed); t.equal(system.batteryCalls, 5); t.equal(executor.pendingCount, 0)
+        }
     }
 
     private static func runGaugePreviewTests(_ t: AppTestRunner) {
@@ -3286,7 +3392,11 @@ enum DeskProgramPreviewSelfTests {
         var memCalls: Int = 0
         var batteryCalls: Int = 0
         var procCalls: Int = 0
+        var batteryPresent: Bool = true
         var batteryCharging: Bool = true
+        var batteryPluggedIn: Bool = true
+        var batteryMinutesRemaining: Double?
+        var batteryMinutesUntilFull: Double?
         var processorCount: Int { procCalls += 1; return 8 }
 
         func cpuUsage(processor: Int) -> Double { cpuCalls += 1; return cpu }
@@ -3301,7 +3411,9 @@ enum DeskProgramPreviewSelfTests {
         func uptime() -> TimeInterval { 120 }
         func battery() -> BatteryStatus? {
             batteryCalls += 1
-            return BatteryStatus(percent: 90, isCharging: batteryCharging, isPluggedIn: true)
+            guard batteryPresent else { return nil }
+            return BatteryStatus(percent: 90, isCharging: batteryCharging, isPluggedIn: batteryPluggedIn,
+                                 minutesRemaining: batteryMinutesRemaining, minutesUntilFull: batteryMinutesUntilFull)
         }
         func isProcessRunning(_ name: String) -> Bool { false }
         func sysInfo(type: String, data: String) -> (number: Double, string: String?)? { nil }

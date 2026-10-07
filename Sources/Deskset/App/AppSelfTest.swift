@@ -687,12 +687,48 @@ enum AppSelfTest {
             t.equal(charging, BatteryStatus(percent: 50, isCharging: true, isPluggedIn: true, minutesRemaining: nil))
             let draining = SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 3000, kIOPSMaxCapacityKey: 4000,
                                                         kIOPSPowerSourceStateKey: kIOPSBatteryPowerValue,
-                                                        kIOPSTimeToEmptyKey: 125])
+                                                        kIOPSTimeToEmptyKey: 125, kIOPSTimeToFullChargeKey: 45])
             t.equal(draining, BatteryStatus(percent: 75, isCharging: false, isPluggedIn: false, minutesRemaining: 125))
             let calculating = SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 10, kIOPSTimeToEmptyKey: -1])
             t.equal(calculating.minutesRemaining, nil)
             t.close(calculating.percent, 10)
             t.close(SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 500, kIOPSMaxCapacityKey: 0]).percent, 0)
+
+            let oldInitializer = BatteryStatus(percent: 50, isCharging: false, isPluggedIn: false, minutesRemaining: 90)
+            t.equal(oldInitializer.minutesRemaining, 90, "the existing initializer keeps discharge minutes")
+            t.equal(oldInitializer.minutesUntilFull, nil, "the additive charge estimate defaults to nil")
+            t.equal(charging.minutesUntilFull, nil, "charging without an estimate stays unknown")
+
+            var chargeDescription: [String: Any] = [kIOPSCurrentCapacityKey: 50, kIOPSMaxCapacityKey: 100,
+                                                    kIOPSIsChargingKey: true,
+                                                    kIOPSPowerSourceStateKey: kIOPSACPowerValue,
+                                                    kIOPSTimeToEmptyKey: 30,
+                                                    kIOPSTimeToFullChargeKey: 45]
+            t.equal(SystemMonitor.batteryStatus(chargeDescription),
+                    BatteryStatus(percent: 50, isCharging: true, isPluggedIn: true, minutesUntilFull: 45),
+                    "one source dictionary supplies charge minutes without changing discharge semantics")
+            chargeDescription[kIOPSTimeToFullChargeKey] = 0
+            t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, 0,
+                    "an explicit zero estimate is valid while charging")
+            let invalidEstimates: [Any] = [-1, -20, Double.nan, Double.infinity, -Double.infinity, "45", true, NSNull()]
+            for invalid in invalidEstimates {
+                chargeDescription[kIOPSTimeToFullChargeKey] = invalid
+                t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil,
+                        "calculating, negative, nonfinite or non-number estimate is missing: \(invalid)")
+            }
+            chargeDescription[kIOPSTimeToFullChargeKey] = nil
+            t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil, "a missing key stays unknown")
+
+            chargeDescription[kIOPSCurrentCapacityKey] = 100
+            chargeDescription[kIOPSIsChargingKey] = false
+            let full = SystemMonitor.batteryStatus(chargeDescription)
+            t.equal(full, BatteryStatus(percent: 100, isCharging: false, isPluggedIn: true),
+                    "full capacity does not invent a zero charge estimate")
+            for estimate in [0, 45] {
+                chargeDescription[kIOPSTimeToFullChargeKey] = estimate
+                t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil,
+                        "a charge estimate is ignored when the battery is not charging")
+            }
         }
 
         t.suite("App: SysInfo timestamps and names") {
