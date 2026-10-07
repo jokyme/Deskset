@@ -26,6 +26,7 @@ final class DeskCodeDocumentChecking {
         checkQueue = queue
         var options = DeskServiceOptions()
         options.fonts = DeskFontCatalog()
+        options.symbols = DeskSymbolCatalog()
         options.messageLanguage = Self.language
         service = DeskLanguageService(openFile: fileID, files: [fileID: editor.text], options: options,
                                       version: editor.textRevision)

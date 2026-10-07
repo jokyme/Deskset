@@ -36,6 +36,7 @@ public indirect enum DrawItem: Equatable, Sendable {
     case bevel(SkinRect, BevelDraw)
     case text(TextDraw)
     case image(ImageDraw)
+    case icon(IconDraw)
     case shape(ShapeDraw)
     case bar(BarDraw)
     case graph(GraphDraw)

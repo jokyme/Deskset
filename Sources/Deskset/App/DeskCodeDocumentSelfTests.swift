@@ -63,6 +63,24 @@ enum DeskCodeDocumentSelfTests {
     }
 
     private static func checkingTests(_ t: AppTestRunner) {
+        t.suite("Desk: document checking: unknown native symbols warn and an actual edit removes the warning") {
+            let missing = "deskset.nonexistent.symbol.87fc2"
+            let text = "info { name: \"Symbols\" }\nwidget { Icon(\"\(missing)\") }\n"
+            let f = try fixture(t, data: Data(text.utf8))
+            guard let checking = f.controller.deskChecking else { return t.check(false, "missing document checker") }
+            let warnings = checking.snapshot.diagnostics.filter { $0.id == .unknownSymbol }
+            t.equal(warnings.count, 1)
+            t.equal(warnings.first?.severity, .warning)
+            t.check(!checking.snapshot.checked.diagnostics.contains { $0.severity == .error })
+            let previous = checking.snapshot
+            type("wifi", replacing: (f.editor.text as NSString).range(of: missing), in: f.editor)
+            t.check(settled(f), "native availability is checked after the source edit")
+            t.check(!checking.snapshot.diagnostics.contains { $0.id == .unknownSymbol })
+            t.check(!checking.publish(previous), "old platform warnings cannot republish after an edit")
+            t.equal(try Data(contentsOf: f.file), Data(text.utf8), "platform checks do not save the document")
+            t.equal(f.app.sortedControllers.count, 0, "checking a symbol does not activate a desktop widget")
+        }
+
         t.suite("Desk: document checking: actual text edits, UTF16 ranges, platform fonts and window messages") {
             let oldLanguage = StudioText.languageOverride
             StudioText.languageOverride = .english

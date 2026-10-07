@@ -1364,6 +1364,165 @@ enum DeskWidgetWindowSelfTests {
     }
 
     private static func accessibilityTests(_ t: AppTestRunner) {
+        t.suite("App: Desk icon accessibility: explicit labels work for static missing hidden and actionable symbols") {
+            let worker = SkinThreadExecutor(name: "Desk icon accessibility worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let source = """
+            widget { variable count = 0; Column {
+                Icon("wifi").size(40).voiceOver("Wireless").name(wifi)
+                Icon("deskset.nonexistent.symbol.87fc2").size(40).voiceOver("Missing symbol").name(missing)
+                Icon("wifi").size(40).voiceOver("Hidden").hidden()
+                Icon("wifi").size(40)
+                Icon(count == 0 ? "bolt.fill" : "powerplug.fill").size(40).voiceOver("Charge {count}").name(charge)
+                    .onClick { count = count + 1; copy("charge {count}") }
+            } }
+            """
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: worker, text: source)
+            created = widget
+            t.equal(widget.view.accessibilityParts.count, 3, "hidden and undescribed icons are omitted")
+            guard let staticIcon = widget.view.accessibilityParts.first(where: { $0.id.name == "wifi" }),
+                  let missing = widget.view.accessibilityParts.first(where: { $0.id.name == "missing" }),
+                  let action = widget.view.accessibilityParts.first(where: { $0.id.name == "charge" }),
+                  let presented = widget.latestPresented else { throw Failure.fixture }
+            t.equal(staticIcon.accessibilityRole(), .image)
+            t.equal(staticIcon.accessibilityLabel(), "Wireless")
+            t.equal(missing.accessibilityRole(), .image)
+            t.equal(missing.accessibilityLabel(), "Missing symbol", "the explicit description survives unavailable native pixels")
+            t.check(!staticIcon.accessibilityPerformPress() && !missing.accessibilityPerformPress())
+            t.equal(action.accessibilityRole(), .button)
+            t.equal(action.accessibilityLabel(), "Charge 0")
+            for child in [staticIcon, missing, action] {
+                guard let element = presented.scene.elements.first(where: { $0.id == child.id }) else { throw Failure.fixture }
+                let local = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                                   width: element.frame.width, height: element.frame.height)
+                t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: local))
+            }
+            t.check(action.accessibilityPerformPress())
+            t.check(!action.accessibilityPerformPress())
+            t.check(AppSelfTest.spin(timeout: 10) {
+                recorder.calls == ["copy:charge 1"] &&
+                widget.view.accessibilityParts.first(where: { $0.id.name == "charge" })?.accessibilityLabel() == "Charge 1"
+            })
+            t.equal(recorder.calls, ["copy:charge 1"], "a newly prepared native symbol completes the issued action once")
+            t.check(recorder.mainThreads.allSatisfy { $0 })
+            t.check(!action.accessibilityPerformPress())
+            t.equal(action.accessibilityFrame(), .zero)
+        }
+
+        t.suite("App: Desk explicit accessibility: roles labels and empty descriptions use the accepted scene") {
+            let source = """
+            widget { Column {
+                Text("Painted").size(100, 20).voiceOver("Spoken").name(label)
+                Rectangle().size(40, 20).voiceOver("Rectangle").name(rectangle)
+                Circle().size(20).voiceOver("Circle").name(circle)
+                Progress(50%).size(40, 8).voiceOver("Half full").name(bar)
+                Gauge(25%).size(30).voiceOver("Quarter full").name(gauge)
+                Text("Silent").size(100, 20).voiceOver("").name(empty)
+                Text("Hidden").size(100, 20).voiceOver("Hidden label").hidden()
+                Text("Legacy").size(100, 20)
+                Row { Text("Inside row").size(100, 20) }.voiceOver("Row group").name(rowGroup)
+                Freeform { Text("Inside freeform").size(100, 20) }.voiceOver("Freeform group").name(freeformGroup)
+            }.voiceOver("Group").name(group) }
+            """
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: source)
+            guard let presented = widget.latestPresented else { throw Failure.fixture }
+            let expected: [String: (String, NSAccessibility.Role)] = [
+                "label": ("Spoken", .staticText), "rectangle": ("Rectangle", .image),
+                "circle": ("Circle", .image), "bar": ("Half full", .image),
+                "gauge": ("Quarter full", .image), "empty": ("", .staticText), "group": ("Group", .group),
+                "rowgroup": ("Row group", .group), "freeformgroup": ("Freeform group", .group)
+            ]
+            t.equal(widget.view.accessibilityParts.count, expected.count)
+            for child in widget.view.accessibilityParts {
+                guard let (label, role) = expected[child.id.name],
+                      let element = presented.scene.elements.first(where: { $0.id == child.id }) else { throw Failure.fixture }
+                t.equal(child.accessibilityLabel(), label)
+                t.equal(child.accessibilityRole(), role)
+                t.equal(element.accessibilityLabel, label)
+                t.check(!child.canPress && !child.accessibilityPerformPress(), "a description does not invent a click action")
+                let local = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                                   width: element.frame.width, height: element.frame.height)
+                t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: local))
+            }
+            t.check(recorder.calls.isEmpty)
+            let old = widget.view.accessibilityParts
+            widget.close(deactivate: false)
+            t.check(widget.view.accessibilityParts.isEmpty)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            for child in old { t.equal(child.accessibilityFrame(), .zero); t.check(!child.accessibilityPerformPress()) }
+        }
+
+        t.suite("App: Desk explicit accessibility: description and pixels change together before owner acknowledgement") {
+            let source = #"widget { variable count = 0; Text("Visible {count}").size(180, 40).voiceOver("Spoken {count}").onClick { count = count + 1; copy("{count}") } }"#
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: source)
+            guard let host = widget.owner.host, let old = widget.view.accessibilityParts.first,
+                  let original = widget.latestPresented, let image = widget.content.shown.image else { throw Failure.fixture }
+            t.equal(old.accessibilityLabel(), "Spoken 0")
+            t.equal(old.accessibilityRole(), .button)
+            guard let token = widget.issueClickToken() else { throw Failure.fixture }
+            widget.owner.primaryPress(at: SkinPoint(x: 20, y: 20), expectedGeneration: original.scene.generation,
+                                      epoch: widget.destinationEpoch)
+            widget.owner.primaryRelease(at: SkinPoint(x: 20, y: 20), token: token) { returned, effects in
+                widget.handleEffects(effects, token: returned, issuedToken: token)
+            }
+            host.frames.runLoopTurn(.beforeWaiting)
+            guard let scene = host.scene else { throw Failure.fixture }
+            t.check(scene.generation > original.scene.generation)
+            t.equal(scene.elements.first?.accessibilityLabel, "Spoken 1")
+            t.check(widget.view.accessibilityParts.first === old)
+            t.equal(old.accessibilityLabel(), "Spoken 0", "an unaccepted owner projection cannot update the Main label")
+            t.check(widget.content.shown.image === image)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.view.accessibilityParts.first?.accessibilityLabel() == "Spoken 1" &&
+                host.presented?.scene.generation == scene.generation && recorder.calls == ["copy:1"]
+            })
+            t.check(widget.content.shown.image !== image)
+            t.check(!old.accessibilityPerformPress(), "a held description cannot adopt the new action generation")
+            guard let current = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            t.check(current.accessibilityPerformPress())
+            t.check(!current.accessibilityPerformPress())
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.view.accessibilityParts.first?.accessibilityLabel() == "Spoken 2" && recorder.calls == ["copy:1", "copy:2"]
+            })
+            t.check(recorder.mainThreads.allSatisfy { $0 })
+        }
+
+        t.suite("App: Desk explicit accessibility: negative preset geometry keeps a labelled action aligned") {
+            let source = """
+            info { size: .small }
+            widget { Freeform {
+                Rectangle().size(80, 40).position(x: -100, y: -60).voiceOver("Open detail").name(detail)
+                    .onClick { copy("detail") }
+            }.size(240, 200) }
+            """
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: source)
+            guard let child = widget.view.accessibilityParts.first, let presented = widget.latestPresented,
+                  let element = presented.scene.elements.first(where: { $0.id == child.id }) else { throw Failure.fixture }
+            t.equal(widget.view.accessibilityParts.count, 1)
+            t.equal(child.accessibilityLabel(), "Open detail")
+            t.equal(child.accessibilityRole(), .button)
+            t.equal(presented.scene.size, SkinSize(width: 170, height: 170))
+            t.check(element.frame.width < 80 && element.frame.height < 40, "the preset maps actual overflow into its fixed bounds")
+            let local = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                               width: element.frame.width, height: element.frame.height)
+            t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: local))
+            t.equal(presented.scene.hitMap.entry(at: element.frame.x + element.frame.width / 2,
+                element.frame.y + element.frame.height / 2, handling: .leftUp, images: nil)?.elementID, child.id)
+            t.check(child.accessibilityPerformPress())
+            t.check(AppSelfTest.spin(timeout: 10) { recorder.calls == ["copy:detail"] })
+            widget.handleUnavailable("invalidEnvironment", session: widget.sessionID, epoch: widget.destinationEpoch)
+            t.check(widget.view.accessibilityParts.isEmpty)
+            t.equal(child.accessibilityFrame(), .zero)
+            t.check(!child.accessibilityPerformPress())
+        }
+
         t.suite("App: Desk background accessibility: decorated preset Text preserves its label and action") {
             for background in [".background(.red).rounded(6)", ".background(.glass).rounded(.full)"] {
                 let source = """
@@ -1602,7 +1761,7 @@ enum DeskWidgetWindowSelfTests {
                 let measured = DrawContext(fonts: AppFontResolver()).text.layout("Preset", style: style, wrapWidth: nil, cycle: 1).size
                 return CGSize(width: measured.width, height: measured.height)
             }
-            func checkFrame(_ child: DeskWidgetTextAccessibilityElement, points: Double) throws -> (NSRect, Double) {
+            func checkFrame(_ child: DeskWidgetAccessibilityElement, points: Double) throws -> (NSRect, Double) {
                 let natural = naturalSize(points: points)
                 let factor = min(1, min(170 / max(170, 20 + Double(natural.width)),
                                         170 / max(170, 140 + Double(natural.height))))

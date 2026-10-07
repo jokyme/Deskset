@@ -791,7 +791,7 @@ package final class LayerRuntime {
                       rect.minX.isFinite, rect.minY.isFinite else { continue }
                 pending.append(mask.makeIterator())
                 pending.append(content.makeIterator())
-            case .fill, .bevel, .text, .image, .shape, .bar, .graph, .rotator, .sprite, .glass:
+            case .fill, .bevel, .text, .image, .icon, .shape, .bar, .graph, .rotator, .sprite, .glass:
                 break
             }
         }

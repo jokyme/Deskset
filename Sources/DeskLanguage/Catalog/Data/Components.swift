@@ -118,8 +118,9 @@ extension CatalogData {
         component("Icon", .icon, .content, "Symbol", "符号", [sig(
             pos("name", .symbolName, preview: #""wifi""#, "The SF Symbol's name", "SF 符号的名字",
                 page: page(.content, "Symbol", "符号", .symbolPicker, .essential)))],
-            doc: doc("An SF Symbol; its size follows .font, or fills a fixed box when it has no font",
-                     "系统图标（SF Symbols），大小跟随 .font；没写字体时撑满固定的框",
+            defaults: ["iconColors": ".monochrome"],
+            doc: doc("An SF Symbol; its size follows .font, or fills a fixed box when it has no font; monochrome by default",
+                     "系统图标（SF Symbols），大小跟随 .font；没写字体时撑满固定的框；默认单色",
                      #"Icon("chevron.left").font(16).color(.dim)"#,
                      [meter("Image", "ImageName", "sf:…").noted("Deskset extension")],
                      keywords: ["ImageName", "symbol", "SF Symbol", "systemName", "systemImage", "glyph", "icon", "图标", "符号"],

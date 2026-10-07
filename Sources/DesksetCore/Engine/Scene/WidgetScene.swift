@@ -45,10 +45,13 @@ public struct SceneElement: Equatable, Sendable {
     public var backing: Backing
     /// The owner's drawing revision, captured as a conservative cache invalidation token. It is not a pixel digest.
     public var drawGeneration: Int
+    /// An explicit label resolved in this scene's transaction. nil has no override; an empty string is retained.
+    public var accessibilityLabel: String?
 
     public init(id: ElementID, kind: ElementKind, frame: SkinRect, anchor: SkinPoint, visibility: Visibility,
                 container: ElementID?, isContainer: Bool, items: [DrawItem], glass: GlassRegion?,
-                imageDependencies: [ImageDependency], backing: Backing = .content, drawGeneration: Int = 0) {
+                imageDependencies: [ImageDependency], backing: Backing = .content, drawGeneration: Int = 0,
+                accessibilityLabel: String? = nil) {
         self.id = id
         self.kind = kind
         self.frame = frame
@@ -61,6 +64,7 @@ public struct SceneElement: Equatable, Sendable {
         self.imageDependencies = imageDependencies
         self.backing = backing
         self.drawGeneration = drawGeneration
+        self.accessibilityLabel = accessibilityLabel
     }
 }
 

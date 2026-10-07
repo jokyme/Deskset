@@ -32,6 +32,21 @@ enum DeskProgramViewport {
                 pending.append(contentsOf: children.map { ($0, transform) })
                 continue
             }
+            if case .icon(let draw) = item {
+                let rect = draw.contentFrame
+                guard [rect.x, rect.y, rect.width, rect.height, rect.x + rect.width, rect.y + rect.height].allSatisfy(\.isFinite),
+                      rect.width >= 0, rect.height >= 0 else { throw Failure.extent }
+                let corners = [ShapePoint(rect.x, rect.y), ShapePoint(rect.x + rect.width, rect.y),
+                               ShapePoint(rect.x, rect.y + rect.height), ShapePoint(rect.x + rect.width, rect.y + rect.height)]
+                    .map(transform.apply)
+                guard corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite }),
+                      let left = corners.map(\.x).min(), let right = corners.map(\.x).max(),
+                      let top = corners.map(\.y).min(), let bottom = corners.map(\.y).max() else { throw Failure.extent }
+                if rect.width > 0, rect.height > 0 {
+                    result = result.union(CGRect(x: left, y: top, width: right - left, height: bottom - top))
+                }
+                continue
+            }
             guard case .shape(let draw) = item else { continue }
             for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {
                 let b = shape.visualBounds
@@ -57,29 +72,64 @@ enum DeskProgramViewport {
 /// Both destinations qualify images under the same transforms that the shared renderer will apply.
 enum DeskProgramImageValidation {
     static func validate(_ items: [DrawItem], in destination: CGContext,
+                         icon: (IconDraw, CGContext) -> Bool = { _, _ in true },
                          image: (ImageDraw, CGContext) -> Bool) -> Bool {
         for item in items {
             switch item {
             case .image(let value):
                 guard image(value, destination) else { return false }
+            case .icon(let value):
+                guard icon(value, destination) else { return false }
             case .transformed(let transform, let children):
                 guard [transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty].allSatisfy(\.isFinite) else { return false }
                 destination.saveGState()
                 destination.concatenate(CGAffineTransform(a: transform.a, b: transform.b, c: transform.c,
                                                           d: transform.d, tx: transform.tx, ty: transform.ty))
-                let valid = validate(children, in: destination, image: image)
+                let valid = validate(children, in: destination, icon: icon, image: image)
                 destination.restoreGState()
                 guard valid else { return false }
             case .antialias(let enabled, let children):
                 destination.saveGState()
                 destination.setShouldAntialias(enabled)
-                let valid = validate(children, in: destination, image: image)
+                let valid = validate(children, in: destination, icon: icon, image: image)
                 destination.restoreGState()
                 guard valid else { return false }
+            case .container(_, let mask, let content):
+                guard validate(mask, in: destination, icon: icon, image: image),
+                      validate(content, in: destination, icon: icon, image: image) else { return false }
             default: break
             }
         }
         return true
+    }
+
+    static func prepare(_ icon: IconDraw, in destination: CGContext, cache: IconCache) -> Bool {
+        do { _ = try cache.prepare(icon, in: destination, pin: true); return true }
+        catch { return false }
+    }
+
+    /// Qualify the complete icon raster budget before committing a candidate or exposing its click effects.
+    /// The scratch surface supplies only the destination transform; symbol pixels live in the owner's cache.
+    static func prepareIcons(_ items: [DrawItem], scale: Double, origin: SkinPoint, cache: IconCache) -> Bool {
+        var pending = items, containsIcon = false
+        while let item = pending.popLast(), !containsIcon {
+            switch item {
+            case .icon: containsIcon = true
+            case .transformed(_, let children), .antialias(_, let children): pending += children
+            case .container(_, let mask, let content): pending += mask + content
+            default: break
+            }
+        }
+        guard containsIcon else { return true }
+        guard scale.isFinite, scale > 0, origin.x.isFinite, origin.y.isFinite,
+              let scratch = SkinBitmapDrawing.makeContext(1, 1, SkinFrameProducer.sRGB) else { return false }
+        scratch.translateBy(x: 0, y: 1)
+        scratch.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+        scratch.translateBy(x: -CGFloat(origin.x), y: -CGFloat(origin.y))
+        cache.beginFrame()
+        let ready = validate(items, in: scratch, icon: { prepare($0, in: $1, cache: cache) }, image: { _, _ in true })
+        if !ready { cache.cancelFrame() }
+        return ready
     }
 }
 
@@ -88,6 +138,7 @@ enum DeskProgramImageValidation {
 final class DeskProgramHost {
     enum Failure: Error, Equatable { case unsupportedContentMode, extent, resources, bitmap, cycleOverflow }
     enum State: Equatable { case idle, ready, unavailable(String), closed }
+    typealias IconPreparation = ([DeskIconResources.Demand], @escaping (Result<DeskIconResources.Batch, Error>) -> Void) -> DeskIconResources.Ticket
 
     /// Captured by Main before delivery. A worker never asks AppKit for colors, locale or display appearance.
     struct Input: Equatable {
@@ -105,11 +156,37 @@ final class DeskProgramHost {
     }
 
     private final class Owner: TickTarget {
+        private final class Projection {
+            var preparationID: UUID?
+            let base: ProgramRuntime
+            let input: Input
+            let date: ProgramDateInput
+            let systemInput: ProgramSystemInput?
+            let images: [String: ProgramImageResource]
+            let context: SkinRenderContext
+            let fontGeneration: Int
+            let cycle: Int
+            let click: SkinPoint?
+            let event: MouseEventKind
+            let completion: (([ProgramEffect]) -> Void)?
+            var ticket: DeskIconResources.Ticket?
+            var deferredRefresh = false
+
+            init(base: ProgramRuntime, input: Input, date: ProgramDateInput, systemInput: ProgramSystemInput?,
+                 images: [String: ProgramImageResource], context: SkinRenderContext, cycle: Int,
+                 click: SkinPoint?, event: MouseEventKind, completion: (([ProgramEffect]) -> Void)?) {
+                self.base = base; self.input = input; self.date = date; self.systemInput = systemInput
+                self.images = images; self.context = context; self.fontGeneration = context.drawing.icons.fontGeneration
+                self.cycle = cycle; self.click = click; self.event = event; self.completion = completion
+            }
+        }
+        private enum ProjectionResult { case completed([ProgramEffect]), waiting, failed }
         let executor: SkinExecutor
         let clock: SkinClock
         let system: SystemDataSource
         let source: String
         let provider: ContentProvider?
+        let prepareIcons: IconPreparation
         let scheduler = TickScheduler()
         var sampler = ProgramSystemSampler()
         var runtime: ProgramRuntime
@@ -125,7 +202,10 @@ final class DeskProgramHost {
         var visible = false
         var pointerEligible = false
         var destinationReady = false
+        var destination: SkinWindowFacts?
         var projecting = false
+        private var pending: Projection?
+        var isPreparingIcons: Bool { pending != nil }
         var primaryPress: ElementID?
         var secondaryPress: ElementID?
         var didPresent: ((Presented) -> Void)?
@@ -139,10 +219,12 @@ final class DeskProgramHost {
         })
 
         init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
-             prepared: DeskProgramResources.Prepared?, clock: SkinClock, system: SystemDataSource, source: String) throws {
+             prepared: DeskProgramResources.Prepared?, clock: SkinClock, system: SystemDataSource, source: String,
+             prepareIcons: @escaping IconPreparation) throws {
             runtime = try ProgramRuntime(program: program)
             self.executor = executor; self.provider = provider; self.input = input
             self.prepared = prepared; self.clock = clock; self.system = system; self.source = source
+            self.prepareIcons = prepareIcons
             frames.bitmapResult = { [weak self] result in
                 guard let self, !isClosed else { return }
                 switch result {
@@ -163,15 +245,21 @@ final class DeskProgramHost {
         }
 
         @discardableResult
-        func project(click: SkinPoint? = nil, event: MouseEventKind = .leftUp) -> [ProgramEffect]? {
+        func project(click: SkinPoint? = nil, event: MouseEventKind = .leftUp,
+                     completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
             precondition(executor.isCurrent)
             guard !isClosed, !projecting else { return nil }
-            projecting = true
-            defer { projecting = false }
-            scheduler.cancel()
             do {
                 guard destinationReady else { throw ProgramRuntimeError.invalidEnvironment }
                 guard prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                if let pending {
+                    if click == nil {
+                        pending.deferredRefresh = true
+                        arm(after: clock.now())
+                    }
+                    return nil
+                }
+                scheduler.cancel()
                 let nextCycle = cycle.addingReportingOverflow(1)
                 guard !nextCycle.overflow else { throw Failure.cycleOverflow }
                 let context = self.context ?? SkinRenderContext()
@@ -181,42 +269,138 @@ final class DeskProgramHost {
                 let needed = runtime.neededSystemProperties(clickAt: click, event: event)
                 let now = date.instant.timeIntervalSince1970
                 let systemInput = sampler.sample(from: system, for: needed, at: now)
+                let projection = Projection(base: runtime, input: input, date: date, systemInput: systemInput,
+                    images: prepared?.images ?? [:], context: context, cycle: nextCycle.partialValue,
+                    click: click, event: event, completion: completion)
+                if case .completed(let effects) = attempt(projection, schedulingAfter: date.instant) {
+                    return click == nil ? nil : effects
+                }
+                return nil
+            } catch { fail(error); return nil }
+        }
+
+        private func attempt(_ projection: Projection, schedulingAfter instant: Date) -> ProjectionResult {
+            precondition(executor.isCurrent)
+            guard !isClosed, !projecting else { return .failed }
+            projecting = true
+            defer { projecting = false }
+            let input = projection.input, context = projection.context
+            var missing: [DeskIconResources.Demand] = [], seen = Set<DeskIconResources.Demand>()
+            context.iconResources.beginProjection()
+            do {
+                guard destinationReady, self.input == input, self.context === context,
+                      context.drawing.icons.fontGeneration == projection.fontGeneration,
+                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
                 let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
                     let pixels = style.fontSize * (96.0 / 72.0) * input.environment.scale
                     guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else { throw Failure.extent }
-                    let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: nextCycle.partialValue)
+                    let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: projection.cycle)
                     return SkinSize(width: layout.size.width, height: layout.size.height)
                 }
-                var candidate = runtime
+                let measureIcon: (IconRequest) throws -> SkinSize? = { request in
+                    do { return try context.drawing.icons.measure(request) }
+                    catch DeskIconResources.Failure.notPrepared(let demand) {
+                        if seen.insert(demand).inserted { missing.append(demand) }
+                        // Collection only: no scene, state or effect from this provisional layout can be committed.
+                        return SkinSize(width: 1, height: 1)
+                    }
+                }
+                var candidate = projection.base
                 let next: WidgetScene
                 var effects: [ProgramEffect] = []
-                if let click {
-                    guard let current = scene, let value = try candidate.clickWithEffects(at: click, expectedGeneration: current.generation,
-                        event: event,
-                        environment: input.environment, images: prepared?.images ?? [:], dateInput: date,
-                        colorInput: input.colors, systemInput: systemInput, measure: measure) else { arm(after: date.instant); return nil }
+                if let click = projection.click {
+                    guard let value = try candidate.clickWithEffects(at: click, expectedGeneration: projection.base.generation,
+                        event: projection.event, environment: input.environment, images: projection.images, dateInput: projection.date,
+                        colorInput: input.colors, systemInput: projection.systemInput,
+                        measureIcon: measureIcon, measure: measure) else {
+                        cancelProjection(); arm(after: instant); return .failed
+                    }
                     next = value.scene
                     effects = value.effects
                 } else {
-                    next = try candidate.project(environment: input.environment, images: prepared?.images ?? [:],
-                        dateInput: date, colorInput: input.colors, systemInput: systemInput, measure: measure)
+                    next = try candidate.project(environment: input.environment, images: projection.images,
+                        dateInput: projection.date, colorInput: input.colors, systemInput: projection.systemInput,
+                        measureIcon: measureIcon, measure: measure)
                 }
+                if !missing.isEmpty { return prepare(missing, for: projection) }
                 guard next.size.width.isFinite, next.size.height.isFinite,
                       next.size.width >= 0, next.size.height >= 0 else { throw Failure.extent }
                 let extent = try DeskProgramViewport.extent(next)
                 let side = max(extent.width, extent.height) * input.environment.scale
                 guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw Failure.extent }
+                guard DeskProgramImageValidation.prepareIcons(next.drawingItems, scale: input.environment.scale,
+                    origin: SkinPoint(x: extent.minX, y: extent.minY), cache: context.drawing.icons) else { throw Failure.bitmap }
+                // The font registry may advance on its own queue while this owner prepares the raster batch.
+                guard context.drawing.icons.fontGeneration == projection.fontGeneration else { throw Failure.resources }
                 let nextClockDelay: TimeInterval?
                 if visible, let precision = candidate.clockPrecision {
-                    nextClockDelay = try precision.delayToNextBoundary(after: date.instant)
+                    nextClockDelay = try precision.delayToNextBoundary(after: instant)
                 } else { nextClockDelay = nil }
+                context.iconResources.commitProjection()
+                pending = nil
                 runtime = candidate
-                scene = next; viewport = extent; cycle = nextCycle.partialValue; state = .ready
+                scene = next; viewport = extent; cycle = projection.cycle; state = .ready
                 frames.setNeedsFrame()
                 if let nextClockDelay { scheduler.startClockBoundary(after: nextClockDelay, for: self) }
                 // The source hit was already presented. A later coalesced redraw is not an action replay or ACK.
-                return state == .ready && click != nil ? effects : nil
-            } catch { fail(error); return nil }
+                return .completed(effects)
+            } catch {
+                // An unknown symbol eventually measures as zero, so even an overflow caused by provisional
+                // 1x1 boxes must wait for real resources before deciding whether the program is invalid.
+                if !missing.isEmpty { return prepare(missing, for: projection) }
+                fail(error); return .failed
+            }
+        }
+
+        private func prepare(_ demands: [DeskIconResources.Demand], for projection: Projection) -> ProjectionResult {
+            guard demands.allSatisfy({ $0.fontGeneration == projection.fontGeneration }),
+                  projection.context.drawing.icons.fontGeneration == projection.fontGeneration else {
+                fail(Failure.resources); return .failed
+            }
+            pending = projection
+            primaryPress = nil; secondaryPress = nil
+            let id = UUID(), executor = self.executor
+            projection.preparationID = id
+            projection.ticket = prepareIcons(demands) { [weak self, executor] result in
+                // Main never obtains a strong Owner reference. Resolve the weak capture only after the hop.
+                executor.async { [weak self] in self?.finishPreparation(id, demands: demands, result: result) }
+            }
+            arm(after: clock.now())
+            return .waiting
+        }
+
+        private func finishPreparation(_ id: UUID, demands: [DeskIconResources.Demand],
+                                       result: Result<DeskIconResources.Batch, Error>) {
+            precondition(executor.isCurrent)
+            guard !isClosed, let projection = pending, projection.preparationID == id else { return }
+            projection.preparationID = nil
+            projection.ticket = nil
+            do {
+                guard input == projection.input, destinationReady,
+                      projection.context.drawing.icons.fontGeneration == projection.fontGeneration,
+                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                let batch = try result.get()
+                guard batch.entries.count == demands.count,
+                      Set(batch.entries.map(\.demand)) == Set(demands) else { throw Failure.resources }
+                try projection.context.iconResources.install(batch)
+                for demand in demands {
+                    if case .missing = projection.context.iconResources.lookup(demand) { throw Failure.resources }
+                }
+                let firstFrame = presented == nil
+                let outcome = attempt(projection, schedulingAfter: clock.now())
+                guard case .completed(let effects) = outcome else { return }
+                if projection.click != nil { projection.completion?(effects) }
+                guard !isClosed, state == .ready, pending == nil else { return }
+                if firstFrame { frames.drawFirstFrame() }
+                if projection.deferredRefresh, !isClosed, state == .ready { project() }
+            } catch { fail(error) }
+        }
+
+        func cancelProjection() {
+            let retiring = pending
+            pending = nil
+            retiring?.ticket?.cancel()
+            context?.iconResources.cancelProjection()
         }
 
         func arm(after instant: Date) {
@@ -244,13 +428,19 @@ final class DeskProgramHost {
 
         func validate(_ capture: SkinBitmapDrawing.Capture, in ctx: CGContext) -> Bool {
             guard !isClosed, prepared?.unchanged() ?? true else { return false }
-            return DeskProgramImageValidation.validate(capture.scene.drawingItems, in: ctx) { image, destination in
+            let icons = capture.context.drawing.icons
+            icons.beginFrame()
+            let ready = DeskProgramImageValidation.validate(capture.scene.drawingItems, in: ctx,
+                icon: { DeskProgramImageValidation.prepare($0, in: $1, cache: icons) }) { image, destination in
                 DesksetDraw.ImageRenderer.preparedNaturalImage(image, in: destination) != nil
             }
+            if !ready { icons.cancelFrame() }
+            return ready
         }
 
         func fail(_ error: Error) {
             guard !isClosed else { return }
+            cancelProjection()
             let message = String(describing: error)
             let changed = state != .unavailable(message)
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil
@@ -263,6 +453,7 @@ final class DeskProgramHost {
         func close() {
             precondition(executor.isCurrent)
             guard !isClosed else { return }
+            cancelProjection()
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
             state = .closed
             frames.stop(); frames.clearBitmapContents(); frames.bitmapResult = nil
@@ -286,6 +477,7 @@ final class DeskProgramHost {
     var isPaused: Bool { current.scheduler.isPaused }
     var clockPrecision: ProgramClockPrecision? { current.runtime.clockPrecision }
     var neededSystemProperties: Set<ProgramSystemProperty> { current.runtime.neededSystemProperties }
+    var isPreparingIcons: Bool { current.isPreparingIcons }
     /// Synchronous owner callback. The window adapter must capture itself weakly and deliver Main work itself.
     var didPresent: ((Presented) -> Void)? {
         get { current.didPresent }
@@ -303,12 +495,13 @@ final class DeskProgramHost {
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
          prepared: DeskProgramResources.Prepared? = nil, clock: SkinClock = .live,
          system: SystemDataSource = SystemMonitor.shared, source: String = "Desk",
-         contentMode: SkinFrameContentMode = .bitmap) throws {
+         contentMode: SkinFrameContentMode = .bitmap,
+         prepareIcons: @escaping IconPreparation = DeskIconResources.prepare) throws {
         precondition(executor.isCurrent, "DeskProgramHost constructed off its owner")
         guard contentMode == .bitmap else { throw Failure.unsupportedContentMode }
         self.executor = executor
         owner = try Owner(program: program, executor: executor, provider: provider, input: input,
-                          prepared: prepared, clock: clock, system: system, source: source)
+                          prepared: prepared, clock: clock, system: system, source: source, prepareIcons: prepareIcons)
     }
 
     func start(paused: Bool = false) {
@@ -326,6 +519,14 @@ final class DeskProgramHost {
         let changed = owner.input != input
         let wasVisible = owner.visible
         let hadDestination = owner.destinationReady
+        let destinationChanged = owner.destination.map {
+            $0.panelGeneration != facts.panelGeneration || $0.colorSpace != facts.colorSpace ||
+            $0.scale != facts.scale || $0.appearance != facts.appearance
+        } ?? true
+        let eligible = facts.isOrderedIn && !facts.settings.hidden && facts.isVisible && facts.takesPointer
+        let cancelled = owner.isPreparingIcons && (changed || destinationChanged || (owner.pointerEligible && !eligible))
+        if cancelled { owner.cancelProjection() }
+        owner.destination = facts
         owner.input = input
         owner.visible = facts.isOrderedIn && !facts.settings.hidden
         owner.pointerEligible = owner.visible && facts.isVisible && facts.takesPointer
@@ -338,7 +539,8 @@ final class DeskProgramHost {
             owner.fail(ProgramRuntimeError.invalidEnvironment); return
         }
         owner.destinationReady = true
-        if owner.started && (changed || !hadDestination || (!wasVisible && owner.visible)) { owner.project() }
+        if owner.started && (changed || destinationChanged || !hadDestination || (!wasVisible && owner.visible)) { owner.project() }
+        else if cancelled { owner.arm(after: owner.clock.now()) }
     }
 
     /// An explicit owner input refresh can recover a failed font/environment projection without replaying onLoad.
@@ -369,7 +571,7 @@ final class DeskProgramHost {
     private func press(at point: SkinPoint, event: MouseEventKind) {
         let owner = current
         if event == .leftUp { owner.primaryPress = nil } else { owner.secondaryPress = nil }
-        guard owner.pointerEligible, point.x.isFinite, point.y.isFinite,
+        guard !owner.isPreparingIcons, owner.pointerEligible, point.x.isFinite, point.y.isFinite,
               let value = owner.presented, value.scene.generation == owner.scene?.generation else { return }
         let id = value.scene.hitMap.entry(at: point.x + value.origin.x, point.y + value.origin.y,
             handling: event, images: nil)?.elementID
@@ -378,20 +580,26 @@ final class DeskProgramHost {
 
     /// Returns frozen requests only after the entire click and host extent/resource preflight succeed.
     /// The Main adapter owns external execution; a future bitmap failure cannot undo an executed request.
+    /// A synchronous success returns its effects without invoking completion. Pending resource work returns nil;
+    /// only a later successful transaction invokes completion once. Cancellation and failure discard completion.
     @discardableResult
-    func primaryRelease(at point: SkinPoint?) -> [ProgramEffect]? { release(at: point, event: .leftUp) }
+    func primaryRelease(at point: SkinPoint?, completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
+        release(at: point, event: .leftUp, completion: completion)
+    }
     @discardableResult
-    func secondaryRelease(at point: SkinPoint?) -> [ProgramEffect]? { release(at: point, event: .rightUp) }
+    func secondaryRelease(at point: SkinPoint?, completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
+        release(at: point, event: .rightUp, completion: completion)
+    }
 
-    private func release(at point: SkinPoint?, event: MouseEventKind) -> [ProgramEffect]? {
+    private func release(at point: SkinPoint?, event: MouseEventKind, completion: (([ProgramEffect]) -> Void)?) -> [ProgramEffect]? {
         let owner = current
         let press = event == .leftUp ? owner.primaryPress : owner.secondaryPress
         if event == .leftUp { owner.primaryPress = nil } else { owner.secondaryPress = nil }
-        guard owner.pointerEligible, let point, point.x.isFinite, point.y.isFinite, let press, let value = owner.presented,
+        guard !owner.isPreparingIcons, owner.pointerEligible, let point, point.x.isFinite, point.y.isFinite, let press, let value = owner.presented,
               value.scene.generation == owner.scene?.generation else { return nil }
         let mapped = SkinPoint(x: point.x + value.origin.x, y: point.y + value.origin.y)
         guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: event, images: nil)?.elementID == press else { return nil }
-        return owner.project(click: mapped, event: event)
+        return owner.project(click: mapped, event: event, completion: completion)
     }
 
     /// Completes synchronously on the executor. Main may then tear down its provider/window; the executor is shared.

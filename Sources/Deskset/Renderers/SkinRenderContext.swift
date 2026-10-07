@@ -16,9 +16,10 @@ final class SkinRenderContext {
 
     let sceneProjector = SceneProjector()
     let drawing: DesksetDraw.DrawContext
+    let iconResources = DeskIconResources()
 
     init() {
-        drawing = DesksetDraw.DrawContext(fonts: AppFontResolver())
+        drawing = DesksetDraw.DrawContext(fonts: AppFontResolver(), icons: AppIconRasterizer(resources: iconResources))
     }
 
     var text: TextLayoutCache { drawing.text }

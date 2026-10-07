@@ -415,6 +415,22 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         return value
     }
 
+    /// Symbol names consume raw String values. A typed missing name is an empty symbol, never a display placeholder.
+    mutating func iconName(_ expression: ProgramExpression, displayed: Bool = true) throws -> String? {
+        let result = try evaluate(expression, depth: 1)
+        guard result.scalar.type == .string else { throw ProgramRuntimeError.invalidExpression }
+        let name: String?
+        if result.scalar == .missing(.string) { name = nil }
+        else {
+            guard let value = result.scalar.text, value.text.utf16.count <= ProgramLimits.maximumTextLength else {
+                throw ProgramRuntimeError.invalidExpression
+            }
+            name = value.text
+        }
+        if displayed { clockPrecision = .combined(clockPrecision, result.precision) }
+        return name
+    }
+
     mutating func fontSize(_ expression: ProgramExpression, element: ElementID, displayed: Bool) throws -> Double {
         let result = try evaluate(expression, depth: 1)
         guard case .numeric(let number) = result.scalar,

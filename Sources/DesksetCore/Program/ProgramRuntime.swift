@@ -3,7 +3,7 @@ import Foundation
 public enum ProgramRuntimeError: Error, Equatable {
     case elementLimit, depthLimit, emptyProgram, duplicateIdentity(ElementID)
     case invalidGeometry(ElementID), invalidText(ElementID), invalidMeasurement(ElementID)
-    case invalidPaint(ElementID), invalidImage(ElementID)
+    case invalidPaint(ElementID), invalidImage(ElementID), invalidIcon(ElementID), missingIconMeasurement(ElementID)
     case layoutOverflow(ElementID), invalidEnvironment, generationOverflow
     case expressionLimit, expressionDepth, invalidExpression
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
@@ -102,6 +102,7 @@ public struct ProgramRuntime: Sendable {
                 }
                 if let color, case .literal(let value) = color, !Self.valid(value) { throw ProgramRuntimeError.invalidPaint(node.id) }
             }
+            if let label = node.voiceOver { try expressions.validateText(label) }
             switch node.content {
             case .text(let text):
                 guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
@@ -117,6 +118,17 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 if case .literal(let color) = text.color, !Self.valid(color) { throw ProgramRuntimeError.invalidText(node.id) }
+            case .icon(let icon):
+                contentCount += 1
+                guard node.idealSize == nil, !icon.fontFamily.isEmpty,
+                      icon.fontSize.isFinite, icon.fontSize > 0,
+                      icon.fontWeight.map({ (1...999).contains($0) }) ?? true else {
+                    throw ProgramRuntimeError.invalidIcon(node.id)
+                }
+                try expressions.validateText(icon.name)
+                if case .string(let name) = icon.name, name.contains("\0") { throw ProgramRuntimeError.invalidIcon(node.id) }
+                if let fontSize = icon.fontSizeExpression { try expressions.validateFontSize(fontSize) }
+                if case .literal(let color) = icon.color, !Self.valid(color) { throw ProgramRuntimeError.invalidIcon(node.id) }
             case .image(let image):
                 contentCount += 1
                 guard node.idealSize == nil, !image.source.isEmpty,
@@ -203,6 +215,8 @@ public struct ProgramRuntime: Sendable {
     ///   elements marked hidden, because DESK-DESIGN §611 preserves layout space for hidden elements and layout
     ///   resolves/measures them). Conditional branches are conservatively unioned without dynamic evaluation,
     ///   so inactive branches may be sampled; complete zero-sampling for hidden layout branches is not yet implemented.
+    ///   Accessibility labels do not affect layout and contribute dependencies only when their element is visible.
+    ///   Icon names and font sizes follow Text's layout dependency rule, including hidden elements.
     public func neededSystemProperties(clickAt point: SkinPoint? = nil, event: MouseEventKind = .leftUp) -> Set<ProgramSystemProperty> {
         guard event == .leftUp || event == .rightUp else { return [] }
         if let point {
@@ -233,11 +247,16 @@ public struct ProgramRuntime: Sendable {
             var pending = [(program.root, false)]
             while let (node, parentHidden) = pending.popLast() {
                 let hidden = parentHidden || node.hidden
+                if !hidden, let label = node.voiceOver { active.append(label) }
                 if case .text(let text) = node.content {
                     active.append(text.value)
                     if let fontExpr = text.fontSizeExpression {
                         active.append(fontExpr)
                     }
+                }
+                if case .icon(let icon) = node.content {
+                    active.append(icon.name)
+                    if let fontSize = icon.fontSizeExpression { active.append(fontSize) }
                 }
                 if case .progress(let progress) = node.content, !hidden {
                     active.append(progress.value)
@@ -301,10 +320,12 @@ public struct ProgramRuntime: Sendable {
 
     /// The closure must measure the supplied style exactly as it draws it, under the optional wrapping width.
     /// It is used synchronously and is not retained. Graphics/font resources stay outside Core.
+    /// Icons require measureIcon; its nil result means an unknown symbol, while invalid measurements fail the transaction.
     public mutating func project(environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
                                  dateInput: ProgramDateInput? = nil,
                                  colorInput: ProgramColorInput? = nil,
                                  systemInput: ProgramSystemInput? = nil,
+                                 measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
                                  measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene {
         let appearance = environment.appearance.value
         guard environment.scale.isFinite, environment.scale > 0,
@@ -329,10 +350,14 @@ public struct ProgramRuntime: Sendable {
         var layoutState = LayoutState(images: images, colors: colorInput, preset: preset)
         _ = flexibility(program.root, into: &layoutState)
         var visibleContent: Set<ElementID> = [], pending = [(program.root, false)]
+        var accessibilityLabels: [ElementID: String] = [:]
         while let (node, parentHidden) = pending.popLast() {
             let hidden = parentHidden || node.hidden
+            if !hidden, let label = node.voiceOver {
+                accessibilityLabels[node.id] = try evaluation.text(label).text
+            }
             switch node.content {
-            case .text, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
+            case .text, .icon, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
             case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending += children.map { ($0, hidden) }
             default: break
             }
@@ -344,13 +369,29 @@ public struct ProgramRuntime: Sendable {
                                  let fontSize = try text.fontSizeExpression.map { try evaluation.fontSize($0, element: id, displayed: displayed) }
                                  return TextInput(value: value.text, style: try text.drawingStyle(in: appearance, colorInput: colorInput,
                                      wrap: false, text: value, resolvedFontSize: fontSize))
+                             }, resolveIcon: { id, icon in
+                                 guard let measureIcon else { throw ProgramRuntimeError.missingIconMeasurement(id) }
+                                 let displayed = visibleContent.contains(id)
+                                 let name = try evaluation.iconName(icon.name, displayed: displayed)
+                                 guard name?.contains("\0") != true else { throw ProgramRuntimeError.invalidIcon(id) }
+                                 let fontSize = try icon.fontSizeExpression.map { try evaluation.fontSize($0, element: id, displayed: displayed) }
+                                 let request = IconRequest(name: name ?? "", style: try icon.drawingStyle(in: appearance,
+                                     colorInput: colorInput, resolvedFontSize: fontSize), colors: icon.colors,
+                                     appearance: environment.appearance, scale: environment.scale)
+                                 let size = try name?.isEmpty == false ? measureIcon(request) : nil
+                                 if let size {
+                                     guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
+                                         throw ProgramRuntimeError.invalidMeasurement(id)
+                                     }
+                                 }
+                                 return IconInput(request: request, naturalSize: size)
                              }, resolveProgress: { id, progress in
                                  try evaluation.progress(progress, displayed: visibleContent.contains(id))
                              }, resolveGauge: { id, gauge in
                                  try evaluation.gauge(gauge, element: id, displayed: visibleContent.contains(id))
                              }, measure: measure, state: &layoutState)
         var elements: [SceneElement] = []
-        try append(box, at: SkinPoint(), inheritedHidden: false, into: &elements)
+        try append(box, at: SkinPoint(), inheritedHidden: false, accessibilityLabels: accessibilityLabels, into: &elements)
         let transform = try preset.map { try presetTransform(box, elements: elements, size: $0) } ?? .identity
         if !transform.isIdentity {
             for index in elements.indices {
@@ -405,11 +446,12 @@ public struct ProgramRuntime: Sendable {
                                images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
                                colorInput: ProgramColorInput? = nil,
                                systemInput: ProgramSystemInput? = nil,
+                               measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
                                measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene? {
         var candidate = self
         guard let result = try candidate.clickWithEffects(at: point, expectedGeneration: expectedGeneration,
             environment: environment, images: images, dateInput: dateInput, colorInput: colorInput,
-            systemInput: systemInput, measure: measure) else { return nil }
+            systemInput: systemInput, measureIcon: measureIcon, measure: measure) else { return nil }
         guard result.effects.isEmpty else { throw ProgramRuntimeError.unhandledClickEffects }
         self = candidate
         return result.scene
@@ -423,6 +465,7 @@ public struct ProgramRuntime: Sendable {
                                           images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
                                           colorInput: ProgramColorInput? = nil,
                                           systemInput: ProgramSystemInput? = nil,
+                                          measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
                                           measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult? {
         guard event == .leftUp || event == .rightUp,
               point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
@@ -438,7 +481,7 @@ public struct ProgramRuntime: Sendable {
         }
         candidate.variables = evaluation.variables
         let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, colorInput: colorInput,
-                                          systemInput: systemInput, measure: measure)
+                                          systemInput: systemInput, measureIcon: measureIcon, measure: measure)
         self = candidate
         return ProgramClickResult(scene: scene, effects: effects)
     }
@@ -484,6 +527,7 @@ public struct ProgramRuntime: Sendable {
         let backgroundColor: RGBA?
         let backgroundTint: RGBA?
         let image: ProgramImageResource?
+        let icon: IconInput?
         let children: [(Box, SkinPoint)]
     }
 
@@ -491,6 +535,7 @@ public struct ProgramRuntime: Sendable {
     private struct ProposalKey: Hashable { let id: ElementID; let width: Double?; let height: Double? }
     private struct TextKey: Hashable { let id: ElementID; let width: Double? }
     private struct TextInput { let value: String; let style: TextStyle }
+    private struct IconInput { let request: IconRequest; let naturalSize: SkinSize? }
     /// Only this projection's pure results. Repeating a proposal uses the same measured style/size;
     /// no font or graphics resource, closure, cache or partial scene survives publication or failure.
     private struct LayoutState {
@@ -501,6 +546,7 @@ public struct ProgramRuntime: Sendable {
         var spacerAxes: [ElementID: Bool] = [:]
         var boxes: [ProposalKey: Box] = [:]
         var text: [ElementID: TextInput] = [:]
+        var icons: [ElementID: IconInput] = [:]
         var measures: [TextKey: SkinSize] = [:]
         var progress: [ElementID: Double] = [:]
         var gauges: [ElementID: ProgramGaugeValues] = [:]
@@ -516,7 +562,7 @@ public struct ProgramRuntime: Sendable {
         let children: [ProgramElement]
         switch node.content {
         case .column(_, _, let nodes), .row(_, _, let nodes), .freeform(_, let nodes): children = nodes
-        case .text, .image, .rectangle, .shape, .progress, .gauge, .spacer: children = []
+        case .text, .image, .icon, .rectangle, .shape, .progress, .gauge, .spacer: children = []
         }
         let childAxis: Bool?
         switch node.content { case .column: childAxis = true; case .row: childAxis = false; default: childAxis = nil }
@@ -529,6 +575,7 @@ public struct ProgramRuntime: Sendable {
 
     private func layout(_ node: ProgramElement, proposedWidth: Double?, proposedHeight: Double?, appearance: SkinAppearance,
                         resolve: (ElementID, ProgramText) throws -> TextInput,
+                        resolveIcon: (ElementID, ProgramIcon) throws -> IconInput,
                         resolveProgress: (ElementID, ProgramProgress) throws -> Double,
                         resolveGauge: (ElementID, ProgramGauge) throws -> ProgramGaugeValues,
                         measure: (String, TextStyle, Double?) throws -> SkinSize, state: inout LayoutState) throws -> Box {
@@ -562,7 +609,7 @@ public struct ProgramRuntime: Sendable {
         let offeredWidth = requestedWidth ?? proposedWidth.map { clamp($0, minimum: minWidth, maximum: maxWidth) } ?? maxWidth
         let offeredHeight = requestedHeight ?? proposedHeight.map { clamp($0, minimum: minHeight, maximum: maxHeight) } ?? maxHeight
         var width: Double, height: Double, style: TextStyle?, resolvedText: String?, textSize: SkinSize?,
-            fill: RGBA?, track: RGBA?, fraction: Double?, gaugeValues: ProgramGaugeValues?, image: ProgramImageResource?
+            fill: RGBA?, track: RGBA?, fraction: Double?, gaugeValues: ProgramGaugeValues?, image: ProgramImageResource?, iconInput: IconInput?
         var children: [(Box, SkinPoint)] = []
         var minimumContent = SkinSize()
         switch node.content {
@@ -600,6 +647,15 @@ public struct ProgramRuntime: Sendable {
             style = finalStyle
             textSize = actual
             minimumContent = SkinSize(width: actual.width, height: actual.height)
+        case .icon(let icon):
+            let input: IconInput
+            if let old = state.icons[node.id] { input = old }
+            else { input = try resolveIcon(node.id, icon); state.icons[node.id] = input }
+            iconInput = input
+            let natural = input.naturalSize ?? SkinSize()
+            width = try requestedWidth ?? clamp(sum([natural.width, horizontal]), minimum: minWidth, maximum: maxWidth)
+            height = try requestedHeight ?? clamp(sum([natural.height, vertical]), minimum: minHeight, maximum: maxHeight)
+            minimumContent = SkinSize(width: max(0, width - horizontal), height: max(0, height - vertical))
         case .image(let input):
             guard let resource = state.images[input.source], !resource.path.isEmpty, !resource.path.contains("\0"),
                   resource.naturalSize.width.isFinite, resource.naturalSize.height.isFinite,
@@ -660,7 +716,7 @@ public struct ProgramRuntime: Sendable {
             let initialCross = offeredCross.map { max(0, $0 - crossPadding) }
             var boxes = try nodes.map {
                 try layout($0, proposedWidth: column ? initialCross : nil, proposedHeight: column ? nil : initialCross,
-                           appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                           appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                            measure: measure, state: &state)
             }
             func main(_ size: SkinSize) -> Double { column ? size.height : size.width }
@@ -677,7 +733,7 @@ public struct ProgramRuntime: Sendable {
             if initialCross != finalCross {
                 boxes = try nodes.map {
                     try layout($0, proposedWidth: column ? finalCross : nil, proposedHeight: column ? nil : finalCross,
-                               appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                               appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                                measure: measure, state: &state)
                 }
             }
@@ -753,7 +809,7 @@ public struct ProgramRuntime: Sendable {
                     proposedMain[index] = allocated[offset]
                     boxes[index] = try layout(nodes[index], proposedWidth: column ? finalCross : allocated[offset],
                                               proposedHeight: column ? allocated[offset] : finalCross,
-                                              appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                              appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                                               measure: measure, state: &state)
                 }
             }
@@ -769,7 +825,7 @@ public struct ProgramRuntime: Sendable {
                     boxes = try nodes.indices.map { index in
                         try layout(nodes[index], proposedWidth: column ? finalCross : proposedMain[index],
                                    proposedHeight: column ? proposedMain[index] : finalCross,
-                                   appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                   appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                                    measure: measure, state: &state)
                     }
                 }
@@ -796,7 +852,7 @@ public struct ProgramRuntime: Sendable {
                 return try layout(child,
                     proposedWidth: positioned ? (child.width == .fill ? knownWidth : nil) : initialWidth,
                     proposedHeight: positioned ? (child.height == .fill ? knownHeight : nil) : initialHeight,
-                    appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                    appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                     measure: measure, state: &state)
             }
             func origin(_ size: SkinSize, position: ProgramPosition) throws -> SkinPoint {
@@ -827,7 +883,7 @@ public struct ProgramRuntime: Sendable {
             if initialWidth != finalWidth || initialHeight != finalHeight {
                 for i in boxes.indices where nodes[i].position == nil {
                     boxes[i] = try layout(nodes[i], proposedWidth: finalWidth, proposedHeight: finalHeight,
-                                          appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                          appearance: appearance, resolve: resolve, resolveIcon: resolveIcon, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
                                           measure: measure, state: &state)
                 }
             }
@@ -892,7 +948,7 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .image, .rectangle, .shape, .freeform, .progress, .gauge, .spacer: break
+            case .text, .image, .icon, .rectangle, .shape, .freeform, .progress, .gauge, .spacer: break
             }
         }
         var layoutBounds = SkinRect(width: width, height: height)
@@ -927,12 +983,13 @@ public struct ProgramRuntime: Sendable {
                                         height: max(innerHeight, textSize?.height ?? 0)),
                       style: style, text: resolvedText, textSize: textSize, fill: fill, track: track, progress: fraction, gauge: gaugeValues,
                       stroke: try node.stroke.map { try $0.color.resolved(in: appearance, colorInput: state.colors) },
-                      backgroundColor: backgroundColor, backgroundTint: backgroundTint, image: image, children: children)
+                      backgroundColor: backgroundColor, backgroundTint: backgroundTint, image: image, icon: iconInput, children: children)
         state.boxes[key] = box
         return box
     }
 
-    private func append(_ box: Box, at point: SkinPoint, inheritedHidden: Bool, into elements: inout [SceneElement]) throws {
+    private func append(_ box: Box, at point: SkinPoint, inheritedHidden: Bool,
+                        accessibilityLabels: [ElementID: String], into elements: inout [SceneElement]) throws {
         let hidden = inheritedHidden || box.node.hidden
         let frame = SkinRect(x: point.x, y: point.y, width: box.size.width, height: box.size.height)
         guard [frame.x, frame.y, frame.width, frame.height, frame.maxX, frame.maxY].allSatisfy(\.isFinite) else {
@@ -952,6 +1009,14 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.layoutOverflow(box.node.id)
                 }
                 items = [.text(TextDraw(text: text, style: style, frame: frame, contentFrame: content, anchor: point))]
+            }
+        case .icon(let icon):
+            kind = .image
+            guard let input = box.icon else { throw ProgramRuntimeError.invalidIcon(box.node.id) }
+            if !hidden {
+                let content = SkinRect(x: point.x + box.content.x, y: point.y + box.content.y,
+                                       width: box.content.width, height: box.content.height)
+                if let drawing = try iconDrawing(icon, input: input, in: content, node: box.node) { items = [.icon(drawing)] }
             }
         case .image(let input):
             kind = .image
@@ -1062,9 +1127,11 @@ public struct ProgramRuntime: Sendable {
         elements.append(SceneElement(id: box.node.id, kind: kind, frame: frame, anchor: point,
                                      visibility: hidden ? .hiddenKeepsSpace : .visible, container: nil, isContainer: false,
                                      items: items, glass: glass, imageDependencies: imageDependencies,
-                                     backing: glass == nil ? .content : .native(.glass)))
+                                     backing: glass == nil ? .content : .native(.glass),
+                                     accessibilityLabel: accessibilityLabels[box.node.id]))
         for (child, offset) in box.children {
-            try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden, into: &elements)
+            try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden,
+                       accessibilityLabels: accessibilityLabels, into: &elements)
         }
     }
 
@@ -1081,6 +1148,7 @@ public struct ProgramRuntime: Sendable {
         for element in elements where element.visibility == .visible {
             try include(element.frame, element: element.id)
             for item in element.items {
+                if case .icon(let draw) = item { try include(draw.contentFrame, element: element.id) }
                 if case .shape(let draw) = item {
                     for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {
                         let bounds = shape.visualBounds
@@ -1137,6 +1205,31 @@ public struct ProgramRuntime: Sendable {
         case .bottom: return SkinPoint(x: 0.5, y: 1)
         case .bottomRight: return SkinPoint(x: 1, y: 1)
         }
+    }
+
+    private func iconDrawing(_ icon: ProgramIcon, input: IconInput, in content: SkinRect,
+                             node: ProgramElement) throws -> IconDraw? {
+        guard let natural = input.naturalSize else { return nil }
+        var size = natural
+        if case .fixed = node.width, case .fixed = node.height, !icon.hasOwnFont {
+            guard content.width > 0, content.height > 0 else { return nil }
+            // Normalize first so fitting a finite box cannot overflow a scale when the measured symbol is tiny.
+            let longest = max(natural.width, natural.height)
+            let width = natural.width / longest, height = natural.height / longest
+            let scale = min(content.width / width, content.height / height)
+            size = SkinSize(width: width * scale, height: height * scale)
+        }
+        let x: Double
+        switch icon.align {
+        case .left: x = content.x
+        case .center: x = content.x + (content.width - size.width) / 2
+        case .right: x = content.x + content.width - size.width
+        }
+        let rect = SkinRect(x: x, y: content.y + (content.height - size.height) / 2, width: size.width, height: size.height)
+        guard [rect.x, rect.y, rect.width, rect.height, rect.maxX, rect.maxY].allSatisfy(\.isFinite),
+              rect.width >= 0, rect.height >= 0 else { throw ProgramRuntimeError.layoutOverflow(node.id) }
+        guard rect.width > 0, rect.height > 0 else { return nil }
+        return IconDraw(request: input.request, naturalSize: natural, contentFrame: rect)
     }
 
     /// Gauge ink stays inside the content box, so box layout, viewport, background and hit geometry share the

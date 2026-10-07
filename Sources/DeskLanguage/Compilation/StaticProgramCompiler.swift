@@ -135,12 +135,13 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image", "Progress", "Gauge", "Spacer"].contains(facts.component) else {
+        guard ["Text", "Icon", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image", "Progress", "Gauge", "Spacer"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let image = facts.component == "Image"
+        let icon = facts.component == "Icon"
         let progress = facts.component == "Progress"
         let gauge = facts.component == "Gauge"
         let rangedMeter = progress || gauge
@@ -150,7 +151,11 @@ struct StaticProgramCompiler {
         var allowedModifiers: Set<String> = spacer ? ["hidden"] : rangedMeter ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
-        allowedModifiers.formUnion(["background", "rounded"])
+        allowedModifiers.formUnion(["background", "rounded", "voiceOver"])
+        if icon {
+            allowedModifiers.insert("iconColors")
+            allowedModifiers.remove("digits")
+        }
         if !spacer { allowedModifiers.insert("position") }
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
@@ -197,8 +202,8 @@ struct StaticProgramCompiler {
             if ["onClick", "onRightClick"].contains(modifier.name.token.text) {
                 let primary = modifier.name.token.text == "onClick"
                 guard (primary ? onClick == nil && onClickActions == nil : onRightClickActions == nil),
-                      facts.component == "Text" || solidShape || rangedMeter else {
-                    throw issue(.unsupported, modifier.node, "Only Text, Progress, Gauge and basic shape primary/secondary click actions are implemented")
+                      facts.component == "Text" || icon || solidShape || rangedMeter else {
+                    throw issue(.unsupported, modifier.node, "Only Text, Icon, Progress, Gauge and basic shape primary/secondary click actions are implemented")
                 }
                 let actions = try clickActions(modifier, kind: facts.kind)
                 if !primary {
@@ -229,7 +234,8 @@ struct StaticProgramCompiler {
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor"]) }
-        allowedFacets.formUnion(["background", "background.tint", "rounded.topLeft", "rounded.topRight",
+        if icon { allowedFacets.insert("iconColors") }
+        allowedFacets.formUnion(["voiceOver", "background", "background.tint", "rounded.topLeft", "rounded.topRight",
                                  "rounded.bottomLeft", "rounded.bottomRight"])
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
@@ -240,7 +246,7 @@ struct StaticProgramCompiler {
             }
         }
         let index = try reserveIndex(at: node, depth: depth)
-        // Only text and containers inherit text styles. Ranged meters own their fill and track colors.
+        // Text, icons and containers inherit text styles. Ranged meters own their fill and track colors.
         let appearance = solidShape || image || rangedMeter || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
         // The checked preset owns the root proposal; retain DK5018 but do not evaluate ignored size facets.
         let width: ProgramLength = ignoresRootSize ? .fit : try length(facts, "width", default: spec.sizing.width, at: node)
@@ -261,6 +267,7 @@ struct StaticProgramCompiler {
         } else { hidden = false }
         let background = try background(facts, call: call)
         let radius = try uniformRadius(facts, call: call)
+        let label = try voiceOver(facts, call: call)
         if image, let radius, radius != .points(0) {
             throw issue(.unsupported, node, "Nonzero Image rounding requires picture clipping, which is not implemented")
         }
@@ -439,20 +446,29 @@ struct StaticProgramCompiler {
             default: throw issue(.unsupported, node, "Unsupported imageMode")
             }
             content = .image(ProgramImage(source: source, mode: mode))
+        case "Icon":
+            let arguments = call.arguments?.arguments ?? []
+            guard spec.kind == .icon, spec.block == .none, spec.signatures.count == 1,
+                  spec.signatures[0].params.count == 1, let parameter = spec.signatures[0].params.first,
+                  parameter.name == "name", parameter.label == nil, parameter.type == .symbolName,
+                  parameter.role == .plain, parameter.source == .any, !parameter.translatable,
+                  parameter.required, !parameter.variadic, parameter.defaultValue == nil,
+                  parameter.sameAs == nil, parameter.facets.isEmpty, parameter.range == nil, parameter.unit == nil,
+                  call.block == nil, arguments.count == 1, let argument = arguments.first, argument.label == nil else {
+                throw issue(.unsupported, node, "Unsupported checked Icon SymbolName parameter contract")
+            }
+            content = .icon(ProgramIcon(name: try expressions.symbolName(argument.value.node),
+                fontFamily: try fontFamily(appearance, at: node), fontSize: appearance.size,
+                fontWeight: appearance.weight, italic: appearance.italic, color: appearance.color, align: appearance.align,
+                colors: try iconColors(facts, call: call),
+                fontSizeExpression: appearance.sizeExpression,
+                hasOwnFont: call.modifiers.contains { $0.name.token.text == "font" }))
         case "Text":
             guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
                 throw issue(.unsupported, node, "Text requires one String expression")
             }
             let text = try expressions.text(arguments[0].value.node)
-            let family: String
-            switch appearance.design {
-            case "standard": family = appearance.family
-            case "rounded" where appearance.family == "System": family = "System Rounded"
-            case "mono" where appearance.family == "System": family = "System Mono"
-            case "serif" where appearance.family == "System": family = "System Serif"
-            default: throw issue(.unsupported, node, "Unsupported font design/family combination")
-            }
-            content = .text(ProgramText(value: text, fontFamily: family, fontSize: appearance.size,
+            content = .text(ProgramText(value: text, fontFamily: try fontFamily(appearance, at: node), fontSize: appearance.size,
                                         fontWeight: appearance.weight, italic: appearance.italic,
                                         color: appearance.color, align: appearance.align, digits: appearance.digits,
                                         fontSizeExpression: appearance.sizeExpression))
@@ -508,7 +524,97 @@ struct StaticProgramCompiler {
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape || rangedMeter ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
-                              onRightClickActions: onRightClickActions, position: position, background: background)
+                              onRightClickActions: onRightClickActions, position: position, background: background,
+                              voiceOver: label)
+    }
+
+    private func iconColors(_ facts: ElementFacts, call: CallStmtSyntax) throws -> IconColors {
+        guard let spec = catalog.modifier(named: "iconColors"), spec.appliesTo.contains(.icon),
+              !spec.inheritable, spec.facets == [FacetID("iconColors")], spec.fixedValues.isEmpty,
+              spec.context == .view, spec.boxLayer == .none, !spec.softFacets, spec.event == nil, spec.timing == nil,
+              spec.block == .none, spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+              let parameter = spec.signatures[0].params.first, parameter.label == nil, parameter.name == "mode",
+              parameter.type == .enumeration("IconColors"), parameter.facets == [FacetID("iconColors")],
+              parameter.role == .plain, parameter.source == .any, parameter.defaultValue == nil,
+              parameter.required, !parameter.variadic, !parameter.translatable,
+              parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+              let facet = catalog.facet("iconColors"), facet.valueType == .enumeration("IconColors"), !facet.inheritable else {
+            throw issue(.unsupported, call.node, "Unsupported checked IconColors catalog contract")
+        }
+        let modifiers = call.modifiers.filter { $0.name.token.text == "iconColors" }
+        let candidates = facts.facets["iconColors"] ?? []
+        let choice: String
+        if modifiers.isEmpty && candidates.isEmpty {
+            guard let source = catalog.component(named: "Icon")?.defaults["iconColors"],
+                  case .choice(let value) = try fixed(source, at: call.node) else {
+                throw issue(.invalidCheckedModel, call.node, "The checking catalog has no Icon color mode default")
+            }
+            choice = value
+        } else {
+            guard modifiers.count == 1, let modifier = modifiers.first,
+                  checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("iconColors")),
+                  candidates.count == 1, let candidate = candidates.first, candidate.fixedValue == nil,
+                  candidate.condition == nil, candidate.origin == .own(checked.tree.id(of: modifier.node)),
+                  candidate.level == 3, candidate.hard,
+                  let arguments = modifier.arguments?.arguments, arguments.count == 1,
+                  let argument = arguments.first, argument.label == nil,
+                  candidate.value == checked.tree.id(of: argument.value.node),
+                  checked.types[candidate.value]?.type == .enumeration("IconColors"),
+                  let value = checked.tree.resolve(candidate.value) else {
+                throw issue(.invalidCheckedModel, call.node, "Icon colors require a checked own IconColors argument")
+            }
+            let name: String
+            if let implicit = ImplicitMemberExprSyntax(value), implicit.arguments == nil {
+                name = implicit.name.token.text
+            } else if let member = MemberExprSyntax(value),
+                      IdentifierExprSyntax(member.base.node)?.name == "IconColors" {
+                name = member.name.token.text
+            } else { throw issue(.unsupported, value, "Icon colors require a literal IconColors case") }
+            guard checked.symbols[candidate.value] == .enumCase(type: "IconColors", case: name) else {
+                throw issue(.invalidCheckedModel, value, "Icon colors have inconsistent checked case identity")
+            }
+            choice = name
+        }
+        guard !facts.inherits.contains("iconColors"),
+              catalog.enumeration("IconColors")?.enumCase(named: choice) != nil,
+              let colors = IconColors(rawValue: choice) else {
+            throw issue(.unsupported, call.node, "Unsupported IconColors case or inheritance")
+        }
+        return colors
+    }
+
+    private mutating func voiceOver(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramExpression? {
+        let modifiers = call.modifiers.filter { $0.name.token.text == "voiceOver" }
+        let candidates = facts.facets["voiceOver"] ?? []
+        guard !facts.inherits.contains("voiceOver") else {
+            throw issue(.invalidCheckedModel, call.node, "VoiceOver labels cannot inherit")
+        }
+        if modifiers.isEmpty && candidates.isEmpty { return nil }
+        guard modifiers.count == 1, let modifier = modifiers.first,
+              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("voiceOver")),
+              let spec = catalog.modifier(named: "voiceOver"), spec.appliesTo.contains(facts.kind),
+              spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
+              spec.facets == [FacetID("voiceOver")], spec.fixedValues.isEmpty,
+              let facet = catalog.facet("voiceOver"), facet.valueType == .string, !facet.inheritable,
+              spec.event == nil, spec.timing == nil, spec.block == .none,
+              spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+              let parameter = spec.signatures[0].params.first, parameter.label == nil, parameter.name == "text",
+              parameter.type == .string, parameter.role == .display, parameter.source == .any,
+              parameter.translatable, parameter.required, !parameter.variadic, parameter.defaultValue == nil,
+              parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+              parameter.facets == [FacetID("voiceOver")],
+              modifier.block == nil, let arguments = modifier.arguments?.arguments,
+              arguments.count == 1, let argument = arguments.first, argument.label == nil else {
+            throw issue(.unsupported, call.node, "Unsupported checked VoiceOver display modifier contract")
+        }
+        guard candidates.count == 1, let candidate = candidates.first, candidate.condition == nil,
+              candidate.fixedValue == nil, candidate.level == 3, candidate.hard,
+              candidate.origin == .own(checked.tree.id(of: modifier.node)),
+              candidate.value == checked.tree.id(of: argument.value.node),
+              let value = checked.tree.resolve(candidate.value), checked.types[candidate.value] != nil else {
+            throw issue(.invalidCheckedModel, modifier.node, "VoiceOver label has no matching checked own display argument")
+        }
+        return try expressions.text(value)
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {
@@ -647,6 +753,16 @@ struct StaticProgramCompiler {
             try assign(try fixed(value.value, at: node), to: facet.rawValue, appearance: &result, at: node)
         }
         return result
+    }
+
+    private func fontFamily(_ appearance: Appearance, at node: PositionedNode) throws -> String {
+        switch appearance.design {
+        case "standard": return appearance.family
+        case "rounded" where appearance.family == "System": return "System Rounded"
+        case "mono" where appearance.family == "System": return "System Mono"
+        case "serif" where appearance.family == "System": return "System Serif"
+        default: throw issue(.unsupported, node, "Unsupported font design/family combination")
+        }
     }
 
     private func assign(_ value: Value, to key: String, appearance: inout Appearance, at node: PositionedNode) throws {

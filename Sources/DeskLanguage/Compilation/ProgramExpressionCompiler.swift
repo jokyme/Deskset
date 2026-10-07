@@ -33,7 +33,7 @@ struct ProgramExpressionCompiler {
                 throw issue(.invalidCheckedModel, declaration.node, "Missing checked declaration type")
             }
             guard supportedType(type) else {
-                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle declarations are implemented")
+                throw issue(.unsupported, declaration.node, "Only String/SymbolName, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle declarations are implemented")
             }
             if kind == .variable { assignmentTypes[index] = type }
             return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
@@ -117,6 +117,17 @@ struct ProgramExpressionCompiler {
         return try lower(node, depth: 1)
     }
 
+    /// Symbol names are string values, never a display conversion of numbers, dates or Booleans.
+    mutating func symbolName(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked symbol-name type")
+        }
+        guard type == .string || type == .symbolName else {
+            throw issue(.unsupported, node, "Icon requires a checked String or SymbolName expression")
+        }
+        return try lower(node, depth: 1, displayConditionals: false)
+    }
+
     mutating func copyText(_ node: PositionedNode) throws -> ProgramExpression {
         guard let type = checked.types[checked.tree.id(of: node)]?.type else {
             throw issue(.invalidCheckedModel, node, "Missing checked copy argument type")
@@ -167,7 +178,7 @@ struct ProgramExpressionCompiler {
         return try lower(node, depth: 1)
     }
 
-    private mutating func lower(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
+    private mutating func lower(_ node: PositionedNode, depth: Int, displayConditionals: Bool = true) throws -> ProgramExpression {
         count += 1
         guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
             throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
@@ -179,7 +190,7 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "Missing checked expression type")
         }
         guard supportedType(type) else {
-            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle expressions are implemented")
+            throw issue(.unsupported, node, "Only String/SymbolName, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle expressions are implemented")
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
@@ -197,7 +208,8 @@ struct ProgramExpressionCompiler {
         }
         // Validate the original supported subtree before folding the checker's actual constant. A constant
         // conditional must not hide an unsupported branch, and no variable initializer is inferred here.
-        let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth)
+        let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth,
+                                 displayConditionals: displayConditionals)
         if let canonical = checked.canonicalNumericValues[identity] {
             guard let dimension = numberDimension(type), canonical.isFinite else {
                 throw issue(.invalidCheckedModel, node, "Invalid checked canonical numeric constant")
@@ -212,7 +224,8 @@ struct ProgramExpressionCompiler {
         return raw
     }
 
-    private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int) throws -> ProgramExpression {
+    private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int,
+                                     displayConditionals: Bool) throws -> ProgramExpression {
         if let value = StringLiteralSyntax(node) {
             if let text = value.literalValue {
                 guard text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
@@ -288,7 +301,9 @@ struct ProgramExpressionCompiler {
             } else if literal.unit != nil { throw issue(.unsupported, node, "Unknown numeric unit catalog contract") }
             return try quantity(canonical, dimension: dimension, at: node)
         }
-        if let value = ParenExprSyntax(node) { return try lower(value.value.node, depth: depth + 1) }
+        if let value = ParenExprSyntax(node) {
+            return try lower(value.value.node, depth: depth + 1, displayConditionals: displayConditionals)
+        }
         if IdentifierExprSyntax(node) != nil {
             guard case .declaration(let identity)? = checked.symbols[checked.tree.id(of: node)], let slot = slots[identity] else {
                 throw issue(.unsupported, node, "Only checked widget declarations can be read by this program slice")
@@ -351,7 +366,8 @@ struct ProgramExpressionCompiler {
                       spec.signatures[0].params[0].defaultValue == nil else {
                     throw issue(.unsupported, node, "Unsupported checked ifMissing member contract")
                 }
-                return .ifMissing(try lower(member.base.node, depth: depth + 1), try lower(arguments[0].value.node, depth: depth + 1))
+                return .ifMissing(try lower(member.base.node, depth: depth + 1, displayConditionals: displayConditionals),
+                                  try lower(arguments[0].value.node, depth: depth + 1, displayConditionals: displayConditionals))
             }
             guard member.name.token.name == "in", type == .date,
                   checked.types[checked.tree.id(of: member.base.node)]?.type == .date,
@@ -406,7 +422,7 @@ struct ProgramExpressionCompiler {
             }
         }
         if let value = TernaryExprSyntax(node) {
-            if type == .string {
+            if type == .string && displayConditionals {
                 // The checker marks display-position conditionals String: each selected branch is displayed
                 // independently, including a direct data member's catalog default. Numeric conditionals stay numeric.
                 return .conditional(try lower(value.condition.node, depth: depth + 1),
@@ -414,14 +430,14 @@ struct ProgramExpressionCompiler {
                                     otherwise: try displayed(value.otherwise.node, depth: depth + 1))
             }
             return .conditional(try lower(value.condition.node, depth: depth + 1),
-                                then: try lower(value.then.node, depth: depth + 1),
-                                otherwise: try lower(value.otherwise.node, depth: depth + 1))
+                                then: try lower(value.then.node, depth: depth + 1, displayConditionals: displayConditionals),
+                                otherwise: try lower(value.otherwise.node, depth: depth + 1, displayConditionals: displayConditionals))
         }
         throw issue(.unsupported, node, "Unsupported scalar expression: \(node.kind.rawValue)")
     }
 
     private func supportedType(_ type: DeskType) -> Bool {
-        type == .string || type == .bool || type == .date || numberDimension(type) != nil
+        type == .string || type == .symbolName || type == .bool || type == .date || numberDimension(type) != nil
     }
 
     private func numberDimension(_ type: DeskType) -> ProgramNumberDimension? {

@@ -45,7 +45,7 @@ public extension Desk {
     /// scalar text templates, checked time.now/Date.in/date formats, numeric and Date/Duration arithmetic,
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark and checked CPU/memory/battery scalar fields, including presence and remaining Duration, root onLoad variable assignments,
-    /// ordered Text/Progress/Gauge/basic-shape onClick/onRightClick assignments/copy/open actions,
+    /// ordered Text/Icon/Progress/Gauge/basic-shape onClick/onRightClick assignments/copy/open actions,
     /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
@@ -57,6 +57,10 @@ public extension Desk {
     /// Angles retain canonical degrees through arithmetic/assignments and use integer-degree defaults in display formatting.
     /// Direct battery.timeRemaining displays with its catalog short style (including transparent parentheses); explicit style options override it.
     /// Display-position conditionals format each branch independently, and Bool text uses the shared localized Yes/No conversion.
+    /// Own voiceOver labels on supported views use those same checked display expressions and do not inherit.
+    /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
+    /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
+    /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
     /// Dynamic layout and sibling geometry references, other numeric dimensions, Duration decimals, relative/subsecond Date formats and

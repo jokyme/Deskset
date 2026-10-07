@@ -588,7 +588,9 @@ extension Checker {
             return false
         }
         // Literal files, symbols and fonts.
-        if let s = v.stringLiteral {
+        if type == .symbolName, v.stringLiteral == nil {
+            checkSymbolBranches(node)
+        } else if let s = v.stringLiteral {
             switch type {
             case .symbolName: checkSymbol(s, node)
             case .imageSource: checkFile(s, node, kind: "image")

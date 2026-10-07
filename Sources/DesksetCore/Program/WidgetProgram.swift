@@ -131,11 +131,42 @@ public struct ProgramImageResource: Equatable, Sendable {
     }
 }
 
+/// A live platform symbol. The resolved font includes inherited facets; hasOwnFont records whether an explicit
+/// element/style font disables fixed-box fitting. Bold/italic alone and an inherited font leave fitting enabled.
+public struct ProgramIcon: Equatable, Sendable {
+    public let name: ProgramExpression
+    public let fontFamily: String
+    public let fontSize: Double
+    public let fontWeight: Int?
+    public let italic: Bool
+    public let color: ProgramColor
+    public let align: HorizontalTextAlign
+    public let colors: IconColors
+    public let fontSizeExpression: ProgramExpression?
+    public let hasOwnFont: Bool
+
+    public init(name: ProgramExpression, fontFamily: String = "System", fontSize: Double = 13,
+                fontWeight: Int? = 400, italic: Bool = false, color: ProgramColor = .text,
+                align: HorizontalTextAlign = .center, colors: IconColors = .monochrome,
+                fontSizeExpression: ProgramExpression? = nil, hasOwnFont: Bool = false) {
+        self.name = name; self.fontFamily = fontFamily; self.fontSize = fontSize; self.fontWeight = fontWeight
+        self.italic = italic; self.color = color; self.align = align; self.colors = colors
+        self.fontSizeExpression = fontSizeExpression; self.hasOwnFont = hasOwnFont
+    }
+
+    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, resolvedFontSize: Double?) throws -> TextStyle {
+        try ProgramText(value: name, fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
+                        italic: italic, color: color, align: align).drawingStyle(in: appearance, colorInput: colorInput,
+                            wrap: false, resolvedFontSize: resolvedFontSize)
+    }
+}
+
 /// A box in points. Child order is drawing order; identity is assigned by the producer, never by a syntax version.
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
         case image(ProgramImage)
+        case icon(ProgramIcon)
         case progress(ProgramProgress)
         case gauge(ProgramGauge)
         /// Empty layout along the enclosing Row/Column's main axis; elsewhere it takes no space.
@@ -177,6 +208,8 @@ public struct ProgramElement: Equatable, Sendable {
     public let onRightClickActions: [ProgramAction]?
     /// Valid only on a direct Freeform child. nil uses the parent's alignment; negative coordinates are allowed.
     public let position: ProgramPosition?
+    /// A display string for this element's accessibility label. Hidden labels are validated but not evaluated.
+    public let voiceOver: ProgramExpression?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
@@ -184,7 +217,7 @@ public struct ProgramElement: Equatable, Sendable {
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
                 onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil,
-                background: ProgramBackground? = nil) {
+                background: ProgramBackground? = nil, voiceOver: ProgramExpression? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -203,6 +236,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.onClickActions = onClickActions
         self.onRightClickActions = onRightClickActions
         self.position = position
+        self.voiceOver = voiceOver
     }
 }
 

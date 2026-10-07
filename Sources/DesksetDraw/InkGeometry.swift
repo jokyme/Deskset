@@ -77,6 +77,12 @@ package enum InkGeometry {
             return .bounds(rect)
         case let .image(draw):
             return image(draw)
+        case let .icon(draw):
+            guard finite(draw.contentFrame.cgRect), draw.naturalSize.width.isFinite, draw.naturalSize.height.isFinite,
+                  draw.naturalSize.width > 0, draw.naturalSize.height > 0 else { return .unknown(.invalidGeometry) }
+            guard draw.contentFrame.width > 0, draw.contentFrame.height > 0 else { return .empty }
+            // The prepared native image is drawn only in this quad, including its transparent margins.
+            return bounds(draw.contentFrame.cgRect)
         case let .graph(draw):
             return graph(draw)
         case .text, .rotator, .sprite:

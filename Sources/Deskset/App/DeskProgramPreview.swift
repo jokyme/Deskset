@@ -6,6 +6,32 @@ import DesksetDraw
 /// A shared program's editor preview. The document checker owns source/version truth; this main-thread owner
 /// only compiles its current finished snapshot and borrows the view's drawing destination. It activates no widget.
 final class DeskProgramPreviewController: NSViewController, TickTarget {
+    typealias IconPreparation = ([DeskIconResources.Demand], @escaping (Result<DeskIconResources.Batch, Error>) -> Void) -> DeskIconResources.Ticket
+
+    /// Retries evaluate the original transaction, never a partly assigned runtime or a later clock sample.
+    private final class Projection {
+        let base: ProgramRuntime
+        let snapshot: DeskSnapshot
+        let input: (stamp: EnvironmentStamp, colors: ProgramColorInput)
+        let date: ProgramDateInput
+        let systemInput: ProgramSystemInput?
+        let images: [String: ProgramImageResource]
+        let context: DrawContext
+        let fontGeneration: Int
+        let click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)?
+        var preparationID: UUID?
+        var ticket: DeskIconResources.Ticket?
+        var deferredRefresh = false
+
+        init(base: ProgramRuntime, snapshot: DeskSnapshot,
+             input: (stamp: EnvironmentStamp, colors: ProgramColorInput), date: ProgramDateInput,
+             systemInput: ProgramSystemInput?, images: [String: ProgramImageResource], context: DrawContext,
+             click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)?) {
+            self.base = base; self.snapshot = snapshot; self.input = input; self.date = date
+            self.systemInput = systemInput; self.images = images; self.context = context; self.click = click
+            fontGeneration = context.icons.fontGeneration
+        }
+    }
     enum State: Equatable {
         case checking, ready, empty, unavailable(String), closed
     }
@@ -49,6 +75,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private let dateLocale: () -> Locale
     private let colorSource: (NSAppearance) throws -> MacAppearance.ProgramValues
     private let system: SystemDataSource
+    let iconResources = DeskIconResources()
+    private let prepareIcons: IconPreparation
+    private var pending: Projection?
+    var isPreparingIcons: Bool { pending != nil }
     private var sampler = ProgramSystemSampler()
     private var lastColors: ProgramColorInput?
     private let tickScheduler = TickScheduler()
@@ -73,12 +103,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
          dateLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
          colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
          system: SystemDataSource = SystemMonitor.shared,
+         prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
         self.dateLocale = dateLocale
         self.colorSource = colors
         self.system = system
+        self.prepareIcons = prepareIcons
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
@@ -109,6 +141,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         visible = value
         if value { updateForTick() } else {
             primaryPress = nil; secondaryPress = nil; canvas.clearPointerGestures(); tickScheduler.cancel()
+            if pending?.click != nil { cancelProjection() }
         }
     }
 
@@ -255,6 +288,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     func show(_ candidate: DeskSnapshot, readError: String?) {
         precondition(Thread.isMainThread)
         guard state != .closed else { return }
+        cancelProjection()
         primaryPress = nil
         secondaryPress = nil
         inspectionPress = nil
@@ -283,11 +317,12 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         do {
             let next = try ProgramRuntime(program: program)
             guard accepts?(candidate) == true else { clear(.checking); return }
+            clear(.checking)
             snapshot = candidate
             runtime = next
             elementRefs = result.elementRefs
             resetActionRecords()
-            canvas.context = DrawContext(fonts: AppFontResolver())
+            canvas.context = DrawContext(fonts: AppFontResolver(), icons: AppIconRasterizer(resources: iconResources))
             project()
         } catch { clear(.unavailable(previewMessage(for: error))) }
     }
@@ -303,23 +338,54 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private func project(click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)? = nil,
                          captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
-              var runtime else { return }
-        projecting = true
-        defer { projecting = false }
-        let context = canvas.context ?? DrawContext(fonts: AppFontResolver())
+              let runtime else { return }
+        if let pending {
+            if click == nil { pending.deferredRefresh = true; armClock(after: clock.now()) }
+            return
+        }
+        let context = canvas.context ?? DrawContext(fonts: AppFontResolver(), icons: AppIconRasterizer(resources: iconResources))
         canvas.context = context
-        let dateInput = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
         do {
             let input = try captured ?? environment()
-            let stamp = input.stamp
             let images: [String: ProgramImageResource]
             switch resources?(snapshot) ?? .pending {
             case .pending: clear(.checking); return
             case .failed(let message): clear(.unavailable(message)); return
             case .ready(let values): images = values
             }
+            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
+            let needed = runtime.neededSystemProperties(clickAt: click?.point, event: click?.event ?? .leftUp)
+            let systemInput = sampler.sample(from: system, for: needed, at: date.instant.timeIntervalSince1970)
+            let projection = Projection(base: runtime, snapshot: snapshot, input: input, date: date,
+                systemInput: systemInput, images: images, context: context, click: click)
+            _ = attempt(projection, schedulingAfter: date.instant)
+        } catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+    }
+
+    private func isCurrent(_ projection: Projection) -> Bool {
+        guard state != .closed, let snapshot, snapshot.file == projection.snapshot.file,
+              snapshot.generation == projection.snapshot.generation,
+              snapshot.tree.version == projection.snapshot.tree.version,
+              canvas.context === projection.context,
+              accepts?(projection.snapshot) == true else { return false }
+        // The checker callback may reenter the preview and replace or close its session.
+        return state != .closed && self.snapshot?.tree.version == projection.snapshot.tree.version
+            && canvas.context === projection.context
+    }
+
+    @discardableResult
+    private func attempt(_ projection: Projection, schedulingAfter instant: Date) -> Bool {
+        guard !projecting, isCurrent(projection) else { return false }
+        projecting = true
+        defer { projecting = false }
+        let input = projection.input, context = projection.context, stamp = input.stamp
+        var missing: [DeskIconResources.Demand] = [], seen = Set<DeskIconResources.Demand>()
+        iconResources.beginProjection()
+        do {
+            guard context.icons.fontGeneration == projection.fontGeneration else {
+                throw DeskIconResources.Failure.invalidResource
+            }
             let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
-                // Reject an impossible native font before constructing it; never clamp the program's point size.
                 let pixels = style.fontSize * (96.0 / 72.0) * stamp.scale
                 guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else {
                     throw PreviewFailure.extent
@@ -327,44 +393,60 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: 1)
                 return SkinSize(width: layout.size.width, height: layout.size.height)
             }
-            let needed = runtime.neededSystemProperties(clickAt: click?.point, event: click?.event ?? .leftUp)
-            let now = dateInput.instant.timeIntervalSince1970
-            let systemInput = sampler.sample(from: system, for: needed, at: now)
+            let measureIcon: (IconRequest) throws -> SkinSize? = { request in
+                do { return try context.icons.measure(request) }
+                catch DeskIconResources.Failure.notPrepared(let demand) {
+                    if seen.insert(demand).inserted { missing.append(demand) }
+                    // Only collect demands. No geometry or effects from this provisional scene are published.
+                    return SkinSize(width: 1, height: 1)
+                }
+            }
+            var candidate = projection.base
             let next: WidgetScene
             var effects: [ProgramEffect] = []
-            if let click {
-                guard let clicked = try runtime.clickWithEffects(at: click.point, expectedGeneration: click.generation,
-                                                     event: click.event,
-                                                     environment: stamp, images: images, dateInput: dateInput,
-                                                     colorInput: input.colors, systemInput: systemInput, measure: measure) else { return }
-                next = clicked.scene
-                effects = clicked.effects
+            if let click = projection.click {
+                guard let clicked = try candidate.clickWithEffects(at: click.point, expectedGeneration: click.generation,
+                    event: click.event, environment: stamp, images: projection.images, dateInput: projection.date,
+                    colorInput: input.colors, systemInput: projection.systemInput,
+                    measureIcon: measureIcon, measure: measure) else {
+                    cancelProjection(); armClock(after: instant); return false
+                }
+                next = clicked.scene; effects = clicked.effects
             } else {
-                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, colorInput: input.colors,
-                                          systemInput: systemInput, measure: measure)
+                next = try candidate.project(environment: stamp, images: projection.images, dateInput: projection.date,
+                    colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure)
             }
+            if !missing.isEmpty { prepare(missing, for: projection); return false }
             let size = next.size
             guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0 else { throw PreviewFailure.extent }
             let extent = try paintExtent(next)
             let side = max(extent.width, extent.height) * stamp.scale
             guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw PreviewFailure.extent }
+            let maximumMagnification = min(RenderOptions.scaleRange.upperBound, Double(RenderOptions.maxPixels) / max(side, 1))
+            let magnification = min(Double(scrollView.magnification), maximumMagnification)
+            guard DeskProgramImageValidation.prepareIcons(next.drawingItems, scale: stamp.scale * magnification,
+                origin: SkinPoint(x: extent.minX, y: extent.minY), cache: context.icons) else {
+                throw PreviewFailure.iconBitmap
+            }
             let nextClockDelay: TimeInterval?
-            if visible, let precision = runtime.clockPrecision {
-                nextClockDelay = try precision.delayToNextBoundary(after: dateInput.instant)
+            if visible, let precision = candidate.clockPrecision {
+                nextClockDelay = try precision.delayToNextBoundary(after: instant)
             } else { nextClockDelay = nil }
-            guard accepts?(snapshot) == true else { clear(.checking); return }
-            self.runtime = runtime
+            guard isCurrent(projection), context.icons.fontGeneration == projection.fontGeneration else {
+                if pending === projection { cancelProjection() }
+                return false
+            }
+            iconResources.commitProjection()
+            pending = nil
+            self.runtime = candidate
             lastColors = input.colors
-            scene = next
-            canvas.scene = next
-            // AppKit maps this enclosing paint viewport; the shared scene and its layout coordinates stay intact.
+            scene = next; canvas.scene = next
             canvas.frame = NSRect(origin: .zero, size: extent.size)
             canvas.bounds = extent
             updateInspectionOutline()
-            scrollView.maxMagnification = min(RenderOptions.scaleRange.upperBound,
-                                              Double(RenderOptions.maxPixels) / max(side, 1))
-            if scrollView.magnification > scrollView.maxMagnification {
-                scrollView.setMagnification(scrollView.maxMagnification, centeredAt: NSPoint(x: extent.midX, y: extent.midY))
+            scrollView.maxMagnification = maximumMagnification
+            if scrollView.magnification > maximumMagnification {
+                scrollView.setMagnification(maximumMagnification, centeredAt: NSPoint(x: extent.midX, y: extent.midY))
             }
             let hasContent = next.drawingItems.contains(where: Self.hasVisibleContent)
             let interactive = !next.hitMap.entries.isEmpty
@@ -387,11 +469,92 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 updateActionRecords()
                 onRecordedEffects?(effects)
             }
-        } catch PreviewFailure.extent { clear(.unavailable(StudioText[.deskPreviewTooLarge]), keepingProgram: true) }
+            return true
+        } catch {
+            // Fake collection sizes can overflow; resolve all collected demands before deciding the real layout.
+            if !missing.isEmpty, isCurrent(projection) { prepare(missing, for: projection); return false }
+            guard isCurrent(projection) else { return false }
+            let message = (error as? PreviewFailure) == .extent
+                ? StudioText[.deskPreviewTooLarge] : previewMessage(for: error)
+            clear(.unavailable(message), keepingProgram: true)
+            return false
+        }
+    }
+
+    private func prepare(_ demands: [DeskIconResources.Demand], for projection: Projection) {
+        guard isCurrent(projection), demands.allSatisfy({ $0.fontGeneration == projection.fontGeneration }) else {
+            cancelProjection(); return
+        }
+        pending = projection
+        primaryPress = nil; secondaryPress = nil; inspectionPress = nil; canvas.clearPointerGestures()
+        let id = UUID(), executor = self.executor
+        projection.preparationID = id
+        let ticket = prepareIcons(demands) { [weak self, executor] result in
+            // Even a synchronous injected preparer must not reenter before its ticket has been stored.
+            executor.async { [weak self] in self?.finishPreparation(id, demands: demands, result: result) }
+        }
+        if pending === projection, projection.preparationID == id { projection.ticket = ticket }
+        else { ticket.cancel() }
+        armClock(after: clock.now())
+    }
+
+    private func finishPreparation(_ id: UUID, demands: [DeskIconResources.Demand],
+                                   result: Result<DeskIconResources.Batch, Error>) {
+        precondition(executor.isCurrent && Thread.isMainThread)
+        guard let projection = pending, projection.preparationID == id else { return }
+        projection.preparationID = nil; projection.ticket = nil
+        guard isCurrent(projection) else {
+            if pending === projection { clear(.checking) }
+            return
+        }
+        do {
+            if projection.context.icons.fontGeneration != projection.fontGeneration {
+                cancelProjection(); project(); return
+            }
+            let input = try environment()
+            guard isCurrent(projection) else { return }
+            if input.stamp != projection.input.stamp || input.colors != projection.input.colors {
+                cancelProjection(); project(captured: input); return
+            }
+            switch resources?(projection.snapshot) ?? .pending {
+            case .pending: clear(.checking); return
+            case .failed(let message): clear(.unavailable(message)); return
+            case .ready: break
+            }
+            guard isCurrent(projection) else { return }
+            let batch = try result.get()
+            guard batch.entries.count == demands.count, Set(batch.entries.map(\.demand)) == Set(demands) else {
+                throw DeskIconResources.Failure.invalidResource
+            }
+            try iconResources.install(batch)
+            for demand in demands {
+                if case .missing = iconResources.lookup(demand) { throw DeskIconResources.Failure.invalidResource }
+            }
+            guard attempt(projection, schedulingAfter: clock.now()), state != .closed, pending == nil,
+                  isCurrent(projection) else { return }
+            if projection.deferredRefresh { project() }
+        } catch {
+            if isCurrent(projection) { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+        }
+    }
+
+    private func cancelProjection() {
+        let retiring = pending
+        pending = nil
+        retiring?.ticket?.cancel()
+        iconResources.cancelProjection()
+    }
+
+    private func armClock(after instant: Date) {
+        guard visible, state == .ready, let precision = runtime?.clockPrecision else { return }
+        do { tickScheduler.startClockBoundary(after: try precision.delayToNextBoundary(after: instant), for: self) }
         catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
     }
 
     private func previewMessage(for error: Error) -> String {
+        if error is DeskIconResources.Failure || error is IconDrawingError || (error as? PreviewFailure) == .iconBitmap {
+            return StudioText[.deskWidgetPreparationFailed]
+        }
         if let error = error as? ProgramRuntimeError, case .invalidText = error {
             return StudioText[.deskPreviewInvalidText]
         }
@@ -401,13 +564,16 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         return String(describing: error)
     }
 
-    private enum PreviewFailure: Error { case extent }
+    private enum PreviewFailure: Error, Equatable { case extent, iconBitmap }
 
     private static func hasVisibleContent(_ item: DrawItem) -> Bool {
         switch item {
         case .text(let value): return !value.text.isEmpty
         case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
         case .image(let image): return image.path != nil && image.contentFrame.width > 0 && image.contentFrame.height > 0
+        case .icon(let icon):
+            return !icon.request.name.isEmpty && icon.contentFrame.width > 0 && icon.contentFrame.height > 0
+                && (icon.request.colors == .multicolor || icon.request.style.color.a > 0)
         case .shape(let shape):
             return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains {
                 $0.fill.isVisible || ($0.stroke.isVisible && $0.strokePlan?.isEmpty == false)
@@ -441,9 +607,16 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     func refreshEnvironment() {
-        guard !projecting, let snapshot, accepts?(snapshot) == true else { return }
+        guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true else { return }
         do {
             let input = try environment()
+            if let pending {
+                if pending.input.stamp != input.stamp || pending.input.colors != input.colors
+                    || pending.context.icons.fontGeneration != pending.fontGeneration {
+                    cancelProjection(); project(captured: input)
+                }
+                return
+            }
             if scene?.environment != input.stamp || lastColors != input.colors { project(captured: input) }
         } catch { clear(.unavailable(String(describing: error)), keepingProgram: true) }
     }
@@ -475,11 +648,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         if isInspecting {
             inspectionPress = nil
             guard event == .leftUp, visible, point.x.isFinite, point.y.isFinite,
-                  prepareToDraw(), let snapshot else { return }
+                  prepareToDraw(), pending == nil, let snapshot else { return }
             inspectionPress = (snapshot, inspectionElement(at: point))
             return
         }
-        guard visible, prepareToDraw(), let snapshot,
+        guard visible, prepareToDraw(), pending == nil, let snapshot,
               let id = scene?.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID else { return }
         if event == .leftUp { primaryPress = (snapshot, id) } else { secondaryPress = (snapshot, id) }
     }
@@ -498,7 +671,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             inspectionPress = nil
             guard event == .leftUp, visible, let point, point.x.isFinite, point.y.isFinite,
                   let press, accepts?(press.snapshot) == true,
-                  prepareToDraw(), let snapshot, snapshot.tree.version == press.snapshot.tree.version,
+                  prepareToDraw(), pending == nil, let snapshot, snapshot.tree.version == press.snapshot.tree.version,
                   inspectionElement(at: point) == press.element else { return }
             let element = press.element.flatMap { elementRefs[$0] }
             if selectElement(element, from: snapshot) { onSelectElement?(snapshot, element) }
@@ -506,7 +679,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         }
         let press = event == .leftUp ? primaryPress : secondaryPress
         if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
-        guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), let scene,
+        guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), pending == nil, let scene,
               scene.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID == press.element else { return }
         // A legal boundary tick changes the scene, not this checked source session or pressed element identity.
         project(click: (point, scene.generation, event))
@@ -516,6 +689,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     /// the original interactive preview; a held gesture never crosses between those two modes.
     func setInspecting(_ enabled: Bool) {
         guard state != .closed, isInspecting != enabled else { return }
+        cancelProjection()
         isInspecting = enabled
         inspectionPress = nil
         primaryPress = nil
@@ -557,6 +731,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func clear(_ next: State, keepingProgram: Bool = false) {
+        cancelProjection()
+        // A cleared scene has no live symbol pins, even when its checked program can later recover.
+        iconResources.beginProjection(); iconResources.commitProjection()
         primaryPress = nil
         secondaryPress = nil
         inspectionPress = nil
@@ -802,7 +979,9 @@ final class DeskProgramPreviewCanvas: NSView {
               let destination = NSGraphicsContext.current?.cgContext else { return }
         // Qualify the actual renderer's drawn-size input before borrowing any destination pixels. A real
         // decoding failure clears the owner, rather than treating a valid header/thumbnail as a successful draw.
-        let imagesReady = DeskProgramImageValidation.validate(scene.drawingItems, in: destination) { image, context in
+        context.icons.beginFrame()
+        let imagesReady = DeskProgramImageValidation.validate(scene.drawingItems, in: destination,
+            icon: { DeskProgramImageValidation.prepare($0, in: $1, cache: context.icons) }) { image, context in
             guard var path = image.path else { return true }
             if image.naturalSize != nil { return ImageRenderer.preparedNaturalImage(image, in: context) != nil }
             if image.decodesAtDrawnSize, !image.tile {
@@ -811,7 +990,7 @@ final class DeskProgramPreviewCanvas: NSView {
             }
             return PreparedImage(path: path, options: image.options) != nil
         }
-        guard imagesReady else { onImageFailure?(); return }
+        guard imagesReady else { context.icons.cancelFrame(); onImageFailure?(); return }
         destination.saveGState()
         defer { destination.restoreGState() }
         DesksetDraw.DrawExecutor.draw(scene: scene, in: destination, context: context, cycle: 1,

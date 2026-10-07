@@ -1250,7 +1250,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         var package = PackageLoader.load(deskData: data, fileName: fileName, limits: catalog.limits)
         let service = DeskLanguageService(package: package, openFile: fileID,
-                                          options: DeskServiceOptions(catalog: catalog))
+                                          options: DeskServiceOptions(catalog: catalog, symbols: DeskSymbolCatalog()))
         let snapshot = service.snapshot
         let compileResult = Desk.compile(snapshot.checked, catalog: catalog)
         // Missing assets still publish supported literal demands; they do not publish an executable program.

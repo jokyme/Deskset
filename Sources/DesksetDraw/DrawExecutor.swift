@@ -49,6 +49,8 @@ public enum DrawExecutor {
                 TextRenderer.draw(text, in: ctx, layouts: context.text, cycle: cycle)
             case let .image(image):
                 ImageRenderer.draw(image, in: ctx)
+            case let .icon(icon):
+                IconRenderer.draw(icon, in: ctx, cache: context.icons)
             case let .shape(shape):
                 ShapeRenderer.draw(shape, in: ctx, context: context)
             case let .bar(bar):

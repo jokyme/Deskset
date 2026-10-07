@@ -201,6 +201,24 @@ extension Checker {
         }
     }
 
+    /// Check statically written alternatives without guessing names produced by dynamic expressions.
+    func checkSymbolBranches(_ node: PositionedNode) {
+        guard mute == 0, context.symbols != nil else { return }
+        var pending = [node]
+        while let current = pending.popLast() {
+            switch current.kind {
+            case .stringLiteral:
+                if let name = StringLiteralSyntax.literalValue(of: current.node) { checkSymbol(name, current) }
+            case .parenExpr:
+                if let child = current.childNodes.first { pending.append(child) }
+            case .ternaryExpr:
+                let value = TernaryExprSyntax(unchecked: current)
+                pending.append(value.otherwise.node); pending.append(value.then.node)
+            default: break
+            }
+        }
+    }
+
     func checkSymbol(_ name: String, _ node: PositionedNode) {
         guard let symbols = context.symbols, !name.isEmpty else { return }
         if !symbols.exists(name) {
