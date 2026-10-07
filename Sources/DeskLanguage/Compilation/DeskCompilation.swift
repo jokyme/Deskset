@@ -60,6 +60,8 @@ public extension Desk {
     /// Direct battery.timeRemaining displays with its catalog short style (including transparent parentheses); explicit style options override it.
     /// Display-position conditionals format each branch independently, and Bool text uses the shared localized Yes/No conversion.
     /// Own voiceOver labels on supported views use those same checked display expressions and do not inherit.
+    /// Ordinary tooltip text and optional bold titles use those display expressions without inheritance. Explicit
+    /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state/style sources remain unsupported.
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
     /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
     /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.

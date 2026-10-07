@@ -47,7 +47,7 @@ random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temp
 background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	11	FIFO message dispatch to widget host executor owner for lifecycle, fact updates, Main bitmap acceptance ACKs, primary/secondary presses and cancellation, container accessibility activation, release effects, and power change notification; not a skin input
 background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	6	presentation callbacks, availability, close acknowledgments and immutable pointer/accessibility effect batches delivered FIFO to Main; issued session/epoch/serial checked before injected external services
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
-event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
+event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag and accepted-scene hover pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	2	session identifier generation for window fact tracking; not a skin input
 zone.Locale.current	Sources/Deskset/App/DeskWidgetWindowController.swift	1	host input projection preserves system locale for date and time formatting; tests inject explicit locale; not a skin input
 
@@ -366,7 +366,13 @@ background.executorAsync	Sources/Deskset/App/RainmeterProgramHost.swift	1	off-th
 background.executorAsync	Sources/Deskset/App/DeskProgramHost.swift	2	immutable native symbol completion and off-thread final App release return to the injected executor; the owner qualifies request identity before committing and retains exclusive close/destruction
 random.UUID	Sources/Deskset/App/DeskProgramHost.swift	1	identity for each asynchronous native symbol preparation; stale or duplicate results cannot replay an owner transaction; not a program input
 background.executorAsync	Sources/Deskset/App/DeskProgramPreview.swift	1	immutable native symbol completion returns through the injected preview executor before checking source identity and committing the captured projection
-random.UUID	Sources/Deskset/App/DeskProgramPreview.swift	1	identity for each asynchronous preview symbol preparation; replacement and close invalidate pending results; not a program input
+random.UUID	Sources/Deskset/App/DeskProgramPreview.swift	3	identities for asynchronous preview symbol preparation and accepted tooltip source sessions; replacement and close invalidate pending results; not a program input
+event.notification	Sources/Deskset/App/DeskProgramPreview.swift	2	Main preview viewport and magnification notifications re-hit the injected pointer against the accepted scene; close removes observers; not a program input
+event.pointerState	Sources/Deskset/App/DeskProgramPreview.swift	1	default Main preview hover pointer source; native tests inject canvas pointerLocation without moving the system cursor; not a program input
+event.notification	Sources/Deskset/App/DeskProgramTooltips.swift	2	current parent window close, minimize and visibility notifications cancel Main tooltip state; weak observers are removed on cancellation and close; not a program input
+event.pointerState	Sources/Deskset/App/DeskProgramTooltips.swift	1	default Main tooltip pointer source; adapters and tests inject the screen point; only immutable accepted scene targets are queried
+random.UUID	Sources/Deskset/App/DeskProgramTooltips.swift	4	cancellable Main tooltip dwell tickets reject stale reveal callbacks; unrelated to program evaluation or randomness
+timer.executorAfter	Sources/Deskset/App/DeskProgramTooltips.swift	1	Main tooltip dwell uses the shared delay preference through an injected executor; native tests advance virtual time and never present real windows
 background.mainHop	Sources/Deskset/IconImages.swift	2	Main prepares immutable native vector symbols in cancellable bounded batches; workers never synchronously wait for Main or retain native views
 background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)

@@ -52,7 +52,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
          program: WidgetProgram, prepared: DeskProgramResources.Prepared?,
          app: AppController, executor: SkinExecutor = MainSkinExecutor.shared,
          clock: SkinClock = .live, initialPosition: (x: Double, y: Double)? = nil,
-         actionServices: DeskProgramActionServices = .live) {
+         actionServices: DeskProgramActionServices = .live,
+         tooltipExecutor: SkinExecutor = MainSkinExecutor.shared) {
         self.source = source
         self.instance = instance
         self.directory = directory
@@ -80,6 +81,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         view.controller = self
+        view.programTooltips = DeskProgramTooltips(view: view, executor: tooltipExecutor,
+            pointerLocation: { [weak view] in view?.pointerLocation() ?? .zero },
+            presentsWindows: app.presentsWindows,
+            targetAt: { [weak self] in self?.tooltipTarget(at: $0) })
         panel.delegate = self
 
         let appearance = panel.effectiveAppearance
@@ -180,7 +185,9 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             currentDestinationKey = key
             destinationEpoch &+= 1
             view.clearAccessibility()
+            view.programTooltips?.cancel()
         }
+        if !takesPointer { view.programTooltips?.cancel() }
 
         return SkinWindowFacts(
             frame: window.frame,
@@ -283,6 +290,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             lastPresentationLifecycle = invalidation.lifecycle
             latestPresented = nil
             view.clearAccessibility()
+            view.programTooltips?.cancel()
             invalidation.finishOnMain(accepted: true)
         }
     }
@@ -309,6 +317,16 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             publishFacts()
         }
         view.refreshAccessibility()
+        view.programTooltips?.refresh()
+    }
+
+    /// Only the accepted picture owns hover content. Its viewport origin is applied exactly once.
+    func tooltipTarget(at point: NSPoint) -> DeskProgramTooltips.Target? {
+        guard !isClosing, !isClosed, !window.ignoresMouseEvents, view.toolTip == nil,
+              lastAcceptedEpoch == destinationEpoch, let presented = latestPresented else { return nil }
+        return DeskProgramTooltips.target(in: presented.scene.hitMap,
+            at: SkinPoint(x: point.x + presented.origin.x, y: point.y + presented.origin.y),
+            revision: .init(session: sessionID, epoch: lastAcceptedEpoch, generation: presented.scene.generation))
     }
 
     private func resize(for presented: DeskProgramHost.Presented) {
@@ -352,6 +370,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
         latestPresented = nil
         view.clearAccessibility()
+        view.programTooltips?.cancel()
         let localizedMessage = localizedUnavailableDescription(errorDesc)
         let changed = lastUnavailableMessage != localizedMessage
         lastUnavailableMessage = localizedMessage
@@ -466,6 +485,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             if let message = actionServices.perform(effect, directory: directory) {
                 lastActionFailure = message
                 view.toolTip = message
+                view.programTooltips?.cancel()
                 view.setAccessibilityLabel(message)
                 Log.write(message, level: .warning, source: source.entry)
             }
@@ -473,6 +493,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: NSWindowDelegate
+
+    func windowDidMove(_ notification: Notification) {
+        view.programTooltips?.cancel()
+    }
 
     func windowDidChangeScreenProfile(_ notification: Notification) {
         publishFacts()
@@ -524,6 +548,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         sessionID = UUID() // invalidate any pending in-flight didPresent callbacks
         latestPresented = nil
         view.clearAccessibility()
+        view.programTooltips?.close()
 
         for (center, token) in observers { center.removeObserver(token) }
         observers.removeAll()
@@ -767,6 +792,8 @@ final class DeskWidgetHostOwner {
 /// The view displaying Desk widget content and routing mouse input and dragging.
 final class DeskWidgetView: NSView {
     weak var controller: DeskWidgetWindowController?
+    fileprivate(set) var programTooltips: DeskProgramTooltips?
+    private var hoverTrackingArea: NSTrackingArea?
     private(set) var accessibilityParts: [DeskWidgetAccessibilityElement] = []
     private var dragStart: NSPoint?
     private var windowOrigin: NSPoint?
@@ -780,6 +807,25 @@ final class DeskWidgetView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseMoved(with event: NSEvent) {
+        programTooltips?.mouseMoved(at: convert(event.locationInWindow, from: nil))
+    }
+    override func mouseExited(with event: NSEvent) { programTooltips?.mouseExited() }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        programTooltips?.cancel()
+    }
 
     override func accessibilityChildren() -> [Any]? { accessibilityParts }
 
@@ -871,6 +917,7 @@ final class DeskWidgetView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        programTooltips?.mouseDown()
         guard let controller, !controller.isClosing, !controller.isClosed else { return }
         if let previous = primaryGesture { cancelPointer(previous.event) }
         primaryGesture = nil
@@ -903,6 +950,7 @@ final class DeskWidgetView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        programTooltips?.mouseDown()
         if primaryGesture?.event == .rightUp {
             primaryGesture = nil
             cancelPointer(.rightUp)
@@ -962,10 +1010,12 @@ final class DeskWidgetView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        programTooltips?.mouseDown()
         secondaryGesture = beginSecondaryPress(with: event)
     }
 
     override func rightMouseDragged(with event: NSEvent) {
+        programTooltips?.mouseDown()
         secondaryGesture = nil
         cancelPointer(.rightUp)
     }

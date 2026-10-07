@@ -55,7 +55,7 @@ public struct ProgramRuntime: Sendable {
                       node.padding == .zero, !node.hidden, node.hiddenIf == nil,
                       node.stroke == nil, node.cornerRadius == nil, node.background == nil,
                       node.onClick == nil, node.onClickActions == nil, node.onRightClickActions == nil,
-                      node.position == nil, node.voiceOver == nil else {
+                      node.position == nil, node.voiceOver == nil, node.tooltip == nil else {
                     throw ProgramRuntimeError.invalidGeometry(node.id)
                 }
                 for branch in conditional.branches { try expressions.validateCondition(branch.condition) }
@@ -134,6 +134,15 @@ public struct ProgramRuntime: Sendable {
             }
             if let label = node.voiceOver { try expressions.validateText(label) }
             if let condition = node.hiddenIf { try expressions.validateCondition(condition) }
+            if let tooltip = node.tooltip {
+                try expressions.validateText(tooltip.text)
+                if let title = tooltip.title { try expressions.validateText(title) }
+                // A tooltip gives an otherwise empty real container meaningful hover content, even if empty.
+                switch node.content {
+                case .row, .column, .freeform: contentCount += 1
+                default: break
+                }
+            }
             switch node.content {
             case .text(let text):
                 guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
@@ -318,6 +327,10 @@ public struct ProgramRuntime: Sendable {
                 let hidden = parentHidden || node.hidden
                 if !hidden, let condition = node.hiddenIf { active.append(condition) }
                 if !hidden, let label = node.voiceOver { active.append(label) }
+                if !hidden, let tooltip = node.tooltip {
+                    active.append(tooltip.text)
+                    if let title = tooltip.title { active.append(title) }
+                }
                 if case .text(let text) = node.content {
                     active.append(text.value)
                     collectColor(text.color)
@@ -436,6 +449,7 @@ public struct ProgramRuntime: Sendable {
         var layoutState = LayoutState(images: images, preset: preset)
         var visibleContent: Set<ElementID> = [], pending = [(program.root, false)]
         var accessibilityLabels: [ElementID: String] = [:]
+        var toolTips: [ElementID: (info: ToolTipInfo, radius: ProgramCornerRadius?)] = [:]
         while let (node, parentHidden) = pending.popLast() {
             var hidden = parentHidden || node.hidden
             // A condition that currently hides its own box still drives its eventual recovery. A hidden ancestor
@@ -444,6 +458,11 @@ public struct ProgramRuntime: Sendable {
             layoutState.hidden[node.id] = hidden
             if !hidden, let label = node.voiceOver {
                 accessibilityLabels[node.id] = try evaluation.text(label).text
+            }
+            if !hidden, let tooltip = node.tooltip {
+                let text = try evaluation.text(tooltip.text).text
+                let title = try tooltip.title.map { try evaluation.text($0).text } ?? ""
+                toolTips[node.id] = (ToolTipInfo(text: text, title: title), node.cornerRadius)
             }
             switch node.content {
             case .text, .icon, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
@@ -521,15 +540,17 @@ public struct ProgramRuntime: Sendable {
         // Reverse preorder puts each descendant before its ancestor and preserves topmost sibling draw order.
         // Desk hits the box, including its padding/rounded corners, independent of painted alpha or curve ink.
         for element in elements.reversed() where element.visibility == .visible {
-            guard let handler = clickHandlers[element.id], element.frame.width > 0, element.frame.height > 0 else { continue }
+            let handler = clickHandlers[element.id], tooltip = toolTips[element.id]
+            guard handler != nil || tooltip != nil, element.frame.width > 0, element.frame.height > 0 else { continue }
+            let radius = handler?.radius ?? tooltip?.radius
             hitMap.entries.append(SkinHitMap.Entry(name: element.id.name, frame: element.frame,
-                                                   shape: Self.clickShape(element.frame, radius: handler.radius.map {
+                                                   shape: Self.clickShape(element.frame, radius: radius.map {
                                                        if case .points(let radius) = $0 { return .points(radius * transform.a) }
                                                        return $0
                                                    }),
                                                    container: nil, glass: nil, isButton: false,
-                                                   actions: handler.actions.mapValues { $0.isEmpty ? .caught : .runs },
-                                                   cursor: true, cursorName: "", toolTip: nil, elementID: element.id))
+                                                   actions: handler?.actions.mapValues { $0.isEmpty ? .caught : .runs } ?? [:],
+                                                   cursor: true, cursorName: "", toolTip: tooltip?.info, elementID: element.id))
         }
         let scene = WidgetScene(generation: next.partialValue, size: sceneSize, background: [],
                                 backgroundImageDependencies: [], glass: [], elements: elements,

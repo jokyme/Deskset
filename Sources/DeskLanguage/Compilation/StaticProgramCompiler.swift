@@ -193,7 +193,7 @@ struct StaticProgramCompiler {
             allowedModifiers.insert("iconColors")
             allowedModifiers.remove("digits")
         }
-        if !spacer { allowedModifiers.insert("position") }
+        if !spacer { allowedModifiers.formUnion(["position", "tooltip"]) }
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
@@ -270,7 +270,7 @@ struct StaticProgramCompiler {
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
-        if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor"]) }
+        if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor", "tooltip", "tooltip.title"]) }
         if icon { allowedFacets.insert("iconColors") }
         allowedFacets.formUnion(["voiceOver", "background", "background.tint", "rounded.topLeft", "rounded.topRight",
                                  "rounded.bottomLeft", "rounded.bottomRight"])
@@ -304,6 +304,7 @@ struct StaticProgramCompiler {
         let background = try background(facts, call: call)
         let radius = try uniformRadius(facts, call: call)
         let label = try voiceOver(facts, call: call)
+        let tip = try tooltip(facts, call: call)
         if image, let radius, radius != .points(0) {
             throw issue(.unsupported, node, "Nonzero Image rounding requires picture clipping, which is not implemented")
         }
@@ -551,7 +552,7 @@ struct StaticProgramCompiler {
                               idealSize: solidShape || rangedMeter ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position, background: background,
-                              voiceOver: label, hiddenIf: visibility.condition)
+                              voiceOver: label, hiddenIf: visibility.condition, tooltip: tip)
     }
 
     private func iconColors(_ facts: ElementFacts, call: CallStmtSyntax) throws -> IconColors {
@@ -641,6 +642,63 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, modifier.node, "VoiceOver label has no matching checked own display argument")
         }
         return try expressions.text(value)
+    }
+
+    private mutating func tooltip(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramTooltip? {
+        let modifiers = call.modifiers.filter { $0.name.token.text == "tooltip" }
+        let keys: [FacetID] = ["tooltip", "tooltip.title"]
+        guard keys.allSatisfy({ !facts.inherits.contains($0) }) else {
+            throw issue(.invalidCheckedModel, call.node, "Tooltips cannot inherit")
+        }
+        if modifiers.isEmpty && keys.allSatisfy({ (facts.facets[$0] ?? []).isEmpty }) { return nil }
+        guard modifiers.count == 1, let modifier = modifiers.first,
+              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("tooltip")),
+              let spec = catalog.modifier(named: "tooltip"), spec.appliesTo.contains(facts.kind),
+              spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
+              spec.facets == keys, spec.fixedValues.isEmpty, spec.repeatable == .no,
+              spec.acceptsCondition, spec.allowedInStyle, spec.allowedInState,
+              spec.event == nil, spec.timing == nil, spec.block == .none,
+              spec.signatures.count == 1, spec.signatures[0].params.count == 2,
+              modifier.block == nil, let arguments = modifier.arguments?.arguments,
+              (1...2).contains(arguments.count), arguments.filter({ $0.label == nil }).count == 1,
+              arguments.filter({ $0.label?.name == "title" }).count == arguments.count - 1,
+              let textArgument = arguments.first(where: { $0.label == nil }) else {
+            throw issue(.unsupported, call.node, "Unsupported checked tooltip display modifier contract")
+        }
+        for (index, key) in keys.enumerated() {
+            let parameter = spec.signatures[0].params[index]
+            guard parameter.name == (index == 0 ? "text" : "title"),
+                  parameter.label == (index == 0 ? nil : "title"), parameter.type == .string,
+                  parameter.role == .display, parameter.source == .any, parameter.translatable,
+                  parameter.required == (index == 0), !parameter.variadic, parameter.defaultValue == nil,
+                  parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+                  parameter.specificity == 0, parameter.facets == [key],
+                  let facet = catalog.facet(key), facet.valueType == .string, !facet.inheritable else {
+                throw issue(.unsupported, call.node, "Unsupported checked tooltip display parameter or facet contract")
+            }
+        }
+        let titleArgument = arguments.first(where: { $0.label?.name == "title" })
+        let sources: [(FacetID, PositionedNode?)] = [("tooltip", textArgument.value.node),
+                                                   ("tooltip.title", titleArgument?.value.node)]
+        var values: [ProgramExpression] = []
+        for (key, argument) in sources {
+            let candidates = facts.facets[key] ?? []
+            guard let argument else {
+                guard candidates.isEmpty else {
+                    throw issue(.invalidCheckedModel, call.node, "Tooltip title has no written argument")
+                }
+                continue
+            }
+            guard candidates.count == 1, let candidate = candidates.first, candidate.condition == nil,
+                  candidate.fixedValue == nil, candidate.level == 3, candidate.hard,
+                  candidate.origin == .own(checked.tree.id(of: modifier.node)),
+                  candidate.value == checked.tree.id(of: argument),
+                  let value = checked.tree.resolve(candidate.value), checked.types[candidate.value] != nil else {
+                throw issue(.invalidCheckedModel, modifier.node, "Tooltip facet has no matching checked own display argument")
+            }
+            values.append(try expressions.text(value))
+        }
+        return ProgramTooltip(text: values[0], title: values.count == 2 ? values[1] : nil)
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {

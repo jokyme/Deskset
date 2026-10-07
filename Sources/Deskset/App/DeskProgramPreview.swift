@@ -83,6 +83,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private var lastColors: ProgramColorInput?
     private let tickScheduler = TickScheduler()
     private var visible = false
+    private var tooltipSession = UUID()
+    private var tooltipObservers: [NSObjectProtocol] = []
     var isClosed: Bool { state == .closed }
     var updateMilliseconds: Int {
         switch runtime?.clockPrecision {
@@ -104,6 +106,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
          colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
          system: SystemDataSource = SystemMonitor.shared,
          prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
+         presentsTooltips: Bool = true,
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
@@ -114,6 +117,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
+        canvas.programTooltips = DeskProgramTooltips(view: canvas, executor: executor,
+            pointerLocation: { [weak canvas] in canvas?.pointerLocation() ?? .zero },
+            presentsWindows: presentsTooltips,
+            targetAt: { [weak self] in self?.tooltipTarget(at: $0) })
         canvas.beforeDrawing = { [weak self] in self?.prepareToDraw() ?? false }
         canvas.onEnvironmentChange = { [weak self] in self?.refreshEnvironment() }
         canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
@@ -125,6 +132,17 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    deinit {
+        for observer in tooltipObservers { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// AppKit already converts magnified/scrolled canvas points into the scene's world coordinates.
+    func tooltipTarget(at point: NSPoint) -> DeskProgramTooltips.Target? {
+        guard visible, state == .ready, let snapshot, accepts?(snapshot) == true, let scene else { return nil }
+        return DeskProgramTooltips.target(in: scene.hitMap, at: SkinPoint(x: point.x, y: point.y),
+            revision: .init(session: tooltipSession, epoch: 0, generation: scene.generation))
+    }
 
     static func currentDateLocale() -> Locale {
         // Preserve the Mac's region/calendar preferences while using the Studio's selected display language.
@@ -140,6 +158,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard state != .closed, visible != value else { return }
         visible = value
         if value { updateForTick() } else {
+            canvas.programTooltips?.cancel()
             primaryPress = nil; secondaryPress = nil; canvas.clearPointerGestures(); tickScheduler.cancel()
             if pending?.click != nil { cancelProjection() }
         }
@@ -178,6 +197,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let clip = CenteringClipView()
         clip.drawsBackground = false
         scrollView.contentView = clip
+        clip.postsBoundsChangedNotifications = true
+        tooltipObservers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+            object: clip, queue: .main) { [weak self] _ in self?.refreshTooltipViewport() })
+        tooltipObservers.append(NotificationCenter.default.addObserver(forName: NSScrollView.didEndLiveMagnifyNotification,
+            object: scrollView, queue: .main) { [weak self] _ in self?.refreshTooltipViewport() })
         scrollView.documentView = canvas
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -467,6 +491,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             scrollView.contentView.scroll(to: scrollView.contentView.bounds.origin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
             updateStatus()
+            canvas.programTooltips?.refresh()
             tickScheduler.cancel()
             if let nextClockDelay { tickScheduler.startClockBoundary(after: nextClockDelay, for: self) }
             if !effects.isEmpty {
@@ -739,6 +764,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func clear(_ next: State, keepingProgram: Bool = false) {
+        canvas.programTooltips?.cancel()
+        tooltipSession = UUID()
         cancelProjection()
         // A cleared scene has no live symbol pins, even when its checked program can later recover.
         iconResources.beginProjection(); iconResources.commitProjection()
@@ -867,16 +894,26 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     @objc func actualSize() { setZoom(1) }
 
+    private func refreshTooltipViewport() {
+        // A projection changes frame and bounds in steps, then refreshes once with the accepted geometry.
+        guard !projecting else { return }
+        canvas.programTooltips?.refresh()
+    }
+
     func setZoom(_ value: CGFloat) {
         guard state == .ready, value.isFinite, scene != nil else { return }
         let zoom = min(max(value, scrollView.minMagnification), scrollView.maxMagnification)
         scrollView.setMagnification(zoom, centeredAt: NSPoint(x: canvas.bounds.midX, y: canvas.bounds.midY))
+        canvas.programTooltips?.refresh()
     }
 
     func close() {
         precondition(Thread.isMainThread)
         actionRecordsExpanded = false
         clear(.closed)
+        canvas.programTooltips?.close()
+        for observer in tooltipObservers { NotificationCenter.default.removeObserver(observer) }
+        tooltipObservers.removeAll()
         accepts = nil
         resources = nil
         onRecordedEffects = nil
@@ -899,6 +936,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 /// The borrowed CGContext is already in AppKit view coordinates. Only owned bitmap fixtures establish a bitmap
 /// transform; this view does not flip the base CTM or ask the compatibility renderer for a Skin.
 final class DeskProgramPreviewCanvas: NSView {
+    fileprivate(set) var programTooltips: DeskProgramTooltips?
+    private var hoverTrackingArea: NSTrackingArea?
+    var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
     fileprivate let selectionOverlay = DeskProgramSelectionOverlay(frame: .zero)
     fileprivate var scene: WidgetScene?
     fileprivate var context: DrawContext?
@@ -924,7 +964,27 @@ final class DeskProgramPreviewCanvas: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseMoved(with event: NSEvent) {
+        programTooltips?.mouseMoved(at: convert(event.locationInWindow, from: nil))
+    }
+    override func mouseExited(with event: NSEvent) { programTooltips?.mouseExited() }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        programTooltips?.cancel()
+    }
+
     override func mouseDown(with event: NSEvent) {
+        programTooltips?.mouseDown()
         if primaryEvent == .rightUp { onSecondaryRelease?(nil) }
         primaryEvent = nil
         onPrimaryRelease?(nil)
@@ -951,11 +1011,13 @@ final class DeskProgramPreviewCanvas: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        programTooltips?.mouseDown()
         if primaryEvent == .rightUp { primaryEvent = nil; onSecondaryRelease?(nil) }
         else if primaryEvent == .leftUp { onPrimaryDrag?() }
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        programTooltips?.mouseDown()
         secondaryPressed = false
         onSecondaryRelease?(nil)
         guard !event.modifierFlags.contains(.option) else { return }
@@ -965,6 +1027,7 @@ final class DeskProgramPreviewCanvas: NSView {
     }
 
     override func rightMouseDragged(with event: NSEvent) {
+        programTooltips?.mouseDown()
         secondaryPressed = false
         onSecondaryRelease?(nil)
     }

@@ -83,6 +83,8 @@ enum AppSelfTest {
         DeskContainerClickHostSelfTests.run(t)
         DeskContainerClickWindowSelfTests.run(t)
         DeskContainerClickPreviewSelfTests.run(t)
+        DeskProgramTooltipSelfTests.run(t)
+        DeskTooltipIntegrationSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)
         DeskWidgetInstallationSelfTests.run(t)
         DeskCodePresentationSelfTests.run(t)

@@ -182,6 +182,16 @@ public struct ProgramConditional: Equatable, Sendable {
     }
 }
 
+/// Display-only bindings for a local tooltip. An explicit empty value still masks an ancestor's tooltip.
+public struct ProgramTooltip: Equatable, Sendable {
+    public let text: ProgramExpression
+    public let title: ProgramExpression?
+
+    public init(text: ProgramExpression, title: ProgramExpression? = nil) {
+        self.text = text; self.title = title
+    }
+}
+
 /// A box in points, or a transparent conditional child-list item. Child order is drawing order; identity is
 /// assigned by the producer, never by a syntax version or the currently selected branch.
 public struct ProgramElement: Equatable, Sendable {
@@ -237,6 +247,8 @@ public struct ProgramElement: Equatable, Sendable {
     public let voiceOver: ProgramExpression?
     /// Combined with hidden and ancestor visibility. A true condition hides paint and input while retaining layout.
     public let hiddenIf: ProgramExpression?
+    /// Local display strings resolved only while effectively visible; they never participate in measurement.
+    public let tooltip: ProgramTooltip?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
@@ -245,7 +257,7 @@ public struct ProgramElement: Equatable, Sendable {
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
                 onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil,
                 background: ProgramBackground? = nil, voiceOver: ProgramExpression? = nil,
-                hiddenIf: ProgramExpression? = nil) {
+                hiddenIf: ProgramExpression? = nil, tooltip: ProgramTooltip? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -266,6 +278,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.position = position
         self.voiceOver = voiceOver
         self.hiddenIf = hiddenIf
+        self.tooltip = tooltip
     }
 }
 
