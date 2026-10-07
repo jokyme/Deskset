@@ -9,6 +9,8 @@ import Foundation
 struct AppliedModifier {
     var name: String
     var node: PositionedNode
+    /// Captured in the defining tree; a package style is later expanded by a different widget checker.
+    let id: NodeID
     var spec: ModifierSpec
     /// (facet, value node, fixed value text, hard)
     var facets: [(FacetID, NodeID, String?, Bool)]
@@ -518,7 +520,7 @@ extension Checker {
         }
         if spec.name == "hidden", bound.values.isEmpty { facets.append(("hidden", nodeID, "true", true)) }
         let first = bound.values.first { $0.param.label == nil }.map { text($0.node) }
-        return AppliedModifier(name: spec.name, node: modifier.node, spec: spec, facets: facets, condition: condition,
+        return AppliedModifier(name: spec.name, node: modifier.node, id: nodeID, spec: spec, facets: facets, condition: condition,
                                state: state, firstArgument: first, file: file)
     }
 
@@ -1090,7 +1092,7 @@ extension Checker {
             let before = position
             let condition = call.condition.map { CandidateCondition.expr($0) }
             expandStyle(call.style, visited: []) { a, styleName in
-                add(a, level: 2, extra: condition, origin: .style(styleName, id(a.node), file: a.file))
+                add(a, level: 2, extra: condition, origin: .style(styleName, a.id, file: a.file))
             }
             var expanded = 0
             var droppedInStyle = false
@@ -1105,8 +1107,8 @@ extension Checker {
             }
             anyApplied = anyApplied || position > before
         }
-        for a in own { add(a, level: 3, extra: nil, origin: .own(id(a.node))) }
-        for source in states { for a in source { add(a, level: 3, extra: nil, origin: .own(id(a.node))) } }
+        for a in own { add(a, level: 3, extra: nil, origin: .own(a.id)) }
+        for source in states { for a in source { add(a, level: 3, extra: nil, origin: .own(a.id)) } }
         for (facet, list) in candidates {
             candidates[facet] = list.sorted { $0.sortKey > $1.sortKey }
         }

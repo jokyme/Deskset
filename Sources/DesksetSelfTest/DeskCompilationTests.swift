@@ -130,10 +130,22 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.equal(presetDraw.style, measuredStyle, "the equal-width preset is measured with its final drawing style")
     }
 
+    t.suite("Desk: compilation: the original local font style lowers to its literal appearance") {
+        let source = #"style label { .font(13) }"# + "\n" + #"widget { Text("A").style(label) }"#
+        let program = try compileFixture(t, source)
+        t.equal(program, try compileFixture(t, #"widget { Text("A").font(13) }"#))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment()) { _, style, _ in
+            t.close(TextStyle.pixelSize(points: style.fontSize), 13)
+            return SkinSize(width: 10, height: 16)
+        }
+        t.equal(compiledDraws(scene).map(\.text), ["A"])
+        t.close(TextStyle.pixelSize(points: compiledDraws(scene)[0].style.fontSize), 13)
+    }
+
     t.suite("Desk: compilation: unsupported semantics fail with original source diagnostics") {
         let cases = [#"info { description: "Metadata" }"# + "\n" + #"widget { Text("A") }"#,
                      #"options { show = Toggle("Show") }"# + "\n" + #"widget { Text("A") }"#,
-                     #"style label { .font(13) }"# + "\n" + #"widget { Text("A").style(label) }"#,
                      #"widget { Grid(columns: 2) { Text("A") } }"#,
                      #"widget { Text("A").width(.fill).margin(1) }"#,
                      #"widget { Text("A").width(20, min: 10).margin(1) }"#,

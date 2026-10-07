@@ -201,13 +201,23 @@ func runDeskAccessibilityTests(_ t: TestRunner) {
         rejected(checked, catalog: catalog)
     }
 
-    t.suite("Desk: accessibility: unsupported dimensions styles conditions and limits remain explicit") {
+    t.suite("Desk: accessibility: the original style label reaches the projected accessibility label") {
+        let source = #"widget { Text("A").style(label) }"# + "\n" + #"style label { .voiceOver("Label") }"#
+        let program = try accessibilityProgram(t, source)
+        t.equal(program.root.voiceOver, .string("Label"))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: accessibilityEnvironment(), measure: accessibilityMeasure)
+        t.equal(scene.elements.map(\.accessibilityLabel), ["Label"])
+        var literal = try ProgramRuntime(program: accessibilityProgram(t, #"widget { Text("A").voiceOver("Label") }"#))
+        t.equal(scene, try literal.project(environment: accessibilityEnvironment(), measure: accessibilityMeasure))
+    }
+
+    t.suite("Desk: accessibility: unsupported dimensions conditions and limits remain explicit") {
         for source in [#"widget { Text("A").voiceOver(2W) }"#,
                        #"widget { Text("A").voiceOver(true ? 2W : "Allowed") }"#,
                        #"widget { Text("A").voiceOver("Label", if: true) }"#,
                        #"widget { Text("A").voiceOver(battery.health) }"#,
-                       #"widget { Text("A").voiceOver("Label").margin(1) }"#,
-                       #"widget { Text("A").style(label) }"# + "\n" + #"style label { .voiceOver("Label") }"#] {
+                       #"widget { Text("A").voiceOver("Label").margin(1) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             let result = Desk.compile(checked)

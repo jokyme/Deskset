@@ -2,9 +2,14 @@ import Foundation
 import DesksetCore
 
 struct StaticProgramCompiler {
-    let checked: CheckedFile
+    private(set) var checked: CheckedFile
     let catalog: DeskCatalog
     private var nextIndex = 0
+    private var sourceFiles: [Int: CheckedFile] = [:]
+    private var styles: [String: StyleDefinition] = [:]
+    private var expandedModifiers: [NodeID: [SourcedModifier]] = [:]
+    private var styleExpansionCount = 0
+    private var allowsStyleParentheses = false
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
     private var clickActionCount = 0
@@ -17,6 +22,15 @@ struct StaticProgramCompiler {
         self.catalog = catalog
         expressions = ProgramExpressionCompiler(checked: checked, catalog: catalog,
             translations: try ProgramTranslationCompiler(checked: checked, package: package, catalog: catalog))
+        sourceFiles[checked.tree.version] = checked
+        if let package {
+            guard sourceFiles[package.tree.version] == nil else {
+                throw sourceCompiler(package).issue(.invalidCheckedModel, package.tree.rootNode, "Shared source tree versions must be distinct")
+            }
+            sourceFiles[package.tree.version] = package
+            try collectStyles(package)
+        }
+        try collectStyles(checked)
     }
 
     private enum Value {
@@ -77,6 +91,7 @@ struct StaticProgramCompiler {
                     throw issue(.invalidCheckedModel, item, "Expected one widget block")
                 }
                 widget = block.block
+            case .styleDecl: break // Definitions are version-qualified and expanded only at their checked applications.
             case .translationsBlock: break // The checked table and every authored pattern were validated at initialization.
             default: throw issue(.unsupported, item, "Unsupported top-level construct: \(item.kind.rawValue)")
             }
@@ -106,6 +121,374 @@ struct StaticProgramCompiler {
         catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
         catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
         return program
+    }
+
+    private struct StyleDefinition {
+        let syntax: StyleDeclSyntax
+        let source: CheckedFile
+    }
+
+    private struct SourcedModifier {
+        let modifier: ModifierAppSyntax
+        let source: CheckedFile
+        let origin: CandidateOrigin
+        var isStyle: Bool { if case .style = origin { return true }; return false }
+    }
+
+    private mutating func collectStyles(_ source: CheckedFile) throws {
+        let compiler = sourceCompiler(source)
+        let declarations = source.tree.rootNode.childNodes.compactMap(StyleDeclSyntax.init)
+        guard Set(declarations.map { source.tree.id(of: $0.node) }) == Set(source.styles.values),
+              declarations.count == source.styles.count else {
+            throw compiler.issue(.invalidCheckedModel, source.tree.rootNode, "Style declarations do not match their checked identities")
+        }
+        for declaration in declarations {
+            let name = declaration.name.token.name
+            guard source.styles[name] == source.tree.id(of: declaration.node) else {
+                throw compiler.issue(.invalidCheckedModel, declaration.node, "Style has no matching checked declaration")
+            }
+            styles[name] = StyleDefinition(syntax: declaration, source: source)
+        }
+    }
+
+    private func styleName(_ modifier: ModifierAppSyntax, source: CheckedFile) throws -> String {
+        let compiler = sourceCompiler(source)
+        guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("style")),
+              let spec = catalog.modifier(named: "style"), spec.context == .view,
+              spec.allowedInStyle, spec.allowedInState, !spec.inheritable, !spec.acceptsCondition,
+              spec.repeatable == .yes, spec.block == .none, spec.facets.isEmpty, spec.fixedValues.isEmpty,
+              spec.event == nil, spec.timing == nil, spec.boxLayer == .none, !spec.softFacets,
+              spec.signatures.count == 1, spec.signatures[0].params.count == 2,
+              let nameParameter = spec.signatures[0].params.first, nameParameter.name == "name",
+              nameParameter.label == nil, nameParameter.type == .styleRef, nameParameter.role == .styleRef,
+              nameParameter.required, nameParameter.facets.isEmpty, nameParameter.defaultValue == nil,
+              !nameParameter.variadic, !nameParameter.translatable, nameParameter.source == .any,
+              nameParameter.sameAs == nil, nameParameter.range == nil, nameParameter.unit == nil, !nameParameter.wholeNumber,
+              let condition = spec.signatures[0].param(named: "condition"), condition.label == "if",
+              condition.type == .bool, condition.role == .condition, !condition.required,
+              condition.facets.isEmpty, condition.defaultValue == nil,
+              !condition.variadic, !condition.translatable, condition.source == .any,
+              condition.sameAs == nil, condition.range == nil, condition.unit == nil, !condition.wholeNumber,
+              spec.appliesTo == ElementKindSet.all, modifier.block == nil else {
+            throw compiler.issue(.unsupported, modifier.node, "Unsupported checked style application contract")
+        }
+        let arguments = modifier.arguments?.arguments ?? []
+        guard arguments.count == 1, let argument = arguments.first, argument.label == nil else {
+            throw compiler.issue(.unsupported, modifier.node, "Only unconditional, single-name style applications are implemented")
+        }
+        let value = argument.value.node
+        guard let name = IdentifierExprSyntax(value)?.name ?? StringLiteralSyntax(value)?.literalValue,
+              case .style(let identity, let file)? = source.symbols[source.tree.id(of: value)],
+              let definitionSource = sourceFiles[identity.treeVersion], definitionSource.tree.file == file,
+              let definition = definitionSource.tree.resolve(identity).flatMap(StyleDeclSyntax.init),
+              definition.name.token.name == name, definitionSource.styles[name] == identity,
+              styles[name] != nil else {
+            throw compiler.issue(.invalidCheckedModel, value, "Style application has no matching checked definition")
+        }
+        // A widget's definition replaces the package definition everywhere, including package includes.
+        return name
+    }
+
+    private func sourceCompiler(_ source: CheckedFile, style: Bool = false) -> StaticProgramCompiler {
+        var copy = self
+        copy.checked = source
+        copy.allowsStyleParentheses = style
+        return copy
+    }
+
+    private func source(_ candidate: Candidate, at node: PositionedNode) throws -> CheckedFile {
+        let identity: NodeID
+        let file: DeskFileID
+        switch candidate.origin {
+        case .own(let id): identity = id; file = checked.tree.file
+        case .style(_, let id, let originFile): identity = id; file = originFile
+        }
+        guard let source = sourceFiles[identity.treeVersion], source.tree.file == file,
+              source.tree.resolve(identity) != nil, candidate.value.treeVersion == identity.treeVersion else {
+            throw issue(.invalidCheckedModel, node, "Facet origin and value do not belong to one supplied checked tree")
+        }
+        return source
+    }
+
+    private func facetCompiler(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> StaticProgramCompiler {
+        guard let candidate = facts.facets[FacetID(key)]?.first else { return self }
+        return sourceCompiler(try source(candidate, at: node), style: candidate.level == 2)
+    }
+
+    private func sourceModifiers(_ call: CallStmtSyntax, named name: String) -> [SourcedModifier] {
+        (expandedModifiers[checked.tree.id(of: call.node)] ?? []).filter { $0.modifier.name.token.text == name }
+    }
+
+    private func modifier(_ candidate: Candidate, call: CallStmtSyntax) throws -> SourcedModifier {
+        guard let result = expandedModifiers[checked.tree.id(of: call.node)]?.first(where: { $0.origin == candidate.origin }) else {
+            throw issue(.invalidCheckedModel, call.node, "Facet has no modifier in the checked style expansion")
+        }
+        return result
+    }
+
+    private mutating func expandModifiers(_ call: CallStmtSyntax, kind: ElementKind,
+                                         allowed: Set<String>) throws -> [SourcedModifier] {
+        var result: [SourcedModifier] = []
+        func expand(_ name: String, path: Set<String>, depth: Int) throws {
+            guard depth <= min(ProgramLimits.maximumDepth, catalog.limits.maximumBlockNesting) else {
+                throw issue(.resourceLimit, call.node, "Shared program style nesting limit exceeded")
+            }
+            styleExpansionCount += 1
+            guard styleExpansionCount <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                throw issue(.resourceLimit, call.node, "Shared program style expansion limit exceeded")
+            }
+            guard !path.contains(name), let definition = styles[name] else {
+                throw issue(.invalidCheckedModel, call.node, "Style expansion is cyclic or has no checked definition")
+            }
+            let source = definition.source
+            let compiler = sourceCompiler(source)
+            var own: [SourcedModifier] = []
+            for statement in definition.syntax.block.items {
+                guard let chain = ModifierStmtSyntax(statement) else {
+                    throw compiler.issue(.unsupported, statement, "Style bodies require supported constant modifier chains")
+                }
+                for modifier in chain.modifiers {
+                    let modifierName = modifier.name.token.text
+                    guard let spec = catalog.modifier(named: modifierName), spec.allowedInStyle,
+                          source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)) else {
+                        throw compiler.issue(.invalidCheckedModel, modifier.node, "Style modifier has no allowed checked catalog identity")
+                    }
+                    if modifierName == "style" {
+                        try expand(styleName(modifier, source: source), path: path.union([name]), depth: depth + 1)
+                        continue
+                    }
+                    // Inapplicable style modifiers have no candidate and no effect (§4.8.2).
+                    guard spec.appliesTo.contains(kind) else { continue }
+                    guard allowed.contains(modifierName), modifier.block == nil,
+                          !(modifier.arguments?.arguments ?? []).contains(where: { $0.label?.name == "if" }) else {
+                        throw compiler.issue(.unsupported, modifier.node, "Only supported unconditional constant style properties are implemented")
+                    }
+                    styleExpansionCount += 1
+                    guard styleExpansionCount <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                        throw compiler.issue(.resourceLimit, modifier.node, "Shared program style expansion limit exceeded")
+                    }
+                    own.append(SourcedModifier(modifier: modifier, source: source,
+                        origin: .style(name, source.tree.id(of: modifier.node), file: source.tree.file)))
+                }
+            }
+            result += own // Includes precede this style's own properties, irrespective of where an include was written.
+        }
+        for modifier in call.modifiers where modifier.name.token.text == "style" {
+            try expand(styleName(modifier, source: checked), path: [], depth: 1)
+        }
+        result += call.modifiers.filter { $0.name.token.text != "style" }.map {
+            SourcedModifier(modifier: $0, source: checked, origin: .own(checked.tree.id(of: $0.node)))
+        }
+        return result
+    }
+
+    /// Bind this finite constant subset from the final checked argument types; never infer or evaluate source again.
+    private func styleFacets(_ item: SourcedModifier) throws -> [(FacetID, NodeID, String?, Bool)] {
+        let source = item.source, modifier = item.modifier
+        let compiler = sourceCompiler(source, style: true)
+        guard let spec = catalog.modifier(named: modifier.name.token.text) else {
+            throw compiler.issue(.invalidCheckedModel, modifier.node, "Missing checked style modifier catalog")
+        }
+        let arguments = modifier.arguments?.arguments ?? []
+        func fits(_ argument: ArgumentSyntax, _ parameter: ParamSpec) -> Bool {
+            let node = argument.value.node
+            guard let actual = source.types[source.tree.id(of: node)]?.type else { return false }
+            func accepts(_ expected: DeskType) -> Bool {
+                if actual == expected { return true }
+                if case .oneOf(let types) = expected { return types.contains(where: accepts) }
+                if expected == .lengthSpec { return actual == .length || actual == .plainNumber || actual == .enumeration("LengthKeyword") }
+                if expected == .length { return actual == .plainNumber && (NumberLiteralSyntax(node) != nil || ParenExprSyntax(node) != nil) }
+                if expected == .fontFamily { return actual == .string && StringLiteralSyntax(compiler.styleLeaf(node))?.literalValue != nil }
+                if expected == .paint { return actual == .color || actual == .string }
+                if expected == .color { return actual == .string }
+                if parameter.role == .display && expected == .string {
+                    return [.plainNumber, .percent, .bytes, .duration, .length, .angle, .bool].contains(actual)
+                }
+                return false
+            }
+            return accepts(parameter.type)
+        }
+        var bindings: [(Int, ArgumentSyntax)]?
+        var selected: Signature?
+        for signature in spec.signatures {
+            var assigned = Set<Int>(), candidate: [(Int, ArgumentSyntax)] = [], valid = true
+            for argument in arguments {
+                let matches = signature.params.indices.filter { index in
+                    let parameter = signature.params[index]
+                    return !assigned.contains(index) && parameter.label == argument.label?.name && fits(argument, parameter)
+                }
+                guard let index = matches.first else { valid = false; break }
+                assigned.insert(index); candidate.append((index, argument))
+            }
+            if valid && signature.params.indices.allSatisfy({ !signature.params[$0].required || assigned.contains($0) }) {
+                guard bindings == nil else {
+                    throw compiler.issue(.unsupported, modifier.node, "Ambiguous constant style signature")
+                }
+                bindings = candidate.sorted { $0.0 < $1.0 }
+                selected = signature
+            }
+        }
+        guard let bindings, let signature = selected else {
+            throw compiler.issue(.invalidCheckedModel, modifier.node, "Style arguments do not match their checked catalog parameters")
+        }
+        var result: [(FacetID, NodeID, String?, Bool)] = []
+        var leaves: [NodeID: PositionedNode] = [:]
+        for (index, argument) in bindings {
+            let parameter = signature.params[index], node = argument.value.node, identity = source.tree.id(of: node)
+            let leaf = try compiler.constantStyleValue(node, parameter: parameter)
+            leaves[identity] = leaf
+            if spec.softFacets, case .enumCase(let type, let name)? = source.symbols[source.tree.id(of: leaf)],
+               let preset = catalog.enumeration(type)?.enumCase(named: name), !preset.facetValues.isEmpty {
+                result += preset.facetValues.sorted { $0.key < $1.key }.map { ($0.key, identity, $0.value.value, !$0.value.soft) }
+            } else {
+                result += parameter.facets.map { ($0, identity, nil, true) }
+            }
+        }
+        result += spec.fixedValues.sorted { $0.key < $1.key }.map { ($0.key, source.tree.id(of: modifier.node), $0.value, true) }
+        if spec.name == "hidden", arguments.isEmpty { result.append(("hidden", source.tree.id(of: modifier.node), "true", true)) }
+        var corners: [FacetID: ProgramCornerRadius] = [:]
+        for (key, identity, fixedValue, _) in result {
+            let node = source.tree.resolve(identity) ?? modifier.node
+            if ["voiceOver", "tooltip", "tooltip.title", "hidden"].contains(key.rawValue) { continue }
+            if ["color", "fill", "track", "stroke", "background.tint"].contains(key.rawValue) {
+                _ = try compiler.checkedFacetColor(node); continue
+            }
+            if key == "background" {
+                let leaf = leaves[identity] ?? node
+                if case .enumCase(type: "Paint", case: let name)? = source.symbols[source.tree.id(of: leaf)],
+                   ["glass", "clearGlass"].contains(name) { continue }
+                _ = try compiler.checkedFacetColor(node)
+                guard !arguments.contains(where: { $0.label?.name == "tint" }) else {
+                    throw compiler.issue(.unsupported, node, "A background tint is implemented only for glass")
+                }
+                continue
+            }
+            let value: Value
+            if let fixedValue { value = try compiler.fixed(fixedValue, at: node) }
+            else if key == "font.size" || key.rawValue.hasPrefix("padding.") || key.rawValue.hasPrefix("width") ||
+                    key.rawValue.hasPrefix("height") || key == "stroke.width" || key.rawValue.hasPrefix("rounded.") {
+                value = try compiler.lengthConstant(node)
+            } else { value = try compiler.constant(node) }
+            if key.rawValue.hasPrefix("font.") || key == "align" || key == "digits" {
+                var appearance = Appearance()
+                try compiler.assign(value, to: key.rawValue, appearance: &appearance, at: node)
+            } else if key.rawValue.hasPrefix("rounded.") {
+                switch value {
+                case .number(let number) where number >= 0: corners[key] = .points(number)
+                case .choice("full"): corners[key] = .full
+                default: throw compiler.issue(.unsupported, node, "Style corner radii require nonnegative constants or .full")
+                }
+            } else if key == "width" || key == "height" {
+                switch value {
+                case .number(let number) where number >= 0: break
+                case .choice("fit"), .choice("fill"): break
+                default: throw compiler.issue(.unsupported, node, "Style size requires a nonnegative constant, .fit or .fill")
+                }
+            } else if key.rawValue.hasPrefix("padding.") || key.rawValue.hasPrefix("width.") ||
+                        key.rawValue.hasPrefix("height.") || key == "stroke.width" {
+                guard case .number(let number) = value, number >= 0 else {
+                    throw compiler.issue(.unsupported, node, "Style dimensions require nonnegative constants")
+                }
+            }
+        }
+        if !corners.isEmpty {
+            let values = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"].map {
+                corners[FacetID($0)] ?? .points(0)
+            }
+            guard values.allSatisfy({ $0 == values[0] }) else {
+                throw compiler.issue(.unsupported, modifier.node, "Different style corner radii are not implemented")
+            }
+        }
+        return result
+    }
+
+    /// A candidate keeps the argument identity; only constant interpretation uses its transparent leaf.
+    private func styleLeaf(_ node: PositionedNode) -> PositionedNode {
+        var leaf = node
+        while let paren = ParenExprSyntax(leaf) { leaf = paren.value.node }
+        return leaf
+    }
+
+    private func constantStyleValue(_ node: PositionedNode, parameter: ParamSpec, depth: Int = 1) throws -> PositionedNode {
+        guard depth <= min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+            throw issue(.resourceLimit, node, "Shared program constant style expression depth exceeded")
+        }
+        let identity = checked.tree.id(of: node)
+        guard checked.types[identity] != nil else { throw issue(.invalidCheckedModel, node, "Style value has no checked type") }
+        if let paren = ParenExprSyntax(node) {
+            let inner = checked.tree.id(of: paren.value.node)
+            let leaf = try constantStyleValue(paren.value.node, parameter: parameter, depth: depth + 1)
+            let adoptedLength = parameter.type == .length && checked.types[identity]?.type == .length &&
+                checked.types[inner]?.type == .plainNumber && NumberLiteralSyntax(leaf)?.unit == nil &&
+                NumberLiteralSyntax(leaf) != nil
+            guard checked.types[identity]?.type == checked.types[inner]?.type || adoptedLength,
+                  checked.symbols[identity] == nil, checked.numericCoercions[identity] == nil,
+                  checked.canonicalNumericValues[identity] == checked.canonicalNumericValues[inner] else {
+                throw issue(.invalidCheckedModel, node, "Style parentheses do not preserve their checked type")
+            }
+            return leaf
+        }
+        if parameter.role == .display, let prefix = PrefixExprSyntax(node),
+           [.plus, .minus].contains(prefix.operator.token.kind), NumberLiteralSyntax(prefix.operand.node) != nil {
+            _ = try constantStyleValue(prefix.operand.node, parameter: parameter, depth: depth + 1)
+            let operand = checked.tree.id(of: prefix.operand.node)
+            guard checked.types[identity]?.type == checked.types[operand]?.type,
+                  let value = checked.canonicalNumericValues[operand],
+                  checked.canonicalNumericValues[identity] == (prefix.operator.token.kind == .minus ? -value : value),
+                  checked.numericCoercions[identity] == nil else {
+                throw issue(.invalidCheckedModel, node, "Signed style display has an inconsistent numeric receipt")
+            }
+            return node
+        }
+        if let number = NumberLiteralSyntax(node) {
+            guard number.unitAfterSpace == nil, let value = number.value, value.isFinite,
+                  checked.numericCoercions[identity] == nil,
+                  let canonical = checked.canonicalNumericValues[identity], canonical.isFinite else {
+                throw issue(.unsupported, node, "Style numbers require their checked literal receipt")
+            }
+            if let spelling = number.unit?.text {
+                guard number.unit?.status == .known, let unit = catalog.unit(spelling: spelling),
+                      spelling == "pt" || parameter.role == .display,
+                      [.plainNumber, .percent, .bytes, .duration, .length, .angle].contains(checked.types[identity]?.type ?? .any),
+                      checked.types[identity]?.type == .number(unit.dimension),
+                      unit.factor.isFinite, unit.factor > 0, unit.offset.isFinite,
+                      canonical == value * unit.factor + unit.offset else {
+                    throw issue(.unsupported, node, "Style units require a supported checked constant dimension")
+                }
+            } else {
+                guard canonical == value,
+                      checked.types[identity]?.type == .plainNumber || parameter.type == .length && checked.types[identity]?.type == .length else {
+                    throw issue(.invalidCheckedModel, node, "Style literal has an inconsistent canonical value or adopted type")
+                }
+            }
+            return node
+        }
+        guard checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "Nonnumeric style values cannot have numeric receipts")
+        }
+        if let literal = StringLiteralSyntax(node)?.literalValue {
+            guard checked.types[identity]?.type == .string,
+                  literal.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
+                throw issue(.resourceLimit, node, "Shared program style text limit exceeded")
+            }
+            return node
+        }
+        if BoolLiteralSyntax(node) != nil {
+            guard checked.types[identity]?.type == .bool else { throw issue(.invalidCheckedModel, node, "Style Boolean has an invalid checked type") }
+            return node
+        }
+        let implicit = ImplicitMemberExprSyntax(node)
+        let member = MemberExprSyntax(node)
+        if implicit?.arguments == nil, let name = implicit?.name.token.text ?? member?.name.token.text,
+           case .enumCase(let type, let symbol)? = checked.symbols[identity], symbol == name,
+           checked.types[identity]?.type == (type == "Color" ? .color : type == "Paint" ? .paint : .enumeration(type)),
+           catalog.enumeration(type)?.enumCase(named: name) != nil || catalog.index.namedValues["\(type).\(name)"]?.type == type {
+            if let member, IdentifierExprSyntax(member.base.node)?.name != type {
+                throw issue(.invalidCheckedModel, node, "Style enum value has an inconsistent qualified type")
+            }
+            return node
+        }
+        throw issue(.unsupported, node, "Dynamic style values are not implemented")
     }
 
     private func sizePolicy(_ choice: String, at node: PositionedNode) throws -> ProgramWidgetSize {
@@ -208,16 +591,21 @@ struct StaticProgramCompiler {
             allowedModifiers.remove("digits")
         }
         if !spacer { allowedModifiers.formUnion(["position", "tooltip", "menu"]) }
+        let expanded = try expandModifiers(call, kind: facts.kind, allowed: allowedModifiers)
+        expandedModifiers[checked.tree.id(of: call.node)] = expanded
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
-        for modifier in call.modifiers {
+        for item in expanded {
+            let modifier = item.modifier
+            let source = item.source
+            let compiler = sourceCompiler(source)
             let modifierName = modifier.name.token.text
             if ["background", "rounded"].contains(modifierName) {
-                try boxModifierContract(modifier, kind: facts.kind)
+                try compiler.boxModifierContract(modifier, kind: facts.kind)
             }
             if rangedMeter && ["color", "track"].contains(modifierName) {
-                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)),
+                guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)),
                       let paint = catalog.modifier(named: modifierName), paint.appliesTo.contains(facts.kind),
                       paint.facets == [FacetID(modifierName)],
                       paint.signatures.contains(where: { signature in
@@ -228,7 +616,7 @@ struct StaticProgramCompiler {
                 }
             }
             if modifier.name.token.text == "font" {
-                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
+                guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
                       let font = catalog.modifier(named: "font"), font.inheritable, font.appliesTo.contains(facts.kind),
                       font.facets.contains(FacetID("font.size")),
                       font.signatures.compactMap({ $0.param(named: "size") }).count == 2,
@@ -237,7 +625,7 @@ struct StaticProgramCompiler {
                 }
             }
             if modifier.name.token.text == "digits" {
-                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("digits")),
+                guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("digits")),
                       let digits = catalog.modifier(named: "digits"), digits.inheritable, digits.appliesTo.contains(facts.kind),
                       digits.facets == [FacetID("digits")], digits.signatures.count == 1,
                       digits.signatures[0].params.count == 1,
@@ -508,7 +896,7 @@ struct StaticProgramCompiler {
                 fontWeight: appearance.weight, italic: appearance.italic, color: appearance.color, align: appearance.align,
                 colors: try iconColors(facts, call: call),
                 fontSizeExpression: appearance.sizeExpression,
-                hasOwnFont: call.modifiers.contains { $0.name.token.text == "font" }))
+                hasOwnFont: !sourceModifiers(call, named: "font").isEmpty))
         case "Text":
             guard spec.signatures.count == 1, spec.signatures[0].params.count == 1,
                   let parameter = spec.signatures[0].params.first,
@@ -592,7 +980,7 @@ struct StaticProgramCompiler {
               let facet = catalog.facet("iconColors"), facet.valueType == .enumeration("IconColors"), !facet.inheritable else {
             throw issue(.unsupported, call.node, "Unsupported checked IconColors catalog contract")
         }
-        let modifiers = call.modifiers.filter { $0.name.token.text == "iconColors" }
+        let modifiers = sourceModifiers(call, named: "iconColors")
         let candidates = facts.facets["iconColors"] ?? []
         let choice: String
         if modifiers.isEmpty && candidates.isEmpty {
@@ -602,29 +990,36 @@ struct StaticProgramCompiler {
             }
             choice = value
         } else {
-            guard modifiers.count == 1, let modifier = modifiers.first,
-                  checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("iconColors")),
-                  candidates.count == 1, let candidate = candidates.first, candidate.fixedValue == nil,
-                  candidate.condition == nil, candidate.origin == .own(checked.tree.id(of: modifier.node)),
-                  candidate.level == 3, candidate.hard,
-                  let arguments = modifier.arguments?.arguments, arguments.count == 1,
-                  let argument = arguments.first, argument.label == nil,
-                  candidate.value == checked.tree.id(of: argument.value.node),
-                  checked.types[candidate.value]?.type == .enumeration("IconColors"),
-                  let value = checked.tree.resolve(candidate.value) else {
-                throw issue(.invalidCheckedModel, call.node, "Icon colors require a checked own IconColors argument")
+            guard !candidates.isEmpty, candidates.count == modifiers.count else {
+                throw issue(.invalidCheckedModel, call.node, "Icon colors have no matching checked expanded modifier")
             }
-            let name: String
-            if let implicit = ImplicitMemberExprSyntax(value), implicit.arguments == nil {
-                name = implicit.name.token.text
-            } else if let member = MemberExprSyntax(value),
-                      IdentifierExprSyntax(member.base.node)?.name == "IconColors" {
-                name = member.name.token.text
-            } else { throw issue(.unsupported, value, "Icon colors require a literal IconColors case") }
-            guard checked.symbols[candidate.value] == .enumCase(type: "IconColors", case: name) else {
-                throw issue(.invalidCheckedModel, value, "Icon colors have inconsistent checked case identity")
+            var choices: [String] = []
+            for candidate in candidates {
+                let item = try modifier(candidate, call: call), source = item.source
+                guard item.modifier.name.token.text == "iconColors",
+                      source.symbols[source.tree.id(of: item.modifier.node)] == .builtIn(.modifier("iconColors")),
+                      candidate.fixedValue == nil, candidate.condition == nil, candidate.hard,
+                      candidate.level == (item.isStyle ? 2 : 3),
+                      let arguments = item.modifier.arguments?.arguments, arguments.count == 1,
+                      let argument = arguments.first, argument.label == nil,
+                      candidate.value == source.tree.id(of: argument.value.node),
+                      source.types[candidate.value]?.type == .enumeration("IconColors"),
+                      let value = source.tree.resolve(candidate.value) else {
+                    throw issue(.invalidCheckedModel, call.node, "Icon colors require a checked literal IconColors argument")
+                }
+                let compiler = sourceCompiler(source, style: item.isStyle)
+                let literal = item.isStyle ? compiler.styleLeaf(value) : value
+                let name: String
+                if let implicit = ImplicitMemberExprSyntax(literal), implicit.arguments == nil { name = implicit.name.token.text }
+                else if let member = MemberExprSyntax(literal), IdentifierExprSyntax(member.base.node)?.name == "IconColors" { name = member.name.token.text }
+                else { throw issue(.unsupported, literal, "Icon colors require a literal IconColors case") }
+                guard
+                      source.symbols[source.tree.id(of: literal)] == .enumCase(type: "IconColors", case: name) else {
+                    throw issue(.invalidCheckedModel, call.node, "Icon colors require a checked literal IconColors argument")
+                }
+                choices.append(name)
             }
-            choice = name
+            choice = choices[0]
         }
         guard !facts.inherits.contains("iconColors"),
               catalog.enumeration("IconColors")?.enumCase(named: choice) != nil,
@@ -634,95 +1029,101 @@ struct StaticProgramCompiler {
         return colors
     }
 
+    private mutating func displayFacet(_ facts: ElementFacts, _ key: FacetID, modifier name: String,
+                                      label: String?, call: CallStmtSyntax) throws -> ProgramExpression? {
+        let items = sourceModifiers(call, named: name)
+        let candidates = facts.facets[key] ?? []
+        let arguments = items.compactMap { item in
+            item.modifier.arguments?.arguments.first { $0.label?.name == label }
+        }
+        guard candidates.count == arguments.count else {
+            throw issue(.invalidCheckedModel, call.node, "Display facet does not match its expanded modifier arguments")
+        }
+        var selected: ProgramExpression?
+        for candidate in candidates {
+            let item = try modifier(candidate, call: call), source = item.source
+            guard item.modifier.name.token.text == name, candidate.condition == nil, candidate.fixedValue == nil,
+                  candidate.level == (item.isStyle ? 2 : 3), candidate.hard,
+                  let argument = item.modifier.arguments?.arguments.first(where: { $0.label?.name == label }),
+                  candidate.value == source.tree.id(of: argument.value.node),
+                  let value = source.tree.resolve(candidate.value), source.types[candidate.value] != nil else {
+                throw issue(.invalidCheckedModel, call.node, "Display facet has no matching checked definition argument")
+            }
+            let expression = try expressions.text(value, source: source)
+            if selected == nil { selected = expression }
+        }
+        return selected
+    }
+
     private mutating func voiceOver(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramExpression? {
-        let modifiers = call.modifiers.filter { $0.name.token.text == "voiceOver" }
+        let modifiers = sourceModifiers(call, named: "voiceOver")
         let candidates = facts.facets["voiceOver"] ?? []
         guard !facts.inherits.contains("voiceOver") else {
             throw issue(.invalidCheckedModel, call.node, "VoiceOver labels cannot inherit")
         }
         if modifiers.isEmpty && candidates.isEmpty { return nil }
-        guard modifiers.count == 1, let modifier = modifiers.first,
-              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("voiceOver")),
-              let spec = catalog.modifier(named: "voiceOver"), spec.appliesTo.contains(facts.kind),
-              spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
-              spec.facets == [FacetID("voiceOver")], spec.fixedValues.isEmpty,
-              let facet = catalog.facet("voiceOver"), facet.valueType == .string, !facet.inheritable,
-              spec.event == nil, spec.timing == nil, spec.block == .none,
-              spec.signatures.count == 1, spec.signatures[0].params.count == 1,
-              let parameter = spec.signatures[0].params.first, parameter.label == nil, parameter.name == "text",
-              parameter.type == .string, parameter.role == .display, parameter.source == .any,
-              parameter.translatable, parameter.required, !parameter.variadic, parameter.defaultValue == nil,
-              parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
-              parameter.facets == [FacetID("voiceOver")],
-              modifier.block == nil, let arguments = modifier.arguments?.arguments,
-              arguments.count == 1, let argument = arguments.first, argument.label == nil else {
-            throw issue(.unsupported, call.node, "Unsupported checked VoiceOver display modifier contract")
+        for item in modifiers {
+            let modifier = item.modifier, source = item.source
+            guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("voiceOver")),
+                  let spec = catalog.modifier(named: "voiceOver"), spec.appliesTo.contains(facts.kind),
+                  spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
+                  spec.facets == [FacetID("voiceOver")], spec.fixedValues.isEmpty,
+                  let facet = catalog.facet("voiceOver"), facet.valueType == .string, !facet.inheritable,
+                  spec.event == nil, spec.timing == nil, spec.block == .none,
+                  spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+                  let parameter = spec.signatures[0].params.first, parameter.label == nil, parameter.name == "text",
+                  parameter.type == .string, parameter.role == .display, parameter.source == .any,
+                  parameter.translatable, parameter.required, !parameter.variadic, parameter.defaultValue == nil,
+                  parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+                  parameter.facets == [FacetID("voiceOver")],
+                  modifier.block == nil, let arguments = modifier.arguments?.arguments,
+                  arguments.count == 1, let argument = arguments.first, argument.label == nil else {
+                throw issue(.unsupported, call.node, "Unsupported checked VoiceOver display modifier contract")
+            }
         }
-        guard candidates.count == 1, let candidate = candidates.first, candidate.condition == nil,
-              candidate.fixedValue == nil, candidate.level == 3, candidate.hard,
-              candidate.origin == .own(checked.tree.id(of: modifier.node)),
-              candidate.value == checked.tree.id(of: argument.value.node),
-              let value = checked.tree.resolve(candidate.value), checked.types[candidate.value] != nil else {
-            throw issue(.invalidCheckedModel, modifier.node, "VoiceOver label has no matching checked own display argument")
-        }
-        return try expressions.text(value)
+        return try displayFacet(facts, "voiceOver", modifier: "voiceOver", label: nil, call: call)
     }
 
     private mutating func tooltip(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramTooltip? {
-        let modifiers = call.modifiers.filter { $0.name.token.text == "tooltip" }
+        let modifiers = sourceModifiers(call, named: "tooltip")
         let keys: [FacetID] = ["tooltip", "tooltip.title"]
         guard keys.allSatisfy({ !facts.inherits.contains($0) }) else {
             throw issue(.invalidCheckedModel, call.node, "Tooltips cannot inherit")
         }
         if modifiers.isEmpty && keys.allSatisfy({ (facts.facets[$0] ?? []).isEmpty }) { return nil }
-        guard modifiers.count == 1, let modifier = modifiers.first,
-              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("tooltip")),
-              let spec = catalog.modifier(named: "tooltip"), spec.appliesTo.contains(facts.kind),
-              spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
-              spec.facets == keys, spec.fixedValues.isEmpty, spec.repeatable == .no,
-              spec.acceptsCondition, spec.allowedInStyle, spec.allowedInState,
-              spec.event == nil, spec.timing == nil, spec.block == .none,
-              spec.signatures.count == 1, spec.signatures[0].params.count == 2,
-              modifier.block == nil, let arguments = modifier.arguments?.arguments,
-              (1...2).contains(arguments.count), arguments.filter({ $0.label == nil }).count == 1,
-              arguments.filter({ $0.label?.name == "title" }).count == arguments.count - 1,
-              let textArgument = arguments.first(where: { $0.label == nil }) else {
-            throw issue(.unsupported, call.node, "Unsupported checked tooltip display modifier contract")
-        }
-        for (index, key) in keys.enumerated() {
-            let parameter = spec.signatures[0].params[index]
-            guard parameter.name == (index == 0 ? "text" : "title"),
-                  parameter.label == (index == 0 ? nil : "title"), parameter.type == .string,
-                  parameter.role == .display, parameter.source == .any, parameter.translatable,
-                  parameter.required == (index == 0), !parameter.variadic, parameter.defaultValue == nil,
-                  parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
-                  parameter.specificity == 0, parameter.facets == [key],
-                  let facet = catalog.facet(key), facet.valueType == .string, !facet.inheritable else {
-                throw issue(.unsupported, call.node, "Unsupported checked tooltip display parameter or facet contract")
+        for item in modifiers {
+            let modifier = item.modifier, source = item.source
+            guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("tooltip")),
+                  let spec = catalog.modifier(named: "tooltip"), spec.appliesTo.contains(facts.kind),
+                  spec.context == .view, spec.boxLayer == .none, !spec.inheritable, !spec.softFacets,
+                  spec.facets == keys, spec.fixedValues.isEmpty, spec.repeatable == .no,
+                  spec.acceptsCondition, spec.allowedInStyle, spec.allowedInState,
+                  spec.event == nil, spec.timing == nil, spec.block == .none,
+                  spec.signatures.count == 1, spec.signatures[0].params.count == 2,
+                  modifier.block == nil, let arguments = modifier.arguments?.arguments,
+                  (1...2).contains(arguments.count), arguments.filter({ $0.label == nil }).count == 1,
+                  arguments.filter({ $0.label?.name == "title" }).count == arguments.count - 1,
+                  arguments.contains(where: { $0.label == nil }) else {
+                throw issue(.unsupported, call.node, "Unsupported checked tooltip display modifier contract")
             }
-        }
-        let titleArgument = arguments.first(where: { $0.label?.name == "title" })
-        let sources: [(FacetID, PositionedNode?)] = [("tooltip", textArgument.value.node),
-                                                   ("tooltip.title", titleArgument?.value.node)]
-        var values: [ProgramExpression] = []
-        for (key, argument) in sources {
-            let candidates = facts.facets[key] ?? []
-            guard let argument else {
-                guard candidates.isEmpty else {
-                    throw issue(.invalidCheckedModel, call.node, "Tooltip title has no written argument")
+            for (index, key) in keys.enumerated() {
+                let parameter = spec.signatures[0].params[index]
+                guard parameter.name == (index == 0 ? "text" : "title"),
+                      parameter.label == (index == 0 ? nil : "title"), parameter.type == .string,
+                      parameter.role == .display, parameter.source == .any, parameter.translatable,
+                      parameter.required == (index == 0), !parameter.variadic, parameter.defaultValue == nil,
+                      parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+                      parameter.specificity == 0, parameter.facets == [key],
+                      let facet = catalog.facet(key), facet.valueType == .string, !facet.inheritable else {
+                    throw issue(.unsupported, call.node, "Unsupported checked tooltip display parameter or facet contract")
                 }
-                continue
             }
-            guard candidates.count == 1, let candidate = candidates.first, candidate.condition == nil,
-                  candidate.fixedValue == nil, candidate.level == 3, candidate.hard,
-                  candidate.origin == .own(checked.tree.id(of: modifier.node)),
-                  candidate.value == checked.tree.id(of: argument),
-                  let value = checked.tree.resolve(candidate.value), checked.types[candidate.value] != nil else {
-                throw issue(.invalidCheckedModel, modifier.node, "Tooltip facet has no matching checked own display argument")
-            }
-            values.append(try expressions.text(value))
         }
-        return ProgramTooltip(text: values[0], title: values.count == 2 ? values[1] : nil)
+        guard let text = try displayFacet(facts, "tooltip", modifier: "tooltip", label: nil, call: call) else {
+            throw issue(.invalidCheckedModel, call.node, "Tooltip has no checked text facet")
+        }
+        let title = try displayFacet(facts, "tooltip.title", modifier: "tooltip", label: "title", call: call)
+        return ProgramTooltip(text: text, title: title)
     }
 
     private mutating func menu(_ facts: ElementFacts, call: CallStmtSyntax, depth: Int) throws -> [ProgramMenuNode]? {
@@ -966,11 +1367,12 @@ struct StaticProgramCompiler {
                 if let fixed = best.fixedValue {
                     try assign(try self.fixed(fixed, at: node), to: key, appearance: &result, at: node)
                 } else {
-                    guard let value = checked.tree.resolve(best.value) else {
+                    let compiler = try facetCompiler(facts, key, at: node)
+                    guard let value = compiler.checked.tree.resolve(best.value) else {
                         throw issue(.invalidCheckedModel, node, "Font size refers to a different syntax tree")
                     }
-                    if NumberLiteralSyntax(value) != nil {
-                        try assign(try lengthConstant(value), to: key, appearance: &result, at: value)
+                    if NumberLiteralSyntax(value) != nil || best.level == 2 {
+                        try assign(try compiler.lengthConstant(value), to: key, appearance: &result, at: value)
                     } else {
                         result.sizeExpression = try expressions.fontSize(value)
                     }
@@ -1042,45 +1444,63 @@ struct StaticProgramCompiler {
         }
     }
 
-    /// Own candidates have one global expansion position, even when a call sets several facets.
-    /// Checking both the receipt order and the actual source order prevents a forged position choosing a winner.
-    private func candidatePositions(_ facts: ElementFacts, call: CallStmtSyntax) throws {
+    /// Match every expansion occurrence, including repeated styles and losing facets, to its definition tree.
+    private mutating func candidatePositions(_ facts: ElementFacts, call: CallStmtSyntax) throws {
         let all = facts.facets.values.flatMap { $0 }
-        guard !all.isEmpty else { return }
         let positions = all.map(\.position)
-        guard Set(positions).count == positions.count, Set(positions) == Set(1...positions.count) else {
+        guard Set(positions).count == positions.count, Set(positions) == Set((0..<positions.count).map { $0 + 1 }) else {
             throw issue(.invalidCheckedModel, call.node, "Facet expansion positions are not the checked sequence")
         }
-        var previous = 0
-        for modifier in call.modifiers {
-            let identity = checked.tree.id(of: modifier.node)
-            let own = all.filter { $0.origin == .own(identity) }.map(\.position)
-            if let first = own.min(), let last = own.max() {
-                guard first > previous else {
-                    throw issue(.invalidCheckedModel, modifier.node, "Facet positions do not follow their own source modifiers")
+        var position = 0
+        for item in expandedModifiers[checked.tree.id(of: call.node)] ?? [] {
+            if item.isStyle {
+                let expected = try styleFacets(item)
+                styleExpansionCount += expected.count
+                guard styleExpansionCount <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                    throw issue(.resourceLimit, call.node, "Shared program style candidate limit exceeded")
                 }
-                previous = last
+                for (key, value, fixed, hard) in expected {
+                    position += 1
+                    guard let candidate = facts.facets[key]?.first(where: { $0.position == position }),
+                          candidate.origin == item.origin, candidate.value == value, candidate.fixedValue == fixed,
+                          candidate.level == 2, candidate.hard == hard, candidate.condition == nil else {
+                        throw issue(.invalidCheckedModel, call.node, "Style facet does not match its checked expansion and precedence")
+                    }
+                }
+            } else {
+                for candidate in all.filter({ $0.origin == item.origin }).sorted(by: { $0.position < $1.position }) {
+                    position += 1
+                    guard candidate.position == position, candidate.level == 3,
+                          candidate.value.treeVersion == checked.tree.version else {
+                        throw issue(.invalidCheckedModel, item.modifier.node, "Own facets do not follow their checked source modifiers")
+                    }
+                }
             }
         }
-        guard all.allSatisfy({ candidate in
-            guard case .own(let identity) = candidate.origin else { return false }
-            return call.modifiers.contains { checked.tree.id(of: $0.node) == identity }
-        }) else {
-            throw issue(.invalidCheckedModel, call.node, "A supported facet must come from its own modifier")
+        guard position == all.count else {
+            throw issue(.invalidCheckedModel, call.node, "Facet refers to a modifier outside the checked expansion")
+        }
+        for candidates in facts.facets.values {
+            for index in candidates.indices where index > 0 {
+                guard candidates[index - 1].sortKey > candidates[index].sortKey else {
+                    throw issue(.invalidCheckedModel, call.node, "Facet candidates are not in checked precedence order")
+                }
+            }
         }
     }
 
     private struct OwnCandidate {
         let value: PositionedNode?
         let condition: PositionedNode?
+        let source: CheckedFile
     }
 
     /// Consume every candidate, including an inactive branch, against the modifier that actually produced it.
     private func ownCandidates(_ facts: ElementFacts, _ key: String, call: CallStmtSyntax) throws -> [OwnCandidate] {
-        let modifiers = call.modifiers.filter { $0.name.token.text == key }
+        let modifiers = sourceModifiers(call, named: key)
         let candidates = facts.facets[FacetID(key)] ?? []
         guard candidates.count == modifiers.count,
-              key == "hidden" || candidates.filter({ $0.condition == nil }).count <= 1 else {
+              key == "hidden" || candidates.filter({ $0.condition == nil && $0.level == 3 }).count <= 1 else {
             throw issue(.invalidCheckedModel, call.node, "\(key) candidates do not match their own modifiers")
         }
         guard !modifiers.isEmpty else { return [] }
@@ -1116,15 +1536,17 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, call.node, "Unsupported checked light/dark color catalog contract")
             }
         }
-        var used = Set<NodeID>()
         var result: [OwnCandidate] = []
+        var usedOwnModifiers = Set<NodeID>()
         for (index, candidate) in candidates.enumerated() {
-            guard candidate.level == 3, candidate.hard,
+            let item = try modifier(candidate, call: call)
+            let modifier = item.modifier, source = item.source
+            guard candidate.level == (item.isStyle ? 2 : 3), candidate.hard,
                   index == 0 || candidates[index - 1].sortKey > candidate.sortKey,
-                  case .own(let identity) = candidate.origin, used.insert(identity).inserted,
-                  let modifier = modifiers.first(where: { checked.tree.id(of: $0.node) == identity }),
-                  checked.symbols[identity] == .builtIn(.modifier(key)) else {
-                throw issue(.invalidCheckedModel, call.node, "\(key) has an invalid own candidate or precedence receipt")
+                  modifier.name.token.text == key,
+                  item.isStyle || usedOwnModifiers.insert(source.tree.id(of: modifier.node)).inserted,
+                  source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier(key)) else {
+                throw issue(.invalidCheckedModel, call.node, "Paint/visibility has an invalid checked source or precedence receipt")
             }
             let arguments = modifier.arguments?.arguments ?? []
             let condition = arguments.first(where: { $0.label?.name == "if" })?.value.node
@@ -1132,13 +1554,13 @@ struct StaticProgramCompiler {
             guard arguments.filter({ $0.label?.name == "if" }).count <= 1,
                   arguments.allSatisfy({ $0.label == nil || $0.label?.name == "if" }),
                   arguments.filter({ $0.label == nil }).count == (key == "hidden" ? 0 : 1),
-                  candidate.condition == condition.map({ .expr(checked.tree.id(of: $0)) }),
-                  condition.map({ checked.types[checked.tree.id(of: $0)]?.type == .bool }) ?? true,
+                  candidate.condition == condition.map({ .expr(source.tree.id(of: $0)) }),
+                  condition.map({ source.types[source.tree.id(of: $0)]?.type == .bool }) ?? true,
                   candidate.fixedValue == (key == "hidden" ? "true" : nil),
-                  candidate.value == checked.tree.id(of: key == "hidden" ? (condition ?? modifier.node) : (value ?? modifier.node)) else {
-                throw issue(.invalidCheckedModel, modifier.node, "\(key) does not match its checked value and condition arguments")
+                  candidate.value == source.tree.id(of: key == "hidden" ? (condition ?? modifier.node) : (value ?? modifier.node)) else {
+                throw issue(.invalidCheckedModel, modifier.node, "Paint/visibility does not match its checked arguments")
             }
-            result.append(OwnCandidate(value: value, condition: condition))
+            result.append(OwnCandidate(value: value, condition: condition, source: source))
         }
         return result
     }
@@ -1161,7 +1583,8 @@ struct StaticProgramCompiler {
             guard let value = candidate.value else {
                 throw issue(.invalidCheckedModel, call.node, "A paint candidate has no checked argument")
             }
-            values.append((try checkedFacetColor(value), try candidate.condition.map { try expressions.condition($0) }))
+            values.append((try sourceCompiler(candidate.source).checkedFacetColor(value),
+                           try candidate.condition.map { try expressions.condition($0) }))
         }
         var result = values.first(where: { $0.condition == nil })?.color ?? fallback
         // The checker gives best-first order; wrapping low-to-high retains that exact precedence.
@@ -1235,8 +1658,8 @@ struct StaticProgramCompiler {
     private func boxArgument(_ facts: ElementFacts, _ key: String, modifier name: String,
                              call: CallStmtSyntax) throws -> PositionedNode? {
         guard let best = facts.facets[FacetID(key)]?.first else {
-            let hasArgument = call.modifiers.filter { $0.name.token.text == name }.contains { modifier in
-                (modifier.arguments?.arguments ?? []).contains { argument in
+            let hasArgument = sourceModifiers(call, named: name).contains { item in
+                (item.modifier.arguments?.arguments ?? []).contains { argument in
                     let parameter = argument.label?.name ?? (name == "background" ? "paint" : "radius")
                     return catalog.modifier(named: name)?.signatures.contains {
                         $0.param(named: parameter)?.facets.contains(FacetID(key)) == true
@@ -1246,12 +1669,12 @@ struct StaticProgramCompiler {
             guard !hasArgument else { throw issue(.invalidCheckedModel, call.node, "Box argument has no checked facet receipt") }
             return nil
         }
-        guard best.fixedValue == nil, case .own(let owner) = best.origin,
-              let modifier = call.modifiers.first(where: { checked.tree.id(of: $0.node) == owner && $0.name.token.text == name }),
-              let value = checked.tree.resolve(best.value),
-              let argument = modifier.arguments?.arguments.first(where: { checked.tree.id(of: $0.value.node) == best.value }),
+        let item = try modifier(best, call: call), source = item.source
+        guard best.fixedValue == nil, item.modifier.name.token.text == name,
+              let value = source.tree.resolve(best.value),
+              let argument = item.modifier.arguments?.arguments.first(where: { source.tree.id(of: $0.value.node) == best.value }),
               let spec = catalog.modifier(named: name) else {
-            throw issue(.invalidCheckedModel, call.node, "Box facet does not refer to its checked own modifier argument")
+            throw issue(.invalidCheckedModel, call.node, "Box facet does not refer to its checked modifier argument")
         }
         let parameter = argument.label?.name ?? (name == "background" ? "paint" : "radius")
         guard spec.signatures.contains(where: { $0.param(named: parameter)?.facets.contains(FacetID(key)) == true }) else {
@@ -1261,6 +1684,7 @@ struct StaticProgramCompiler {
     }
 
     private func checkedBoxColor(_ node: PositionedNode) throws -> ProgramColor {
+        if allowsStyleParentheses, let paren = ParenExprSyntax(node) { return try checkedBoxColor(paren.value.node) }
         let identity = checked.tree.id(of: node)
         if let string = StringLiteralSyntax(node)?.literalValue, checked.types[identity]?.type == .string {
             return try color(.string(string), at: node)
@@ -1277,35 +1701,37 @@ struct StaticProgramCompiler {
 
     private func background(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramBackground? {
         guard let paint = try boxArgument(facts, "background", modifier: "background", call: call) else {
-            guard !call.modifiers.contains(where: { $0.name.token.text == "background" }), facts.facets["background.tint"] == nil else {
+            guard sourceModifiers(call, named: "background").isEmpty, facts.facets["background.tint"] == nil else {
                 throw issue(.invalidCheckedModel, call.node, "Background has no checked paint argument")
             }
             return nil
         }
         let tint = try boxArgument(facts, "background.tint", modifier: "background", call: call)
-        let identity = checked.tree.id(of: paint)
-        if let implicit = ImplicitMemberExprSyntax(paint), implicit.arguments != nil {
+        let compiler = try facetCompiler(facts, "background", at: call.node)
+        let literal = compiler.allowsStyleParentheses ? compiler.styleLeaf(paint) : paint
+        let identity = compiler.checked.tree.id(of: literal)
+        if let implicit = ImplicitMemberExprSyntax(literal), implicit.arguments != nil {
             throw issue(.unsupported, paint, "Background catalog values cannot take arguments")
         }
-        if case .enumCase(type: "Paint", case: let name)? = checked.symbols[identity],
-           checked.types[identity]?.type == .paint, catalog.index.namedValues["Paint.\(name)"]?.type == "Paint",
-           ImplicitMemberExprSyntax(paint)?.name.token.text == name || MemberExprSyntax(paint)?.name.token.text == name {
+        if case .enumCase(type: "Paint", case: let name)? = compiler.checked.symbols[identity],
+           compiler.checked.types[identity]?.type == .paint, catalog.index.namedValues["Paint.\(name)"]?.type == "Paint",
+           ImplicitMemberExprSyntax(literal)?.name.token.text == name || MemberExprSyntax(literal)?.name.token.text == name {
             let style: GlassStyle
             switch name {
             case "glass": style = .regular
             case "clearGlass": style = .clear
             default: throw issue(.unsupported, paint, "Unsupported catalog background Paint")
             }
-            return .glass(style: style, tint: try tint.map(checkedBoxColor))
+            return .glass(style: style, tint: try tint.map { try facetCompiler(facts, "background.tint", at: call.node).checkedBoxColor($0) })
         }
         guard tint == nil else { throw issue(.unsupported, paint, "A background tint is implemented only for glass") }
-        return .color(try checkedBoxColor(paint))
+        return .color(try compiler.checkedBoxColor(paint))
     }
 
     private func uniformRadius(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramCornerRadius? {
         let keys = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"]
         guard keys.contains(where: { facts.facets[FacetID($0)] != nil }) else {
-            guard !call.modifiers.contains(where: { $0.name.token.text == "rounded" }) else {
+            guard sourceModifiers(call, named: "rounded").isEmpty else {
                 throw issue(.invalidCheckedModel, call.node, "Rounded has no checked explicit radius")
             }
             return nil
@@ -1315,17 +1741,19 @@ struct StaticProgramCompiler {
             guard let value = try boxArgument(facts, key, modifier: "rounded", call: call) else {
                 corners.append(.points(0)); continue
             }
-            let identity = checked.tree.id(of: value)
+            let compiler = try facetCompiler(facts, key, at: call.node)
+            let identity = compiler.checked.tree.id(of: value)
+            let literal = compiler.allowsStyleParentheses ? compiler.styleLeaf(value) : value
             switch try roundedFacet(facts, key, at: call.node) {
             case .number(let n)? where n >= 0:
-                guard checked.types[identity]?.type == .length || checked.types[identity]?.type == .plainNumber,
-                      checked.canonicalNumericValues[identity] == n else {
+                guard compiler.checked.types[identity]?.type == .length || compiler.checked.types[identity]?.type == .plainNumber,
+                      compiler.checked.canonicalNumericValues[identity] == n else {
                     throw issue(.unsupported, value, "Rounded requires a checked finite Length literal receipt")
                 }
                 corners.append(.points(n))
             case .choice("full")?:
-                guard checked.types[identity]?.type == .enumeration("RadiusKeyword"),
-                      checked.symbols[identity] == .enumCase(type: "RadiusKeyword", case: "full"),
+                guard compiler.checked.types[identity]?.type == .enumeration("RadiusKeyword"),
+                      compiler.checked.symbols[compiler.checked.tree.id(of: literal)] == .enumCase(type: "RadiusKeyword", case: "full"),
                       catalog.enumeration("RadiusKeyword")?.enumCase(named: "full") != nil else {
                     throw issue(.unsupported, value, "Full rounding requires the checked RadiusKeyword case")
                 }
@@ -1438,17 +1866,21 @@ struct StaticProgramCompiler {
 
     private func facet(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> Value? {
         guard let best = facts.facets[FacetID(key)]?.first else { return nil }
-        if let value = best.fixedValue { return try fixed(value, at: node) }
-        guard let value = checked.tree.resolve(best.value) else { throw issue(.invalidCheckedModel, node, "Facet refers to a different syntax tree") }
-        if key == "position.x" || key == "position.y" { return try lengthConstant(value, signed: true) }
+        let compiler = try facetCompiler(facts, key, at: node)
+        if let value = best.fixedValue { return try compiler.fixed(value, at: node) }
+        guard let value = compiler.checked.tree.resolve(best.value) else {
+            throw issue(.invalidCheckedModel, node, "Facet refers to a different syntax tree")
+        }
+        if key == "position.x" || key == "position.y" { return try compiler.lengthConstant(value, signed: true) }
         if ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right",
-            "padding.top", "padding.bottom", "stroke.width", "font.size"].contains(key) { return try lengthConstant(value) }
-        return try constant(value)
+            "padding.top", "padding.bottom", "stroke.width", "font.size"].contains(key) { return try compiler.lengthConstant(value) }
+        return try compiler.constant(value)
     }
 
     /// Length properties accept attached pt literals only after checking their dimension and canonical value.
     /// Signed coordinates are a literal spelling, not a constant-folding path for unsupported layout expressions.
     private func lengthConstant(_ node: PositionedNode, signed: Bool = false) throws -> Value {
+        if allowsStyleParentheses, let paren = ParenExprSyntax(node) { return try lengthConstant(paren.value.node, signed: signed) }
         if signed, let prefix = PrefixExprSyntax(node), prefix.operator.token.kind == .minus,
            NumberLiteralSyntax(prefix.operand.node) != nil {
             guard case .number(let value) = try lengthConstant(prefix.operand.node),
@@ -1475,13 +1907,14 @@ struct StaticProgramCompiler {
 
     /// Explicit points are a checked Length spelling for box corners, not a general constant/unit extension.
     private func roundedFacet(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> Value? {
+        let compiler = try facetCompiler(facts, key, at: node)
         guard let best = facts.facets[FacetID(key)]?.first, best.fixedValue == nil,
-              let value = checked.tree.resolve(best.value), let literal = NumberLiteralSyntax(value),
+              let value = compiler.checked.tree.resolve(best.value), let literal = NumberLiteralSyntax(value),
               literal.unit?.text == "pt" else { return try facet(facts, key, at: node) }
         guard literal.unit?.status == .known, literal.unitAfterSpace == nil,
               literal.value?.isFinite == true,
-              checked.types[best.value]?.type == .length,
-              let canonical = checked.canonicalNumericValues[best.value], canonical.isFinite, canonical >= 0,
+              compiler.checked.types[best.value]?.type == .length,
+              let canonical = compiler.checked.canonicalNumericValues[best.value], canonical.isFinite, canonical >= 0,
               let unit = catalog.unit(spelling: "pt"), unit.dimension == .length,
               unit.factor.isFinite, unit.offset == 0 else {
             throw issue(.unsupported, value, "Point radii require a checked finite nonnegative Length literal")
@@ -1490,6 +1923,11 @@ struct StaticProgramCompiler {
     }
 
     private func constant(_ node: PositionedNode) throws -> Value {
+        if allowsStyleParentheses, let paren = ParenExprSyntax(node) { return try constant(paren.value.node) }
+        if allowsStyleParentheses, let number = NumberLiteralSyntax(node), number.unit?.text == "pt" { return try lengthConstant(node) }
+        if allowsStyleParentheses, let member = MemberExprSyntax(node),
+           case .enumCase(let type, let name)? = checked.symbols[checked.tree.id(of: node)],
+           IdentifierExprSyntax(member.base.node)?.name == type, member.name.token.text == name { return .choice(name) }
         if let number = NumberLiteralSyntax(node), number.unit == nil, number.unitAfterSpace == nil,
            let value = number.value, value.isFinite { return .number(value) }
         if let string = StringLiteralSyntax(node)?.literalValue { return .string(string) }

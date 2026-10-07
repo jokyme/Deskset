@@ -211,6 +211,36 @@ func runDeskViewIfCompilationTests(_ t: TestRunner) {
         t.equal(image.elements.last?.imageDependencies.map(\.path), ["A.png"])
     }
 
+    t.suite("Desk: view if compilation: the original inactive styled branch compiles before activation") {
+        let source = #"widget { if false { Text("A").style(alert) } else { Text("B") } }"# + "\n" + #"style alert { .color(.red) }"#
+        let (checked, result, program) = try viewIfCompilation(t, source)
+        guard case .column(_, _, let children) = program.root.content, children.count == 1,
+              case .conditional(let conditional) = children[0].content,
+              conditional.branches.count == 1, conditional.branches[0].body.count == 1,
+              conditional.otherwise.count == 1,
+              case .text(let styled) = conditional.branches[0].body[0].content,
+              case .text(let fallback) = conditional.otherwise[0].content else { throw DeskViewIfFixtureError.structure }
+        t.equal(conditional.branches[0].condition, .boolean(false))
+        t.equal(styled.value, .string("A")); t.equal(styled.color, .palette(.red))
+        t.equal(fallback.value, .string("B"))
+        t.equal(result.elementRefs.count, 2); t.equal(Set(result.elementRefs.values), Set(checked.elements.keys))
+        var runtime = try ProgramRuntime(program: program)
+        let inactive = try runtime.project(environment: viewIfEnvironment(), measure: viewIfMeasure)
+        t.equal(viewIfDraws(inactive).map(\.text), ["B"])
+        t.check(!inactive.elements.contains { $0.id == conditional.branches[0].body[0].id })
+        let (_, activeResult, activeProgram) = try viewIfCompilation(t, source.replacingOccurrences(of: "if false", with: "if true"))
+        t.equal(Set(activeResult.elementRefs.keys), Set(result.elementRefs.keys))
+        let red = RGBA(r: 220, g: 32, b: 48)
+        let palette = ProgramColorInput(colors: Dictionary(uniqueKeysWithValues: ProgramPaletteColor.allCases.map {
+            ($0, $0 == .red ? red : SkinAppearance.light.labelColor)
+        }))
+        var activeRuntime = try ProgramRuntime(program: activeProgram)
+        let active = try activeRuntime.project(environment: viewIfEnvironment(), colorInput: palette, measure: viewIfMeasure)
+        t.equal(viewIfDraws(active).map(\.text), ["A"])
+        t.equal(viewIfDraws(active).first?.style.color, red)
+        t.check(!active.elements.contains { $0.id == conditional.otherwise[0].id })
+    }
+
     t.suite("Desk: view if compilation: unsupported constructs in every branch preserve the explicit boundary") {
         for source in [
             #"widget { if true { Text("A") } else { Text("B").background(.glass, if: false) } }"#,
@@ -218,8 +248,7 @@ func runDeskViewIfCompilationTests(_ t: TestRunner) {
             #"widget { if false { Text("A").hover { .color(.red) } } else { Text("B") } }"#,
             #"widget { if false { for n in [1, 2] { Text(n) } } else { Text("B") } }"#,
             #"widget { if network.online { Text("A") } else { Text("B") } }"#,
-            #"widget { if widget.size == .small { Text("A") } else { Text("B") } }"#,
-            #"widget { if false { Text("A").style(alert) } else { Text("B") } }"# + "\n" + #"style alert { .color(.red) }"#] {
+            #"widget { if widget.size == .small { Text("A") } else { Text("B") } }"#] {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, "\(source)\n\(deskDescribe(checked))")
             t.equal(result.issues.first?.kind, .unsupported, "\(source)\n\(result.issues)")

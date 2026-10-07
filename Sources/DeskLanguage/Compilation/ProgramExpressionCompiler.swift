@@ -3,7 +3,7 @@ import DesksetCore
 
 /// Lower the existing checked identities and scalar types. No runtime name lookup or source evaluation is used.
 struct ProgramExpressionCompiler {
-    let checked: CheckedFile
+    private(set) var checked: CheckedFile
     let catalog: DeskCatalog
     private var translationCompiler: ProgramTranslationCompiler?
     private var slots: [NodeID: Int] = [:]
@@ -24,7 +24,7 @@ struct ProgramExpressionCompiler {
               let string = StringLiteralSyntax(node), string.literalValue != nil else {
             throw issue(.invalidCheckedModel, node, "Widget name requires its checked literal String")
         }
-        return try translationCompiler?.key(for: string, allowed: true)
+        return try translationCompiler?.key(for: string, in: checked, allowed: true)
     }
 
     mutating func declarations(_ declarations: [DeclarationSyntax]) throws -> [ProgramDeclaration] {
@@ -154,6 +154,14 @@ struct ProgramExpressionCompiler {
         try displayed(node, depth: 1, translateLiterals: true)
     }
 
+    /// A style keeps its definition tree receipts; translation tables and expression accounting remain shared.
+    mutating func text(_ node: PositionedNode, source: CheckedFile) throws -> ProgramExpression {
+        let previous = checked
+        checked = source
+        defer { checked = previous }
+        return try text(node)
+    }
+
     /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
     mutating func condition(_ node: PositionedNode) throws -> ProgramExpression {
         guard checked.types[checked.tree.id(of: node)]?.type == .bool else {
@@ -260,7 +268,7 @@ struct ProgramExpressionCompiler {
     private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int,
                                      displayConditionals: Bool, translateLiterals: Bool) throws -> ProgramExpression {
         if let value = StringLiteralSyntax(node) {
-            let key = try translationCompiler?.key(for: value, allowed: translateLiterals)
+            let key = try translationCompiler?.key(for: value, in: checked, allowed: translateLiterals)
             if let text = value.literalValue {
                 guard text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
                     throw issue(.resourceLimit, node, "Shared program text limit exceeded")
@@ -282,7 +290,7 @@ struct ProgramExpressionCompiler {
                            let literal = StringLiteralSyntax(missing.value.node) {
                             // Authored fallback words share the outer display's translation context; automatic
                             // missing marks remain the formatter's own text. Both branches use the captured inputs.
-                            if try translationCompiler?.key(for: literal, allowed: translateLiterals) != nil {
+                            if try translationCompiler?.key(for: literal, in: checked, allowed: translateLiterals) != nil {
                                 let fallback = try lower(missing.value.node, depth: depth + 1, translateLiterals: translateLiterals)
                                 count += 2
                                 guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {

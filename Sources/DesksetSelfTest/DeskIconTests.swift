@@ -361,14 +361,26 @@ func runDeskIconTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Desk: icons: unsupported effects styles dimensions and resource limits remain explicit") {
+    t.suite("Desk: icons: the original local symbol font style reaches the typed drawing request") {
+        let source = #"widget { Icon("wifi").style(symbol) }"# + "\n" + #"style symbol { .font(20) }"#
+        let program = try iconProgram(t, source)
+        guard case .icon(let icon) = program.root.content else { throw DeskIconFixtureError.icon }
+        t.check(icon.hasOwnFont); t.equal(icon.fontSize, 20)
+        t.equal(program, try iconProgram(t, #"widget { Icon("wifi").font(20) }"#))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: iconEnvironment(), measureIcon: iconMeasure, measure: iconTextMeasure)
+        t.equal(iconDraws(scene).first?.request.name, "wifi")
+        t.equal(iconDraws(scene).first?.request.style.fontSize, 15)
+        t.equal(iconDraws(scene).first?.contentFrame, SkinRect(width: 40, height: 20))
+    }
+
+    t.suite("Desk: icons: unsupported effects dimensions and resource limits remain explicit") {
         for source in [#"info { permissions: [.location] }"# + "\n" + #"widget { Icon(weather.now.symbol) }"#,
                        #"widget { Icon(moon.symbol) }"#,
                        #"widget { Icon("wifi").iconEffect(.pulse) }"#, #"widget { Icon("wifi").flip(.horizontal) }"#,
                        #"widget { Icon("wifi").iconColors(system.dark ? .multicolor : .monochrome) }"#,
                        #"widget { Icon("wifi").font(20, if: system.dark) }"#,
-                       #"widget { Icon("wifi").iconColors(.multicolor(123)) }"#,
-                       #"widget { Icon("wifi").style(symbol) }"# + "\n" + #"style symbol { .font(20) }"#] {
+                       #"widget { Icon("wifi").iconColors(.multicolor(123)) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, "\(source)\n\(deskDescribe(checked))")
             let result = Desk.compile(checked)

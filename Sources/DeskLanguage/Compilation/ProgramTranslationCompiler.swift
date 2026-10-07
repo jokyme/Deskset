@@ -3,29 +3,38 @@ import DesksetCore
 
 /// Translation source is checked once; translated placeholders never become executable expressions.
 struct ProgramTranslationCompiler {
-    private let checked: CheckedFile
+    private let sources: [Int: CheckedFile]
     private let catalog: DeskCatalog
     private let entries: [NodeID: StringEntry]
     private let patterns: [String: [String: [ProgramTranslationPart]]]
     private var source: [String: [ProgramTranslationPart]] = [:]
 
     init(checked: CheckedFile, package: CheckedFile?, catalog: DeskCatalog) throws {
-        self.checked = checked
         self.catalog = catalog
         if let package, !DeskPackagePath.isPackageFile(package.tree.file.path) {
             throw Self.issue(package, package.tree.rootNode, "Shared translations require a checked package.desk")
         }
-        var entries: [NodeID: StringEntry] = [:]
-        for entry in checked.stringTable {
-            guard entries[entry.node] == nil,
-                  let node = checked.tree.resolve(entry.node), let string = StringLiteralSyntax(node),
-                  !string.isRaw, !string.isTripleQuoted, entry.range == node.textRange,
-                  checked.types[entry.node]?.type == .string, !entry.key.isEmpty,
-                  entry.key == DeskTranslationKeys.key(of: string, in: checked.tree) else {
-                throw Self.issue(checked, checked.tree.resolve(entry.node) ?? checked.tree.rootNode,
-                                 "String table entry has no matching checked literal")
+        var sources = [checked.tree.version: checked]
+        if let package {
+            guard sources[package.tree.version] == nil else {
+                throw Self.issue(package, package.tree.rootNode, "Shared source tree versions must be distinct")
             }
-            entries[entry.node] = entry
+            sources[package.tree.version] = package
+        }
+        self.sources = sources
+        var entries: [NodeID: StringEntry] = [:]
+        for checked in (package.map { [$0, checked] } ?? [checked]) {
+            for entry in checked.stringTable {
+                guard entries[entry.node] == nil,
+                      let node = checked.tree.resolve(entry.node), let string = StringLiteralSyntax(node),
+                      !string.isRaw, !string.isTripleQuoted, entry.range == node.textRange,
+                      checked.types[entry.node]?.type == .string, !entry.key.isEmpty,
+                      entry.key == DeskTranslationKeys.key(of: string, in: checked.tree) else {
+                    throw Self.issue(checked, checked.tree.resolve(entry.node) ?? checked.tree.rootNode,
+                                     "String table entry has no matching checked literal")
+                }
+                entries[entry.node] = entry
+            }
         }
         self.entries = entries
         var patterns = try package.map { try Self.tables($0, catalog: catalog) } ?? [:]
@@ -42,7 +51,10 @@ struct ProgramTranslationCompiler {
     }
 
     /// Only a checked literal reaching a supported translatable parameter can emit a localized expression.
-    mutating func key(for string: StringLiteralSyntax, allowed: Bool) throws -> String? {
+    mutating func key(for string: StringLiteralSyntax, in checked: CheckedFile, allowed: Bool) throws -> String? {
+        guard sources[checked.tree.version]?.tree.file == checked.tree.file else {
+            throw Self.issue(checked, string.node, "Translated literal belongs to an unsupplied checked source")
+        }
         let identity = checked.tree.id(of: string.node)
         guard let entry = entries[identity] else {
             if allowed, !string.isRaw, !string.isTripleQuoted,

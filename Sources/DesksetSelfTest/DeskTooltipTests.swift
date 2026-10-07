@@ -232,12 +232,25 @@ func runDeskTooltipTests(_ t: TestRunner) {
         rejected(tooltipFacts(absentTitle, elements: elements))
     }
 
-    t.suite("Desk: tooltips: conditions styles states unknown data and dimensions retain explicit boundaries") {
+    t.suite("Desk: tooltips: the original style tooltip supplies its projected text and title") {
+        let source = #"widget { Text("A").style(label) }"# + "\n" + #"style label { .tooltip("Body", title: "Title") }"#
+        let (_, _, program) = try tooltipCompilation(t, source)
+        t.equal(program.root.tooltip, ProgramTooltip(text: .string("Body"), title: .string("Title")))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: tooltipEnvironment(), measure: tooltipMeasure)
+        t.equal(scene.hitMap.toolTipInfo(at: point.x, point.y, images: nil), ToolTipInfo(text: "Body", title: "Title"))
+        t.equal(scene.hitMap.entries.count, 1)
+        t.check(scene.hitMap.entries.allSatisfy { $0.actions.isEmpty })
+        var literal = try ProgramRuntime(program: tooltipCompilation(t,
+            #"widget { Text("A").tooltip("Body", title: "Title") }"#).2)
+        t.equal(scene, try literal.project(environment: tooltipEnvironment(), measure: tooltipMeasure))
+    }
+
+    t.suite("Desk: tooltips: conditions states unknown data and dimensions retain explicit boundaries") {
         for source in [#"widget { Text("A").tooltip("Body", if: false) }"#,
                        #"widget { Text("A").tooltip("Body", title: "Title", if: true) }"#,
                        #"widget { Text("A").hover { .tooltip("Body") } }"#,
                        #"widget { Text("A").pressed { .tooltip("Body") } }"#,
-                       #"widget { Text("A").style(label) }"# + "\n" + #"style label { .tooltip("Body", title: "Title") }"#,
                        #"widget { Text("A").tooltip(2W) }"#,
                        #"widget { Text("A").tooltip("Body", title: 2W) }"#,
                        #"widget { Text("A").tooltip(false ? 2W : "Allowed") }"#,

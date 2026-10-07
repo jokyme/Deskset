@@ -51,7 +51,10 @@ public extension Desk {
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
     /// font sizes, dynamic hidden(if:) and conditional solid color/fill/track with inherited color fallbacks,
-    /// and constant other box/style properties, including checked pt lengths. Missing/invalid font sizes fail the current scene transaction;
+    /// and constant other box/style properties, including checked pt lengths. Unconditional local and supplied package styles expand their supported constant
+    /// properties with own/style precedence, nested includes, repeated applications and widget replacements.
+    /// Style tooltip/voiceOver literals keep their definition-tree receipts and the merged translation tables.
+    /// Missing/invalid font sizes fail the current scene transaction;
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Dynamic Progress consumes checked numeric operands and proven memory owner ranges; missing values or nonpositive totals draw an empty track.
@@ -61,7 +64,7 @@ public extension Desk {
     /// Display-position conditionals format each branch independently, and Bool text uses the shared localized Yes/No conversion.
     /// Own voiceOver labels on supported views use those same checked display expressions and do not inherit.
     /// Ordinary tooltip text and optional bold titles use those display expressions without inheritance. Explicit
-    /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state/style sources remain unsupported.
+    /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state sources remain unsupported.
     /// Ordinary menus lower Item/Divider/nested Menu and menu-level if/else-if/else, with supported display titles,
     /// Bool checked/enabled values and Item onClick assignments/copy/open. Menu entries have no view geometry or source element refs.
     /// Menu-level for, persistent options and saved values, other menu actions and view modifiers remain unsupported.
@@ -69,13 +72,13 @@ public extension Desk {
     /// translations are shared; a widget's own entry wins. Stored literals, copy/open and resource names retain their source values.
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
     /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
-    /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.
+    /// An Icon with a fixed box fills it unless it has an own or applied-style font; inherited fonts and bold/italic alone preserve fitting.
     /// View-level if/else-if/else expands only the selected branch into its real container, without retaining space.
     /// Every branch is checked and lowered; source references and literal image demands include inactive branches.
     /// A lone top-level if uses the same implicit Column and preset proposal as several top-level views.
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
-    /// Conditional stroke/background/tint, other conditional facets, styles and hover/pressed states remain unsupported.
+    /// Conditional stroke/background/tint, other conditional facets, dynamic/conditional styles and hover/pressed states remain unsupported.
     /// View-level for, branch mount actions, dynamic layout and sibling geometry references, other numeric dimensions,
     /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
