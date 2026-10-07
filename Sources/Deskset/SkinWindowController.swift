@@ -398,11 +398,13 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if let own = reloadTicket, !isStarted, !loadFailed { app.studioReload(own, .abandoned, self) }
         if let ticket { app.studioReload(ticket, .closing, self) }
         // OnCloseAction runs while the skin can still handle bangs (it cannot reload or unload itself any more).
-        runtime.rollbackVisibleNativePublication(provider: content, failure: .cancelled)
         isClosing = true
         layerStartPending = nil
         deferredLayerOrderIn = nil
         runtime.send(.close(fadeOut: fadeOut, ticket: ticket))
+        // Terminal close must reach the owner before rollback can resume C drawing. Permanent stop releases E
+        // without waiting for Main's rollback acknowledgment; the saved C frame keeps its fade/teardown lifetime.
+        runtime.rollbackVisibleNativePublication(provider: content, failure: .cancelled)
         // This window half stays until the skin has closed (at once on the main executor): OnCloseAction's requests
         // (config, menu and system bangs, what it opens, bangs for configs that are loading) and the Studio's
         // `.closed(ticket)` come through it.

@@ -2035,7 +2035,27 @@ enum SkinLayerContentSelfTests {
             window.content.rollbackNativeStage(replacement)
             window.content.detachNativeStage(replacement)
             t.check(window.content.visibleNativeStage === current, "late old-panel cleanup does not hide the current panel")
-            let currentAnchor = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            var oldObserver: ((SkinMessage) -> Void)?
+            var observerInstalled = false
+            var stopMessages: [String] = []
+            defer {
+                if observerInstalled {
+                    _ = window.runtime.exclusive(timeout: 30) { _ in window.runtime.messageObserver = oldObserver }
+                }
+            }
+            let currentAnchor = window.runtime.exclusive { _ in
+                oldObserver = window.runtime.messageObserver
+                window.runtime.messageObserver = { message in
+                    oldObserver?(message)
+                    switch message {
+                    case .nativeStageRolledBack(let stage) where stage === envelope: stopMessages.append("rollback")
+                    case .close: stopMessages.append("close")
+                    default: break
+                    }
+                }
+                observerInstalled = true
+                return window.runtime.frames.layerRuntime?.currentFrame
+            } ?? nil
             let callbacks = current.callbackReport.observation.callbacks
             ownerWork(worker, t) {
                 window.runtime.skin.execute("[!SetVariable Tint 217,61,139,157]", from: nil)
@@ -2059,6 +2079,9 @@ enum SkinLayerContentSelfTests {
             ownerWork(worker, t) {
                 t.check(!window.runtime.frames.hasNativeStage && envelope.hasStoppedOwnerRelease && envelope.hasOwnerRelease)
                 t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, currentAnchor?.sequence)
+                t.check(stopMessages.first == "close", "terminal close precedes the current stage rollback: \(stopMessages)")
+                window.runtime.messageObserver = oldObserver
+                observerInstalled = false
             }
             window.window.orderOut(nil)
             window.window.close()
