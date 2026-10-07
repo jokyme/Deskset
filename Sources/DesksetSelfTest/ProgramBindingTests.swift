@@ -714,8 +714,7 @@ private func runProgramClickTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: click: unsupported actions events roles and foreign catalog identities reject the whole source") {
-        let sources = [#"widget { variable x = false; Column { Text("A") }.onClick { x = true } }"#,
-                       #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
+        let sources = [#"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
                        #"widget { variable x = false; Text("A").onClick { if x { x = false } } }"#,
                        #"widget { Text("A").onClick { log("A") } }"#,
                        #"widget { variable x = "A"; Text(x).onClick { x = "{event.x}" } }"#,
@@ -2244,7 +2243,6 @@ private func runDeskPointerTests(_ t: TestRunner) {
             t.equal(Desk.compile(damaged).issues.first?.kind, .invalidCheckedModel)
         }
         for unsupported in [
-            #"widget { Column { Text("Tap") }.onRightClick { copy("A") } }"#,
             #"widget { Image("unsupported.png").onRightClick { copy("A") } }"#,
             #"widget { Text("Tap").onRightClick { log("A") } }"#,
             #"widget { variable flag = false; Text("Tap").onRightClick { if flag { flag = false } } }"#,

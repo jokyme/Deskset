@@ -25,7 +25,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private(set) var isStarted = false
     private(set) var isClosing = false
     private(set) var isClosed = false
-    private(set) var sessionID = UUID()
+    private(set) var sessionID: UUID
     private var factsSequence = 0
     private var lastPresentedGeneration: UInt64 = 0
     private(set) var lastPresentationSerial: UInt64 = 0
@@ -60,6 +60,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         self.app = app
         self.executor = executor
         self.actionServices = actionServices
+        let currentSession = UUID()
+        self.sessionID = currentSession
 
         let panel = SkinWindowController.makePanel()
         self.window = panel
@@ -72,7 +74,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         panel.contentView = view
 
         let hostOwner = DeskWidgetHostOwner(program: program, executor: executor, provider: content,
-                                            prepared: prepared, clock: clock, source: source.entry)
+                                            prepared: prepared, clock: clock, source: source.entry, session: currentSession)
         self.owner = hostOwner
 
         super.init()
@@ -80,7 +82,6 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         view.controller = self
         panel.delegate = self
 
-        let currentSession = sessionID
         let appearance = panel.effectiveAppearance
         let scale = panel.backingScaleFactor
         let initialFacts = currentFacts()
@@ -420,6 +421,22 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         guard Thread.isMainThread, child.canPress, let presented = view.presentation(for: child),
               let element = presented.scene.elements.first(where: { $0.id == child.id }),
               element.visibility == .visible else { return false }
+        switch element.kind {
+        case .unknown("Column"), .unknown("Row"), .unknown("Freeform"):
+            guard element.frame.width > 0, element.frame.height > 0,
+                  let token = issueClickToken(), token.session == child.session, token.epoch == child.epoch,
+                  token.sourceGeneration == child.generation else { return false }
+            let id = child.id, hostOwner = owner
+            executor.async { [hostOwner] in
+                hostOwner.activateContainer(id, token: token) { returnedToken, effects in
+                    DispatchQueue.main.async { [weak self] in
+                        self?.handleEffects(effects, token: returnedToken, issuedToken: token)
+                    }
+                }
+            }
+            return true
+        default: break
+        }
         let center = SkinPoint(x: element.frame.x + element.frame.width / 2,
                                y: element.frame.y + element.frame.height / 2)
         guard presented.scene.hitMap.entry(at: center.x, center.y, handling: .leftUp, images: nil)?.elementID == child.id else {
@@ -547,6 +564,7 @@ final class DeskWidgetHostOwner {
     let provider: ContentProvider
     let clock: SkinClock
     let source: String
+    let session: UUID
     var prepared: DeskProgramResources.Prepared?
     private(set) var host: DeskProgramHost?
     private(set) var isClosed = false
@@ -556,13 +574,14 @@ final class DeskWidgetHostOwner {
     private var secondaryPressEpoch: UInt64?
 
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider,
-         prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String) {
+         prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String, session: UUID) {
         self.program = program
         self.executor = executor
         self.provider = provider
         self.prepared = prepared
         self.clock = clock
         self.source = source
+        self.session = session
     }
 
     func start(input: DeskProgramHost.Input, facts: SkinWindowFacts, supportsSystemGlass: Bool = false,
@@ -671,18 +690,37 @@ final class DeskWidgetHostOwner {
         release(at: point, token: token, event: .rightUp, onEffects: onEffects)
     }
 
+    func activateContainer(_ id: ElementID, token: DeskWidgetClickToken,
+                           onEffects: @escaping (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
+        precondition(executor.isCurrent)
+        guard !isClosed, token.session == session, token.epoch == currentEpoch, let host,
+              token.sourceGeneration == host.scene?.generation,
+              token.sourceGeneration == host.presented?.scene.generation else { return }
+        cancelPress(.leftUp)
+        let consume: ([ProgramEffect]) -> Void = { [weak self] effects in
+            guard let self, !self.isClosed, self.session == token.session,
+                  self.currentEpoch == token.epoch, !effects.isEmpty else { return }
+            precondition(self.executor.isCurrent)
+            onEffects(token, effects)
+        }
+        if let effects = host.activateContainer(id, expectedGeneration: token.sourceGeneration, completion: consume) {
+            consume(effects)
+        }
+    }
+
     private func release(at point: SkinPoint, token: DeskWidgetClickToken, event: MouseEventKind,
                          onEffects: @escaping (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
         precondition(executor.isCurrent)
         guard !isClosed, let host else { return }
         let pressEpoch = event == .leftUp ? primaryPressEpoch : secondaryPressEpoch
-        guard token.epoch == currentEpoch, token.epoch == pressEpoch, token.sourceGeneration == host.scene?.generation,
+        guard token.session == session, token.epoch == currentEpoch, token.epoch == pressEpoch, token.sourceGeneration == host.scene?.generation,
               token.sourceGeneration == host.presented?.scene.generation else {
             cancelPress(event)
             return
         }
         let consume: ([ProgramEffect]) -> Void = { [weak self] effects in
-            guard let self, !self.isClosed, self.currentEpoch == token.epoch, !effects.isEmpty else { return }
+            guard let self, !self.isClosed, self.session == token.session,
+                  self.currentEpoch == token.epoch, !effects.isEmpty else { return }
             precondition(self.executor.isCurrent)
             onEffects(token, effects)
         }
@@ -735,6 +773,7 @@ final class DeskWidgetView: NSView {
     private var dragged = false
     private var primaryGesture: (event: MouseEventKind, session: UUID, epoch: UInt64)?
     private var secondaryGesture: (session: UUID, epoch: UInt64)?
+    var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
     /// Self-tests intercept the real constructed menu instead of entering AppKit's modal menu tracking loop.
     var contextMenuPresenterForTesting: ((NSMenu, NSEvent) -> Void)?
 
@@ -845,7 +884,7 @@ final class DeskWidgetView: NSView {
             return
         }
         primaryGesture = (.leftUp, controller.sessionID, controller.lastAcceptedEpoch)
-        dragStart = NSEvent.mouseLocation
+        dragStart = pointerLocation()
         windowOrigin = window?.frame.origin
         dragged = false
 
@@ -873,7 +912,7 @@ final class DeskWidgetView: NSView {
               let press = primaryGesture, press.session == controller.sessionID,
               press.epoch == controller.destinationEpoch,
               let start = dragStart, let origin = windowOrigin, let window else { return }
-        let now = NSEvent.mouseLocation
+        let now = pointerLocation()
         let dx = now.x - start.x, dy = now.y - start.y
         if !dragged && hypot(dx, dy) < 3 { return }
         if !dragged {

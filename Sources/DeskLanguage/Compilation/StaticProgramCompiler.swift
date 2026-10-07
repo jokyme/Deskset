@@ -182,6 +182,7 @@ struct StaticProgramCompiler {
         let gauge = facts.component == "Gauge"
         let rangedMeter = progress || gauge
         let spacer = facts.component == "Spacer"
+        let clickableContainer = ["Row", "Column", "Freeform"].contains(facts.component)
         let ignoresRootSize = depth == 1 && widgetSize != .fit
         let sizeFacets: Set<String> = ["width", "height", "width.min", "width.max", "height.min", "height.max"]
         var allowedModifiers: Set<String> = spacer ? ["hidden"] : rangedMeter ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
@@ -238,8 +239,8 @@ struct StaticProgramCompiler {
             if ["onClick", "onRightClick"].contains(modifier.name.token.text) {
                 let primary = modifier.name.token.text == "onClick"
                 guard (primary ? onClick == nil && onClickActions == nil : onRightClickActions == nil),
-                      facts.component == "Text" || icon || solidShape || rangedMeter else {
-                    throw issue(.unsupported, modifier.node, "Only Text, Icon, Progress, Gauge and basic shape primary/secondary click actions are implemented")
+                      facts.component == "Text" || icon || solidShape || rangedMeter || clickableContainer else {
+                    throw issue(.unsupported, modifier.node, "Only Text, Icon, Progress, Gauge, basic shapes and Row/Column/Freeform primary/secondary click actions are implemented")
                 }
                 let actions = try clickActions(modifier, kind: facts.kind)
                 if !primary {

@@ -45,7 +45,8 @@ public extension Desk {
     /// scalar text templates, checked time.now/Date.in/date formats, numeric and Date/Duration arithmetic,
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark and checked CPU/memory/battery scalar fields, including presence and remaining Duration, root onLoad variable assignments,
-    /// ordered Text/Icon/Progress/Gauge/basic-shape onClick/onRightClick assignments/copy/open actions,
+    /// ordered Text/Icon/Progress/Gauge/basic-shape/Row/Column/Freeform onClick/onRightClick assignments/copy/open actions,
+    /// including empty handlers and event-specific innermost selection without bubbling,
     /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited

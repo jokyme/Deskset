@@ -23,6 +23,7 @@ public struct ProgramRuntime: Sendable {
     private struct ClickHandler: Sendable {
         let actions: [MouseEventKind: [ProgramAction]]
         let radius: ProgramCornerRadius?
+        let isContainer: Bool
     }
     private let clickHandlers: [ElementID: ClickHandler]
     private var currentHitMap = SkinHitMap()
@@ -88,7 +89,14 @@ public struct ProgramRuntime: Sendable {
                 actionsByEvent[event] = actions
             }
             if !actionsByEvent.isEmpty {
-                clickHandlers[node.id] = ClickHandler(actions: actionsByEvent, radius: node.cornerRadius)
+                let isContainer: Bool
+                switch node.content {
+                case .row, .column, .freeform: isContainer = true
+                default: isContainer = false
+                }
+                clickHandlers[node.id] = ClickHandler(actions: actionsByEvent, radius: node.cornerRadius, isContainer: isContainer)
+                // An empty container can still provide an interactive box, including a handler that only catches.
+                if isContainer { contentCount += 1 }
             }
             func valid(_ length: ProgramLength) -> Bool {
                 if case .fixed(let n) = length { return n.isFinite && n >= 0 }
@@ -268,6 +276,23 @@ public struct ProgramRuntime: Sendable {
             }
             return collectProperties(active: &activeExpressions, includeLayoutText: true)
         }
+    }
+
+    /// Properties for explicitly activating a current container's primary handler, plus the resulting projection.
+    /// A child covering its parent does not replace this identity target. Invalid targets require no sampling.
+    public func neededSystemProperties(activatingContainer id: ElementID) -> Set<ProgramSystemProperty> {
+        guard let actions = primaryContainerActions(id) else { return [] }
+        var activeExpressions = actions.map(\.expression)
+        return collectProperties(active: &activeExpressions, includeLayoutText: true)
+    }
+
+    private func primaryContainerActions(_ id: ElementID) -> [ProgramAction]? {
+        guard variables != nil, let handler = clickHandlers[id], handler.isContainer,
+              let actions = handler.actions[.leftUp],
+              currentHitMap.entries.contains(where: {
+                  $0.elementID == id && $0.frame.width > 0 && $0.frame.height > 0 && $0.action(.leftUp) != .absent
+              }) else { return nil }
+        return actions
     }
 
     private func collectProperties(active: inout [ProgramExpression], includeLayoutText: Bool) -> Set<ProgramSystemProperty> {
@@ -547,6 +572,29 @@ public struct ProgramRuntime: Sendable {
               point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
               let entry = currentHitMap.entry(at: point.x, point.y, handling: event, images: nil),
               let id = entry.elementID, let actions = clickHandlers[id]?.actions[event] else { return nil }
+        return try performActions(actions, environment: environment, images: images, dateInput: dateInput,
+                                  colorInput: colorInput, systemInput: systemInput, measureIcon: measureIcon, measure: measure)
+    }
+
+    /// Activate an explicitly targeted real container's primary handler, independent of child pointer hits.
+    /// The current positive-area hit entry qualifies visibility and branch membership; leaves and stale scenes fail.
+    public mutating func activateContainerWithEffects(_ id: ElementID, expectedGeneration: UInt64,
+                                                     environment: EnvironmentStamp,
+                                                     images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
+                                                     colorInput: ProgramColorInput? = nil,
+                                                     systemInput: ProgramSystemInput? = nil,
+                                                     measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
+                                                     measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult? {
+        guard expectedGeneration == generation, let actions = primaryContainerActions(id) else { return nil }
+        return try performActions(actions, environment: environment, images: images, dateInput: dateInput,
+                                  colorInput: colorInput, systemInput: systemInput, measureIcon: measureIcon, measure: measure)
+    }
+
+    private mutating func performActions(_ actions: [ProgramAction], environment: EnvironmentStamp,
+                                         images: [String: ProgramImageResource], dateInput: ProgramDateInput?,
+                                         colorInput: ProgramColorInput?, systemInput: ProgramSystemInput?,
+                                         measureIcon: ((IconRequest) throws -> SkinSize?)?,
+                                         measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult {
         var candidate = self
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,

@@ -155,6 +155,11 @@ final class DeskProgramHost {
         let scale: CGFloat
     }
 
+    private enum Activation {
+        case point(SkinPoint, MouseEventKind)
+        case container(ElementID)
+    }
+
     private final class Owner: TickTarget {
         private final class Projection {
             var preparationID: UUID?
@@ -166,18 +171,17 @@ final class DeskProgramHost {
             let context: SkinRenderContext
             let fontGeneration: Int
             let cycle: Int
-            let click: SkinPoint?
-            let event: MouseEventKind
+            let activation: Activation?
             let completion: (([ProgramEffect]) -> Void)?
             var ticket: DeskIconResources.Ticket?
             var deferredRefresh = false
 
             init(base: ProgramRuntime, input: Input, date: ProgramDateInput, systemInput: ProgramSystemInput?,
                  images: [String: ProgramImageResource], context: SkinRenderContext, cycle: Int,
-                 click: SkinPoint?, event: MouseEventKind, completion: (([ProgramEffect]) -> Void)?) {
+                 activation: Activation?, completion: (([ProgramEffect]) -> Void)?) {
                 self.base = base; self.input = input; self.date = date; self.systemInput = systemInput
                 self.images = images; self.context = context; self.fontGeneration = context.drawing.icons.fontGeneration
-                self.cycle = cycle; self.click = click; self.event = event; self.completion = completion
+                self.cycle = cycle; self.activation = activation; self.completion = completion
             }
         }
         private enum ProjectionResult { case completed([ProgramEffect]), waiting, failed }
@@ -245,7 +249,7 @@ final class DeskProgramHost {
         }
 
         @discardableResult
-        func project(click: SkinPoint? = nil, event: MouseEventKind = .leftUp,
+        func project(activation: Activation? = nil,
                      completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
             precondition(executor.isCurrent)
             guard !isClosed, !projecting else { return nil }
@@ -253,7 +257,7 @@ final class DeskProgramHost {
                 guard destinationReady else { throw ProgramRuntimeError.invalidEnvironment }
                 guard prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
                 if let pending {
-                    if click == nil {
+                    if activation == nil {
                         pending.deferredRefresh = true
                         arm(after: clock.now())
                     }
@@ -266,14 +270,19 @@ final class DeskProgramHost {
                 self.context = context
                 let input = self.input
                 let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: input.locale)
-                let needed = runtime.neededSystemProperties(clickAt: click, event: event)
+                let needed: Set<ProgramSystemProperty>
+                switch activation {
+                case .point(let point, let event): needed = runtime.neededSystemProperties(clickAt: point, event: event)
+                case .container(let id): needed = runtime.neededSystemProperties(activatingContainer: id)
+                case nil: needed = runtime.neededSystemProperties()
+                }
                 let now = date.instant.timeIntervalSince1970
                 let systemInput = sampler.sample(from: system, for: needed, at: now)
                 let projection = Projection(base: runtime, input: input, date: date, systemInput: systemInput,
                     images: prepared?.images ?? [:], context: context, cycle: nextCycle.partialValue,
-                    click: click, event: event, completion: completion)
+                    activation: activation, completion: completion)
                 if case .completed(let effects) = attempt(projection, schedulingAfter: date.instant) {
-                    return click == nil ? nil : effects
+                    return activation == nil ? nil : effects
                 }
                 return nil
             } catch { fail(error); return nil }
@@ -308,11 +317,19 @@ final class DeskProgramHost {
                 var candidate = projection.base
                 let next: WidgetScene
                 var effects: [ProgramEffect] = []
-                if let click = projection.click {
-                    guard let value = try candidate.clickWithEffects(at: click, expectedGeneration: projection.base.generation,
-                        event: projection.event, environment: input.environment, images: projection.images, dateInput: projection.date,
-                        colorInput: input.colors, systemInput: projection.systemInput,
-                        measureIcon: measureIcon, measure: measure) else {
+                if let activation = projection.activation {
+                    let value: ProgramClickResult?
+                    switch activation {
+                    case .point(let point, let event):
+                        value = try candidate.clickWithEffects(at: point, expectedGeneration: projection.base.generation,
+                            event: event, environment: input.environment, images: projection.images, dateInput: projection.date,
+                            colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure)
+                    case .container(let id):
+                        value = try candidate.activateContainerWithEffects(id, expectedGeneration: projection.base.generation,
+                            environment: input.environment, images: projection.images, dateInput: projection.date,
+                            colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure)
+                    }
+                    guard let value else {
                         cancelProjection(); arm(after: instant); return .failed
                     }
                     next = value.scene
@@ -397,7 +414,7 @@ final class DeskProgramHost {
                 let firstFrame = presented == nil
                 let outcome = attempt(projection, schedulingAfter: clock.now())
                 guard case .completed(let effects) = outcome else { return }
-                if projection.click != nil { projection.completion?(effects) }
+                if projection.activation != nil { projection.completion?(effects) }
                 guard !isClosed, state == .ready, pending == nil else { return }
                 if firstFrame { frames.drawFirstFrame() }
                 if projection.deferredRefresh, !isClosed, state == .ready { project() }
@@ -607,7 +624,27 @@ final class DeskProgramHost {
               value.scene.generation == owner.scene?.generation else { return nil }
         let mapped = SkinPoint(x: point.x + value.origin.x, y: point.y + value.origin.y)
         guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: event, images: nil)?.elementID == press else { return nil }
-        return owner.project(click: mapped, event: event, completion: completion)
+        return owner.project(activation: .point(mapped, event), completion: completion)
+    }
+
+    /// AX identifies the accepted container itself; its center may belong to an actionable descendant.
+    /// Effects have the same synchronous/pending completion contract as pointer releases above.
+    @discardableResult
+    func activateContainer(_ id: ElementID, expectedGeneration: UInt64,
+                           completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
+        let owner = current
+        owner.primaryPress = nil
+        guard !owner.isPreparingIcons, owner.pointerEligible, let value = owner.presented,
+              value.scene.generation == expectedGeneration, owner.scene?.generation == expectedGeneration,
+              let element = value.scene.elements.first(where: { $0.id == id }), element.visibility == .visible else { return nil }
+        switch element.kind {
+        case .unknown("Column"), .unknown("Row"), .unknown("Freeform"): break
+        default: return nil
+        }
+        guard value.scene.hitMap.entries.contains(where: {
+            $0.elementID == id && $0.frame.width > 0 && $0.frame.height > 0 && $0.action(.leftUp) != .absent
+        }) else { return nil }
+        return owner.project(activation: .container(id), completion: completion)
     }
 
     /// Completes synchronously on the executor. Main may then tear down its provider/window; the executor is shared.
