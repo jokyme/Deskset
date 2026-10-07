@@ -393,6 +393,11 @@ timer.Timer	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio windo
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
 event.notification	Sources/Deskset/Studio2/StudioCodeDecorations.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
+event.eventMonitor	Sources/Deskset/Studio2/StudioCodeDecorations.swift	1	diagnostic UI dismissal and keyboard menu routing; removed when details close or detach
+event.pointerState	Sources/Deskset/Studio2/StudioCodeDecorations.swift	2	diagnostic hover UI suppresses opening while the user holds a mouse button or selects code
+random.UUID	Sources/Deskset/Studio2/StudioCodeDecorations.swift	1	diagnostic presentation receipt rejects retained actions after replacement; not runtime randomness
+timer.Timer	Sources/Deskset/Studio2/StudioCodeDecorations.swift	2	diagnostic hover open and exit grace timers; canceled on edit, scroll, dismissal and detach
+timer.runLoopAdd	Sources/Deskset/Studio2/StudioCodeDecorations.swift	2	main-run-loop diagnostic hover timers with deterministic event tests; no skin clock input
 
 background.mainHop	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 effect.workspace	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input

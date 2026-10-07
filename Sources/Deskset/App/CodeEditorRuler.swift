@@ -11,6 +11,10 @@ final class CodeEditorRuler: NSRulerView {
         didSet { needsDisplay = true }
     }
     private var digits = 0
+    /// A decoration owner may reserve a leading gutter; ordinary INI editors keep their original width.
+    var leadingAccessoryWidth: CGFloat = 0 {
+        didSet { updateThickness(lineCount: editor?.lineStarts.count ?? 1, force: true) }
+    }
 
     override init(scrollView: NSScrollView?, orientation: NSRulerView.Orientation) {
         super.init(scrollView: scrollView, orientation: orientation)
@@ -34,7 +38,7 @@ final class CodeEditorRuler: NSRulerView {
         guard force || count != digits else { return }
         digits = count
         let digitWidth = ("0" as NSString).size(withAttributes: [.font: font]).width
-        let thickness = ceil(CGFloat(count) * digitWidth + 18)
+        let thickness = ceil(CGFloat(count) * digitWidth + 18 + max(0, leadingAccessoryWidth))
         if thickness != ruleThickness { ruleThickness = thickness }
     }
 

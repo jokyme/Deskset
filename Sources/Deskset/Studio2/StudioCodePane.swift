@@ -441,14 +441,15 @@ final class StudioFixButton: NSView {
 
 // MARK: - Desk cards
 
-/// Uses the same code-pane font, wrapping measurement and card margins. Notes are plain metadata, never links.
-final class DeskDiagnosticCard: NSView {
+/// Uses the existing code-pane fonts, wrapping measurement and spacing. Notes are plain metadata, never links.
+final class DeskDiagnosticCard: NSView, NSMenuDelegate {
     let diagnostic: DeskServiceDiagnostic
     let titleLabel: NSTextField
     let messageLabel: NSTextField
     let noteLabels: [NSTextField]
     let actions: [DeskCodeAction]
     let actionMenu: NSPopUpButton?
+    var onMenuTracking: ((Bool) -> Void)?
     private let onAction: ((DeskCodeAction) -> Void)?
     private static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
     private static let noteFont = NSFont.systemFont(ofSize: 11)
@@ -493,6 +494,7 @@ final class DeskDiagnosticCard: NSView {
                 menu.addItem(item)
             }
             actionMenu.menu = menu
+            menu.delegate = self
             actionMenu.controlSize = .small
             actionMenu.font = Self.noteFont
             actionMenu.setAccessibilityLabel(StudioText[.fix])
@@ -515,7 +517,7 @@ final class DeskDiagnosticCard: NSView {
     }
 
     private static func textWidth(_ width: CGFloat) -> CGFloat {
-        max(1, width - StudioDiagnosticCard.leading - StudioDiagnosticCard.trailing - 39)
+        max(1, width - 2 * StudioDiagnosticCard.trailing - 39)
     }
 
     static func height(for card: DeskDiagnosticCard, width: CGFloat) -> CGFloat {
@@ -529,8 +531,8 @@ final class DeskDiagnosticCard: NSView {
     }
 
     var cardRect: NSRect {
-        NSRect(x: StudioDiagnosticCard.leading, y: 4,
-               width: max(0, bounds.width - StudioDiagnosticCard.leading - StudioDiagnosticCard.trailing),
+        NSRect(x: StudioDiagnosticCard.trailing, y: 4,
+               width: max(0, bounds.width - 2 * StudioDiagnosticCard.trailing),
                height: max(0, bounds.height - 8))
     }
 
@@ -556,16 +558,13 @@ final class DeskDiagnosticCard: NSView {
         onAction?(actions[sender.tag])
     }
 
+    func menuWillOpen(_ menu: NSMenu) { onMenuTracking?(true) }
+    func menuDidClose(_ menu: NSMenu) { onMenuTracking?(false) }
+
     override func draw(_ dirtyRect: NSRect) {
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
         let tint = Self.color(diagnostic.severity)
-        let path = NSBezierPath(roundedRect: cardRect, xRadius: 8, yRadius: 8)
-        tint.withAlphaComponent(diagnostic.severity == .info ? 0.07 : 0.14).setFill()
-        path.fill()
-        tint.withAlphaComponent(0.35).setStroke()
-        path.lineWidth = 0.5
-        path.stroke()
         let symbol: String
         switch diagnostic.severity {
         case .error: symbol = "xmark.octagon.fill"
