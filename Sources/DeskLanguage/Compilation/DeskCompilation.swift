@@ -51,9 +51,10 @@ public extension Desk {
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
     /// font sizes, dynamic hidden(if:) and conditional solid color/fill/track with inherited color fallbacks,
-    /// and constant other box/style properties, including checked pt lengths. Unconditional local and supplied package styles expand their supported constant
-    /// properties with own/style precedence, nested includes, repeated applications and widget replacements.
-    /// Style tooltip/voiceOver literals keep their definition-tree receipts and the merged translation tables.
+    /// and constant other box/style properties, including checked pt lengths. Unconditional local and supplied package styles expand
+    /// with own/style precedence, nested includes, repeated applications and widget replacements. Local style definitions support
+    /// checked dynamic font sizes, hidden/solid-color conditions and tooltip/voiceOver display expressions; package definitions retain constant values.
+    /// Style expressions keep their definition-tree receipts and the merged translation tables.
     /// Missing/invalid font sizes fail the current scene transaction;
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
@@ -83,7 +84,7 @@ public extension Desk {
     /// A lone top-level if uses the same implicit Column and preset proposal as several top-level views.
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
-    /// Conditional stroke/background/tint, other conditional facets, dynamic/conditional styles and hover/pressed states remain unsupported.
+    /// Conditional stroke/background/tint, other conditional facets, dynamic package styles, conditional style applications and hover/pressed states remain unsupported.
     /// View-level for, branch mount actions, dynamic layout and sibling geometry references, other numeric dimensions,
     /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.

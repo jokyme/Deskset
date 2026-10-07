@@ -13,6 +13,9 @@ struct ProgramExpressionCompiler {
     private var localEnums: [String: String] = [:]
     private var userOnlyOptions = Set<String>()
     private var count = 0
+    private var loweringStyle = false
+    private var loweringStyleFont = false
+    private var styleReads = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog, translations: ProgramTranslationCompiler? = nil) {
         self.checked = checked
@@ -243,11 +246,17 @@ struct ProgramExpressionCompiler {
     }
 
     /// A style keeps its definition tree receipts; translation tables and expression accounting remain shared.
-    mutating func text(_ node: PositionedNode, source: CheckedFile) throws -> ProgramExpression {
+    mutating func text(_ node: PositionedNode, source: CheckedFile, style: Bool = false) throws -> ProgramExpression {
         let previous = checked
+        let previousStyle = loweringStyle
         checked = source
-        defer { checked = previous }
+        loweringStyle = style
+        defer { checked = previous; loweringStyle = previousStyle }
         return try text(node)
+    }
+
+    func supportsDisplayType(_ type: DeskType) -> Bool {
+        type == .string || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil
     }
 
     /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
@@ -256,6 +265,15 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "A condition requires its checked Bool type")
         }
         return try lower(node, depth: 1, displayConditionals: false)
+    }
+
+    mutating func condition(_ node: PositionedNode, source: CheckedFile, style: Bool) throws -> ProgramExpression {
+        let previous = checked
+        let previousStyle = loweringStyle
+        checked = source
+        loweringStyle = style
+        defer { checked = previous; loweringStyle = previousStyle }
+        return try condition(node)
     }
 
     mutating func hiddenConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
@@ -289,6 +307,17 @@ struct ProgramExpressionCompiler {
             throw issue(.unsupported, node, "Font size requires a checked Plain or Length expression")
         }
         return try lower(node, depth: 1)
+    }
+
+    mutating func fontSize(_ node: PositionedNode, source: CheckedFile, style: Bool) throws -> ProgramExpression {
+        let previous = checked
+        let previousStyle = loweringStyle
+        let previousFont = loweringStyleFont
+        checked = source
+        loweringStyle = style
+        loweringStyleFont = style
+        defer { checked = previous; loweringStyle = previousStyle; loweringStyleFont = previousFont }
+        return try fontSize(node)
     }
 
     mutating func gaugeAngle(_ node: PositionedNode) throws -> ProgramExpression {
@@ -342,8 +371,24 @@ struct ProgramExpressionCompiler {
         }
         // Validate the original supported subtree before folding the checker's actual constant. A constant
         // conditional must not hide an unsupported branch, and no variable initializer is inferred here.
+        let readsBefore = styleReads
         let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth,
                                  displayConditionals: displayConditionals, translateLiterals: translateLiterals)
+        if loweringStyle {
+            switch raw {
+            case .timeNow:
+                guard type == .date else { throw issue(.invalidCheckedModel, node, "A style clock read requires its checked Date type") }
+                styleReads += 1
+            case .appearanceDark:
+                guard type == .bool else { throw issue(.invalidCheckedModel, node, "A style appearance read requires its checked Bool type") }
+                styleReads += 1
+            case .option, .systemProperty: styleReads += 1
+            default: break
+            }
+            guard checked.canonicalNumericValues[identity] == nil || styleReads == readsBefore else {
+                throw issue(.invalidCheckedModel, node, "Live style expressions cannot have constant receipts")
+            }
+        }
         if let canonical = checked.canonicalNumericValues[identity] {
             guard let dimension = numberDimension(type), canonical.isFinite else {
                 throw issue(.invalidCheckedModel, node, "Invalid checked canonical numeric constant")
@@ -454,10 +499,26 @@ struct ProgramExpressionCompiler {
             return try quantity(canonical, dimension: dimension, at: node)
         }
         if let value = ParenExprSyntax(node) {
+            if loweringStyle {
+                let identity = checked.tree.id(of: node), inner = checked.tree.id(of: value.value.node)
+                let adoptedLength = loweringStyleFont && checked.types[identity]?.type == .length &&
+                    checked.types[inner]?.type == .plainNumber && checked.canonicalNumericValues[identity]?.isFinite == true &&
+                    checked.canonicalNumericValues[identity] == checked.canonicalNumericValues[inner] &&
+                    checked.numericCoercions[inner] == nil
+                guard checked.types[identity]?.type == checked.types[inner]?.type || adoptedLength,
+                      checked.symbols[identity] == nil,
+                      checked.canonicalNumericValues[identity] == checked.canonicalNumericValues[inner],
+                      checked.numericCoercions[identity] == nil else {
+                    throw issue(.invalidCheckedModel, node, "Style parentheses do not preserve their checked expression receipts")
+                }
+            }
             return try lower(value.value.node, depth: depth + 1, displayConditionals: displayConditionals,
                              translateLiterals: translateLiterals)
         }
         if IdentifierExprSyntax(node) != nil {
+            guard !loweringStyle else {
+                throw issue(.unsupported, node, "Styles cannot read widget declarations")
+            }
             guard case .declaration(let identity)? = checked.symbols[checked.tree.id(of: node)], let slot = slots[identity] else {
                 throw issue(.unsupported, node, "Only checked widget declarations can be read by this program slice")
             }
@@ -767,7 +828,13 @@ struct ProgramExpressionCompiler {
               validateSystemPropertyContract(property: property, member: member) else {
             throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
         }
-        if property == .batteryPresent || property == .batteryTimeRemaining {
+        if loweringStyle {
+            let fraction = checked.numericCoercions[identity] == .percentAsFraction
+            guard fraction ? member.type == .percent && checked.types[identity]?.type == .plainNumber :
+                checked.types[identity]?.type == member.type else {
+                throw issue(.invalidCheckedModel, node, "Checked style data type does not match its catalog member")
+            }
+        } else if property == .batteryPresent || property == .batteryTimeRemaining {
             guard checked.types[identity]?.type == member.type else {
                 throw issue(.invalidCheckedModel, node, "Checked battery field type does not match its catalog member")
             }

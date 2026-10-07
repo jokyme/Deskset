@@ -9,6 +9,7 @@ struct StaticProgramCompiler {
     private var styles: [String: StyleDefinition] = [:]
     private var expandedModifiers: [NodeID: [SourcedModifier]] = [:]
     private var styleExpansionCount = 0
+    private var styleFontSizes: [NodeID: ProgramExpression] = [:]
     private var allowsStyleParentheses = false
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
@@ -205,6 +206,10 @@ struct StaticProgramCompiler {
         return copy
     }
 
+    private func isLocalSource(_ source: CheckedFile) -> Bool {
+        source.tree.version == checked.tree.version && source.tree.file == checked.tree.file
+    }
+
     private func source(_ candidate: Candidate, at node: PositionedNode) throws -> CheckedFile {
         let identity: NodeID
         let file: DeskFileID
@@ -268,9 +273,10 @@ struct StaticProgramCompiler {
                     }
                     // Inapplicable style modifiers have no candidate and no effect (§4.8.2).
                     guard spec.appliesTo.contains(kind) else { continue }
+                    let hasCondition = (modifier.arguments?.arguments ?? []).contains { $0.label?.name == "if" }
                     guard allowed.contains(modifierName), modifier.block == nil,
-                          !(modifier.arguments?.arguments ?? []).contains(where: { $0.label?.name == "if" }) else {
-                        throw compiler.issue(.unsupported, modifier.node, "Only supported unconditional constant style properties are implemented")
+                          !hasCondition || isLocalSource(source) && ["hidden", "color", "fill", "track"].contains(modifierName) else {
+                        throw compiler.issue(.unsupported, modifier.node, "This style property or conditional application is not implemented")
                     }
                     styleExpansionCount += 1
                     guard styleExpansionCount <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
@@ -291,8 +297,8 @@ struct StaticProgramCompiler {
         return result
     }
 
-    /// Bind this finite constant subset from the final checked argument types; never infer or evaluate source again.
-    private func styleFacets(_ item: SourcedModifier) throws -> [(FacetID, NodeID, String?, Bool)] {
+    /// Bind supported slots from their definition's checked argument types; never infer or evaluate source again.
+    private mutating func styleFacets(_ item: SourcedModifier) throws -> [(FacetID, NodeID, String?, Bool)] {
         let source = item.source, modifier = item.modifier
         let compiler = sourceCompiler(source, style: true)
         guard let spec = catalog.modifier(named: modifier.name.token.text) else {
@@ -306,12 +312,15 @@ struct StaticProgramCompiler {
                 if actual == expected { return true }
                 if case .oneOf(let types) = expected { return types.contains(where: accepts) }
                 if expected == .lengthSpec { return actual == .length || actual == .plainNumber || actual == .enumeration("LengthKeyword") }
-                if expected == .length { return actual == .plainNumber && (NumberLiteralSyntax(node) != nil || ParenExprSyntax(node) != nil) }
+                if expected == .length {
+                    let liveFont = isLocalSource(source) && parameter.facets == [FacetID("font.size")]
+                    return actual == .plainNumber && (liveFont || NumberLiteralSyntax(node) != nil || ParenExprSyntax(node) != nil)
+                }
                 if expected == .fontFamily { return actual == .string && StringLiteralSyntax(compiler.styleLeaf(node))?.literalValue != nil }
                 if expected == .paint { return actual == .color || actual == .string }
                 if expected == .color { return actual == .string }
                 if parameter.role == .display && expected == .string {
-                    return [.plainNumber, .percent, .bytes, .duration, .length, .angle, .bool].contains(actual)
+                    return expressions.supportsDisplayType(actual)
                 }
                 return false
             }
@@ -319,7 +328,13 @@ struct StaticProgramCompiler {
         }
         var bindings: [(Int, ArgumentSyntax)]?
         var selected: Signature?
-        for signature in spec.signatures {
+        let signatures = spec.signatures.map { signature in
+            guard spec.acceptsCondition, signature.param(labelled: "if") == nil else { return signature }
+            var result = signature
+            result.params.append(CatalogData.condition())
+            return result
+        }
+        for signature in signatures {
             var assigned = Set<Int>(), candidate: [(Int, ArgumentSyntax)] = [], valid = true
             for argument in arguments {
                 let matches = signature.params.indices.filter { index in
@@ -331,7 +346,7 @@ struct StaticProgramCompiler {
             }
             if valid && signature.params.indices.allSatisfy({ !signature.params[$0].required || assigned.contains($0) }) {
                 guard bindings == nil else {
-                    throw compiler.issue(.unsupported, modifier.node, "Ambiguous constant style signature")
+                    throw compiler.issue(.unsupported, modifier.node, "Ambiguous supported style signature")
                 }
                 bindings = candidate.sorted { $0.0 < $1.0 }
                 selected = signature
@@ -342,10 +357,25 @@ struct StaticProgramCompiler {
         }
         var result: [(FacetID, NodeID, String?, Bool)] = []
         var leaves: [NodeID: PositionedNode] = [:]
+        var dynamicFontSizes = Set<NodeID>()
         for (index, argument) in bindings {
             let parameter = signature.params[index], node = argument.value.node, identity = source.tree.id(of: node)
-            let leaf = try compiler.constantStyleValue(node, parameter: parameter)
+            let dynamicSlot = isLocalSource(source) && (parameter.role == .display || parameter.role == .condition ||
+                parameter.facets == [FacetID("font.size")])
+            let leaf: PositionedNode
+            if dynamicSlot && !compiler.constantStyleSyntax(node) {
+                leaf = node
+                if parameter.facets == [FacetID("font.size")] {
+                    // Every expansion occurrence is validated and charged, including an overridden or repeated font.
+                    styleFontSizes[identity] = try expressions.fontSize(node, source: source, style: true)
+                    dynamicFontSizes.insert(identity)
+                }
+            } else { leaf = try compiler.constantStyleValue(node, parameter: parameter) }
             leaves[identity] = leaf
+            if parameter.role == .condition {
+                if spec.name == "hidden" { result.append(("hidden", identity, "true", true)) }
+                continue
+            }
             if spec.softFacets, case .enumCase(let type, let name)? = source.symbols[source.tree.id(of: leaf)],
                let preset = catalog.enumeration(type)?.enumCase(named: name), !preset.facetValues.isEmpty {
                 result += preset.facetValues.sorted { $0.key < $1.key }.map { ($0.key, identity, $0.value.value, !$0.value.soft) }
@@ -359,6 +389,7 @@ struct StaticProgramCompiler {
         for (key, identity, fixedValue, _) in result {
             let node = source.tree.resolve(identity) ?? modifier.node
             if ["voiceOver", "tooltip", "tooltip.title", "hidden"].contains(key.rawValue) { continue }
+            if key == "font.size", dynamicFontSizes.contains(identity) { continue }
             if ["color", "fill", "track", "stroke", "background.tint"].contains(key.rawValue) {
                 _ = try compiler.checkedFacetColor(node); continue
             }
@@ -416,6 +447,19 @@ struct StaticProgramCompiler {
         var leaf = node
         while let paren = ParenExprSyntax(leaf) { leaf = paren.value.node }
         return leaf
+    }
+
+    /// Constant syntax retains the stricter authored-literal receipts even when its slot also admits live expressions.
+    private func constantStyleSyntax(_ node: PositionedNode) -> Bool {
+        let leaf = styleLeaf(node)
+        if let type = checked.types[checked.tree.id(of: leaf)]?.type, case .enumeration = type,
+           expressions.supportsDisplayType(type) { return false } // A nominal option case displays through its runtime choice title.
+        if NumberLiteralSyntax(leaf) != nil || BoolLiteralSyntax(leaf) != nil || ImplicitMemberExprSyntax(leaf) != nil { return true }
+        if StringLiteralSyntax(leaf)?.literalValue != nil { return true }
+        if let prefix = PrefixExprSyntax(leaf), [.plus, .minus].contains(prefix.operator.token.kind),
+           NumberLiteralSyntax(prefix.operand.node) != nil { return true }
+        if case .enumCase? = checked.symbols[checked.tree.id(of: leaf)] { return true }
+        return false
     }
 
     private func constantStyleValue(_ node: PositionedNode, parameter: ParamSpec, depth: Int = 1) throws -> PositionedNode {
@@ -497,7 +541,7 @@ struct StaticProgramCompiler {
             }
             return node
         }
-        throw issue(.unsupported, node, "Dynamic style values are not implemented")
+        throw issue(.unsupported, node, "This style parameter requires a supported constant value")
     }
 
     private func sizePolicy(_ choice: String, at node: PositionedNode) throws -> ProgramWidgetSize {
@@ -1058,7 +1102,7 @@ struct StaticProgramCompiler {
                   let value = source.tree.resolve(candidate.value), source.types[candidate.value] != nil else {
                 throw issue(.invalidCheckedModel, call.node, "Display facet has no matching checked definition argument")
             }
-            let expression = try expressions.text(value, source: source)
+            let expression = try expressions.text(value, source: source, style: item.isStyle)
             if selected == nil { selected = expression }
         }
         return selected
@@ -1380,7 +1424,9 @@ struct StaticProgramCompiler {
                     guard let value = compiler.checked.tree.resolve(best.value) else {
                         throw issue(.invalidCheckedModel, node, "Font size refers to a different syntax tree")
                     }
-                    if NumberLiteralSyntax(value) != nil || best.level == 2 {
+                    if best.level == 2, let expression = styleFontSizes[best.value] {
+                        result.sizeExpression = expression
+                    } else if NumberLiteralSyntax(value) != nil || best.level == 2 {
                         try assign(try compiler.lengthConstant(value), to: key, appearance: &result, at: value)
                     } else {
                         result.sizeExpression = try expressions.fontSize(value)
@@ -1470,9 +1516,11 @@ struct StaticProgramCompiler {
                 }
                 for (key, value, fixed, hard) in expected {
                     position += 1
+                    let condition = item.modifier.arguments?.arguments.first { $0.label?.name == "if" }?.value.node
                     guard let candidate = facts.facets[key]?.first(where: { $0.position == position }),
                           candidate.origin == item.origin, candidate.value == value, candidate.fixedValue == fixed,
-                          candidate.level == 2, candidate.hard == hard, candidate.condition == nil else {
+                          candidate.level == 2, candidate.hard == hard,
+                          candidate.condition == condition.map({ .expr(item.source.tree.id(of: $0)) }) else {
                         throw issue(.invalidCheckedModel, call.node, "Style facet does not match its checked expansion and precedence")
                     }
                 }
@@ -1502,6 +1550,7 @@ struct StaticProgramCompiler {
         let value: PositionedNode?
         let condition: PositionedNode?
         let source: CheckedFile
+        let isStyle: Bool
     }
 
     /// Consume every candidate, including an inactive branch, against the modifier that actually produced it.
@@ -1569,7 +1618,7 @@ struct StaticProgramCompiler {
                   candidate.value == source.tree.id(of: key == "hidden" ? (condition ?? modifier.node) : (value ?? modifier.node)) else {
                 throw issue(.invalidCheckedModel, modifier.node, "Paint/visibility does not match its checked arguments")
             }
-            result.append(OwnCandidate(value: value, condition: condition, source: source))
+            result.append(OwnCandidate(value: value, condition: condition, source: source, isStyle: item.isStyle))
         }
         return result
     }
@@ -1578,7 +1627,9 @@ struct StaticProgramCompiler {
         let candidates = try ownCandidates(facts, "hidden", call: call)
         var conditions: [ProgramExpression] = []
         for candidate in candidates {
-            if let condition = candidate.condition { conditions.append(try expressions.condition(condition)) }
+            if let condition = candidate.condition {
+                conditions.append(try expressions.condition(condition, source: candidate.source, style: candidate.isStyle))
+            }
         }
         return (candidates.contains { $0.condition == nil }, try expressions.hiddenConditions(conditions, at: call.node))
     }
@@ -1593,7 +1644,7 @@ struct StaticProgramCompiler {
                 throw issue(.invalidCheckedModel, call.node, "A paint candidate has no checked argument")
             }
             values.append((try sourceCompiler(candidate.source).checkedFacetColor(value),
-                           try candidate.condition.map { try expressions.condition($0) }))
+                           try candidate.condition.map { try expressions.condition($0, source: candidate.source, style: candidate.isStyle) }))
         }
         var result = values.first(where: { $0.condition == nil })?.color ?? fallback
         // The checker gives best-first order; wrapping low-to-high retains that exact precedence.

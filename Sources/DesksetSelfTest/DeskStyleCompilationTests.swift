@@ -637,15 +637,29 @@ func runDeskStyleCompilationTests(_ t: TestRunner) {
         styleRejected(t, mixed.checked, package: styleFacts(package, strings: strings), because: "package title stale tree")
     }
 
-    t.suite("Desk: styles: conditions dynamic values states and applicable unsupported losers still reject the whole program") {
+    t.suite("Desk: styles: local dynamic slots preserve the original sources and explicit projection behavior") {
+        let cases = [
+            (".color(.accent, if: false)", ".style(base).color(.text)", ".color(.accent, if: false).color(.text)"),
+            (".hidden(if: system.dark)", ".style(base)", ".hidden(if: system.dark)"),
+            (".font(system.dark ? 18 : 12)", ".style(base).font(12)", ".font(12)"),
+            (".tooltip(\"{cpu.usage}\")", ".style(base).tooltip(\"Own\")", ".tooltip(\"Own\")"),
+            (".voiceOver(battery.charging)", ".style(base).voiceOver(\"Own\")", ".voiceOver(\"Own\")")
+        ]
+        for (definition, application, explicit) in cases {
+            let source = "style base { \(definition) }\nwidget { Text(\"A\")\(application) }"
+            let styled = try styleCompilation(t, source)
+            let literal = try styleCompilation(t, "widget { Text(\"A\")\(explicit) }")
+            t.equal(styled.program, literal.program, source)
+            for dark in [false, true] {
+                t.equal(try styleScene(styled.program, dark: dark), try styleScene(literal.program, dark: dark), source)
+            }
+        }
+    }
+
+    t.suite("Desk: styles: unsupported conditional applications other dynamic facets states and losers still reject the whole program") {
         let sources = [
             "style base { .color(.accent) }\nwidget { Text(\"A\").style(base, if: false) }",
-            "style base { .color(.accent, if: false) }\nwidget { Text(\"A\").style(base).color(.text) }",
-            "style base { .hidden(if: system.dark) }\nwidget { Text(\"A\").style(base) }",
-            "style base { .font(system.dark ? 18 : 12) }\nwidget { Text(\"A\").style(base).font(12) }",
             "style base { .color(system.accentColor) }\nwidget { Text(\"A\").style(base).color(.text) }",
-            "style base { .tooltip(\"{cpu.usage}\") }\nwidget { Text(\"A\").style(base).tooltip(\"Own\") }",
-            "style base { .voiceOver(battery.charging) }\nwidget { Text(\"A\").style(base).voiceOver(\"Own\") }",
             "style base { .hover { .color(.accent) } }\nwidget { Text(\"A\").style(base) }",
             "style base { .pressed { .bold() } }\nwidget { Text(\"A\").style(base) }",
             "style base { .margin(2) }\nwidget { Text(\"A\").style(base) }",

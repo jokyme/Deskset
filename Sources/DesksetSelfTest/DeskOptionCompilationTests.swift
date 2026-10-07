@@ -256,7 +256,7 @@ func runDeskOptionsCompilationTests(_ t: TestRunner) {
         t.check(Desk.compile(wrappedChoice).program == nil, "the checker only admits literal scalar Picker choices")
     }
 
-    t.suite("Desk: options compilation: package options and option driven styles remain explicit boundaries") {
+    t.suite("Desk: options compilation: package options remain an explicit boundary") {
         let source = #"widget { Text("A") }"#
         let folder = CheckedDeskPackage(package: deskMemoryPackage([
             "package.desk": #"options { show = Toggle("Show") }"#, "Options.desk": source
@@ -266,9 +266,33 @@ func runDeskOptionsCompilationTests(_ t: TestRunner) {
         let denied = Desk.compile(checked, package: package)
         t.equal(denied.issues.first?.kind, .unsupported); t.equal(denied.issues.first?.file, package.tree.file)
         t.check(denied.program == nil && denied.elementRefs.isEmpty)
+    }
+
+    t.suite("Desk: options compilation: the original option driven style updates like an own font modifier") {
         let dynamicStyle = deskCheck(#"options { size = Slider("Size", min: 1, max: 20) }"# + "\n" +
-            #"style label { .font(options.size) }"# + "\n" + #"widget { Text("A").style(label) }"#)
+            #"style label { .font(options.size) }"# + "\n" + #"widget { Text("A").style(label) }"#, file: "Options.desk")
         t.check(dynamicStyle.diagnostics(.error).isEmpty, deskDescribe(dynamicStyle))
-        t.equal(Desk.compile(dynamicStyle).issues.first?.kind, .unsupported)
+        let result = Desk.compile(dynamicStyle)
+        t.check(result.issues.isEmpty); t.equal(result.diagnostics, dynamicStyle.diagnostics)
+        guard let program = result.program else { throw DeskOptionFixtureError.receipt }
+        let (_, direct) = try deskOptionCompilation(t, #"options { size = Slider("Size", min: 1, max: 20) }"# + "\n" +
+            #"widget { Text("A").font(options.size) }"#)
+        t.equal(program, direct)
+        t.equal(dynamicStyle.options["size"]?.type, .length)
+        var styledRuntime = try ProgramRuntime(program: program), directRuntime = try ProgramRuntime(program: direct)
+        let initial = try styledRuntime.project(environment: deskOptionEnvironment(), measure: deskOptionMeasure)
+        t.equal(initial, try directRuntime.project(environment: deskOptionEnvironment(), measure: deskOptionMeasure))
+        let input = ProgramOptionsInput(values: ["size": .number(ProgramNumber(20, dimension: .length))])
+        let updated = try styledRuntime.updateOptions(input, expectedRevision: 0,
+            environment: deskOptionEnvironment(), measure: deskOptionMeasure)
+        t.equal(updated, try directRuntime.updateOptions(input, expectedRevision: 0,
+            environment: deskOptionEnvironment(), measure: deskOptionMeasure))
+        t.equal(initial.drawingItems.compactMap { item -> Double? in
+            if case .text(let value) = item { return TextStyle.pixelSize(points: value.style.fontSize) }; return nil
+        }, [1])
+        t.equal(updated?.drawingItems.compactMap { item -> Double? in
+            if case .text(let value) = item { return TextStyle.pixelSize(points: value.style.fontSize) }; return nil
+        }, [20])
+        t.equal(styledRuntime.optionsRevision, 1)
     }
 }
