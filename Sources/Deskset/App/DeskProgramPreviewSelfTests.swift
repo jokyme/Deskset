@@ -1991,20 +1991,29 @@ enum DeskProgramPreviewSelfTests {
 
         t.suite("Desk: units preview: typed missing and rejected unit programs clear old native content") {
             let text = #"widget { variable b = 1KB; Text("😀{b, missing: "空😀"}|{b.isMissing}|{(b < 0B).ifMissing(true)}").font(20).color(.accent).size(520, 60).padding(8).onClick { b = b.isMissing ? 2KB : 1KB / 0 } }"#
-            let f = try fixture(t, text, locale: { Locale(identifier: "en_US") }), p = f.preview
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let system = PreviewCountingSystem()
+            let f = try fixture(t, text, clock: executor.clock, executor: executor,
+                                locale: { Locale(identifier: "en_US") }, system: system), p = f.preview
             p.setVisible(true)
             try numericPixels(t, "😀1.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
             try click(at: NSPoint(x: 20, y: 20), in: f)
             try numericPixels(t, "😀空😀|Yes|Yes", ranges: [], in: f)
             try click(at: NSPoint(x: 20, y: 20), in: f)
             try numericPixels(t, "😀2.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            replace(#"widget { Text(memory.used).font(20).color(.accent).size(520, 60).padding(8) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            try numericPixels(t, "16.0 GB", ranges: [NSRange(location: 0, length: 4)], in: f)
+            t.equal(system.memCalls, 1); t.equal(system.cpuCalls, 0)
+            t.equal(executor.pendingCount, 1)
             guard let checking = f.controller.deskChecking else { throw Failure.fixture }
             let previous = checking.snapshot
             for invalid in [#"widget { Text(1KB / 1s) }"#, #"widget { Text("{1s, decimals: 1}") }"#,
-                            #"widget { Text(50% * 25%) }"#, #"widget { Text(memory.used) }"#] {
+                            #"widget { Text(50% * 25%) }"#] {
                 replace(invalid, in: f); t.check(settled(f))
-                guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported or invalid units must report a real reason") }
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported or invalid units must report a real reason; input: \(invalid); state: \(p.state)") }
                 t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                t.equal(executor.pendingCount, 0)
                 t.check(!checking.publish(previous))
                 p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
                 let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try ink(cleared), 0)
@@ -2013,6 +2022,7 @@ enum DeskProgramPreviewSelfTests {
             try numericPixels(t, "😀1.0 KB|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
             f.controller.window?.close(); try click(at: NSPoint(x: 20, y: 20), in: f)
             t.equal(p.state, .closed); t.check(p.scene == nil)
+            t.equal(executor.pendingCount, 0)
         }
 
         t.suite("Desk: units preview: live date differences use one boundary while frozen and hidden duration stays idle") {
@@ -2077,20 +2087,29 @@ enum DeskProgramPreviewSelfTests {
 
         t.suite("Desk: numeric preview: typed missing recovery and unsupported units clear real previous pixels") {
             let text = #"widget { variable n = 1; Text("😀{n, decimals: 1, missing: "空😀"}|{n.isMissing}|{(n < 0).ifMissing(true)}").font(20).color(.accent).size(520, 60).padding(8).onClick { n = n.isMissing ? 2 : 1 / 0 } }"#
-            let f = try fixture(t, text, locale: { Locale(identifier: "en_US") }), p = f.preview
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let system = PreviewCountingSystem()
+            let f = try fixture(t, text, clock: executor.clock, executor: executor,
+                                locale: { Locale(identifier: "en_US") }, system: system), p = f.preview
             p.setVisible(true)
             try numericPixels(t, "😀1.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
             try click(at: NSPoint(x: 20, y: 20), in: f)
             try numericPixels(t, "😀空😀|Yes|Yes", ranges: [], in: f)
             try click(at: NSPoint(x: 20, y: 20), in: f)
             try numericPixels(t, "😀2.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            replace(#"widget { Text(cpu.usage).font(20).color(.accent).size(520, 60).padding(8) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            try numericPixels(t, "42", ranges: [NSRange(location: 0, length: 2)], in: f)
+            t.equal(system.cpuCalls, 1); t.equal(system.memCalls, 0)
+            t.equal(executor.pendingCount, 1)
             guard let checking = f.controller.deskChecking else { throw Failure.fixture }
             let old = checking.snapshot
             // The original Percent literal is retained unchanged in runUnitPreviewTests' positive control.
-            for invalid in [#"widget { Text(1°C) }"#, #"widget { Text(cpu.usage) }"#] {
+            for invalid in [#"widget { Text(1°C) }"#] {
                 replace(invalid, in: f); t.check(settled(f))
-                guard case .unavailable(let reason) = p.state else { return t.check(false, "dimensioned or service numeric data must report unsupported") }
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "dimensioned or service numeric data must report unsupported; input: \(invalid); state: \(p.state)") }
                 t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                t.equal(executor.pendingCount, 0)
                 t.check(!checking.publish(old))
                 p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
                 let clear = try paint(p.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
@@ -2100,6 +2119,7 @@ enum DeskProgramPreviewSelfTests {
             f.controller.window?.close()
             try click(at: NSPoint(x: 20, y: 20), in: f)
             t.check(p.scene == nil && p.state == .closed)
+            t.equal(executor.pendingCount, 0)
         }
     }
 
