@@ -8,6 +8,7 @@ struct StaticProgramCompiler {
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
     private var clickActionCount = 0
+    private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
         self.checked = checked
@@ -220,7 +221,7 @@ struct StaticProgramCompiler {
                 var corners: [ProgramCornerRadius] = []
                 let keys = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"]
                 for key in keys {
-                    guard let value = try facet(facts, key, at: node) else { corners.append(.points(0)); continue }
+                    guard let value = try roundedFacet(facts, key, at: node) else { corners.append(.points(0)); continue }
                     switch value {
                     case .number(let n) where n >= 0: corners.append(.points(n))
                     case .choice("full"): corners.append(.full)
@@ -324,7 +325,9 @@ struct StaticProgramCompiler {
                 content = .row(spacing: spacing, align: vertical, children: children)
             }
         }
-        return ProgramElement(id: ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index),
+        let id = ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index)
+        elementRefs[id] = checked.tree.id(of: node)
+        return ProgramElement(id: id,
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
@@ -562,6 +565,22 @@ struct StaticProgramCompiler {
         if let value = best.fixedValue { return try fixed(value, at: node) }
         guard let value = checked.tree.resolve(best.value) else { throw issue(.invalidCheckedModel, node, "Facet refers to a different syntax tree") }
         return try constant(value)
+    }
+
+    /// Explicit points are a checked Length spelling for rectangle corners, not a general constant/unit extension.
+    private func roundedFacet(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> Value? {
+        guard let best = facts.facets[FacetID(key)]?.first, best.fixedValue == nil,
+              let value = checked.tree.resolve(best.value), let literal = NumberLiteralSyntax(value),
+              literal.unit?.text == "pt" else { return try facet(facts, key, at: node) }
+        guard literal.unit?.status == .known, literal.unitAfterSpace == nil,
+              literal.value?.isFinite == true,
+              checked.types[best.value]?.type == .length,
+              let canonical = checked.canonicalNumericValues[best.value], canonical.isFinite, canonical >= 0,
+              let unit = catalog.unit(spelling: "pt"), unit.dimension == .length,
+              unit.factor.isFinite, unit.offset == 0 else {
+            throw issue(.unsupported, value, "Rectangle point radii require a checked finite nonnegative Length literal")
+        }
+        return .number(canonical)
     }
 
     private func constant(_ node: PositionedNode) throws -> Value {

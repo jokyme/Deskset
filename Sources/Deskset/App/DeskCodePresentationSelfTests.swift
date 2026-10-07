@@ -11,6 +11,7 @@ enum DeskCodePresentationSelfTests {
         anchorTests(t)
         resizeTests(t)
         lifecycleTests(t)
+        deferredLayoutTests(t)
         interactionTests(t)
         dirtyClickTests(t)
         waveHoverTests(t)
@@ -371,6 +372,9 @@ enum DeskCodePresentationSelfTests {
                 t.check(!marker.isHidden && f.editor.ruler.bounds.contains(f.editor.ruler.convert(marker.bounds, from: marker)),
                         "the native empty/EOF marker fits its gutter")
                 t.check(card.frame.height > 0 && card.enclosingScrollView != nil, "the complete EOF message is scrollable")
+                decorations.closeDetails()
+                t.check(decorations.detailsLine == nil && decorations.detailsPanel == nil && decorations.detailsAnchor == nil,
+                        "gutter details are closed before the painted-wave hover")
                 let painted = try paint(decorations.overlay)
                 try canaries(t, painted)
                 let textArea = NSRect(x: 12, y: 2, width: decorations.overlay.bounds.width - 16,
@@ -381,8 +385,14 @@ enum DeskCodePresentationSelfTests {
                       let move = pointerEvent(.mouseMoved, view: decorations.overlay, point: point) else {
                     return t.check(false, "the painted native zero/EOF wave has a pointer probe")
                 }
+                let beforeAnchor = decorations.detailsAnchor
+                let buttonsBefore = NSEvent.pressedMouseButtons
                 decorations.overlay.mouseMoved(with: move)
-                t.check(decorations.firePendingHoverForTesting(), "the actual painted zero/EOF wave opens details")
+                let opened = decorations.firePendingHoverForTesting()
+                let buttonsAfter = NSEvent.pressedMouseButtons
+                t.check(opened, "the actual painted zero/EOF wave opens details: text=\(text.debugDescription), point=\(point), "
+                    + "buttons=\(buttonsBefore)->\(buttonsAfter), anchor=\(String(describing: beforeAnchor))->"
+                    + "\(String(describing: decorations.detailsAnchor)), layoutPending=\(decorations.hasPendingLayout)")
                 t.equal(decorations.detailsLine, line + 1)
                 t.check(decorations.detailsPanel?.isVisible == true && decorations.detailsAnchor != nil,
                         "zero and EOF diagnostics display the same visible arrowless details owner")
@@ -529,6 +539,50 @@ enum DeskCodePresentationSelfTests {
             t.check(decorations.cards.isEmpty && !checking.publish(old), "closing never reattaches an old presentation")
             t.equal(try Data(contentsOf: f.file), Data(text.utf8), "display/checking never saves the dirty test buffer")
             t.equal(f.app.sortedControllers.count, 0)
+        }
+    }
+
+    private static func deferredLayoutTests(_ t: AppTestRunner) {
+        t.suite("Desk: code presentation: attribute edits defer geometry and detach invalidates queued layout") {
+            let text = "info { name: \"Attribute layout\" }\nwidget { Text(\"hello\").colr(.red) }\n"
+            let f = try fixture(t, text: text)
+            guard let decorations = f.controller.deskDecorations, let checking = f.controller.deskChecking,
+                  let storage = f.editor.textView.textStorage else {
+                return t.check(false, "the actual text storage and diagnostic owner")
+            }
+            let diagnostics = decorations.items
+            let revision = f.editor.textRevision, selection = f.editor.textView.selectedRange()
+            let range = NSRange(location: 0, length: storage.length)
+            t.check(!details(t, decorations, line: 2).isEmpty)
+            storage.addAttribute(.foregroundColor, value: NSColor.blue, range: range)
+            storage.addAttribute(.backgroundColor, value: NSColor.clear, range: range)
+            t.check(decorations.hasPendingLayout, "same-text notifications queue a coalesced layout")
+            t.check(decorations.detailsPanel == nil, "details close immediately before deferred geometry work")
+            t.equal(decorations.items, diagnostics, "attribute-only edits retain current diagnostics")
+            var drained = false
+            DispatchQueue.main.async { drained = true }
+            t.check(AppSelfTest.spin(timeout: 10) { drained }, "the real main queue drains after text processing")
+            t.check(!decorations.hasPendingLayout && !decorations.diagnosticRegions.isEmpty)
+            t.equal(f.editor.textRevision, revision)
+            t.equal(f.editor.textView.selectedRange(), selection)
+
+            storage.addAttribute(.foregroundColor, value: NSColor.red, range: range)
+            t.check(decorations.hasPendingLayout)
+            decorations.detach()
+            t.check(!decorations.hasPendingLayout && decorations.codeView == nil && decorations.overlay.superview == nil)
+            decorations.attach(to: f.editor)
+            t.check(decorations.show(diagnostics, file: checking.fileID, text: text, language: .english))
+            t.check(!details(t, decorations, line: 2).isEmpty)
+            let newPanel = decorations.detailsPanel
+            drained = false
+            DispatchQueue.main.async { drained = true }
+            t.check(AppSelfTest.spin(timeout: 10) { drained }, "the previous attachment's queued work drains")
+            t.check(decorations.detailsPanel === newPanel, "a stale queued layout cannot close the new presentation")
+            t.check(!decorations.hasPendingLayout)
+            t.equal(decorations.items, diagnostics)
+            t.equal(f.editor.text, text)
+            t.check(!f.editor.isDirty)
+            t.equal(try Data(contentsOf: f.file), Data(text.utf8))
         }
     }
 

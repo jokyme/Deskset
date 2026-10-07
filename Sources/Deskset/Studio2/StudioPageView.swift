@@ -54,6 +54,10 @@ final class StudioPageView: NSView {
     var onEvent: ((StudioPageEvent) -> Void)?
     private(set) var page: StudioPage?
     let searchField = NSSearchField()
+    /// Small element-only hosts can omit the global Studio search while keeping the same property rows.
+    var showsSearch = true {
+        didSet { searchField.isHidden = !showsSearch; needsLayout = true }
+    }
     let titleLabel = NSTextField(labelWithString: "")
     let subtitleLabel = NSTextField(wrappingLabelWithString: "")
     private var headings: [String: NSTextField] = [:]
@@ -339,8 +343,10 @@ final class StudioPageView: NSView {
         let inner = max(width - 2 * m, 40)
         var y: CGFloat = 10
         func put(_ v: NSView, _ r: NSRect) { if place { v.frame = r } }
-        put(searchField, NSRect(x: m, y: y, width: inner, height: 28))
-        y += 28 + 16
+        if showsSearch {
+            put(searchField, NSRect(x: m, y: y, width: inner, height: 28))
+            y += 28 + 16
+        }
         guard let page else { return y }
         let tight = page.tight
         if !page.crumbs.isEmpty {

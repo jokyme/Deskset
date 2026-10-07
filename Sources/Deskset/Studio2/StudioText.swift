@@ -147,6 +147,18 @@ enum StudioText {
         case deskActionRecordsCount = "desk.action.recordsCount"
         case deskActionRecordsEmpty = "desk.action.recordsEmpty"
         case deskActionPreviewNotice = "desk.action.previewNotice"
+        case deskInspectorReadOnly = "desk.inspector.readOnly"
+        case deskInspectorExpression = "desk.inspector.expression"
+        case deskInspectorConditional = "desk.inspector.conditional"
+        case deskInspectorMixedCorners = "desk.inspector.mixedCorners"
+        case deskInspectorFullRadius = "desk.inspector.fullRadius"
+        case deskInspectorUnsupported = "desk.inspector.unsupported"
+        case deskInspectorInvalidRadius = "desk.inspector.invalidRadius"
+        case deskInspectorUnavailable = "desk.inspector.unavailable"
+        case deskInspectorSelectElement = "desk.inspector.selectElement"
+        case deskInspectorDiskChanged = "desk.inspector.diskChanged"
+        case deskInspectorSourceUnavailable = "desk.inspector.sourceUnavailable"
+        case deskInspectorEditRejected = "desk.inspector.editRejected"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -767,6 +779,22 @@ enum StudioText {
         .deskActionRecordsEmpty: ("Click the preview to see what it would do.", "点击预览，查看它会执行什么动作。"),
         .deskActionPreviewNotice: ("Preview only · actions are recorded here; nothing is copied or opened.",
                                   "只是预览 · 这里仅记录动作，不会复制文字或打开目标。"),
+        .deskInspectorReadOnly: ("Edit this value in the code.", "请在代码中编辑此值。"),
+        .deskInspectorExpression: ("Expression", "表达式"),
+        .deskInspectorConditional: ("Conditional or repeated element", "条件或循环中的元素"),
+        .deskInspectorMixedCorners: ("Corners are set separately", "圆角已分别设置"),
+        .deskInspectorFullRadius: ("Automatic corners (.full)", "自动圆角（.full）"),
+        .deskInspectorUnsupported: ("Properties for this component are not available yet.", "此组件暂不提供属性编辑。"),
+        .deskInspectorInvalidRadius: ("Enter a finite, nonnegative corner radius.", "请输入有限且非负的圆角数值。"),
+        .deskInspectorUnavailable: ("This value is missing or has not passed checking.", "此值未明确给出或未通过检查。"),
+        .deskInspectorSelectElement: ("Select an element in the code or canvas to edit its properties.",
+                                     "在代码或画布中选择一个元素以编辑属性。"),
+        .deskInspectorDiskChanged: ("The file changed outside this window. Save or reload before editing its properties.",
+                                   "文件已在外部更改，请先保存或重新载入，再编辑属性。"),
+        .deskInspectorSourceUnavailable: ("The source file could not be read. Check it before editing its properties.",
+                                         "无法读取源文件，请检查文件后再编辑属性。"),
+        .deskInspectorEditRejected: ("This value can no longer be applied. Select the element again.",
+                                    "当前修改已失效，请重新选择元素。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),

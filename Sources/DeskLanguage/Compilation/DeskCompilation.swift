@@ -26,6 +26,18 @@ public struct DeskCompilationResult: Sendable {
     /// Literal demands of a fully supported program, also before missing assets have been supplied. Missing-file
     /// diagnostics are retained and still prevent program publication; a host can prepare these inputs and recheck.
     public let imageSources: [String]
+    /// Source calls of a published program in this checked tree version. A synthetic widget root has no source call.
+    /// Element IDs do not qualify references across compilations; use the reference only with its checked snapshot.
+    public let elementRefs: [ElementID: ElementRef]
+
+    init(program: WidgetProgram?, diagnostics: [Diagnostic], issues: [DeskCompilationIssue], imageSources: [String],
+         elementRefs: [ElementID: ElementRef] = [:]) {
+        self.program = program
+        self.diagnostics = diagnostics
+        self.issues = issues
+        self.imageSources = imageSources
+        self.elementRefs = program == nil ? [:] : elementRefs
+    }
 }
 
 public extension Desk {
@@ -63,7 +75,8 @@ public extension Desk {
                     }
                 }
                 return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: checked.diagnostics,
-                                             issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes))
+                                             issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes),
+                                             elementRefs: compiler.elementRefs)
             } catch let issue as DeskCompilationIssue {
                 return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue], imageSources: [])
             } catch {

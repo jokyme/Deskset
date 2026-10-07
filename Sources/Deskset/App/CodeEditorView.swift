@@ -43,6 +43,9 @@ final class CodeEditorView: NSView {
     /// The caret came to rest in a section after a user move (click, arrow keys, typing, the section pop-up): the
     /// file and the section name (nil before the first header). Never called for API changes.
     var onCaretSection: ((URL, String?) -> Void)?
+    /// The user's selection after the same caret-rest debounce, including typing within the same section. The
+    /// range uses UTF-16 offsets in `textRevision`; API reveals and other API changes are silent.
+    var onUserSelection: ((URL, NSRange, Int) -> Void)?
     /// The user picked another file in the jump bar (after the previous one was committed).
     var onFileChange: ((URL) -> Void)?
     /// The user changed the font size with ⌘+ / ⌘− / ⌘0 (for the host to remember).
@@ -63,6 +66,13 @@ final class CodeEditorView: NSView {
     var onDiskConflict: ((URL) -> DiskConflictChoice)?
 
     enum DiskConflictChoice { case keepEdits, takeDisk, decideLater }
+
+    /// An automatic commit must still start from the source bytes the buffer read. A host with checked source
+    /// edits can opt in so leaving the text view for a control cannot resolve a conflict or overwrite new bytes.
+    /// Explicit saves retain the normal conflict choice.
+    var requiresUnchangedSourceForAutomaticCommit = false
+
+    enum SourceCheckResult: Equatable { case unchanged, changed, unavailable }
 
     /// Typing paused for `typedTextDelay` (not committed yet: that waits for `idleCommitDelay`): the buffer's text, for
     /// the host to show before it is written (the Studio's canvas); nil when the buffer holds no typing any more — typed
@@ -348,6 +358,14 @@ final class CodeEditorView: NSView {
     /// The file's clean state: text as last read or committed, encoding, BOM and dominant line ending.
     func document(for url: URL) -> CodeDocument? { buffer(for: url)?.document }
 
+    /// Compares an open buffer's original bytes with the host's current source, including while it holds typing.
+    /// This neither decodes nor reloads the file, reports a read error, resolves a conflict, or changes editor state.
+    func checkSourceUnchanged(for url: URL) -> SourceCheckResult {
+        guard let buffer = buffer(for: url), let base = buffer.base,
+              let bytes = try? readData(buffer.url) else { return .unavailable }
+        return bytes == base ? .unchanged : .changed
+    }
+
     /// The 1-based line of the caret and the section it is in (the shown buffer, unsaved edits included).
     var caretLine: Int { analysis.line(containingOffset: textView.selectedRange().location) }
     var caretSection: String? { outline.section(containingLine: caretLine) }
@@ -481,6 +499,29 @@ final class CodeEditorView: NSView {
             textView.setSelectedRange(select ? range : NSRange(location: range.location, length: 0))
             scrollToVisible(range)
         }
+    }
+
+    /// Reveals an exact UTF-16 selection in an already open buffer, without taking focus or reporting a user move.
+    /// An invalid range or a file that is not open changes nothing and does not read a new file.
+    @discardableResult
+    func reveal(range: NSRange, in file: URL) -> Bool {
+        guard let buffer = buffer(for: file) else { return false }
+        let text = (buffer === current ? textView.string : buffer.text) as NSString
+        let (end, overflow) = range.location.addingReportingOverflow(range.length)
+        guard range.location != NSNotFound, range.location >= 0, range.length >= 0,
+              !overflow, end <= text.length else { return false }
+        func isBoundary(_ offset: Int) -> Bool {
+            offset == 0 || offset == text.length
+                || !(UTF16.isLeadSurrogate(text.character(at: offset - 1))
+                     && UTF16.isTrailSurrogate(text.character(at: offset)))
+        }
+        guard isBoundary(range.location), isBoundary(end) else { return false }
+        apiChange {
+            if buffer !== current { show(buffer) }
+            textView.setSelectedRange(range)
+            scrollToVisible(range)
+        }
+        return true
     }
 
     /// Reveals the header of `[name]` in `file` and tints its block. Returns false when the section is not there.
@@ -828,6 +869,8 @@ final class CodeEditorView: NSView {
         if let committing = committingBuffer { return committing === buffer }
         committingBuffer = buffer
         defer { committingBuffer = nil }
+        let checksSource = !explicit && requiresUnchangedSourceForAutomaticCommit
+        if checksSource, checkSourceUnchanged(for: buffer.url) != .unchanged { return false }
         let text = buffer === current ? textView.string : buffer.text
         if (text as NSString).isEqual(to: buffer.document.text) {
             buffer.isDirty = false
@@ -835,7 +878,7 @@ final class CodeEditorView: NSView {
             return true
         }
         // The file changed on disk since the edits began: writing the buffer would silently undo that change.
-        if let base = buffer.base, let disk = try? readData(buffer.url), disk != base {
+        if !checksSource, let base = buffer.base, let disk = try? readData(buffer.url), disk != base {
             switch resolveDiskConflict(of: buffer, explicit: explicit) {
             case .keepEdits:
                 break
@@ -1093,10 +1136,17 @@ final class CodeEditorView: NSView {
     var idleCommitDate: Date? { commitTimer.flatMap { $0.isValid ? $0.fireDate : nil } }
 
     private func caretRested() {
-        guard let buffer = current else { return }
+        guard apiDepth == 0, let buffer = current else { return }
+        let selection = textView.selectedRange(), revision = textRevision
+        let fromTyping = caretMoveFromTyping
         let section = caretSection
         updateSectionTitle(section)
-        if caretMoveFromTyping, let last = lastReport, last.url == buffer.url, last.section == section { return }
+        onUserSelection?(buffer.url, selection, revision)
+        // A selection observer may reveal another element, switch files or edit the text. Do not follow it with an
+        // obsolete section report or overwrite the pending report for its new selection.
+        guard current === buffer, textRevision == revision, textView.selectedRange() == selection,
+              apiDepth == 0 else { return }
+        if fromTyping, let last = lastReport, last.url == buffer.url, last.section == section { return }
         lastReport = (buffer.url, section)
         onCaretSection?(buffer.url, section)
     }

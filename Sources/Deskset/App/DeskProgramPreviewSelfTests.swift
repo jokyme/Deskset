@@ -1010,6 +1010,263 @@ enum DeskProgramPreviewSelfTests {
         runClickPreviewTests(t)
         runClickActionPreviewTests(t)
         runPointerEventPreviewTests(t)
+        runInspectionPreviewTests(t)
+    }
+
+    private static func runInspectionPreviewTests(_ t: AppTestRunner) {
+        t.suite("Desk: inspection preview: actionless source refs select innermost native scene frames") {
+            let source = #"widget { Column(spacing: 0, align: .left) { Rectangle().size(40, 24).name(box); Row(spacing: 0, align: .top) { Text("甲😀").size(60, 30).name(label) }.name(row) }.padding(4).name(layout) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            let snapshot = checking.snapshot
+            guard let box = snapshot.elements().first(where: { $0.name == "box" }),
+                  let label = snapshot.elements().first(where: { $0.name == "label" }),
+                  let layout = snapshot.elements().first(where: { $0.name == "layout" }),
+                  let scene = p.scene,
+                  let boxFrame = scene.elements.first(where: { $0.id.name == "box" }),
+                  let labelFrame = scene.elements.first(where: { $0.id.name == "label" }),
+                  let overlay = p.canvas.subviews.first else { throw Failure.fixture }
+            let compiled = Desk.compile(snapshot.checked, catalog: snapshot.options.catalog)
+            t.equal(compiled.elementRefs[boxFrame.id], box.element)
+            t.equal(compiled.elementRefs[labelFrame.id], label.element)
+            t.equal(snapshot.range(of: box.element)?.callRange, box.callRange)
+            t.equal((source as NSString).substring(with: box.callRange.nsRange), "Rectangle()")
+            t.equal((source as NSString).substring(with: label.callRange.nsRange), "Text(\"甲😀\")")
+            t.equal(boxFrame.frame, SkinRect(x: 4, y: 4, width: 40, height: 24))
+            t.equal(labelFrame.frame, SkinRect(x: 4, y: 28, width: 60, height: 30))
+            t.check(scene.hitMap.entries.isEmpty, "source geometry exists without any runtime action target")
+            t.check(!p.isInspecting && p.inspectedElement == nil && overlay.isHidden)
+            t.check(!p.selectElement(box.element, from: snapshot), "code selection requires the inspector mode")
+            p.setVisible(true)
+            var selected: [(DeskSnapshot, ElementRef?)] = []
+            p.onSelectElement = { selected.append(($0, $1)) }
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.check(selected.isEmpty && p.inspectedElement == nil, "ordinary preview ignores actionless clicks")
+            p.setInspecting(true)
+            let items = p.scene?.drawingItems
+            t.check(p.selectElement(label.element, from: snapshot))
+            t.equal(p.inspectedElement, label.element)
+            t.check(!overlay.isHidden)
+            t.check(overlay.hitTest(NSPoint(x: 12, y: 36)) == nil, "selection ink cannot intercept the canvas gesture")
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(p.inspectedElement, box.element)
+            try click(at: NSPoint(x: 12, y: 36), in: f)
+            t.equal(p.inspectedElement, label.element, "the Text wins over its enclosing Row and Column")
+            try click(at: NSPoint(x: 1, y: 1), in: f)
+            t.equal(p.inspectedElement, layout.element, "the container's padding remains selectable")
+            try click(at: NSPoint(x: -12, y: -12), in: f)
+            t.check(p.inspectedElement == nil && overlay.isHidden)
+            t.equal(selected.map { $0.1 }, [box.element, label.element, layout.element, nil])
+            t.check(selected.allSatisfy { checking.isCurrent($0.0) && $0.0.tree.version == snapshot.tree.version })
+            t.equal(p.scene?.drawingItems, items, "inspection outline does not alter the program's drawing items")
+            t.check(p.scene?.hitMap.entries.isEmpty == true && p.recordedEffects.isEmpty)
+            t.equal(f.editor.text, source)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: inspection preview: design clicks suppress actions and switching modes cancels held presses") {
+            let source = #"widget { variable n = 0; Row(spacing: 0, align: .top) { Rectangle().size(40, 30).name(box).onClick { n = n + 1; copy("{n}"); open("https://example.com/{n}") }.onRightClick { copy("secondary") }; Text(n).size(80, 30).name(label) } }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let box = snapshot.elements().first(where: { $0.name == "box" })?.element else { throw Failure.fixture }
+            p.setVisible(true)
+            let hitMap = p.scene?.hitMap.entries
+            var selections: [ElementRef?] = [], batches: [[ProgramEffect]] = []
+            p.onSelectElement = { _, ref in selections.append(ref) }
+            p.onRecordedEffects = { batches.append($0) }
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            p.setInspecting(true)
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.check(selections.isEmpty && p.recordedEffects.isEmpty)
+            t.equal(clockTexts(p), ["0"], "an interactive press cannot become an inspection release")
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, [box])
+            t.equal(p.inspectedElement, box)
+            try mouse(.rightMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(clockTexts(p), ["0"])
+            t.check(p.recordedEffects.isEmpty && batches.isEmpty, "neither primary nor secondary executes in design mode")
+            t.equal(p.scene?.hitMap.entries, hitMap, "inspection does not replace the runtime action hit map")
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            p.setInspecting(false)
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, [box])
+            t.check(p.inspectedElement == nil && p.recordedEffects.isEmpty)
+            t.equal(clockTexts(p), ["0"], "an inspection press cannot become an interactive release")
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            let first: [ProgramEffect] = [.copy("1"), .open("https://example.com/1")]
+            t.equal(clockTexts(p), ["1"])
+            t.equal(p.recordedEffects, first)
+            t.equal(batches, [first])
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            try mouse(.leftMouseDragged, at: NSPoint(x: 100, y: 12), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            let second: [ProgramEffect] = [.copy("2"), .open("https://example.com/2")]
+            t.equal(clockTexts(p), ["2"], "legacy primary drag followed by a same-target release retains its action semantics")
+            t.equal(p.recordedEffects, first + second)
+            t.equal(batches, [first, second])
+            t.equal(selections, [box])
+            t.check(f.app.sortedControllers.isEmpty && f.app.deskWidgetWindows.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: inspection preview: same-text checks pending errors and closing reject old refs and held gestures") {
+            let queue = DispatchQueue(label: "desk.preview.test.inspection.pending")
+            var suspended = false
+            defer { if suspended { queue.resume() } }
+            let source = #"widget { Rectangle().size(40, 30).name(box) }"# + "\n//" + String(repeating: "x", count: 9_000)
+            let f = try fixture(t, source, queue: queue), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            p.setVisible(true)
+            p.setInspecting(true)
+            let old = checking.snapshot
+            guard let oldRef = old.elements().first?.element else { throw Failure.fixture }
+            var selections = 0
+            p.onSelectElement = { _, _ in selections += 1 }
+            t.check(p.selectElement(oldRef, from: old))
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            checking.recheck()
+            t.check(settled(f))
+            let current = checking.snapshot
+            guard let currentRef = current.elements().first?.element else { throw Failure.fixture }
+            t.equal(current.text, old.text)
+            t.check(currentRef != oldRef && !checking.isCurrent(old))
+            t.check(current.range(of: oldRef) == nil)
+            t.check(!p.selectElement(oldRef, from: current), "a current snapshot cannot authorize an older tree reference")
+            t.check(!p.selectElement(currentRef, from: old), "an old service receipt cannot authorize a current reference")
+            t.check(p.inspectedElement == nil)
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, 0, "same-text recheck cancels the held native gesture")
+            t.check(p.selectElement(currentRef, from: current))
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            queue.suspend(); suspended = true
+            f.editor.textView.insertText(" ", replacementRange: NSRange(location: 0, length: 0))
+            t.check(!checking.snapshot.isChecked && p.state == .checking)
+            t.check(p.inspectedElement == nil && p.scene == nil && p.canvas.isHidden)
+            t.check(!p.selectElement(currentRef, from: current))
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, 0)
+            queue.resume(); suspended = false
+            t.check(settled(f))
+            let fresh = checking.snapshot
+            guard let freshRef = fresh.elements().first?.element else { throw Failure.fixture }
+            t.check(p.selectElement(freshRef, from: fresh))
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            p.show(fresh, readError: "controlled inspection read failure")
+            t.equal(p.state, .unavailable("controlled inspection read failure"))
+            t.check(p.inspectedElement == nil && p.scene == nil)
+            t.check(!p.selectElement(freshRef, from: fresh))
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, 0)
+            p.show(fresh, readError: nil)
+            t.check(p.selectElement(freshRef, from: fresh))
+            replace(#"widget { Rectangle().size(40, 30).unknownModifier() }"#, in: f)
+            t.check(settled(f))
+            guard case .unavailable = p.state else { return t.check(false, "the real checker error removes inspection geometry") }
+            t.check(p.inspectedElement == nil && p.scene == nil)
+            t.check(!p.selectElement(freshRef, from: fresh))
+            replace(source, in: f)
+            t.check(settled(f))
+            let recovered = checking.snapshot
+            guard let recoveredRef = recovered.elements().first?.element else { throw Failure.fixture }
+            t.check(p.selectElement(recoveredRef, from: recovered))
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            p.close()
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            p.setInspecting(true)
+            p.show(recovered, readError: nil)
+            t.equal(p.state, .closed)
+            t.check(p.inspectedElement == nil && p.scene == nil && p.canvas.isHidden)
+            t.check(!p.selectElement(recoveredRef, from: recovered))
+            t.equal(selections, 0)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: inspection preview: hidden geometry is excluded but transparent nonzero frames remain selectable") {
+            let hidden = try fixture(t, #"widget { Rectangle().size(40, 30).hidden().name(hiddenBox) }"#)
+            let hp = hidden.preview
+            hp.setVisible(true)
+            hp.setInspecting(true)
+            var hiddenSelections = 0
+            hp.onSelectElement = { _, _ in hiddenSelections += 1 }
+            t.equal(hp.state, .empty)
+            t.check(hp.canvas.isHidden)
+            t.equal(hp.scene?.elements.first?.frame, SkinRect(width: 40, height: 30))
+            t.equal(hp.scene?.elements.first?.visibility, .hiddenKeepsSpace)
+            try click(at: NSPoint(x: 12, y: 12), in: hidden)
+            t.check(hp.inspectedElement == nil)
+            t.equal(hiddenSelections, 0)
+
+            let source = #"widget { Rectangle().size(40, 30).fill(.clear).name(clearBox) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let ref = snapshot.elements().first?.element else { throw Failure.fixture }
+            t.equal(p.state, .empty)
+            t.check(p.canvas.isHidden)
+            p.setVisible(true)
+            p.setInspecting(true)
+            t.equal(p.state, .ready)
+            t.check(!p.canvas.isHidden && p.scene?.hitMap.entries.isEmpty == true)
+            t.equal(p.scene?.elements.first?.visibility, .visible)
+            t.equal(p.scene?.elements.first?.frame, SkinRect(width: 40, height: 30))
+            var selected: [ElementRef?] = []
+            p.onSelectElement = { _, ref in selected.append(ref) }
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(p.inspectedElement, ref)
+            t.equal(selected, [ref])
+            t.check(p.recordedEffects.isEmpty)
+            p.setInspecting(false)
+            t.equal(p.state, .empty)
+            t.check(p.canvas.isHidden && p.inspectedElement == nil)
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selected, [ref], "ordinary preview does not turn an invisible actionless shape into an action target")
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: inspection preview: native drag cross-element and nonfinite gestures cannot change selection") {
+            let source = #"widget { Row(spacing: 0, align: .top) { Rectangle().size(40, 30).name(box); Text("other").size(80, 30).name(label) } }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let box = snapshot.elements().first(where: { $0.name == "box" })?.element else { throw Failure.fixture }
+            p.setVisible(true)
+            p.setInspecting(true)
+            t.check(p.selectElement(box, from: snapshot))
+            var selections: [ElementRef?] = []
+            p.onSelectElement = { _, ref in selections.append(ref) }
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            try mouse(.leftMouseDragged, at: NSPoint(x: 60, y: 12), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(p.inspectedElement, box)
+            t.check(selections.isEmpty, "a drag returning to the original frame still cancels inspection")
+            try mouse(.leftMouseDown, at: NSPoint(x: 12, y: 12), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 60, y: 12), in: f)
+            t.equal(p.inspectedElement, box)
+            t.check(selections.isEmpty, "a release on another source element cannot select it")
+            try mouse(.leftMouseUp, at: NSPoint(x: 60, y: 12), in: f)
+            t.check(selections.isEmpty, "an unmatched release has no inspection receipt")
+            // Only deliver nonfinite coordinates if the native event factory and view conversion retain them.
+            // A rejected or normalized NSEvent is not replaced with a fake controller-level gesture.
+            for location in [NSPoint(x: CGFloat.nan, y: CGFloat.nan),
+                             NSPoint(x: CGFloat.infinity, y: -CGFloat.infinity)] {
+                guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+                                                   windowNumber: f.controller.window?.windowNumber ?? 0, context: nil,
+                                                   eventNumber: 0, clickCount: 1, pressure: 1),
+                      let up = NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [], timestamp: 0,
+                                                 windowNumber: f.controller.window?.windowNumber ?? 0, context: nil,
+                                                 eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+                let point = p.canvas.convert(down.locationInWindow, from: nil)
+                guard !point.x.isFinite || !point.y.isFinite else { continue }
+                p.canvas.mouseDown(with: down)
+                p.canvas.mouseUp(with: up)
+                t.equal(p.inspectedElement, box, "a nonfinite native gesture must not be treated as an empty-space selection")
+                t.check(selections.isEmpty)
+            }
+            try click(at: NSPoint(x: 12, y: 12), in: f)
+            t.equal(selections, [box], "the cancelled gestures leave the next valid native click usable")
+            t.equal(p.inspectedElement, box)
+            t.check(p.recordedEffects.isEmpty && p.scene?.hitMap.entries.isEmpty == true)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
     }
 
     private static func runPointerEventPreviewTests(_ t: AppTestRunner) {

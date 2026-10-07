@@ -265,6 +265,7 @@ final class DeskCodeDecorations: NSObject {
     private var shownRevision: Int?
     private var shownText: String?
     private var layingOut = false
+    private(set) var hasPendingLayout = false
     private var receipt: UUID?
     private var hoveredLine: Int?
     private var pendingHoverLine: Int?
@@ -305,7 +306,7 @@ final class DeskCodeDecorations: NSObject {
                                             object: tv.textStorage, queue: .main) { [weak self] _ in
             guard let self, let editor = self.codeView else { return }
             if !(self.shownText?.utf8.elementsEqual(editor.text.utf8) ?? true) { self.clear() }
-            else { self.layoutChanged() }
+            else { self.scheduleLayout() }
         })
         observers.append(center.addObserver(forName: NSText.didChangeNotification, object: tv, queue: .main) {
             [weak self] _ in
@@ -370,6 +371,7 @@ final class DeskCodeDecorations: NSObject {
 
     func clear() {
         receipt = nil
+        hasPendingLayout = false
         closeDetails()
         cards.forEach { $0.removeFromSuperview() }
         markers.values.forEach { $0.removeFromSuperview() }
@@ -380,7 +382,9 @@ final class DeskCodeDecorations: NSObject {
         diagnosticRegions = []
         shownRevision = nil
         shownText = nil
-        layoutChanged()
+        // No paragraph spacing is reserved for diagnostics. Clearing their views needs no text layout, especially
+        // from NSTextStorage's did-process notification while the layout manager still has its old glyph state.
+        overlay.needsDisplay = true
     }
 
     func detach() {
@@ -403,6 +407,7 @@ final class DeskCodeDecorations: NSObject {
     func layoutChanged() {
         guard !layingOut, let editor = codeView, let lm = editor.textView.layoutManager,
               let container = editor.textView.textContainer else { return }
+        hasPendingLayout = false
         layingOut = true
         defer { layingOut = false }
         closeDetails()
@@ -421,6 +426,20 @@ final class DeskCodeDecorations: NSObject {
             marker.isHidden = marker.frame.maxY <= visible.minY || marker.frame.minY >= visible.maxY
         }
         overlay.needsDisplay = true
+    }
+
+    /// Attribute edits retain the diagnostics, but TextKit must finish processing before their geometry is read.
+    /// Clear/detach/replacement invalidate the receipt, so a queued layout cannot touch a later presentation.
+    private func scheduleLayout() {
+        closeDetails()
+        guard !hasPendingLayout, let editor = codeView, let receipt else { return }
+        hasPendingLayout = true
+        DispatchQueue.main.async { [weak self, weak editor] in
+            guard let self, let editor, self.codeView === editor, self.receipt == receipt,
+                  self.hasPendingLayout else { return }
+            self.hasPendingLayout = false
+            self.layoutChanged()
+        }
     }
 
     /// The overlay may be attached before its document receives a window.

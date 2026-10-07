@@ -59,6 +59,7 @@ timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage 
 background.global	Sources/Deskset/App/CodeFileWindowController.swift	1	staging and resource preparation off main thread before committing widget install; not a skin input
 background.mainHop	Sources/Deskset/App/CodeFileWindowController.swift	1	completion and UI presentation of staging result onto main thread; not a skin input
 background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
+event.KVO	Sources/Deskset/App/CodeFileWindowController.swift	1	window-owned inspector visibility switches preview selection mode; observer released on close, not a skin input
 random.UUID	Sources/Deskset/App/CodeFileWindowController.swift	2	default unique source and instance identifiers for standalone widget installation; not a skin input
 
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
@@ -392,6 +393,7 @@ zone.implicitFormatter	Sources/Deskset/Studio2/StudioAddWiring.swift	*	the Studi
 timer.Timer	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
+background.mainHop	Sources/Deskset/Studio2/StudioCodeDecorations.swift	1	coalesced diagnostic layout after text storage finishes editing; presentation receipt rejects stale work
 event.notification	Sources/Deskset/Studio2/StudioCodeDecorations.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 event.eventMonitor	Sources/Deskset/Studio2/StudioCodeDecorations.swift	1	diagnostic UI dismissal and keyboard menu routing; removed when details close or detach
 event.pointerState	Sources/Deskset/Studio2/StudioCodeDecorations.swift	2	diagnostic hover UI suppresses opening while the user holds a mouse button or selects code

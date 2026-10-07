@@ -22,6 +22,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     private(set) var readError: String?
     private(set) var deskDecorations: DeskCodeDecorations?
     private(set) var deskPreview: DeskProgramPreviewController?
+    private(set) var deskInspector: StudioInspectorViewController?
+    private(set) var deskElementInspector: DeskElementInspector?
+    private var deskInspectorItem: NSSplitViewItem?
+    private var deskInspectorObservation: NSKeyValueObservation?
     private(set) var activeStagedLease: DeskWidgetInstallation.Staged?
     private var previewObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
@@ -46,6 +50,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         codeView.setFontSize(CGFloat(app.state.editor.codeFontSize))
         if self.file.pathExtension.lowercased() == "desk" {
             codeView.decodeDocument = DeskCodeDocumentChecking.document(from:file:)
+            codeView.requiresUnchangedSourceForAutomaticCommit = true
         }
         try codeView.open(files: [self.file], current: self.file)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 580),
@@ -85,7 +90,35 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
             previewItem.minimumThickness = 280
             split.addSplitViewItem(codeItem)
             split.addSplitViewItem(previewItem)
+            let inspector = StudioInspectorViewController()
+            let inspectorItem: NSSplitViewItem
+            if #available(macOS 14.0, *) {
+                inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+            } else {
+                inspectorItem = NSSplitViewItem(viewController: inspector)
+            }
+            inspectorItem.minimumThickness = StudioWindowController.inspectorMinWidth
+            inspectorItem.maximumThickness = StudioWindowController.inspectorMaxWidth
+            inspectorItem.canCollapse = true
+            inspectorItem.isCollapsed = true
+            deskInspector = inspector
+            deskInspectorItem = inspectorItem
+            split.addSplitViewItem(inspectorItem)
             window.contentViewController = split
+            _ = inspector.view
+            inspector.scrollView.contentInsets = .init(top: 0, left: 0, bottom: 0, right: 0)
+            inspector.pageView.showsSearch = false
+            inspector.onEscape = { [weak self] in self?.setDeskInspectorShown(false) }
+            deskInspectorObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
+                self?.deskInspectorVisibilityChanged()
+            }
+            preview.onSelectElement = { [weak self] snapshot, element in
+                self?.selectDeskElement(element, from: snapshot, reveal: true)
+            }
+            codeView.onUserSelection = { [weak self] file, _, revision in
+                guard let self, file == self.file, revision == self.codeView.textRevision else { return }
+                self.updateDeskInspectorSelection()
+            }
             window.contentMinSize = NSSize(width: 700, height: 240)
             window.setContentSize(NSSize(width: 1040, height: 580))
             let toolbar = NSToolbar(identifier: "DesksetCodeFileToolbar")
@@ -107,6 +140,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
                 self?.deskCompletion = nil
                 self?.readError = error.localizedDescription
                 self?.deskDecorations?.clear()
+                self?.showDeskInspectorEmpty(message: error.localizedDescription)
                 if let self, let snapshot = self.deskChecking?.snapshot {
                     self.deskPreview?.show(snapshot, readError: error.localizedDescription)
                 }
@@ -157,6 +191,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
         deskPreview?.setVisible(window?.occlusionState.contains(.visible) == true)
+    }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        codeView.undoManager(for: codeView.textView)
     }
 
     /// Shows `line` (1-based), caret at its start.
@@ -217,6 +255,11 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
         for (center, token) in previewObservers { center.removeObserver(token) }
         previewObservers.removeAll()
         deskCompletion = nil
+        deskInspectorObservation = nil
+        deskElementInspector = nil
+        deskInspector?.pageView.onEvent = nil
+        deskInspector?.onEscape = nil
+        codeView.onUserSelection = nil
         codeView.onCompletionRange = nil
         codeView.onCompletions = nil
         codeView.onInsertCompletion = nil
@@ -231,6 +274,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     private func showDeskCheck(_ snapshot: DeskSnapshot) {
         deskCompletion = nil
         deskPreview?.show(snapshot, readError: readError)
+        updateDeskInspectorSelection()
         if readError == nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true {
             deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
                                   language: snapshot.options.messageLanguage,
@@ -255,6 +299,137 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     func applyDeskAction(_ action: DeskCodeAction, from snapshot: DeskSnapshot) -> Bool {
         guard readError == nil, window != nil, let checking = deskChecking else { return false }
         return checking.apply(action.edit, from: snapshot, actionName: action.title)
+    }
+
+    // MARK: Checked element inspector
+
+    var isDeskInspectorShown: Bool { deskInspectorItem?.isCollapsed == false }
+
+    func setDeskInspectorShown(_ shown: Bool) {
+        guard let item = deskInspectorItem, deskChecking != nil else { return }
+        if item.isCollapsed == shown { item.isCollapsed = !shown }
+        else { deskInspectorVisibilityChanged() }
+    }
+
+    @objc private func toggleDeskInspector(_ sender: Any?) { setDeskInspectorShown(!isDeskInspectorShown) }
+
+    private func deskInspectorVisibilityChanged() {
+        let shown = isDeskInspectorShown
+        deskPreview?.setInspecting(shown)
+        let minimum = shown ? 360 + 280 + StudioWindowController.inspectorMinWidth + 2 : 700
+        window?.contentMinSize = NSSize(width: minimum, height: 240)
+        if let window, window.contentLayoutRect.width < minimum {
+            window.setContentSize(NSSize(width: minimum, height: window.contentLayoutRect.height))
+        }
+        if shown { updateDeskInspectorSelection() }
+        else { showDeskInspectorEmpty() }
+        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Self.toolbarInspector }) {
+            item.toolTip = StudioText[shown ? .hideInspector : .showInspector]
+        }
+    }
+
+    private func updateDeskInspectorSelection() {
+        guard isDeskInspectorShown, readError == nil, let checking = deskChecking,
+              checking.snapshot.isChecked, checking.isCurrent(checking.snapshot) else {
+            showDeskInspectorEmpty(message: readError ?? StudioText[.deskPreviewChecking])
+            return
+        }
+        let snapshot = checking.snapshot, selection = codeView.textView.selectedRange()
+        let (end, overflow) = selection.location.addingReportingOverflow(selection.length)
+        guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
+              !overflow, end <= snapshot.index.utf16Count,
+              snapshot.index.clampedUTF16(selection.location) == selection.location,
+              snapshot.index.clampedUTF16(end) == end else { showDeskInspectorEmpty(); return }
+        let first = snapshot.elementAt(snapshot.index.position(utf16: selection.location))?.element
+        if selection.length > 0 {
+            let last = snapshot.elementAt(snapshot.index.position(utf16: max(selection.location, end - 1)))?.element
+            guard first == last else {
+                _ = deskPreview?.selectElement(nil, from: snapshot)
+                showDeskInspectorEmpty()
+                return
+            }
+        }
+        selectDeskElement(first, from: snapshot, reveal: false)
+    }
+
+    private func selectDeskElement(_ element: ElementRef?, from snapshot: DeskSnapshot, reveal: Bool) {
+        guard isDeskInspectorShown, readError == nil, deskChecking?.isCurrent(snapshot) == true,
+              snapshot.isChecked else { showDeskInspectorEmpty(); return }
+        if reveal {
+            let range = element.flatMap { snapshot.range(of: $0)?.callRange }
+            // API selection cancels old caret notifications without taking keyboard focus or making an edit.
+            let selection = range.map { NSRange(location: $0.start.offset, length: 0) }
+                ?? codeView.textView.selectedRange()
+            guard codeView.reveal(range: selection, in: file) else { showDeskInspectorEmpty(); return }
+        }
+        _ = deskPreview?.selectElement(element, from: snapshot)
+        guard let element, let inspector = DeskElementInspector(snapshot: snapshot, element: element) else {
+            showDeskInspectorEmpty()
+            return
+        }
+        deskElementInspector = inspector
+        showDeskInspectorPage(inspector)
+    }
+
+    private func showDeskInspectorEmpty(message: String? = nil) {
+        deskElementInspector = nil
+        deskInspector?.pageView.onEvent = nil
+        deskInspector?.show(StudioPage(id: "desk-inspector-empty", title: StudioText[.inspector],
+                                      subtitle: message ?? StudioText[.deskInspectorSelectElement]))
+    }
+
+    private func showDeskInspectorPage(_ inspector: DeskElementInspector, notice: String? = nil) {
+        var page = inspector.page
+        if let notice {
+            page.sections.append(.init(id: "desk-inspector-feedback", title: "", items: [
+                .init(id: "desk-inspector-feedback", kind: .note(.init(text: notice, link: nil,
+                                                                       symbol: "exclamationmark.triangle"))),
+            ]))
+        }
+        deskInspector?.show(page)
+        deskInspector?.pageView.onEvent = { [weak self] event in
+            _ = self?.applyDeskInspectorEvent(event, from: inspector)
+        }
+    }
+
+    /// The displayed page is a proposal bound to one selected element and one checked source snapshot.
+    @discardableResult
+    func applyDeskInspectorEvent(_ event: StudioPageEvent, from inspector: DeskElementInspector) -> Bool {
+        guard isDeskInspectorShown, readError == nil, let checking = deskChecking,
+              checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element,
+              deskElementInspector?.snapshot.generation == inspector.snapshot.generation,
+              let operation = inspector.operation(for: event) else { return false }
+        switch operation {
+        case .showInCode(let range):
+            guard codeView.reveal(range: NSRange(location: range.start.offset, length: range.length), in: file) else { return false }
+            window?.makeFirstResponder(codeView.textView)
+            return true
+        case .rejected(let message):
+            showDeskInspectorPage(inspector, notice: message)
+            return false
+        case .edit(let edit, let actionName):
+            let source = codeView.checkSourceUnchanged(for: file)
+            guard checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element else {
+                updateDeskInspectorSelection()
+                return false
+            }
+            switch source {
+            case .changed:
+                showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorDiskChanged])
+                return false
+            case .unavailable:
+                showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorSourceUnavailable])
+                return false
+            case .unchanged: break
+            }
+            guard checking.apply(edit, from: inspector.snapshot, actionName: actionName) else {
+                if checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element {
+                    showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorEditRejected])
+                } else { updateDeskInspectorSelection() }
+                return false
+            }
+            return true
+        }
     }
 
     // MARK: Native checked completions
@@ -355,17 +530,28 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     static let toolbarPlaceOnDesktop = NSToolbarItem.Identifier("codeFile.placeOnDesktop")
+    static let toolbarInspector = NSToolbarItem.Identifier("codeFile.inspector")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.toolbarPlaceOnDesktop]
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop, Self.toolbarInspector]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.toolbarPlaceOnDesktop]
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop, Self.toolbarInspector]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if id == Self.toolbarInspector {
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = StudioText[.inspector]
+            item.paletteLabel = item.label
+            item.toolTip = StudioText[isDeskInspectorShown ? .hideInspector : .showInspector]
+            item.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: item.label)
+            item.target = self
+            item.action = #selector(toggleDeskInspector(_:))
+            return item
+        }
         guard id == Self.toolbarPlaceOnDesktop else { return nil }
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = StudioText[.placeOnDesktop]

@@ -28,6 +28,8 @@ private func compiledDraws(_ scene: WidgetScene) -> [TextDraw] {
 func runDeskCompilationTests(_ t: TestRunner) {
     runDeskPaletteCompilationTests(t)
     runDeskFontSizeCompilationTests(t)
+    runDeskCompilationReferenceTests(t)
+    runDeskPointRadiusCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -583,6 +585,221 @@ func runDeskCompilationTests(_ t: TestRunner) {
         }
     }
 
+}
+
+private func runDeskPointRadiusCompilationTests(_ t: TestRunner) {
+    t.suite("Desk: shape style: explicit pt radii consume checked Length values and reach geometry") {
+        for radius in [16, 0] {
+            let checked = deskCheck("widget { Rectangle().size(40).rounded(\(radius)pt) }")
+            let result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.issues.isEmpty, "\(result.issues)")
+            guard let program = result.program, let ref = checked.elements.keys.first,
+                  let value = checked.elements[ref]?.facets[FacetID("rounded.topLeft")]?.first?.value else {
+                throw CompilationFixtureError.missingProgram
+            }
+            t.equal(checked.types[value]?.type, .length)
+            t.equal(checked.canonicalNumericValues[value], Double(radius))
+            t.equal(program.root.cornerRadius, .points(Double(radius)))
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            if radius == 0 {
+                t.equal(scene.drawingItems, [.fill(SkinRect(width: 40, height: 40), Paint(color: SkinAppearance.light.labelColor))])
+            } else {
+                guard case .shape(let drawing)? = scene.drawingItems.first, case .path(let path) = drawing.shapes[0].geometry else {
+                    return t.check(false, "the explicit point radius reaches the actual rounded path")
+                }
+                t.equal(path.subpaths[0].start, ShapePoint(16, 0))
+                t.equal(path.subpaths[0].segments[1].kind.end, ShapePoint(40, 16))
+            }
+        }
+    }
+
+    t.suite("Desk: shape style: explicit pt raw argument editing keeps comments and recompiles") {
+        let source = "\u{FEFF}// 甲😀\r\nwidget { Rectangle().size(40).rounded( /* before */ 12pt /* after */ ).name(box) }\r\n"
+        let checked = deskCheck(source), compiled = Desk.compile(checked)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        guard let program = compiled.program, let ref = compiled.elementRefs[program.root.id],
+              let node = checked.tree.resolve(ref), let call = CallStmtSyntax(node),
+              let argument = call.modifiers.first(where: { $0.name.token.text == "rounded" })?.arguments?.arguments.first else {
+            throw CompilationFixtureError.missingProgram
+        }
+        let edited = Desk.apply(.setArgument(checked.tree.id(of: argument.node), newText: "16"), to: checked.tree)
+        t.check(edited.failure == nil)
+        t.equal(edited.tree.text, source.replacingOccurrences(of: "12pt", with: "16pt"))
+        t.equal(edited.edits.count, 1)
+        let rechecked = Desk.check(edited.tree), ready = Desk.compile(rechecked)
+        t.check(rechecked.diagnostics(.error).isEmpty, deskDescribe(rechecked))
+        t.check(ready.issues.isEmpty)
+        t.equal(ready.program?.root.cornerRadius, .points(16))
+    }
+
+    t.suite("Desk: shape style: explicit pt support does not admit other units expressions or invalid receipts") {
+        let sources = ["16ms", "16px", "16em", "16%", "16 pt", "-16pt", "(16pt)", "8pt + 8pt",
+                       String(repeating: "9", count: 320) + "pt"].map { "widget { Rectangle().size(40).rounded(\($0)) }" }
+            + [#"widget { computed radius = 16pt; Rectangle().size(40).rounded(radius) }"#,
+               #"widget { Rectangle().size(40).rounded(16pt, topLeft: 0pt) }"#,
+               #"widget { Rectangle().size(40).rounded(16pt, if: true) }"#,
+               #"widget { Rectangle().size(40pt).rounded(16pt) }"#,
+               #"widget { Rectangle().size(40).stroke(.accent, width: 1pt).rounded(16pt) }"#]
+        for source in sources {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(result.program == nil && result.elementRefs.isEmpty, source)
+            t.equal(result.diagnostics, checked.diagnostics, "original syntax/checker diagnostics are retained")
+            if checked.diagnostics(.error).isEmpty {
+                t.equal(result.issues.first?.kind, .unsupported, source)
+            } else {
+                t.check(result.issues.isEmpty, "checker failures are not replaced by guessed lowering errors")
+            }
+        }
+        var noCanonical = deskCheck("widget { Rectangle().size(40).rounded(16pt) }")
+        guard let value = noCanonical.elements.values.first?.facets[FacetID("rounded.topLeft")]?.first?.value else {
+            throw CompilationFixtureError.missingProgram
+        }
+        noCanonical.canonicalNumericValues.removeValue(forKey: value)
+        let missing = Desk.compile(noCanonical)
+        t.check(missing.program == nil && missing.elementRefs.isEmpty)
+        t.equal(missing.issues.first?.kind, .unsupported, "a unit spelling does not substitute for a checked value")
+        noCanonical.canonicalNumericValues[value] = .infinity
+        let nonfinite = Desk.compile(noCanonical)
+        t.check(nonfinite.program == nil && nonfinite.elementRefs.isEmpty)
+        t.equal(nonfinite.issues.first?.kind, .unsupported)
+    }
+}
+
+private func runDeskCompilationReferenceTests(_ t: TestRunner) {
+    t.suite("Desk: compilation references: nested and repeated calls map their actual scene IDs") {
+        let source = "\u{FEFF}// source bytes 甲😀\r\nwidget { Column { Text(\"A\"); Row { Rectangle().size(8); Text(\"A\") } }.name(layout) }"
+        let checked = deskCheck(source), result = Desk.compile(checked)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        t.check(result.issues.isEmpty, "\(result.issues)")
+        guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+        let refs = checked.elements.keys.sorted { $0.utf8Start < $1.utf8Start }
+        let ids = [ElementID(name: "layout", index: 0), ElementID(name: "Text#1", index: 1),
+                   ElementID(name: "Row#2", index: 2), ElementID(name: "Rectangle#3", index: 3),
+                   ElementID(name: "Text#4", index: 4)]
+        t.equal(refs.count, ids.count)
+        t.equal(result.elementRefs, Dictionary(uniqueKeysWithValues: zip(ids, refs)))
+        for ref in result.elementRefs.values {
+            t.equal(ref.treeVersion, checked.tree.version)
+            t.equal(ref.kind, .callStmt)
+            t.check(checked.tree.resolve(ref) != nil)
+        }
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 6, height: 8) }
+        t.equal(Set(result.elementRefs.keys), Set(scene.elements.map(\.id)))
+        t.equal(compiledDraws(scene).map(\.text), ["A", "A"])
+        t.equal(Set(result.elementRefs.values).count, ids.count, "repeated text content does not alias source calls")
+    }
+
+    t.suite("Desk: compilation references: synthetic root has no ref and an actionless rectangle remains editable") {
+        let source = #"widget { Rectangle().width(12).height(8).fill(.accent); Text("A") }"#
+        let checked = deskCheck(source), result = Desk.compile(checked)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        t.check(result.issues.isEmpty, "\(result.issues)")
+        guard let program = result.program, case .column(_, _, let children) = program.root.content,
+              children.count == 2, let rectangleRef = result.elementRefs[children[0].id] else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.equal(program.root.id, ElementID(name: "widget", index: 0))
+        t.check(result.elementRefs[program.root.id] == nil, "the generated widget container is not a source element")
+        t.equal(Set(result.elementRefs.values), Set(checked.elements.keys))
+        t.equal(result.elementRefs.count, 2)
+        for child in children {
+            t.check(child.onClick == nil && child.onClickActions == nil && child.onRightClickActions == nil)
+            t.check(result.elementRefs[child.id] != nil, "source selection is independent of action handlers")
+        }
+        t.equal(checked.elements[rectangleRef]?.component, "Rectangle")
+        let edited = Desk.apply(.setModifier(rectangleRef, name: "width", argumentsText: "18", condition: nil), to: checked)
+        t.check(edited.failure == nil, "\(String(describing: edited.failure))")
+        t.equal(edited.tree.text, #"widget { Rectangle().width(18).height(8).fill(.accent); Text("A") }"#)
+        let rechecked = Desk.check(edited.tree), rebuilt = Desk.compile(rechecked)
+        t.check(rechecked.diagnostics(.error).isEmpty, deskDescribe(rechecked))
+        guard let next = rebuilt.program, case .column(_, _, let nextChildren) = next.root.content else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.equal(nextChildren[0].width, .fixed(18))
+        t.check(rebuilt.elementRefs[nextChildren[0].id] != rectangleRef, "the edit publishes references of its new tree")
+    }
+
+    t.suite("Desk: compilation references: checker and partial lowering failures publish no refs") {
+        let duplicate = deskCheck(#"widget { Rectangle().name(repeated); Text("A").name(repeated) }"#)
+        let duplicateResult = Desk.compile(duplicate)
+        t.check(duplicate.diagnostics.contains { $0.id == .duplicateElementName && $0.severity == .error })
+        t.check(duplicateResult.program == nil && duplicateResult.elementRefs.isEmpty)
+        t.equal(duplicateResult.diagnostics, duplicate.diagnostics)
+        t.check(duplicateResult.issues.isEmpty)
+
+        let partial = deskCheck(#"widget { Column { Rectangle().size(8); Text("B"); Rectangle().size(4).margin(1) } }"#)
+        let partialResult = Desk.compile(partial)
+        t.check(partial.diagnostics(.error).isEmpty, deskDescribe(partial))
+        t.equal(partial.elements.count, 4)
+        t.check(partialResult.program == nil && partialResult.elementRefs.isEmpty,
+                "already-lowered siblings are not published after a later unsupported facet")
+        t.equal(partialResult.issues.first?.kind, .unsupported)
+        t.equal(partialResult.diagnostics, partial.diagnostics)
+        t.check(partialResult.imageSources.isEmpty)
+
+        var catalog = DeskCatalog.current
+        catalog.limits.maximumElementInstances = 2
+        // Two real calls fit the checked limit; the generated root exhausts the shared budget after one child.
+        let bounded = deskCheck(#"widget { Rectangle().size(8); Text("B") }"#, context: CheckContext(catalog: catalog))
+        t.check(bounded.diagnostics(.error).isEmpty, deskDescribe(bounded))
+        let limited = Desk.compile(bounded, catalog: catalog)
+        t.check(limited.program == nil && limited.elementRefs.isEmpty)
+        t.equal(limited.issues.first?.kind, .resourceLimit)
+        t.equal(limited.diagnostics, bounded.diagnostics)
+        let empty = Desk.compile(deskCheck("widget { Column { } }"))
+        t.check(empty.program == nil && empty.elementRefs.isEmpty)
+    }
+
+    t.suite("Desk: compilation references: missing images retain demands but publish refs only after recheck") {
+        let file = DeskFileID(path: "Mapped.desk")
+        let source = #"widget { Rectangle().size(8); Image("New.png").size(12) }"#
+        let empty = CheckContext(resources: PackageResources(package: DeskPackage()))
+        let missing = deskCheck(source, file: file.path, context: empty), result = Desk.compile(missing)
+        t.check(result.program == nil && result.elementRefs.isEmpty)
+        t.check(result.issues.isEmpty)
+        t.equal(result.diagnostics, missing.diagnostics)
+        t.check(result.diagnostics.contains { $0.id == .fileNotFound && $0.severity == .error })
+        t.equal(result.imageSources, ["New.png"])
+        let package = DeskPackage(files: [DeskPackageFile(path: "New.png", kind: .image, size: 10,
+            pixelSize: DeskPixelSize(width: 8, height: 12))], texts: [file: source], isSingleFile: true)
+        let checked = deskCheck(source, file: file.path, context: CheckContext(resources: PackageResources(package: package)))
+        let ready = Desk.compile(checked)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        t.check(ready.program != nil && ready.issues.isEmpty)
+        t.equal(ready.elementRefs.count, 2)
+        t.equal(Set(ready.elementRefs.values), Set(checked.elements.keys))
+        t.equal(ready.imageSources, result.imageSources)
+        t.equal(ready.diagnostics, checked.diagnostics)
+    }
+
+    t.suite("Desk: compilation references: same-text reparse rejects the old ref even when program IDs match") {
+        let source = #"widget { Rectangle().width(12).height(8).name(box) }"#
+        let before = deskCheck(source), original = Desk.compile(before)
+        guard let program = original.program, let oldRef = original.elementRefs[program.root.id] else {
+            throw CompilationFixtureError.missingProgram
+        }
+        let (tree, _) = Desk.reparse(source, previous: before.tree)
+        let checked = Desk.check(tree), compiled = Desk.compile(checked)
+        guard let current = compiled.program, let newRef = compiled.elementRefs[current.root.id] else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.check(tree.root === before.tree.root, "unchanged text shares the syntax nodes")
+        t.check(tree.version != before.tree.version)
+        t.equal(current.root.id, program.root.id, "this source happens to reuse the same current program ID")
+        t.equal(newRef.utf8Start, oldRef.utf8Start)
+        t.check(newRef != oldRef)
+        t.check(tree.resolve(oldRef) == nil && tree.resolve(newRef) != nil)
+        let refused = Desk.apply(.setModifier(oldRef, name: "width", argumentsText: "18", condition: nil), to: checked)
+        t.equal(refused.failure, .staleReference)
+        t.check(refused.edits.isEmpty)
+        t.equal(refused.tree.text, source)
+        let applied = Desk.apply(.setModifier(newRef, name: "width", argumentsText: "18", condition: nil), to: checked)
+        t.check(applied.failure == nil)
+        t.equal(applied.tree.text, #"widget { Rectangle().width(18).height(8).name(box) }"#)
+    }
 }
 
 private func runDeskPaletteCompilationTests(_ t: TestRunner) {

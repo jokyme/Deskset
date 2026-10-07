@@ -39,6 +39,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private var projecting = false
     private var primaryPress: (snapshot: DeskSnapshot, element: ElementID)?
     private var secondaryPress: (snapshot: DeskSnapshot, element: ElementID)?
+    private var inspectionPress: (snapshot: DeskSnapshot, element: ElementID?)?
+    private var elementRefs: [ElementID: ElementRef] = [:]
+    private(set) var isInspecting = false
+    private(set) var inspectedElement: ElementRef?
+    var onSelectElement: ((DeskSnapshot, ElementRef?) -> Void)?
     private let clock: SkinClock
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
@@ -82,6 +87,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
         canvas.onPrimaryPress = { [weak self] point in self?.beginPrimaryPress(at: point) }
         canvas.onPrimaryRelease = { [weak self] point in self?.endPrimaryPress(at: point) }
+        canvas.onPrimaryDrag = { [weak self] in self?.inspectionPress = nil }
         canvas.onSecondaryPress = { [weak self] point in self?.beginSecondaryPress(at: point) }
         canvas.onSecondaryRelease = { [weak self] point in self?.endSecondaryPress(at: point) }
     }
@@ -251,6 +257,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard state != .closed else { return }
         primaryPress = nil
         secondaryPress = nil
+        inspectionPress = nil
+        inspectedElement = nil
+        updateInspectionOutline()
         canvas.clearPointerGestures()
         if let readError { clear(.unavailable(readError)); return }
         guard accepts?(candidate) == true, candidate.isChecked else { clear(.checking); return }
@@ -276,6 +285,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             guard accepts?(candidate) == true else { clear(.checking); return }
             snapshot = candidate
             runtime = next
+            elementRefs = result.elementRefs
             resetActionRecords()
             canvas.context = DrawContext(fonts: AppFontResolver())
             project()
@@ -350,6 +360,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             // AppKit maps this enclosing paint viewport; the shared scene and its layout coordinates stay intact.
             canvas.frame = NSRect(origin: .zero, size: extent.size)
             canvas.bounds = extent
+            updateInspectionOutline()
             scrollView.maxMagnification = min(RenderOptions.scaleRange.upperBound,
                                               Double(RenderOptions.maxPixels) / max(side, 1))
             if scrollView.magnification > scrollView.maxMagnification {
@@ -368,8 +379,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 }
             }
             let interactive = !next.hitMap.entries.isEmpty
-            state = hasContent || interactive ? .ready : .empty
-            canvas.isHidden = !(hasContent || interactive)
+            let selectable = isInspecting && next.elements.contains {
+                $0.visibility == .visible && $0.frame.width > 0 && $0.frame.height > 0 && elementRefs[$0.id] != nil
+            }
+            state = hasContent || interactive || selectable ? .ready : .empty
+            canvas.isHidden = !(hasContent || interactive || selectable)
             canvas.needsDisplay = true
             scrollView.contentView.scroll(to: scrollView.contentView.bounds.origin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -439,6 +453,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     private func beginPress(at point: SkinPoint, event: MouseEventKind) {
         if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
+        if isInspecting {
+            inspectionPress = nil
+            guard event == .leftUp, visible, point.x.isFinite, point.y.isFinite,
+                  prepareToDraw(), let snapshot else { return }
+            inspectionPress = (snapshot, inspectionElement(at: point))
+            return
+        }
         guard visible, prepareToDraw(), let snapshot,
               let id = scene?.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID else { return }
         if event == .leftUp { primaryPress = (snapshot, id) } else { secondaryPress = (snapshot, id) }
@@ -453,6 +474,17 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func endPress(at point: SkinPoint?, event: MouseEventKind) {
+        if isInspecting {
+            let press = inspectionPress
+            inspectionPress = nil
+            guard event == .leftUp, visible, let point, point.x.isFinite, point.y.isFinite,
+                  let press, accepts?(press.snapshot) == true,
+                  prepareToDraw(), let snapshot, snapshot.tree.version == press.snapshot.tree.version,
+                  inspectionElement(at: point) == press.element else { return }
+            let element = press.element.flatMap { elementRefs[$0] }
+            if selectElement(element, from: snapshot) { onSelectElement?(snapshot, element) }
+            return
+        }
         let press = event == .leftUp ? primaryPress : secondaryPress
         if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
         guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), let scene,
@@ -461,9 +493,55 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         project(click: (point, scene.generation, event))
     }
 
+    /// Inspector selection is independent of the runtime's action-only hit map. Closing the inspector restores
+    /// the original interactive preview; a held gesture never crosses between those two modes.
+    func setInspecting(_ enabled: Bool) {
+        guard state != .closed, isInspecting != enabled else { return }
+        isInspecting = enabled
+        inspectionPress = nil
+        primaryPress = nil
+        secondaryPress = nil
+        canvas.clearPointerGestures()
+        if !enabled { inspectedElement = nil }
+        updateInspectionOutline()
+        updateActionRecords()
+        if snapshot != nil { project() }
+    }
+
+    @discardableResult
+    func selectElement(_ element: ElementRef?, from candidate: DeskSnapshot) -> Bool {
+        guard isInspecting, state == .ready || state == .empty, let snapshot,
+              accepts?(candidate) == true, candidate.isChecked, candidate.file == snapshot.file,
+              candidate.generation == snapshot.generation, candidate.tree.version == snapshot.tree.version else { return false }
+        if let element, !elementRefs.values.contains(element) { return false }
+        inspectedElement = element
+        updateInspectionOutline()
+        return true
+    }
+
+    private func inspectionElement(at point: SkinPoint) -> ElementID? {
+        guard point.x.isFinite, point.y.isFinite, let scene else { return nil }
+        // The scene is preorder. Reverse traversal chooses descendants and topmost siblings before parents.
+        return scene.elements.reversed().first {
+            $0.visibility == .visible && $0.frame.width > 0 && $0.frame.height > 0
+                && elementRefs[$0.id] != nil && $0.frame.cgRect.contains(CGPoint(x: point.x, y: point.y))
+        }?.id
+    }
+
+    private func updateInspectionOutline() {
+        let frame = scene?.elements.first {
+            isInspecting && inspectedElement != nil && elementRefs[$0.id] == inspectedElement && $0.visibility == .visible
+        }?.frame.cgRect
+        canvas.selectionOverlay.frame = canvas.bounds
+        canvas.selectionOverlay.bounds = canvas.bounds
+        canvas.selectionOverlay.selectionRect = frame
+    }
+
     private func clear(_ next: State, keepingProgram: Bool = false) {
         primaryPress = nil
         secondaryPress = nil
+        inspectionPress = nil
+        inspectedElement = nil
         canvas.clearPointerGestures()
         tickScheduler.cancel()
         state = next
@@ -472,6 +550,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         if !keepingProgram {
             snapshot = nil
             runtime = nil
+            elementRefs.removeAll()
             resetActionRecords()
         }
         scene = nil
@@ -481,6 +560,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.isHidden = true
         canvas.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
         canvas.setBoundsOrigin(.zero)
+        updateInspectionOutline()
         canvas.needsDisplay = true
         updateStatus()
     }
@@ -489,7 +569,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let message: String
         switch state {
         case .checking: message = StudioText[.deskPreviewChecking]
-        case .ready: message = StudioText[.deskPreviewStatic]
+        case .ready: message = StudioText[isInspecting ? .deskInspectorSelectElement : .deskPreviewStatic]
         case .empty: message = StudioText[.deskPreviewEmpty]
         case .unavailable(let reason): message = StudioText[.deskPreviewUnavailable] + "\n" + reason
         case .closed: message = ""
@@ -505,10 +585,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private func updateActionRecords() {
         guard isViewLoaded else { return }
         actionRecordsLanguage = StudioText.language
-        heading.stringValue = StudioText[.previewOnly]
+        heading.stringValue = StudioText[isInspecting ? .canvas : .previewOnly]
         fitButton.title = StudioText[.zoomToFit]
         actualButton.title = StudioText[.actualSizeShort]
-        scrollView.setAccessibilityLabel(StudioText[.previewOnly])
+        scrollView.setAccessibilityLabel(StudioText[isInspecting ? .canvas : .previewOnly])
         let title = StudioText.format(.deskActionRecordsCount, recordedEffects.count)
         actionRecordsButton.title = title
         actionRecordsButton.state = actionRecordsExpanded ? .on : .off
@@ -596,6 +676,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         accepts = nil
         resources = nil
         onRecordedEffects = nil
+        onSelectElement = nil
         actionRecordsButton.target = nil
         actionRecordsButton.action = nil
         actionRecordsClearButton.target = nil
@@ -605,6 +686,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onImageFailure = nil
         canvas.onPrimaryPress = nil
         canvas.onPrimaryRelease = nil
+        canvas.onPrimaryDrag = nil
         canvas.onSecondaryPress = nil
         canvas.onSecondaryRelease = nil
     }
@@ -613,6 +695,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 /// The borrowed CGContext is already in AppKit view coordinates. Only owned bitmap fixtures establish a bitmap
 /// transform; this view does not flip the base CTM or ask the compatibility renderer for a Skin.
 final class DeskProgramPreviewCanvas: NSView {
+    fileprivate let selectionOverlay = DeskProgramSelectionOverlay(frame: .zero)
     fileprivate var scene: WidgetScene?
     fileprivate var context: DrawContext?
     fileprivate var beforeDrawing: (() -> Bool)?
@@ -620,11 +703,20 @@ final class DeskProgramPreviewCanvas: NSView {
     fileprivate var onImageFailure: (() -> Void)?
     fileprivate var onPrimaryPress: ((SkinPoint) -> Void)?
     fileprivate var onPrimaryRelease: ((SkinPoint?) -> Void)?
+    fileprivate var onPrimaryDrag: (() -> Void)?
     fileprivate var onSecondaryPress: ((SkinPoint) -> Void)?
     fileprivate var onSecondaryRelease: ((SkinPoint?) -> Void)?
     private var primaryEvent: MouseEventKind?
     private var secondaryPressed = false
     override var isFlipped: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        selectionOverlay.setAccessibilityElement(false)
+        addSubview(selectionOverlay)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -656,6 +748,7 @@ final class DeskProgramPreviewCanvas: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         if primaryEvent == .rightUp { primaryEvent = nil; onSecondaryRelease?(nil) }
+        else if primaryEvent == .leftUp { onPrimaryDrag?() }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -719,5 +812,20 @@ final class DeskProgramPreviewCanvas: NSView {
         super.viewDidChangeBackingProperties()
         onEnvironmentChange?()
         needsDisplay = true
+    }
+}
+
+/// Selection ink stays out of the program scene and passes pointer input through to the canvas.
+private final class DeskProgramSelectionOverlay: NSView {
+    var selectionRect: NSRect? { didSet { isHidden = selectionRect == nil; needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let selectionRect, selectionRect.width > 0, selectionRect.height > 0 else { return }
+        NSColor.controlAccentColor.setStroke()
+        let path = NSBezierPath(rect: selectionRect.insetBy(dx: 0.5, dy: 0.5))
+        path.lineWidth = 1
+        path.stroke()
     }
 }
