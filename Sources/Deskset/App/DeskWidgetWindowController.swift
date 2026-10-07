@@ -163,6 +163,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         if currentDestinationKey != key {
             currentDestinationKey = key
             destinationEpoch &+= 1
+            view.clearAccessibility()
         }
 
         return SkinWindowFacts(
@@ -266,6 +267,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             // After being shown, publish real visible facts
             publishFacts()
         }
+        view.refreshAccessibility()
     }
 
     /// Contract: Filter stale sessions, clear Main accepted presentation, localized visible UI feedback, keep active intent.
@@ -277,6 +279,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         guard epoch == destinationEpoch else { return }
 
         latestPresented = nil
+        view.clearAccessibility()
         let localizedMessage = localizedUnavailableDescription(errorDesc)
         lastUnavailableMessage = localizedMessage
         view.toolTip = localizedMessage
@@ -313,14 +316,41 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
     func sendPrimaryRelease(at point: SkinPoint) {
         guard let token = issueClickToken() else { return }
+        enqueuePrimaryRelease(at: point, token: token, pressBeforeRelease: false)
+    }
+
+    private func enqueuePrimaryRelease(at point: SkinPoint, token: DeskWidgetClickToken, pressBeforeRelease: Bool) {
         let hostOwner = owner
         executor.async { [hostOwner] in
+            if pressBeforeRelease {
+                hostOwner.primaryPress(at: point, expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+            }
             hostOwner.primaryRelease(at: point, token: token) { returnedToken, effects in
                 DispatchQueue.main.async { [weak self] in
                     self?.handleEffects(effects, token: returnedToken, issuedToken: token)
                 }
             }
         }
+    }
+
+    /// AX Press is explicit user activation of the exact accepted text element. The owner still qualifies
+    /// pointer eligibility, current presentation, hit identity and destination before resolving any effects.
+    fileprivate func activateAccessibility(_ child: DeskWidgetTextAccessibilityElement) -> Bool {
+        guard Thread.isMainThread, let presented = view.presentation(for: child),
+              let element = presented.scene.elements.first(where: { $0.id == child.id }),
+              element.visibility == .visible else { return false }
+        let center = SkinPoint(x: element.frame.x + element.frame.width / 2,
+                               y: element.frame.y + element.frame.height / 2)
+        guard presented.scene.hitMap.entry(at: center.x, center.y, handling: .leftUp, images: nil)?.elementID == child.id else {
+            return false
+        }
+        // The owner adds the captured viewport origin once, as it does for real mouse coordinates.
+        let point = SkinPoint(x: center.x - presented.origin.x, y: center.y - presented.origin.y)
+        guard point.x.isFinite, point.y.isFinite, let token = issueClickToken(),
+              token.session == child.session, token.epoch == child.epoch,
+              token.sourceGeneration == child.generation else { return false }
+        enqueuePrimaryRelease(at: point, token: token, pressBeforeRelease: true)
+        return true
     }
 
     /// A batch uses its original issued token, not the latest CPU/clock frame's generation.
@@ -394,6 +424,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         isClosing = true
         sessionID = UUID() // invalidate any pending in-flight didPresent callbacks
         latestPresented = nil
+        view.clearAccessibility()
 
         for (center, token) in observers { center.removeObserver(token) }
         observers.removeAll()
@@ -550,6 +581,7 @@ final class DeskWidgetHostOwner {
 /// The view displaying Desk widget content and routing mouse input and dragging.
 final class DeskWidgetView: NSView {
     weak var controller: DeskWidgetWindowController?
+    private(set) var accessibilityParts: [DeskWidgetTextAccessibilityElement] = []
     private var dragStart: NSPoint?
     private var windowOrigin: NSPoint?
     private var dragged = false
@@ -557,6 +589,57 @@ final class DeskWidgetView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func accessibilityChildren() -> [Any]? { accessibilityParts }
+
+    fileprivate func refreshAccessibility() {
+        guard let controller, !controller.isClosing, !controller.isClosed,
+              controller.lastAcceptedEpoch == controller.destinationEpoch,
+              let presented = controller.latestPresented else { clearAccessibility(); return }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(controller.program.name)
+        let clickable = Set(presented.scene.hitMap.entries.compactMap(\.elementID))
+        var parts: [DeskWidgetTextAccessibilityElement] = []
+        for element in presented.scene.elements where element.visibility == .visible && clickable.contains(element.id) {
+            // ProgramRuntime stores a Text's sole projected TextDraw directly on the same SceneElement ID.
+            guard element.kind == .string, element.items.count == 1,
+                  case .text(let text) = element.items[0] else { continue }
+            parts.append(DeskWidgetTextAccessibilityElement(id: element.id, text: text.text,
+                session: controller.sessionID, epoch: controller.lastAcceptedEpoch,
+                generation: presented.scene.generation, owner: self))
+        }
+        replaceAccessibility(parts)
+    }
+
+    fileprivate func clearAccessibility() { replaceAccessibility([]) }
+
+    private func replaceAccessibility(_ parts: [DeskWidgetTextAccessibilityElement]) {
+        let changed = !accessibilityParts.isEmpty || !parts.isEmpty
+        accessibilityParts = parts
+        guard changed, controller?.app.presentsWindows == true else { return }
+        // Notify clients about the replaced tree; do not announce every changing CPU/text value aloud.
+        var affected: [Any] = [self]
+        affected.append(contentsOf: parts)
+        NSAccessibility.post(element: self, notification: .layoutChanged, userInfo: [.uiElements: affected])
+    }
+
+    fileprivate func presentation(for child: DeskWidgetTextAccessibilityElement) -> DeskProgramHost.Presented? {
+        guard let controller, !controller.isClosing, !controller.isClosed,
+              child.owner === self, accessibilityParts.contains(where: { $0 === child }),
+              child.session == controller.sessionID, child.epoch == controller.destinationEpoch,
+              child.epoch == controller.lastAcceptedEpoch,
+              let presented = controller.latestPresented, presented.scene.generation == child.generation else { return nil }
+        return presented
+    }
+
+    fileprivate func screenFrame(for child: DeskWidgetTextAccessibilityElement) -> NSRect {
+        guard let presented = presentation(for: child),
+              let element = presented.scene.elements.first(where: { $0.id == child.id }) else { return .zero }
+        let frame = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                           width: element.frame.width, height: element.frame.height)
+        return window == nil ? frame : NSAccessibility.screenRect(fromView: self, rect: frame)
+    }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
@@ -646,5 +729,37 @@ final class DeskWidgetView: NSView {
 
     @objc private func removeWidgetFromDesktop(_ sender: Any?) {
         controller?.deactivateAndClose()
+    }
+}
+
+/// A single accepted clickable Text. Held children cannot adopt a newer scene's identity or generation.
+final class DeskWidgetTextAccessibilityElement: NSAccessibilityElement {
+    let id: ElementID
+    let session: UUID
+    let epoch: UInt64
+    let generation: UInt64
+    weak var owner: DeskWidgetView?
+    private var pressed = false
+
+    init(id: ElementID, text: String, session: UUID, epoch: UInt64, generation: UInt64, owner: DeskWidgetView) {
+        self.id = id
+        self.session = session
+        self.epoch = epoch
+        self.generation = generation
+        self.owner = owner
+        super.init()
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(text)
+    }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityParent() -> Any? { owner }
+    override func accessibilityFrame() -> NSRect { owner?.screenFrame(for: self) ?? .zero }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard Thread.isMainThread, !pressed, let controller = owner?.controller,
+              controller.activateAccessibility(self) else { return false }
+        pressed = true
+        return true
     }
 }

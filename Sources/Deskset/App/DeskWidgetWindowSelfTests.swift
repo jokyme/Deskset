@@ -73,6 +73,7 @@ enum DeskWidgetWindowSelfTests {
 
     static func run(_ t: AppTestRunner) {
         clickActionTests(t)
+        accessibilityTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -583,9 +584,10 @@ enum DeskWidgetWindowSelfTests {
     private static let actionSource = #"widget { variable n = 0; computed caption = "{n}"; Text(caption).font(20).size(160, 40).onClick { n = n + 1; copy(caption); open("https://example.com/{n}"); copy("done😀") } }"#
 
     private static func actionFixture(_ t: AppTestRunner, recorder: ActionRecorder,
-                                      executor: SkinExecutor = MainSkinExecutor.shared) throws -> DeskWidgetWindowController {
-        let f = try fixture(t, text: actionSource)
-        let result = Desk.compile(Desk.check(Desk.parse(actionSource, fileName: "Main.desk")))
+                                      executor: SkinExecutor = MainSkinExecutor.shared,
+                                      text: String = actionSource) throws -> DeskWidgetWindowController {
+        let f = try fixture(t, text: text)
+        let result = Desk.compile(Desk.check(Desk.parse(text, fileName: "Main.desk")))
         t.check(result.issues.isEmpty, "\(result.issues)")
         guard let program = result.program else { throw Failure.fixture }
         let sourceID = UUID(), instanceID = UUID()
@@ -593,7 +595,7 @@ enum DeskWidgetWindowSelfTests {
         let instance = DeskWidgetInstanceState(id: instanceID, sourceID: sourceID)
         let directory = f.root.appendingPathComponent("Widgets").appendingPathComponent(sourceID.uuidString.lowercased())
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data(actionSource.utf8).write(to: directory.appendingPathComponent("Main.desk"))
+        try Data(text.utf8).write(to: directory.appendingPathComponent("Main.desk"))
         try f.app.state.registerDeskInstallation(source: source, instance: instance)
         let widget = DeskWidgetWindowController(source: source, instance: instance, directory: directory,
                                                program: program, prepared: nil, app: f.app, executor: executor,
@@ -624,6 +626,130 @@ enum DeskWidgetWindowSelfTests {
         widget.owner.primaryRelease(at: point, token: token) { batch = ($0, $1) }
         guard let batch else { throw Failure.fixture }
         return batch
+    }
+
+    private static func accessibilityTests(_ t: AppTestRunner) {
+        t.suite("App: Desk accessibility: projected Text label and AX press execute once on Main from a worker") {
+            let worker = SkinThreadExecutor(name: "Desk accessibility worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: worker)
+            created = widget
+            t.equal(widget.view.accessibilityParts.count, 1)
+            guard let child = widget.view.accessibilityParts.first, let presented = widget.latestPresented,
+                  let element = presented.scene.elements.first(where: { $0.id == child.id }),
+                  case .text(let text)? = element.items.first else { throw Failure.fixture }
+            t.equal(child.accessibilityRole(), .button)
+            t.equal(child.accessibilityLabel(), text.text)
+            t.equal(child.accessibilityLabel(), "0")
+            t.check((child.accessibilityParent() as? DeskWidgetView) === widget.view)
+            t.equal(widget.view.accessibilityChildren()?.count, 1)
+            let localFrame = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                                   width: element.frame.width, height: element.frame.height)
+            t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: localFrame))
+            let beforeMove = child.accessibilityFrame()
+            widget.window.setFrameOrigin(NSPoint(x: widget.window.frame.origin.x + 11, y: widget.window.frame.origin.y + 7))
+            t.close(child.accessibilityFrame().origin.x - beforeMove.origin.x, 11)
+            t.close(child.accessibilityFrame().origin.y - beforeMove.origin.y, 7)
+            t.check(child.accessibilityPerformPress())
+            t.check(!child.accessibilityPerformPress(), "a held child cannot queue a second activation")
+            t.check(AppSelfTest.spin(timeout: 10) { recorder.calls.count == 3 })
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:done😀"])
+            t.check(recorder.mainThreads.allSatisfy { $0 }, "all injected services execute on Main")
+            t.check(AppSelfTest.spin(timeout: 10) { widget.view.accessibilityParts.first?.accessibilityLabel() == "1" })
+            t.check(!child.accessibilityPerformPress(), "the previous frame's child remains invalid after presentation")
+        }
+
+        t.suite("App: Desk accessibility: redraw replaces held children without replaying actions and unavailable clears them") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            widget.owner.host?.refresh()
+            widget.owner.host?.frames.runLoopTurn(.beforeWaiting)
+            t.check(AppSelfTest.spin(timeout: 10) { (widget.latestPresented?.scene.generation ?? 0) > child.generation })
+            t.check(widget.view.accessibilityParts.first !== child)
+            t.check(!child.accessibilityPerformPress(), "AX must not synthesize a fresh generation for a held child")
+            t.equal(child.accessibilityFrame(), .zero)
+            t.check(recorder.calls.isEmpty, "ordinary projection and AX tree refresh have no effects")
+            guard let current = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            widget.handleUnavailable("invalidEnvironment", session: widget.sessionID, epoch: widget.destinationEpoch)
+            t.equal(widget.view.accessibilityChildren()?.count, 0)
+            t.check(!current.accessibilityPerformPress())
+            t.equal(current.accessibilityFrame(), .zero)
+            t.check(recorder.calls.isEmpty)
+        }
+
+        t.suite("App: Desk accessibility: epoch transition and close invalidate children before any queued effect") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            let dark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            guard let alternate = NSAppearance(named: dark ? .aqua : .darkAqua) else { throw Failure.fixture }
+            widget.window.appearance = alternate
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch != child.epoch)
+            t.equal(widget.view.accessibilityParts.count, 0)
+            t.check(!child.accessibilityPerformPress(), "epoch guard applies before a replacement frame arrives")
+            t.check(recorder.calls.isEmpty)
+            let closeRecorder = ActionRecorder(), closing = try actionFixture(t, recorder: closeRecorder)
+            guard let closingChild = closing.view.accessibilityParts.first else { throw Failure.fixture }
+            closing.close(deactivate: false)
+            t.equal(closing.view.accessibilityParts.count, 0)
+            t.check(!closingChild.accessibilityPerformPress(), "close invalidates AX before owner ACK")
+            t.check(AppSelfTest.spin(timeout: 10) { closing.isClosed })
+            t.check(!closingChild.accessibilityPerformPress())
+            t.equal(closingChild.accessibilityFrame(), .zero)
+            t.check(closeRecorder.calls.isEmpty)
+        }
+
+        t.suite("App: Desk accessibility: hidden Text has no child and pointer-ineligible facts suppress activation") {
+            let recorder = ActionRecorder()
+            let source = #"widget { Column { Text("Hidden").size(160, 40).hidden().onClick { copy("hidden") }; Text("Visible").size(160, 40).onClick { copy("visible") } } }"#
+            let widget = try actionFixture(t, recorder: recorder, text: source)
+            t.equal(widget.view.accessibilityParts.count, 1)
+            guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            t.equal(child.accessibilityLabel(), "Visible")
+            let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                 scale: widget.window.backingScaleFactor)
+            guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
+            let facts = SkinWindowFacts(frame: widget.window.frame, isVisible: true, isOrderedIn: true,
+                scale: widget.window.backingScaleFactor, colorSpace: space, appearance: input.environment.appearance.name,
+                takesPointer: false, sequence: 101, panelGeneration: widget.destinationEpoch)
+            widget.owner.take(facts, input: input)
+            t.check(child.accessibilityPerformPress(), "Main queues explicit AX activation; owner qualifies pointer facts")
+            var drained = false
+            widget.executor.async { DispatchQueue.main.async { drained = true } }
+            t.check(AppSelfTest.spin(timeout: 10) { drained })
+            t.check(recorder.calls.isEmpty, "AX cannot bypass the owner's pointer eligibility guard")
+        }
+
+        t.suite("App: Desk accessibility: accepted viewport origin and actual center hit reject an overlapped handler") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            guard let original = widget.latestPresented, let originalChild = widget.view.accessibilityParts.first,
+                  let element = original.scene.elements.first(where: { $0.id == originalChild.id }),
+                  let coveredEntry = original.scene.hitMap.entries.first else { throw Failure.fixture }
+            var scene = original.scene
+            scene.generation += 1
+            let overlay = SkinHitMap.Entry(name: "overlay", frame: coveredEntry.frame, shape: coveredEntry.shape,
+                container: coveredEntry.container, glass: coveredEntry.glass, isButton: coveredEntry.isButton,
+                actions: coveredEntry.actions, cursor: coveredEntry.cursor, cursorName: coveredEntry.cursorName,
+                toolTip: coveredEntry.toolTip, elementID: ElementID(name: "overlay", index: 999))
+            scene.hitMap.entries.insert(overlay, at: 0)
+            let origin = SkinPoint(x: -11, y: -17)
+            let covered = DeskProgramHost.Presented(scene: scene, origin: origin, size: original.size, scale: original.scale)
+            widget.handlePresented(covered, session: widget.sessionID, epoch: widget.destinationEpoch)
+            guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            let localFrame = NSRect(x: element.frame.x - origin.x, y: element.frame.y - origin.y,
+                                   width: element.frame.width, height: element.frame.height)
+            t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: localFrame))
+            t.check(!originalChild.accessibilityPerformPress())
+            t.check(!child.accessibilityPerformPress(), "center resolves to the overlay rather than the exposed Text")
+            t.check(recorder.calls.isEmpty)
+        }
     }
 
     private static func clickActionTests(_ t: AppTestRunner) {
@@ -752,6 +878,14 @@ enum DeskWidgetWindowSelfTests {
             t.equal(services.perform(.open("missing/file.txt"), directory: directory),
                     StudioText.format(.deskActionOpenFailed, "missing/file.txt"))
             t.equal(opened, [file], "an unresolved target never reaches even the fake opener")
+            let oldLanguage = StudioText.languageOverride
+            defer { StudioText.languageOverride = oldLanguage }
+            StudioText.languageOverride = .chinese
+            let target = "missing/\u{E000}文档\u{E001}.txt"
+            t.equal(services.perform(.open(target), directory: directory),
+                    String(format: StudioText[.deskActionOpenFailed], target),
+                    "open feedback preserves legitimate private-use characters in the exact target")
+            t.equal(opened, [file], "the unresolved private-use target never reaches the fake opener")
         }
     }
 }
