@@ -1008,6 +1008,79 @@ enum DeskProgramPreviewSelfTests {
         runNumericPreviewTests(t)
         runClockPreviewTests(t)
         runClickPreviewTests(t)
+        runClickActionPreviewTests(t)
+    }
+
+    private static func runClickActionPreviewTests(_ t: AppTestRunner) {
+        t.suite("App: Desk click actions: editor records ordered requests without executing or replaying them") {
+            let source = #"widget { variable n = 0; computed caption = "{n}"; Text(caption).font(20).size(160, 40).onClick { n = n + 1; copy(caption); open("https://example.com/{n}"); copy("done😀") } }"#
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            var batches: [[ProgramEffect]] = []
+            p.onRecordedEffects = { batches.append($0) }
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            let expected: [ProgramEffect] = [.copy("1"), .open("https://example.com/1"), .copy("done😀")]
+            t.equal(p.recordedEffects, expected)
+            t.equal(batches, [expected])
+            t.equal(clockTexts(p), ["1"])
+            p.updateForTick(); p.refreshEnvironment()
+            t.equal(p.recordedEffects, expected, "projection and environment refresh never replay requests")
+            t.equal(batches.count, 1)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try click(at: NSPoint(x: 300, y: 20), in: f)
+            p.setVisible(false); try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(batches.count, 1, "missing press, miss and hidden preview cannot record requests")
+            p.setVisible(true)
+            for _ in 0..<35 { try click(at: NSPoint(x: 20, y: 20), in: f) }
+            t.equal(p.recordedEffects.count, 100, "preview uses the existing bounded Studio action-log retention")
+            t.equal(p.recordedEffects.last, .copy("done😀"))
+            t.equal(f.editor.text, source)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            t.check(f.app.sortedControllers.isEmpty && f.app.deskWidgetWindows.isEmpty,
+                    "editor actions create no live host or desktop service")
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            replace(#"widget { Text("Replacement").font(20).size(160, 40) }"#, in: f)
+            t.check(settled(f))
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.recordedEffects.isEmpty, "a checked replacement clears the previous session's recording and press")
+            f.editor.discardUncommittedChanges(); f.controller.window?.close()
+            t.equal(p.state, .closed)
+            t.check(p.onRecordedEffects == nil)
+        }
+
+        t.suite("App: Desk click actions: failed editor projection records no external requests") {
+            let source = #"widget { variable size = 20; Text("Fail safely").font(size).size(160, 40).onClick { size = 0; copy("must not escape") } }"#
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            var calls = 0
+            p.onRecordedEffects = { _ in calls += 1 }
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.recordedEffects.isEmpty)
+            t.equal(calls, 0)
+            t.check(p.scene == nil)
+            p.updateForTick()
+            t.equal(clockTexts(p), ["Fail safely"], "the failed assignment was not committed by the preview")
+        }
+
+        t.suite("App: Desk click actions: invalid preview clock boundary cannot commit or record a click") {
+            let source = #"widget { variable n = 0; Row { Text(n).font(20).size(80, 40).onClick { n = n + 1; copy("{n}") }; Text(cpu.usage).font(20).size(80, 40) } }"#
+            guard let zone = TimeZone(secondsFromGMT: 0) else { throw Failure.fixture }
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_059.25), timeZone: zone)
+            var instant = executor.clock.now()
+            let clock = SkinClock(now: { instant }, uptime: executor.clock.uptime, timeZone: { zone })
+            let f = try fixture(t, source, clock: clock, executor: executor, system: PreviewCountingSystem())
+            let p = f.preview
+            p.setVisible(true)
+            t.equal(executor.pendingCount, 1)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            instant = Date(timeIntervalSince1970: .nan)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.recordedEffects.isEmpty && p.scene == nil)
+            t.equal(executor.pendingCount, 0)
+            instant = executor.clock.now()
+            p.updateForTick()
+            t.equal(clockTexts(p).first, "0", "the delay failure keeps the previous variable value")
+        }
     }
 
     private static func runPalettePreviewTests(_ t: AppTestRunner) {

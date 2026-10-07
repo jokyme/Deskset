@@ -28,6 +28,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private var lastPresentedGeneration: UInt64 = 0
     private(set) var latestPresented: DeskProgramHost.Presented?
     private(set) var lastUnavailableMessage: String?
+    private(set) var lastActionFailure: String?
+    private let actionServices: DeskProgramActionServices
+    private var lastIssuedClickSerial: UInt64 = 0
+    private var lastConsumedClickSerial: UInt64 = 0
     private struct DestinationKey: Equatable {
         let colorSpace: CGColorSpace?
         let scale: CGFloat
@@ -44,13 +48,15 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     init(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState, directory: URL,
          program: WidgetProgram, prepared: DeskProgramResources.Prepared?,
          app: AppController, executor: SkinExecutor = MainSkinExecutor.shared,
-         clock: SkinClock = .live, initialPosition: (x: Double, y: Double)? = nil) {
+         clock: SkinClock = .live, initialPosition: (x: Double, y: Double)? = nil,
+         actionServices: DeskProgramActionServices = .live) {
         self.source = source
         self.instance = instance
         self.directory = directory
         self.program = program
         self.app = app
         self.executor = executor
+        self.actionServices = actionServices
 
         let panel = SkinWindowController.makePanel()
         self.window = panel
@@ -216,6 +222,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         lastPresentedGeneration = presented.scene.generation
         lastAcceptedEpoch = epoch
         lastUnavailableMessage = nil
+        lastActionFailure = nil
         view.toolTip = nil
         view.setAccessibilityLabel(nil)
 
@@ -281,6 +288,9 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     }
 
     private func localizedUnavailableDescription(_ raw: String) -> String {
+        if raw == String(describing: ProgramRuntimeError.missingActionString) {
+            return StudioText[.deskActionMissingValue]
+        }
         if raw.contains("resources") || raw.contains("resourceLimit") {
             return StudioText[.deskWidgetPreparationFailed]
         }
@@ -288,6 +298,50 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             return StudioText[.deskPreviewUnavailable]
         }
         return StudioText[.deskWidgetUnavailable]
+    }
+
+    /// The exact source picture was accepted before Main issues this release. Ordinary newer frames are legal.
+    func issueClickToken() -> DeskWidgetClickToken? {
+        precondition(Thread.isMainThread)
+        guard !isClosing, !isClosed, let latestPresented, lastAcceptedEpoch == destinationEpoch else { return nil }
+        let next = lastIssuedClickSerial.addingReportingOverflow(1)
+        guard !next.overflow else { return nil }
+        lastIssuedClickSerial = next.partialValue
+        return DeskWidgetClickToken(session: sessionID, epoch: destinationEpoch,
+                                    sourceGeneration: latestPresented.scene.generation, serial: next.partialValue)
+    }
+
+    func sendPrimaryRelease(at point: SkinPoint) {
+        guard let token = issueClickToken() else { return }
+        let hostOwner = owner
+        executor.async { [hostOwner] in
+            hostOwner.primaryRelease(at: point, token: token) { returnedToken, effects in
+                DispatchQueue.main.async { [weak self] in
+                    self?.handleEffects(effects, token: returnedToken, issuedToken: token)
+                }
+            }
+        }
+    }
+
+    /// A batch uses its original issued token, not the latest CPU/clock frame's generation.
+    /// Owner and Main queues are FIFO; consume before calling services, including a service that reenters Main.
+    func handleEffects(_ effects: [ProgramEffect], token: DeskWidgetClickToken, issuedToken: DeskWidgetClickToken) {
+        precondition(Thread.isMainThread)
+        guard !isClosing, !isClosed, token == issuedToken, token.session == sessionID,
+              token.epoch == destinationEpoch, token.epoch == lastAcceptedEpoch,
+              token.sourceGeneration <= lastPresentedGeneration,
+              token.serial > lastConsumedClickSerial, token.serial <= lastIssuedClickSerial else { return }
+        lastConsumedClickSerial = token.serial
+        lastActionFailure = nil
+        for effect in effects {
+            guard !isClosing, !isClosed, token.session == sessionID, token.epoch == destinationEpoch else { break }
+            if let message = actionServices.perform(effect, directory: directory) {
+                lastActionFailure = message
+                view.toolTip = message
+                view.setAccessibilityLabel(message)
+                Log.write(message, level: .warning, source: source.entry)
+            }
+        }
     }
 
     // MARK: NSWindowDelegate
@@ -440,9 +494,10 @@ final class DeskWidgetHostOwner {
         host?.drawFirstFrame()
     }
 
-    func primaryPress(at point: SkinPoint, expectedGeneration: UInt64) {
+    func primaryPress(at point: SkinPoint, expectedGeneration: UInt64, epoch: UInt64? = nil) {
         precondition(executor.isCurrent)
         guard !isClosed, let host, host.scene?.generation == expectedGeneration else { return }
+        if let epoch, epoch != currentEpoch { return }
         host.primaryPress(at: point)
     }
 
@@ -451,6 +506,18 @@ final class DeskWidgetHostOwner {
         guard !isClosed, let host else { return }
         if let expectedGeneration, host.scene?.generation != expectedGeneration { return }
         host.primaryRelease(at: point)
+    }
+
+    func primaryRelease(at point: SkinPoint, token: DeskWidgetClickToken,
+                        onEffects: (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
+        precondition(executor.isCurrent)
+        guard !isClosed, let host else { return }
+        guard token.epoch == currentEpoch, token.sourceGeneration == host.scene?.generation,
+              token.sourceGeneration == host.presented?.scene.generation else {
+            host.primaryRelease(at: nil)
+            return
+        }
+        if let effects = host.primaryRelease(at: point), !effects.isEmpty { onEffects(token, effects) }
     }
 
     func notifyPowerChange() {
@@ -517,9 +584,10 @@ final class DeskWidgetView: NSView {
         // Contract: Carry Main's current accepted presentation; origin added only once inside owner.
         if let presented = controller.latestPresented {
             let gen = presented.scene.generation
+            let epoch = controller.lastAcceptedEpoch
             let hostOwner = controller.owner
             controller.executor.async { [hostOwner] in
-                hostOwner.primaryPress(at: pt, expectedGeneration: gen)
+                hostOwner.primaryPress(at: pt, expectedGeneration: gen, epoch: epoch)
             }
         }
     }
@@ -558,13 +626,7 @@ final class DeskWidgetView: NSView {
             dragStart = nil
             let local = convert(event.locationInWindow, from: nil)
             let pt = SkinPoint(x: Double(local.x), y: Double(local.y))
-            if let presented = controller.latestPresented {
-                let gen = presented.scene.generation
-                let hostOwner = controller.owner
-                controller.executor.async { [hostOwner] in
-                    hostOwner.primaryRelease(at: pt, expectedGeneration: gen)
-                }
-            }
+            controller.sendPrimaryRelease(at: pt)
         }
     }
 

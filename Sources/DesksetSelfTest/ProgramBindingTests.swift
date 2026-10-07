@@ -67,6 +67,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     runProgramNumericTests(t)
     runProgramFontSizeTests(t)
     runProgramSystemDataTests(t)
+    runProgramClickEffectTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
                             ProgramDeclaration(name: "caption", kind: .computed,
@@ -1699,6 +1700,173 @@ private func runProgramSystemDataTests(_ t: TestRunner) {
         let sNeg = extremeSampler.sample(from: extremeFixture, for: extremeNeeded, at: -1e20)
         t.check(sNeg != nil)
         t.equal(extremeFixture.cpuCalls, 2)
+    }
+}
+
+private func runProgramClickEffectTests(_ t: TestRunner) {
+    let point = SkinPoint(x: 6, y: 6)
+    let environment = bindingEnvironment(false)
+    let source = #"widget { variable n = 0; computed twice = n * 2; Text("{n}").size(80, 30).onClick { n = n + 1; copy("{twice}"); n = n + 1; open("https://example.com/?n={n}"); copy("{cpu.usage}%") } }"#
+    let input = ProgramSystemInput(cpuUsage: 42)
+    let expected: [ProgramEffect] = [.copy("2"), .open("https://example.com/?n=2"), .copy("42%")]
+
+    t.suite("Desk: click effects: ordered arguments capture preceding assignments and computed values") {
+        let program = try checkedBindingProgram(t, source)
+        t.check(program.root.onClick == nil)
+        t.equal(program.root.onClickActions?.count, 5)
+        var runtime = try ProgramRuntime(program: program)
+        t.equal(runtime.neededSystemProperties, [])
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(bindingStrings(first), ["0"])
+        t.equal(runtime.clockPrecision, nil)
+        t.equal(runtime.neededSystemProperties(clickAt: point), [.cpuUsage])
+        t.equal(runtime.neededSystemProperties(clickAt: SkinPoint(x: -1, y: 6)), [])
+        guard let clicked = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+            environment: environment, systemInput: input, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(clicked.effects, expected)
+        t.equal(bindingStrings(clicked.scene), ["2"])
+        t.equal(runtime.clockPrecision, nil, "action-only data does not schedule ongoing sampling")
+        t.equal(runtime.neededSystemProperties, [])
+        t.check(try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+            environment: environment, systemInput: input, measure: bindingMeasure) == nil)
+        let next = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(bindingStrings(next), ["2"], "redraw does not rerun user actions")
+
+        let legacy = try checkedBindingProgram(t, #"widget { variable n = 0; Text("{n}").onClick { n = 1 } }"#)
+        t.equal(legacy.root.onClick?.count, 1)
+        t.check(legacy.root.onClickActions == nil)
+        var old = try ProgramRuntime(program: legacy)
+        let oldFirst = try old.project(environment: environment, measure: bindingMeasure)
+        let oldNext = try old.click(at: point, expectedGeneration: oldFirst.generation,
+                                   environment: environment, measure: bindingMeasure)
+        t.equal(oldNext.map(bindingStrings), ["1"])
+    }
+
+    t.suite("Desk: click effects: failed projection and legacy calls commit no variables or effects") {
+        let program = try checkedBindingProgram(t, source)
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        bindingFailure(t, .unhandledClickEffects) {
+            _ = try runtime.click(at: point, expectedGeneration: first.generation,
+                                  environment: environment, systemInput: input, measure: bindingMeasure)
+        }
+        t.equal(runtime.generation, first.generation)
+        do {
+            _ = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+                environment: environment, systemInput: input) { _, _, _ in throw BindingFixtureFailure.measurement }
+            t.check(false, "measurement failure must not return an executable effect batch")
+        } catch { t.equal(error as? BindingFixtureFailure, .measurement) }
+        t.equal(runtime.generation, first.generation)
+        for missed in [SkinPoint(x: -1, y: 6), SkinPoint(x: .nan, y: 6)] {
+            t.check(try runtime.clickWithEffects(at: missed, expectedGeneration: first.generation,
+                environment: environment, systemInput: input, measure: bindingMeasure) == nil)
+        }
+        guard let retried = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+            environment: environment, systemInput: input, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(retried.effects, expected, "neither failed path applies the earlier increment")
+        t.equal(bindingStrings(retried.scene), ["2"])
+
+        let dateProgram = try checkedBindingProgram(t,
+            #"widget { variable n = 0; Text("{n}").onClick { n = 1; copy("before"); open("{time.now, format: "HH:mm:ss"}") } }"#)
+        var dated = try ProgramRuntime(program: dateProgram)
+        let datedFirst = try dated.project(environment: environment, measure: bindingMeasure)
+        bindingFailure(t, .invalidDateInput) {
+            _ = try dated.clickWithEffects(at: point, expectedGeneration: datedFirst.generation,
+                                          environment: environment, measure: bindingMeasure)
+        }
+        t.equal(dated.generation, datedFirst.generation)
+        let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0),
+                                   timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_US_POSIX"))
+        let recovered = try dated.clickWithEffects(at: point, expectedGeneration: datedFirst.generation,
+            environment: environment, dateInput: date, measure: bindingMeasure)
+        t.equal(recovered?.effects, [.copy("before"), .open("00:00:00")])
+        t.equal(recovered.map { bindingStrings($0.scene) }, ["1"])
+    }
+
+    t.suite("Desk: click effects: direct programs retain strict strings shared limits and hidden hit rules") {
+        let id = ElementID(name: "effect", index: 0)
+        func element(_ actions: [ProgramAction], hidden: Bool = false) -> ProgramElement {
+            ProgramElement(id: id, content: .text(ProgramText(value: .string("Tap"))),
+                           width: .fixed(40), height: .fixed(30), hidden: hidden, onClickActions: actions)
+        }
+        let ambiguous = ProgramElement(id: id, content: .text(ProgramText(value: .string("Tap"))),
+                                       onClick: [], onClickActions: [])
+        bindingFailure(t, .ambiguousClickHandler(id)) {
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Ambiguous", root: ambiguous))
+        }
+        for value in [ProgramExpression.number(1), .boolean(true), .timeNow,
+                      .string(String(repeating: "a", count: ProgramLimits.maximumTextLength + 1))] {
+            for action in [ProgramAction.copy(value), .open(value)] {
+                bindingFailure(t, .invalidExpression) {
+                    _ = try ProgramRuntime(program: WidgetProgram(name: "Wrong argument", root: element([action])))
+                }
+            }
+        }
+        bindingFailure(t, .expressionLimit) {
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Too many actions",
+                root: element(Array(repeating: .copy(.string("A")), count: ProgramLimits.maximumExpressions + 1))))
+        }
+        for root in [element([.copy(.string("hidden"))], hidden: true),
+                     ProgramElement(id: ElementID(name: "parent", index: 1),
+                         content: .column(spacing: 0, align: .left, children: [element([.open(.string("hidden"))])]),
+                         hidden: true)] {
+            var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden", root: root))
+            let scene = try hidden.project(environment: environment, measure: bindingMeasure)
+            t.equal(scene.hitMap.entries.count, 0)
+            t.check(try hidden.clickWithEffects(at: point, expectedGeneration: scene.generation,
+                environment: environment, measure: bindingMeasure) == nil)
+        }
+        var empty = try ProgramRuntime(program: WidgetProgram(name: "Empty handler", root: element([])))
+        let scene = try empty.project(environment: environment, measure: bindingMeasure)
+        let clicked = try empty.clickWithEffects(at: point, expectedGeneration: scene.generation,
+                                                environment: environment, measure: bindingMeasure)
+        t.check(clicked != nil)
+        t.equal(clicked?.effects, [])
+    }
+
+    t.suite("Desk: click effects: catalog drift and unsupported action contexts refuse the complete program") {
+        let changes: [(String, (inout FunctionSpec) -> Void)] = [
+            ("kind", { $0.kind = .field }),
+            ("user-only", { $0.userInitiatedOnly = false }),
+            ("permission", { $0.permission = "music" }),
+            ("pure", { $0.pure = true }),
+            ("context", { $0.onlyInActions = false }),
+            ("block", { $0.takesActionBlock = true }),
+            ("arity", { $0.signatures[0].params.append($0.signatures[0].params[0]) }),
+            ("type", { $0.signatures[0].params[0].type = .plainNumber }),
+            ("label", { $0.signatures[0].params[0].label = "value" }),
+            ("source", { $0.signatures[0].params[0].source = .literal }),
+            ("optional", { $0.signatures[0].params[0].required = false }),
+            ("variadic", { $0.signatures[0].params[0].variadic = true })
+        ]
+        for name in ["copy", "open"] {
+            let checked = deskCheck("widget { Text(\"Tap\").onClick { \(name)(\"A\") } }")
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            guard let index = DeskCatalog.current.functions.firstIndex(where: { $0.name == name }) else {
+                throw BindingFixtureFailure.program
+            }
+            for (label, change) in changes {
+                var catalog = DeskCatalog.current
+                change(&catalog.functions[index])
+                let result = Desk.compile(checked, catalog: catalog)
+                t.check(result.program == nil, "\(name) changed \(label)")
+                t.equal(result.issues.first?.kind, .unsupported, "\(name) changed \(label)")
+            }
+            var catalog = DeskCatalog.current
+            catalog.functions[index].signatures[0].params[0].role = name == "copy" ? .plain : .display
+            t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+        }
+        for source in [#"widget { Text("Tap").onLoad { copy("A") } }"#,
+                       #"widget { Text("Tap").onClick { open(1) } }"#,
+                       #"widget { Text("Tap").onClick { copy("A", "B") } }"#,
+                       #"widget { Text("Tap").onDoubleClick { copy("A") } }"#,
+                       #"widget { Text("Tap").onClick { log("A") } }"#] {
+            t.check(Desk.compile(deskCheck(source)).program == nil, source)
+        }
+        let displayNumber = deskCheck(#"widget { Text("Tap").onClick { copy(42) } }"#)
+        t.check(displayNumber.diagnostics(.error).isEmpty, deskDescribe(displayNumber))
+        t.equal(Desk.compile(displayNumber).issues.first?.kind, .unsupported,
+                "copy does not silently inherit display-value coercion")
     }
 }
 

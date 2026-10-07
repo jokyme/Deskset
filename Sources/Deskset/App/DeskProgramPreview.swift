@@ -42,6 +42,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
     private(set) var state: State = .checking
     private(set) var scene: WidgetScene?
+    /// Resolved user requests are recorded in the preview, never executed against the Mac.
+    private(set) var recordedEffects: [ProgramEffect] = []
+    var onRecordedEffects: (([ProgramEffect]) -> Void)?
+    private static let recordedEffectLimit = 100 // The existing Studio action log retention.
 
     init(resources: @escaping (DeskSnapshot) -> DeskProgramResources.Input = { _ in .ready([:]) },
          clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
@@ -187,6 +191,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             guard accepts?(candidate) == true else { clear(.checking); return }
             snapshot = candidate
             runtime = next
+            recordedEffects.removeAll()
             canvas.context = DrawContext(fonts: AppFontResolver())
             project()
         } catch { clear(.unavailable(previewMessage(for: error))) }
@@ -231,11 +236,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             let now = dateInput.instant.timeIntervalSince1970
             let systemInput = sampler.sample(from: system, for: needed, at: now)
             let next: WidgetScene
+            var effects: [ProgramEffect] = []
             if let click {
-                guard let clicked = try runtime.click(at: click.point, expectedGeneration: click.generation,
+                guard let clicked = try runtime.clickWithEffects(at: click.point, expectedGeneration: click.generation,
                                                      environment: stamp, images: images, dateInput: dateInput,
                                                      colorInput: input.colors, systemInput: systemInput, measure: measure) else { return }
-                next = clicked
+                next = clicked.scene
+                effects = clicked.effects
             } else {
                 next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, colorInput: input.colors,
                                           systemInput: systemInput, measure: measure)
@@ -245,6 +252,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             let extent = try paintExtent(next)
             let side = max(extent.width, extent.height) * stamp.scale
             guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw PreviewFailure.extent }
+            let nextClockDelay: TimeInterval?
+            if visible, let precision = runtime.clockPrecision {
+                nextClockDelay = try precision.delayToNextBoundary(after: dateInput.instant)
+            } else { nextClockDelay = nil }
             guard accepts?(snapshot) == true else { clear(.checking); return }
             self.runtime = runtime
             lastColors = input.colors
@@ -278,8 +289,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             scrollView.reflectScrolledClipView(scrollView.contentView)
             updateStatus()
             tickScheduler.cancel()
-            if visible, let precision = runtime.clockPrecision {
-                tickScheduler.startClockBoundary(after: try precision.delayToNextBoundary(after: dateInput.instant), for: self)
+            if let nextClockDelay { tickScheduler.startClockBoundary(after: nextClockDelay, for: self) }
+            if !effects.isEmpty {
+                recordedEffects.append(contentsOf: effects)
+                if recordedEffects.count > Self.recordedEffectLimit {
+                    recordedEffects.removeFirst(recordedEffects.count - Self.recordedEffectLimit)
+                }
+                onRecordedEffects?(effects)
             }
         } catch PreviewFailure.extent { clear(.unavailable(StudioText[.deskPreviewTooLarge]), keepingProgram: true) }
         catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
@@ -288,6 +304,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private func previewMessage(for error: Error) -> String {
         if let error = error as? ProgramRuntimeError, case .invalidText = error {
             return StudioText[.deskPreviewInvalidText]
+        }
+        if let error = error as? ProgramRuntimeError, error == .missingActionString {
+            return StudioText[.deskActionMissingValue]
         }
         return String(describing: error)
     }
@@ -348,6 +367,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         if !keepingProgram {
             snapshot = nil
             runtime = nil
+            recordedEffects.removeAll()
         }
         scene = nil
         lastColors = nil
@@ -396,6 +416,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         clear(.closed)
         accepts = nil
         resources = nil
+        onRecordedEffects = nil
         canvas.beforeDrawing = nil
         canvas.onEnvironmentChange = nil
         canvas.onImageFailure = nil

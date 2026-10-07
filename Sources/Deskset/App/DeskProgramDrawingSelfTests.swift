@@ -253,12 +253,84 @@ enum DeskProgramDrawingSelfTests {
         }
 
         pointerTests(t)
+        actionOwnerTests(t)
         failureTests(t)
         imageOwnerTests(t)
         for worker in [false, true] {
             t.suite("App: Desk bitmap owner: real \(worker ? "worker" : "main") executor retains and releases its complete bundle") {
                 try liveOwner(t, worker: worker)
             }
+        }
+    }
+
+    private static func actionOwnerTests(_ t: AppTestRunner) {
+        t.suite("App: Desk click actions: bitmap owner returns ordered effects after successful preflight") {
+            let source = #"widget { variable n = 0; computed caption = "{n}"; Text(caption).font(20).size(160, 40).onClick { n = n + 1; copy(caption); open("https://example.com/{n}"); copy("done😀") } }"#
+            let program = try compile(source, t), input = try ownerInput(), time = try ownerClock()
+            let view = NSView(), provider = BitmapProvider(view)
+            let host = try DeskProgramHost(program: program, executor: time, provider: provider, input: input, clock: time.clock)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+            let inside = SkinPoint(x: 20, y: 20)
+            t.check(host.primaryRelease(at: inside) == nil, "release without a press has no requests")
+            host.primaryPress(at: inside)
+            t.check(host.primaryRelease(at: SkinPoint(x: 300, y: 20)) == nil, "a miss has no requests")
+            host.primaryPress(at: inside)
+            let effects = host.primaryRelease(at: inside)
+            t.equal(effects, [.copy("1"), .open("https://example.com/1"), .copy("done😀")])
+            t.equal(textValues(host), ["1"], "preceding assignments are visible to computed action arguments")
+            t.check(host.scene?.generation != host.presented?.scene.generation,
+                    "requests are frozen after successful preflight without waiting for the new bitmap")
+            t.check(host.primaryRelease(at: inside) == nil, "the press was consumed once")
+            host.frames.runLoopTurn(.beforeWaiting)
+            host.take(facts(input, pointer: false), input: input)
+            host.primaryPress(at: inside)
+            t.check(host.primaryRelease(at: inside) == nil, "ineligible pointer cannot produce requests")
+            host.take(facts(input), input: input); host.primaryPress(at: inside)
+            host.refresh()
+            t.check(host.primaryRelease(at: inside) == nil, "an owner scene ahead of the actual bitmap rejects stale hit input")
+            t.equal(textValues(host), ["1"], "ordinary re-projection does not replay actions")
+        }
+
+        t.suite("App: Desk click actions: failed bitmap-owner projection returns no requests") {
+            let source = #"widget { variable size = 20; Text("Fail safely").font(size).size(160, 40).onClick { size = 0; copy("must not escape") } }"#
+            let input = try ownerInput(), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+            let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider,
+                                          input: input, clock: time.clock)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+            host.primaryPress(at: SkinPoint(x: 20, y: 20))
+            t.check(host.primaryRelease(at: SkinPoint(x: 20, y: 20)) == nil)
+            t.check(host.scene == nil && host.presented == nil, "failed layout retains no actionable picture")
+            host.refresh()
+            t.equal(textValues(host), ["Fail safely"], "the failed font assignment did not commit")
+        }
+
+        t.suite("App: Desk click actions: invalid owner clock boundary rejects variables and requests before commit") {
+            let source = #"widget { variable n = 0; Row { Text(n).font(20).size(80, 40).onClick { n = n + 1; copy("{n}") }; Text(cpu.usage).font(20).size(80, 40) } }"#
+            let input = try ownerInput(), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+            let system = DrawingSystemFixture()
+            var instant = time.clock.now()
+            let clock = SkinClock(now: { instant }, uptime: time.clock.uptime, timeZone: time.clock.timeZone)
+            let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider,
+                                          input: input, clock: clock, system: system)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+            t.equal(host.clockPrecision, .second)
+            // VirtualTimeExecutor has no live run loop: SkinFrameProducer.start queues one immediate join.
+            // Finish that lifecycle work before checking the independent future CPU clock lease.
+            t.equal(time.nextDue, time.now, "the initial pending item is the immediate frame-producer registration")
+            t.equal(time.runUntilIdle(), 1, "only the immediate run-loop registration is drained")
+            t.equal(time.pendingCount, 1, "the future CPU boundary remains registered")
+            t.close((time.nextDue ?? -1) - time.now, 0.75, "the CPU timer still targets the next second")
+            host.primaryPress(at: SkinPoint(x: 20, y: 20))
+            instant = Date(timeIntervalSince1970: .nan)
+            t.check(host.primaryRelease(at: SkinPoint(x: 20, y: 20)) == nil)
+            t.equal(host.state, .unavailable(String(describing: ProgramRuntimeError.invalidDateInput)))
+            t.equal(time.pendingCount, 0, "the invalid boundary cancels the actual CPU clock lease")
+            instant = time.clock.now()
+            host.refresh()
+            t.equal(textValues(host).first, "0", "the delay failure cannot commit the earlier assignment")
         }
     }
 

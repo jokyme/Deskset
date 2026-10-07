@@ -72,6 +72,7 @@ enum DeskWidgetWindowSelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
+        clickActionTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -556,6 +557,201 @@ enum DeskWidgetWindowSelfTests {
                 widgetWin.latestPresented != nil && widgetWin.lastAcceptedEpoch == restoredEpoch
             }, "current epoch valid presentation accepted and restored latestPresented")
             t.equal(widgetWin.lastUnavailableMessage, nil, "lastUnavailableMessage cleared on valid presentation")
+        }
+    }
+
+    private final class ActionRecorder {
+        var calls: [String] = []
+        var mainThreads: [Bool] = []
+        var opensSucceed = true
+        var onCopy: ((String) -> Void)?
+        var services: DeskProgramActionServices {
+            DeskProgramActionServices(resolver: DeskProgramOpenResolver(application: { _ in nil },
+                applicationNamed: { _ in nil }, exists: { _ in false }), copy: { text in
+                    self.mainThreads.append(Thread.isMainThread)
+                    self.calls.append("copy:" + text)
+                    self.onCopy?(text)
+                    return true
+                }, open: { url in
+                    self.mainThreads.append(Thread.isMainThread)
+                    self.calls.append("open:" + url.absoluteString)
+                    return self.opensSucceed
+                })
+        }
+    }
+
+    private static let actionSource = #"widget { variable n = 0; computed caption = "{n}"; Text(caption).font(20).size(160, 40).onClick { n = n + 1; copy(caption); open("https://example.com/{n}"); copy("done😀") } }"#
+
+    private static func actionFixture(_ t: AppTestRunner, recorder: ActionRecorder,
+                                      executor: SkinExecutor = MainSkinExecutor.shared) throws -> DeskWidgetWindowController {
+        let f = try fixture(t, text: actionSource)
+        let result = Desk.compile(Desk.check(Desk.parse(actionSource, fileName: "Main.desk")))
+        t.check(result.issues.isEmpty, "\(result.issues)")
+        guard let program = result.program else { throw Failure.fixture }
+        let sourceID = UUID(), instanceID = UUID()
+        let source = DeskWidgetSourceState(id: sourceID, entry: sourceID.uuidString.lowercased() + "/Main.desk")
+        let instance = DeskWidgetInstanceState(id: instanceID, sourceID: sourceID)
+        let directory = f.root.appendingPathComponent("Widgets").appendingPathComponent(sourceID.uuidString.lowercased())
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(actionSource.utf8).write(to: directory.appendingPathComponent("Main.desk"))
+        try f.app.state.registerDeskInstallation(source: source, instance: instance)
+        let widget = DeskWidgetWindowController(source: source, instance: instance, directory: directory,
+                                               program: program, prepared: nil, app: f.app, executor: executor,
+                                               actionServices: recorder.services)
+        t.check(AppSelfTest.spin(timeout: 10) { widget.isStarted && widget.latestPresented != nil })
+        let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                             scale: widget.window.backingScaleFactor)
+        guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
+        // Existing controlled-facts fixture: no visible window is ordered in during an automated action test.
+        let facts = SkinWindowFacts(frame: widget.window.frame, isVisible: true, isOrderedIn: true,
+            scale: widget.window.backingScaleFactor, colorSpace: space, appearance: input.environment.appearance.name,
+            takesPointer: true, sequence: 100, panelGeneration: widget.destinationEpoch)
+        var delivered = false
+        executor.async { [owner = widget.owner] in
+            owner.take(facts, input: input)
+            owner.host?.frames.runLoopTurn(.beforeWaiting)
+            DispatchQueue.main.async { delivered = true }
+        }
+        t.check(AppSelfTest.spin(timeout: 10) { delivered && widget.latestPresented != nil })
+        return widget
+    }
+
+    private static func frozenActionBatch(_ widget: DeskWidgetWindowController) throws -> (DeskWidgetClickToken, [ProgramEffect]) {
+        guard let token = widget.issueClickToken() else { throw Failure.fixture }
+        let point = SkinPoint(x: 20, y: 20)
+        widget.owner.primaryPress(at: point, expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+        var batch: (DeskWidgetClickToken, [ProgramEffect])?
+        widget.owner.primaryRelease(at: point, token: token) { batch = ($0, $1) }
+        guard let batch else { throw Failure.fixture }
+        return batch
+    }
+
+    private static func clickActionTests(_ t: AppTestRunner) {
+        t.suite("App: Desk click actions: worker release delivers exactly once on Main") {
+            let worker = SkinThreadExecutor(name: "Desk click action worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: worker)
+            created = widget
+            guard let presented = widget.latestPresented else { throw Failure.fixture }
+            let point = SkinPoint(x: 20, y: 20), epoch = widget.lastAcceptedEpoch
+            worker.async { [owner = widget.owner] in
+                owner.primaryPress(at: point, expectedGeneration: presented.scene.generation, epoch: epoch)
+            }
+            widget.sendPrimaryRelease(at: point)
+            t.check(AppSelfTest.spin(timeout: 10) { recorder.calls.count == 3 })
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:done😀"])
+            t.check(recorder.mainThreads.allSatisfy { $0 }, "every injected service executes on Main")
+            // A release without a new press must not execute any service, even if a newer frame was accepted.
+            widget.sendPrimaryRelease(at: point)
+            var drained = false
+            worker.async { DispatchQueue.main.async { drained = true } }
+            t.check(AppSelfTest.spin(timeout: 10) { drained })
+            t.equal(recorder.calls.count, 3)
+        }
+
+        t.suite("App: Desk click actions: newer accepted frames keep captured effects and duplicate batches are consumed") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            let (token, effects) = try frozenActionBatch(widget)
+            widget.owner.host?.refresh()
+            widget.owner.host?.frames.runLoopTurn(.beforeWaiting)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                (widget.latestPresented?.scene.generation ?? 0) > token.sourceGeneration
+            }, "a normal later projection is accepted before the delayed action batch")
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:done😀"],
+                    "resolved strings retain the clicked transaction, not a later frame")
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(recorder.calls.count, 3, "duplicate callback cannot execute a batch twice")
+            guard let another = widget.issueClickToken() else { throw Failure.fixture }
+            widget.handleEffects(effects, token: another, issuedToken: token)
+            t.equal(recorder.calls.count, 3, "returned token must equal the token captured by Main's input closure")
+        }
+
+        t.suite("App: Desk click actions: destination epoch and close cancel delayed batches") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            let (token, effects) = try frozenActionBatch(widget)
+            let appearance = widget.window.effectiveAppearance
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            guard let alternate = NSAppearance(named: dark ? .aqua : .darkAqua) else { throw Failure.fixture }
+            widget.window.appearance = alternate
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch != token.epoch)
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.check(recorder.calls.isEmpty, "the destination transition invalidates pending user requests")
+            widget.close(deactivate: false)
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.check(recorder.calls.isEmpty, "closing invalidates pending requests before owner ACK")
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.check(recorder.calls.isEmpty)
+            let closeRecorder = ActionRecorder(), closingWidget = try actionFixture(t, recorder: closeRecorder)
+            let (closeToken, closeEffects) = try frozenActionBatch(closingWidget)
+            closingWidget.close(deactivate: false)
+            closingWidget.handleEffects(closeEffects, token: closeToken, issuedToken: closeToken)
+            t.check(closeRecorder.calls.isEmpty, "close alone cancels an otherwise valid current-epoch batch")
+            t.check(AppSelfTest.spin(timeout: 10) { closingWidget.isClosed })
+        }
+
+        t.suite("App: Desk click actions: failed open gives localized feedback and later requests still run") {
+            let recorder = ActionRecorder()
+            recorder.opensSucceed = false
+            let widget = try actionFixture(t, recorder: recorder)
+            let (token, effects) = try frozenActionBatch(widget)
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:done😀"])
+            t.equal(widget.lastActionFailure, StudioText.format(.deskActionOpenFailed, "https://example.com/1"))
+            t.equal(widget.view.toolTip, widget.lastActionFailure)
+        }
+
+        t.suite("App: Desk click actions: service reentrant close suppresses later requests and replay") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder)
+            let (token, effects) = try frozenActionBatch(widget)
+            recorder.onCopy = { [weak widget] _ in widget?.close(deactivate: false) }
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(recorder.calls, ["copy:1"], "a service-triggered close stops the remaining open/copy requests")
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(recorder.calls, ["copy:1"], "the batch was consumed before the reentrant service call")
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+        }
+
+        t.suite("App: Desk click actions: resolver uses fake targets and services without opening the Mac") {
+            let directory = t.temporaryDirectory("desk-action-targets")
+            let file = directory.appendingPathComponent("notes.txt")
+            let folder = directory.appendingPathComponent("Folder")
+            let app = directory.appendingPathComponent("Example.app")
+            var bundleLookups: [String] = [], nameLookups: [String] = []
+            let resolver = DeskProgramOpenResolver(application: { name in
+                bundleLookups.append(name); return name == "com.example.app" ? app : nil
+            }, applicationNamed: { name in
+                nameLookups.append(name); return name == "Example" ? app : nil
+            }, exists: { [file.path, folder.path].contains($0.path) })
+            t.equal(resolver.resolve("notes.txt", directory: directory), file)
+            t.equal(resolver.resolve(folder.path, directory: directory), folder)
+            t.equal(resolver.resolve(file.absoluteString, directory: directory), file)
+            t.equal(resolver.resolve("com.example.app", directory: directory), app)
+            t.equal(resolver.resolve("Example", directory: directory), app)
+            t.equal(resolver.resolve("https://example.com/page", directory: directory)?.absoluteString, "https://example.com/page")
+            for invalid in ["", "   ", "https://", "https:///?x=1", "missing/file.txt", "bad\0target"] {
+                t.check(resolver.resolve(invalid, directory: directory) == nil, "invalid target: \(invalid)")
+            }
+            t.check(bundleLookups.contains("com.example.app") && nameLookups.contains("Example"))
+            var copied: [String] = [], opened: [URL] = []
+            let services = DeskProgramActionServices(resolver: resolver, copy: { copied.append($0); return false },
+                                                     open: { opened.append($0); return true })
+            t.equal(services.perform(.copy("text😀"), directory: directory), StudioText[.deskActionCopyFailed])
+            t.equal(copied, ["text😀"])
+            t.equal(services.perform(.open("notes.txt"), directory: directory), nil)
+            t.equal(opened, [file])
+            t.equal(services.perform(.open("missing/file.txt"), directory: directory),
+                    StudioText.format(.deskActionOpenFailed, "missing/file.txt"))
+            t.equal(opened, [file], "an unresolved target never reaches even the fake opener")
         }
     }
 }

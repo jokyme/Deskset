@@ -141,6 +141,9 @@ enum StudioText {
         case deskWidgetInstallationFailed = "widget.installFailed"
         case deskWidgetPreparationFailed = "widget.prepareFailed"
         case deskWidgetInvalidFile = "widget.invalidFile"
+        case deskActionCopyFailed = "desk.action.copyFailed"
+        case deskActionOpenFailed = "desk.action.openFailed"
+        case deskActionMissingValue = "desk.action.missingValue"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -752,6 +755,10 @@ enum StudioText {
         .deskWidgetInstallationFailed: ("Cannot place on desktop: %@", "无法放到桌面：%@"),
         .deskWidgetPreparationFailed: ("Cannot prepare widget resources: %@", "无法准备小组件资源：%@"),
         .deskWidgetInvalidFile: ("Only .desk files can be placed on the desktop.", "只有 .desk 文件可以放到桌面。"),
+        .deskActionCopyFailed: ("Cannot copy this text to the clipboard.", "无法将这段文字复制到剪贴板。"),
+        .deskActionOpenFailed: ("Cannot open this target: %@", "无法打开此目标：%@"),
+        .deskActionMissingValue: ("The click action needs an available text value. Check its data or provide a fallback.",
+                                  "点击动作需要可用的文字值。请检查数据或提供回退值。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),

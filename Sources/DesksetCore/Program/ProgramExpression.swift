@@ -197,6 +197,13 @@ struct ProgramExpressionValidation {
         guard target.type == value.type else { throw ProgramRuntimeError.invalidAssignment(index) }
     }
 
+    mutating func validateAction(_ action: ProgramAction) throws {
+        switch action {
+        case .assign(let assignment): try validateAssignment(assignment)
+        case .copy(let expression), .open(let expression): try validateText(expression)
+        }
+    }
+
     private mutating func register(_ expression: ProgramExpression) throws {
         var pending = [(expression, 1)]
         while let (value, depth) = pending.popLast() {
@@ -329,7 +336,7 @@ struct ProgramExpressionValidation {
 
 /// A local evaluation transaction. Only variables survive a successful scene publication; computed values are
 /// pulled once per projection or assignment. Failed startup, text measurement or layout discards this value.
-struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
+struct ProgramExpressionEvaluation: ProgramActionTarget {
     private struct Value {
         let scalar: ProgramScalar
         var precision: ProgramClockPrecision? = nil
@@ -382,6 +389,14 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
 
     mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar {
         try evaluate(expression, depth: 1).scalar
+    }
+
+    mutating func resolveActionString(_ expression: ProgramExpression) throws -> String {
+        let scalar = try evaluate(expression, depth: 1).scalar
+        if scalar == .missing(.string) { throw ProgramRuntimeError.missingActionString }
+        guard let value = scalar.text,
+              value.text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
+        return value.text
     }
 
     mutating func setProgramVariable(_ value: ProgramScalar, at index: Int) throws {

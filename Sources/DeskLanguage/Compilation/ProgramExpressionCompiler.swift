@@ -51,6 +51,16 @@ struct ProgramExpressionCompiler {
         return ProgramAssignment(declaration: index, value: try lower(syntax.value.node, depth: 1))
     }
 
+    mutating func actionString(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked action argument type")
+        }
+        guard type == .string else {
+            throw issue(.unsupported, node, "Copy and open require a checked String expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
         guard type == .string || type == .date || type.flatMap(numberDimension) != nil else {

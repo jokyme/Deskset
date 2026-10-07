@@ -103,9 +103,10 @@ final class DeskProgramHost {
             }
         }
 
-        func project(click: SkinPoint? = nil) {
+        @discardableResult
+        func project(click: SkinPoint? = nil) -> [ProgramEffect]? {
             precondition(executor.isCurrent)
-            guard !isClosed, !projecting else { return }
+            guard !isClosed, !projecting else { return nil }
             projecting = true
             defer { projecting = false }
             scheduler.cancel()
@@ -129,11 +130,13 @@ final class DeskProgramHost {
                 }
                 var candidate = runtime
                 let next: WidgetScene
+                var effects: [ProgramEffect] = []
                 if let click {
-                    guard let current = scene, let value = try candidate.click(at: click, expectedGeneration: current.generation,
+                    guard let current = scene, let value = try candidate.clickWithEffects(at: click, expectedGeneration: current.generation,
                         environment: input.environment, images: prepared?.images ?? [:], dateInput: date,
-                        colorInput: input.colors, systemInput: systemInput, measure: measure) else { arm(after: date.instant); return }
-                    next = value
+                        colorInput: input.colors, systemInput: systemInput, measure: measure) else { arm(after: date.instant); return nil }
+                    next = value.scene
+                    effects = value.effects
                 } else {
                     next = try candidate.project(environment: input.environment, images: prepared?.images ?? [:],
                         dateInput: date, colorInput: input.colors, systemInput: systemInput, measure: measure)
@@ -143,11 +146,17 @@ final class DeskProgramHost {
                 let extent = try DeskProgramViewport.extent(next)
                 let side = max(extent.width, extent.height) * input.environment.scale
                 guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw Failure.extent }
+                let nextClockDelay: TimeInterval?
+                if visible, let precision = candidate.clockPrecision {
+                    nextClockDelay = try precision.delayToNextBoundary(after: date.instant)
+                } else { nextClockDelay = nil }
                 runtime = candidate
                 scene = next; viewport = extent; cycle = nextCycle.partialValue; state = .ready
                 frames.setNeedsFrame()
-                arm(after: date.instant)
-            } catch { fail(error) }
+                if let nextClockDelay { scheduler.startClockBoundary(after: nextClockDelay, for: self) }
+                // The source hit was already presented. A later coalesced redraw is not an action replay or ACK.
+                return state == .ready && click != nil ? effects : nil
+            } catch { fail(error); return nil }
         }
 
         func arm(after instant: Date) {
@@ -306,15 +315,18 @@ final class DeskProgramHost {
             handling: .leftUp, images: nil)?.elementID
     }
 
-    func primaryRelease(at point: SkinPoint?) {
+    /// Returns frozen requests only after the entire click and host extent/resource preflight succeed.
+    /// The Main adapter owns external execution; a future bitmap failure cannot undo an executed request.
+    @discardableResult
+    func primaryRelease(at point: SkinPoint?) -> [ProgramEffect]? {
         let owner = current
         let press = owner.primaryPress
         owner.primaryPress = nil
         guard owner.pointerEligible, let point, point.x.isFinite, point.y.isFinite, let press, let value = owner.presented,
-              value.scene.generation == owner.scene?.generation else { return }
+              value.scene.generation == owner.scene?.generation else { return nil }
         let mapped = SkinPoint(x: point.x + value.origin.x, y: point.y + value.origin.y)
-        guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: .leftUp, images: nil)?.elementID == press else { return }
-        owner.project(click: mapped)
+        guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: .leftUp, images: nil)?.elementID == press else { return nil }
+        return owner.project(click: mapped)
     }
 
     /// Completes synchronously on the executor. Main may then tear down its provider/window; the executor is shared.

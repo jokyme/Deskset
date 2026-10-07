@@ -57,6 +57,20 @@ internal enum ActionExecutor {
         try target.setProgramVariable(value, at: assignment.declaration)
     }
 
+    /// Resolve one ordered click statement without executing external services. Effect arguments observe all
+    /// preceding assignments and are frozen before the caller attempts its scene projection transaction.
+    static func perform<T: ProgramActionTarget>(_ action: ProgramAction, on target: inout T) throws -> ProgramEffect? {
+        switch action {
+        case .assign(let assignment):
+            try perform(assignment, on: &target)
+            return nil
+        case .copy(let expression):
+            return .copy(try target.resolveActionString(expression))
+        case .open(let expression):
+            return .open(try target.resolveActionString(expression))
+        }
+    }
+
     private static func lower(_ operation: ActionCatalog.LocalOperation, args: [String],
                               literal: Set<Int>) -> ResolvedLocalAction {
         func arg(_ i: Int) -> String { i < args.count ? args[i] : "" }
@@ -128,4 +142,9 @@ internal enum ActionExecutor {
 internal protocol ProgramAssignmentTarget {
     mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar
     mutating func setProgramVariable(_ value: ProgramScalar, at declaration: Int) throws
+}
+
+/// Extends the borrowed local transaction with strict String resolution, not host execution capabilities.
+internal protocol ProgramActionTarget: ProgramAssignmentTarget {
+    mutating func resolveActionString(_ expression: ProgramExpression) throws -> String
 }

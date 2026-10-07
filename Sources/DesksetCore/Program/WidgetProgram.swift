@@ -88,14 +88,17 @@ public struct ProgramElement: Equatable, Sendable {
     public let stroke: ProgramShapeStroke?
     /// Valid only for Rectangle content. Other box decorations are not implied.
     public let cornerRadius: ProgramCornerRadius?
-    /// A local primary click handler. nil has no handler; an empty block still consumes the click.
+    /// A local assignment-only primary click handler. nil has no handler; an empty block still consumes the click.
+    /// Supplying both handler forms is rejected by ProgramRuntime, including two empty blocks.
     public let onClick: [ProgramAssignment]?
+    /// Ordered assignments and frozen host requests. Core never executes the external requests itself.
+    public let onClickActions: [ProgramAction]?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
-                onClick: [ProgramAssignment]? = nil) {
+                onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -110,6 +113,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.stroke = stroke
         self.cornerRadius = cornerRadius
         self.onClick = onClick
+        self.onClickActions = onClickActions
     }
 }
 

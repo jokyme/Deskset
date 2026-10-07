@@ -45,7 +45,7 @@ effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 07
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
 background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	7	FIFO message dispatch to widget host executor owner for lifecycle, fact updates, mouse interactions, and power change notification; not a skin input
-background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	4	presentation callbacks, availability, and close acknowledgments delivered back to main thread; not a skin input
+background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	5	presentation callbacks, availability, close acknowledgments and immutable click-effects batches delivered FIFO to Main; issued session/epoch/serial checked before injected external services
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	2	desktop widget window dragging reads cursor position on main thread; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	2	session identifier generation for window fact tracking; not a skin input
@@ -698,5 +698,7 @@ wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-f
 
 event.notification	Sources/Deskset/App/CodeFileWindowController.swift	4	App-owned document preview system palette/date/wake/power notifications; weak owner, main publication, removed at deinit; no skin action or data read
 zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
+effect.pasteboard	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live copy adapter behind an injected closure; preview records typed effects and tests replace the clipboard operation
+effect.workspace	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live open adapter behind injected target resolver/opener closures; preview records typed effects and tests never launch applications
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramNumberFormatting.swift	1	owner-local formatter receives explicit immutable projection locale; Core reads no current locale

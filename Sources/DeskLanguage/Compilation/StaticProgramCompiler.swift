@@ -7,7 +7,7 @@ struct StaticProgramCompiler {
     private var nextIndex = 0
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
-    private var clickAssignmentCount = 0
+    private var clickActionCount = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
         self.checked = checked
@@ -112,6 +112,7 @@ struct StaticProgramCompiler {
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         var onClick: [ProgramAssignment]?
+        var onClickActions: [ProgramAction]?
         for modifier in call.modifiers {
             if modifier.name.token.text == "font" {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
@@ -137,10 +138,17 @@ struct StaticProgramCompiler {
                 continue
             }
             if modifier.name.token.text == "onClick" {
-                guard onClick == nil, facts.component == "Text" || solidShape else {
-                    throw issue(.unsupported, modifier.node, "Only Text and basic shape onClick assignments are implemented")
+                guard onClick == nil, onClickActions == nil, facts.component == "Text" || solidShape else {
+                    throw issue(.unsupported, modifier.node, "Only Text and basic shape onClick actions are implemented")
                 }
-                onClick = try clickAssignments(modifier, kind: facts.kind)
+                let actions = try clickActions(modifier, kind: facts.kind)
+                let assignments = actions.compactMap { action -> ProgramAssignment? in
+                    if case .assign(let assignment) = action { return assignment }
+                    return nil
+                }
+                // Preserve the existing producer contract for assignment-only and empty handlers.
+                if assignments.count == actions.count { onClick = assignments }
+                else { onClickActions = actions }
                 continue
             }
             guard allowedModifiers.contains(modifier.name.token.text), modifier.block == nil else {
@@ -313,10 +321,10 @@ struct StaticProgramCompiler {
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
-                              stroke: stroke, cornerRadius: radius, onClick: onClick)
+                              stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions)
     }
 
-    private mutating func clickAssignments(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAssignment] {
+    private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {
         let identity = checked.tree.id(of: modifier.node)
         guard checked.symbols[identity] == .builtIn(.modifier("onClick")),
               let spec = catalog.modifier(named: "onClick"), spec.appliesTo.contains(kind),
@@ -327,18 +335,47 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, modifier.node, "Missing checked built-in onClick contract")
         }
         let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
-        guard clickAssignmentCount <= limit, onLoad.count <= limit - clickAssignmentCount,
-              block.items.count <= limit - clickAssignmentCount - onLoad.count else {
-            throw issue(.resourceLimit, block.node, "Shared program assignment limit exceeded")
+        guard clickActionCount <= limit, onLoad.count <= limit - clickActionCount,
+              block.items.count <= limit - clickActionCount - onLoad.count else {
+            throw issue(.resourceLimit, block.node, "Shared program action limit exceeded")
         }
-        let assignments = try block.items.map { statement in
-            guard let assignment = AssignmentSyntax(statement) else {
-                throw issue(.unsupported, statement, "Only session variable assignments are implemented in onClick")
-            }
-            return try expressions.assignment(assignment)
+        let actions = try block.items.map { try clickAction($0) }
+        clickActionCount += actions.count
+        return actions
+    }
+
+    private mutating func clickAction(_ statement: PositionedNode) throws -> ProgramAction {
+        if let assignment = AssignmentSyntax(statement) {
+            return .assign(try expressions.assignment(assignment))
         }
-        clickAssignmentCount += assignments.count
-        return assignments
+        guard let call = CallStmtSyntax(statement), call.callee.path.count == 1,
+              let name = call.callee.path.first, name == "copy" || name == "open",
+              call.block == nil, call.modifiers.isEmpty,
+              let arguments = call.arguments?.arguments, arguments.count == 1,
+              arguments[0].label == nil else {
+            throw issue(.unsupported, statement, "Only session variable assignments, copy and open are implemented in onClick")
+        }
+        guard checked.symbols[checked.tree.id(of: call.callee.node)] == .builtIn(.function(name)) else {
+            throw issue(.invalidCheckedModel, call.callee.node, "Missing checked built-in action identity")
+        }
+        guard let function = catalog.function(named: name), function.kind == .action,
+              function.userInitiatedOnly, function.permission == nil, !function.pure, function.onlyInActions,
+              !function.takesActionBlock, function.actionTwin == nil, function.data == nil,
+              function.signatures.count == 1, function.signatures[0].result == nil,
+              function.signatures[0].params.count == 1 else {
+            throw issue(.unsupported, call.callee.node, "Unsupported checked \(name) action catalog contract")
+        }
+        let parameter = function.signatures[0].params[0]
+        guard parameter.name == (name == "copy" ? "text" : "target"),
+              parameter.label == nil, parameter.type == .string, parameter.required,
+              parameter.defaultValue == nil, parameter.range == nil, !parameter.wholeNumber, !parameter.variadic,
+              parameter.sameAs == nil, parameter.facets.isEmpty, parameter.specificity == 0,
+              parameter.role == (name == "copy" ? .display : .plain), parameter.source == .any,
+              !parameter.translatable, parameter.unit == nil else {
+            throw issue(.unsupported, call.callee.node, "Unsupported checked \(name) action parameter contract")
+        }
+        let value = try expressions.actionString(arguments[0].value.node)
+        return name == "copy" ? .copy(value) : .open(value)
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {
@@ -357,9 +394,9 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, modifier.node, "Root onLoad has inconsistent checked reaction identity")
         }
         let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
-        guard clickAssignmentCount <= limit, onLoad.count <= limit - clickAssignmentCount,
-              block.items.count <= limit - clickAssignmentCount - onLoad.count else {
-            throw issue(.resourceLimit, block.node, "Shared program assignment limit exceeded")
+        guard clickActionCount <= limit, onLoad.count <= limit - clickActionCount,
+              block.items.count <= limit - clickActionCount - onLoad.count else {
+            throw issue(.resourceLimit, block.node, "Shared program action limit exceeded")
         }
         for statement in block.items {
             guard let assignment = AssignmentSyntax(statement) else {
