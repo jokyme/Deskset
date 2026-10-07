@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// stops being key and when it closes. Desk documents also show their checked program as a local preview.
 /// A change made on disk meanwhile is picked up when the window
 /// becomes key (a clean buffer) or asked about before it is written over (see `CodeEditorView.onDiskConflict`).
-final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
+final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     let file: URL
     let codeView: CodeEditorView
     unowned let app: AppController
@@ -22,6 +22,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     private(set) var readError: String?
     private(set) var deskDecorations: DeskCodeDecorations?
     private(set) var deskPreview: DeskProgramPreviewController?
+    private(set) var activeStagedLease: DeskWidgetInstallation.Staged?
     private var previewObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
     /// A native list is bound to both the check and its original caret. Previewing entries never edits a buffer.
@@ -37,7 +38,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil,
          previewClock: SkinClock = .live, previewExecutor: SkinExecutor = MainSkinExecutor.shared,
          previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
-         previewColors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:)) throws {
+         previewColors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
+         previewSystem: SystemDataSource = SystemMonitor.shared) throws {
         self.file = file.standardizedFileURL
         self.app = app
         codeView = CodeEditorView(frame: NSRect(x: 0, y: 0, width: 760, height: 580))
@@ -67,7 +69,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             deskChecking = checking
             let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
                 checking?.imageResources(for: snapshot) ?? .pending
-            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale, colors: previewColors) { [weak self] snapshot in
+            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale, colors: previewColors,
+               system: previewSystem) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true
             }
@@ -85,6 +88,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             window.contentViewController = split
             window.contentMinSize = NSSize(width: 700, height: 240)
             window.setContentSize(NSSize(width: 1040, height: 580))
+            let toolbar = NSToolbar(identifier: "DesksetCodeFileToolbar")
+            toolbar.delegate = self
+            toolbar.displayMode = .iconAndLabel
+            window.toolbar = toolbar
             codeView.onCompletionRange = { [weak self] in
                 self?.prepareDeskCompletion() ?? NSRange(location: NSNotFound, length: 0)
             }
@@ -124,6 +131,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
                 }
                 previewObservers.append((center, token))
             }
+            let power = center.addObserver(forName: .desksetPowerSourceDidChange, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifyPowerChange()
+            }
+            previewObservers.append((center, power))
         }
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes
@@ -139,7 +150,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    deinit { for (center, token) in previewObservers { center.removeObserver(token) } }
+    deinit {
+        activeStagedLease?.discard()
+        for (center, token) in previewObservers { center.removeObserver(token) }
+    }
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
         deskPreview?.setVisible(window?.occlusionState.contains(.visible) == true)
@@ -198,6 +212,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        activeStagedLease?.discard()
+        activeStagedLease = nil
         for (center, token) in previewObservers { center.removeObserver(token) }
         previewObservers.removeAll()
         deskCompletion = nil
@@ -330,5 +346,144 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             return true
         }
         return !sample.contains(0)
+    }
+
+    // MARK: Place on Desktop
+
+    enum PlaceOnDesktopError: Error, Equatable {
+        case notDeskFile, documentNotChecked, saveFailed, cancelled
+    }
+
+    static let toolbarPlaceOnDesktop = NSToolbarItem.Identifier("codeFile.placeOnDesktop")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop]
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard id == Self.toolbarPlaceOnDesktop else { return nil }
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.label = StudioText[.placeOnDesktop]
+        item.paletteLabel = item.label
+        item.toolTip = StudioText[.placeOnDesktop]
+        item.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: item.label)
+        item.target = self
+        item.action = #selector(placeOnDesktop(_:))
+        return item
+    }
+
+    @objc func placeOnDesktop(_ sender: Any? = nil) {
+        placeOnDesktop(sourceID: UUID(), instanceID: UUID(), completion: { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                self.showPlaceOnDesktopError(error)
+            }
+        })
+    }
+
+    func placeOnDesktop(sourceID: UUID = UUID(), instanceID: UUID = UUID(),
+                        prepareQueue: DispatchQueue = DispatchQueue.global(qos: .userInitiated),
+                        completion: ((Result<DeskWidgetWindowController, Error>) -> Void)? = nil) {
+        precondition(Thread.isMainThread)
+        guard file.pathExtension.lowercased() == "desk", let checking = deskChecking else {
+            completion?(.failure(PlaceOnDesktopError.notDeskFile))
+            return
+        }
+        if codeView.hasUncommittedChanges && !codeView.commitNow(explicit: true) {
+            completion?(.failure(PlaceOnDesktopError.saveFailed))
+            return
+        }
+
+        let snapshot = checking.snapshot
+        guard snapshot.isChecked, checking.isCurrent(snapshot) else {
+            completion?(.failure(PlaceOnDesktopError.documentNotChecked))
+            return
+        }
+
+        let widgetsRoot = app.widgetsDirectory
+        do {
+            let admitted = try DeskWidgetInstallation.admit(snapshot, file: file, current: checking.isCurrent)
+            prepareQueue.async { [weak self] in
+                var staged: DeskWidgetInstallation.Staged?
+                var prepError: Error?
+                do {
+                    staged = try DeskWidgetInstallation.prepare(admitted, sourceID: sourceID, instanceID: instanceID, root: widgetsRoot)
+                } catch {
+                    prepError = error
+                }
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let checking = self.deskChecking, checking.isCurrent(snapshot), self.window != nil else {
+                        // Contract: If editor window closes before install commit, discard staging
+                        staged?.discard()
+                        completion?(.failure(PlaceOnDesktopError.cancelled))
+                        return
+                    }
+
+                    if let prepError {
+                        completion?(.failure(prepError))
+                        return
+                    }
+
+                    guard let readyStaged = staged else {
+                        completion?(.failure(PlaceOnDesktopError.cancelled))
+                        return
+                    }
+
+                    self.activeStagedLease = readyStaged
+                    defer { self.activeStagedLease = nil }
+
+                    do {
+                        // Contract: Commit inactive state, then activate standalone window from installed entry
+                        let installed = try readyStaged.commit(to: self.app.state, current: checking.isCurrent)
+                        let controller = try self.app.activateDeskWidget(source: installed.source, instance: installed.instance)
+                        completion?(.success(controller))
+                    } catch {
+                        completion?(.failure(error))
+                    }
+                }
+            }
+        } catch {
+            completion?(.failure(error))
+        }
+    }
+
+    private func showPlaceOnDesktopError(_ error: Error) {
+        if case PlaceOnDesktopError.cancelled = error { return }
+        let message: String
+        if let placeErr = error as? PlaceOnDesktopError {
+            switch placeErr {
+            case .notDeskFile: message = StudioText[.deskWidgetInvalidFile]
+            case .documentNotChecked: message = StudioText[.deskPreviewChecking]
+            case .saveFailed: message = StudioText[.codeNotSavedTitle]
+            case .cancelled: return
+            }
+        } else if let installErr = error as? DeskWidgetInstallation.Failure {
+            switch installErr {
+            case .resourceLimit: message = StudioText[.deskWidgetPreparationFailed]
+            default: message = StudioText.format(.deskWidgetInstallationFailed, String(describing: installErr))
+            }
+        } else if let actErr = error as? AppController.DeskWidgetActivationFailure {
+            switch actErr {
+            case .resourceLimit: message = StudioText[.deskWidgetPreparationFailed]
+            default: message = StudioText.format(.deskWidgetInstallationFailed, String(describing: actErr))
+            }
+        } else {
+            message = StudioText.format(.deskWidgetInstallationFailed, error.localizedDescription)
+        }
+        if app.presentsWindows, let window {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = StudioText[.placeOnDesktop]
+            alert.informativeText = message
+            alert.beginSheetModal(for: window)
+        } else {
+            Log.write("\(StudioText[.placeOnDesktop]): \(message)", level: .warning)
+        }
     }
 }

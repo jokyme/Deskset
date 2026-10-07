@@ -66,6 +66,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     runDeskUnitTests(t)
     runProgramNumericTests(t)
     runProgramFontSizeTests(t)
+    runProgramSystemDataTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
                             ProgramDeclaration(name: "caption", kind: .computed,
@@ -439,6 +440,8 @@ func runProgramBindingTests(_ t: TestRunner) {
         t.equal(bindingStrings(try equality.project(environment: bindingEnvironment(false), dateInput: chinese, measure: bindingMeasure)), ["是"], "a zone view is the same instant")
         t.equal(equality.clockPrecision, .second)
         t.close(try ProgramClockPrecision.second.delayToNextBoundary(after: start), 0.75)
+        t.close(try ProgramClockPrecision.twoSeconds.delayToNextBoundary(after: start), 0.75)
+        t.close(try ProgramClockPrecision.twoSeconds.delayToNextBoundary(after: start.addingTimeInterval(0.75)), 2)
         t.close(try ProgramClockPrecision.minute.delayToNextBoundary(after: start), 0.75)
         t.close(try ProgramClockPrecision.minute.delayToNextBoundary(after: start.addingTimeInterval(0.75)), 60)
     }
@@ -536,7 +539,7 @@ func runProgramBindingTests(_ t: TestRunner) {
                        #"widget { variable zone = "UTC"; Text(time.now.in(zone)) }"#,
                        #"widget { Text("{time.now, missing: "–"}") }"#,
                        #"widget { Text("{time.now}").onWake { } }"#,
-                       #"widget { Column { Text("{time.now}"); Text("{cpu.usage}%") } }"#]
+                       "info { permissions: [.music] }\n" + #"widget { Column { Text("{time.now}"); Text("{music.title}") } }"#]
         for source in sources {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
@@ -883,7 +886,7 @@ private func runProgramNumericTests(_ t: TestRunner) {
     t.suite("Desk: numeric: checked dimensions and foreign catalog formats reject the complete program") {
         // The original unit literals are retained unchanged in runDeskUnitTests' positive controls.
         let sources = [#"widget { Text(1°C) }"#, #"widget { Text(1KB / 1s) }"#, #"widget { Text(2s / 1s).margin(1) }"#,
-                       #"widget { variable n = 1%; Text("{n}").margin(1) }"#, #"widget { Text(cpu.usage) }"#,
+                       #"widget { variable n = 1%; Text("{n}").margin(1) }"#, "info { permissions: [.music] }\n" + #"widget { Text(music.title) }"#,
                        #"widget { Text("{time.now < time.now}") }"#,
                        #"widget { Text(2KB / 1s) }"#, #"widget { Text(100% / 50%).offset(x: 1) }"#,
                        #"widget { Text(round(1.2)) }"#, #"widget { variable places = 2; Text("{1, decimals: places}") }"#]
@@ -1219,7 +1222,7 @@ private func runDeskUnitTests(_ t: TestRunner) {
         t.equal(bindingStrings(shown), ["空😀|Yes|1,024 B"])
         let durationDecimals = #"widget { Text("{1s, decimals: 1}") }"#
         for source in [durationDecimals, #"widget { Text(1KB / 1s) }"#, #"widget { Text(1°C) }"#,
-                       #"widget { Text("{time.now < time.now}") }"#, #"widget { Text(cpu.usage) }"#,
+                       #"widget { Text("{time.now < time.now}") }"#, "info { permissions: [.music] }\n" + #"widget { Text(music.title) }"#,
                        #"widget { Text(true ? 1KB : 2KB).margin(1) }"#,
                        #"widget { Text(true ? 1KB : round(2KB)) }"#] {
             let checked = deskCheck(source), result = Desk.compile(checked)
@@ -1336,4 +1339,404 @@ private func runProgramFontSizeTests(_ t: TestRunner) {
         t.check(hiddenScene.drawingItems.isEmpty)
         t.equal(hiddenScene.elements[0].visibility, .hiddenKeepsSpace)
     }
+}
+
+private func runProgramSystemDataTests(_ t: TestRunner) {
+    t.suite("Desk: system data: compilation lowers supported properties to program AST") {
+        let sources: [(String, ProgramSystemProperty)] = [
+            (#"widget { Text("{cpu.usage}%") }"#, .cpuUsage),
+            (#"widget { Text("{cpu.coreCount} cores") }"#, .cpuCoreCount),
+            (#"widget { Text("{memory.used}") }"#, .memoryUsed),
+            (#"widget { Text("{memory.total}") }"#, .memoryTotal),
+            (#"widget { Text("{memory.free}") }"#, .memoryFree),
+            (#"widget { Text("{memory.usage}%") }"#, .memoryUsage),
+            (#"widget { Text("{battery.level}%") }"#, .batteryLevel),
+            (#"widget { Text(battery.charging ? "C" : "D") }"#, .batteryCharging),
+            (#"widget { Text(battery.pluggedIn ? "P" : "B") }"#, .batteryPluggedIn),
+        ]
+        for (source, expectedProp) in sources {
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, "\(source): \(deskDescribe(checked))")
+            let result = Desk.compile(checked)
+            t.check(result.issues.isEmpty, "\(source): \(result.issues)")
+            guard let program = result.program else {
+                t.check(false, "Failed to compile: \(source)")
+                continue
+            }
+            func containsProp(_ expr: ProgramExpression) -> Bool {
+                if case .systemProperty(let p) = expr { return p == expectedProp }
+                switch expr {
+                case .formatNumber(let child, _), .formatDate(let child, _), .not(let child), .negate(let child),
+                     .isMissing(let child), .dateIn(let child, _):
+                    return containsProp(child)
+                case .concatenate(let parts): return parts.contains(where: containsProp)
+                case .add(let l, let r), .subtract(let l, let r), .multiply(let l, let r), .divide(let l, let r),
+                     .remainder(let l, let r), .and(let l, let r), .or(let l, let r), .equal(let l, let r),
+                     .notEqual(let l, let r), .less(let l, let r), .lessOrEqual(let l, let r), .greater(let l, let r),
+                     .greaterOrEqual(let l, let r), .ifMissing(let l, let r):
+                    return containsProp(l) || containsProp(r)
+                case .conditional(let c, let y, let n):
+                    return containsProp(c) || containsProp(y) || containsProp(n)
+                default: return false
+                }
+            }
+            if case .text(let text) = program.root.content {
+                t.check(containsProp(text.value), "AST did not contain \(expectedProp): \(text.value)")
+            } else {
+                t.check(false, "Root content is not text: \(program.root)")
+            }
+        }
+    }
+
+    t.suite("Desk: system data: custom catalog contract deviations reject compilation") {
+        // 1. Alter cpu.usage range
+        var catalog = DeskCatalog.current
+        let cpuNs = catalog.namespaces.firstIndex { $0.name == "cpu" }!
+        let cpuUsageIdx = catalog.namespaces[cpuNs].members.firstIndex { $0.name == "usage" }!
+        catalog.namespaces[cpuNs].members[cpuUsageIdx].range = .none
+        var checked = deskCheck(#"widget { Text("{cpu.usage}%") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 2. Alter cpu.usage cadence
+        catalog = DeskCatalog.current
+        catalog.namespaces[cpuNs].members[cpuUsageIdx].cadence = .periodic(seconds: 2)
+        checked = deskCheck(#"widget { Text("{cpu.usage}%") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 3. Alter cpu.usage lowering
+        catalog = DeskCatalog.current
+        catalog.namespaces[cpuNs].members[cpuUsageIdx].lowering = CatalogData.measureKernel("CPU", ["Processor": "1"])
+        checked = deskCheck(#"widget { Text("{cpu.usage}%") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 4. Alter memory.used displayBase
+        catalog = DeskCatalog.current
+        let memNs = catalog.namespaces.firstIndex { $0.name == "memory" }!
+        let memUsedIdx = catalog.namespaces[memNs].members.firstIndex { $0.name == "used" }!
+        catalog.namespaces[memNs].members[memUsedIdx].displayBase = 1000
+        checked = deskCheck(#"widget { Text("{memory.used}") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 5. Alter memory.total displayBase
+        catalog = DeskCatalog.current
+        let memTotalIdx = catalog.namespaces[memNs].members.firstIndex { $0.name == "total" }!
+        catalog.namespaces[memNs].members[memTotalIdx].displayBase = nil
+        checked = deskCheck(#"widget { Text("{memory.total}") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 6. Alter memory.usage range
+        catalog = DeskCatalog.current
+        let memUsageIdx = catalog.namespaces[memNs].members.firstIndex { $0.name == "usage" }!
+        catalog.namespaces[memNs].members[memUsageIdx].range = .none
+        checked = deskCheck(#"widget { Text("{memory.usage}%") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+
+        // 7. Alter battery.level range
+        catalog = DeskCatalog.current
+        let batNs = catalog.namespaces.firstIndex { $0.name == "battery" }!
+        let batLevelIdx = catalog.namespaces[batNs].members.firstIndex { $0.name == "level" }!
+        catalog.namespaces[batNs].members[batLevelIdx].range = .none
+        checked = deskCheck(#"widget { Text("{battery.level}%") }"#, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty)
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+    }
+
+    t.suite("Desk: system data: evaluation and formatting with ProgramSystemInput") {
+        let systemInput = ProgramSystemInput(
+            cpuUsage: 42.0,
+            cpuCoreCount: 8,
+            memoryUsed: 16 * 1024 * 1024 * 1024,
+            memoryTotal: 32 * 1024 * 1024 * 1024,
+            memoryFree: 16 * 1024 * 1024 * 1024,
+            batteryLevel: 95.0,
+            batteryCharging: true,
+            batteryPluggedIn: true
+        )
+
+        // 1. CPU usage & core count
+        let cpuWidget = try checkedBindingProgram(t, #"widget { Text("{cpu.usage}% on {cpu.coreCount} cores") }"#)
+        var runtime = try ProgramRuntime(program: cpuWidget)
+        let scene = try runtime.project(environment: bindingEnvironment(false), systemInput: systemInput, measure: bindingMeasure)
+        t.equal(bindingStrings(scene), ["42% on 8 cores"])
+        t.equal(runtime.clockPrecision, .second)
+
+        // 2. Memory used / total / free / usage
+        let memWidget = try checkedBindingProgram(t, #"widget { Text("{memory.used, unit: .gib} / {memory.total, unit: .gib} ({memory.usage}%)") }"#)
+        var memRuntime = try ProgramRuntime(program: memWidget)
+        let memScene = try memRuntime.project(environment: bindingEnvironment(false), systemInput: systemInput, measure: bindingMeasure)
+        t.equal(bindingStrings(memScene), ["16.0 GiB / 32.0 GiB (50%)"])
+        t.equal(memRuntime.clockPrecision, .twoSeconds)
+
+        // 3. Battery level, charging, pluggedIn
+        let batWidget = try checkedBindingProgram(t, #"widget { Text("{battery.level}%|{battery.charging}|{battery.pluggedIn}") }"#)
+        var batRuntime = try ProgramRuntime(program: batWidget)
+        let batScene = try batRuntime.project(environment: bindingEnvironment(false), systemInput: systemInput, measure: bindingMeasure)
+        t.equal(bindingStrings(batScene), ["95%|Yes|Yes"])
+        t.equal(batRuntime.clockPrecision, .minute)
+
+        // 4. Missing inputs produce expected defaults
+        let emptyInput = ProgramSystemInput()
+        var emptyRuntime = try ProgramRuntime(program: batWidget)
+        let emptyScene = try emptyRuntime.project(environment: bindingEnvironment(false), systemInput: emptyInput, measure: bindingMeasure)
+        t.equal(bindingStrings(emptyScene), ["–%|No|No"])
+
+        // 5. Only coreCount (cadence .once) produces nil clockPrecision
+        let staticWidget = try checkedBindingProgram(t, #"widget { Text("{cpu.coreCount} cores") }"#)
+        var staticRuntime = try ProgramRuntime(program: staticWidget)
+        let staticScene = try staticRuntime.project(environment: bindingEnvironment(false), systemInput: systemInput, measure: bindingMeasure)
+        t.equal(bindingStrings(staticScene), ["8 cores"])
+        t.equal(staticRuntime.clockPrecision, nil)
+
+        // 6. Pure event properties (battery.charging) have nil clockPrecision (not minute-polled)
+        let eventWidget = try checkedBindingProgram(t, #"widget { Text(battery.charging ? "Charging" : "Discharging") }"#)
+        let eventRuntime = try ProgramRuntime(program: eventWidget)
+        t.equal(eventRuntime.clockPrecision, nil)
+
+        // 7. Invalid numbers (>100% or overflow) produce missing defaults
+        let invalidCpuFixture = CountingSystemFixture(cpu: 150.0, memUsed: 40 * 1024 * 1024 * 1024, memTotal: 16 * 1024 * 1024 * 1024)
+        let invalidInput = ProgramSystemInput.sample(from: invalidCpuFixture)
+        t.equal(invalidInput.cpuUsage, nil)
+        t.equal(invalidInput.memoryUsed, nil)
+        var invalidRuntime = try ProgramRuntime(program: memWidget)
+        let invalidScene = try invalidRuntime.project(environment: bindingEnvironment(false), systemInput: invalidInput, measure: bindingMeasure)
+        t.equal(bindingStrings(invalidScene), ["– / 16.0 GiB (–%)"])
+
+        // 8. Variable initial value sampled ONLY on first initialization; subsequent ticks do not resample
+        let varWidget = try checkedBindingProgram(t, #"widget { variable initialCpu = cpu.usage; Text("Hello") }"#)
+        var varRuntime = try ProgramRuntime(program: varWidget)
+        t.equal(varRuntime.neededSystemProperties, [.cpuUsage], "uninitialized variables need initial expression properties")
+        let countFixture = CountingSystemFixture()
+        let varInput = varRuntime.neededSystemProperties.isEmpty ? nil : ProgramSystemInput.sample(from: countFixture, for: varRuntime.neededSystemProperties)
+        t.check(varInput != nil)
+        t.equal(countFixture.cpuCalls, 1)
+        _ = try varRuntime.project(environment: bindingEnvironment(false), systemInput: varInput, measure: bindingMeasure)
+        t.equal(varRuntime.neededSystemProperties, [], "initialized variables freeze value and do not re-sample initial expressions")
+        let nextInput = varRuntime.neededSystemProperties.isEmpty ? nil : ProgramSystemInput.sample(from: countFixture, for: varRuntime.neededSystemProperties)
+        t.equal(nextInput, nil)
+        t.equal(countFixture.cpuCalls, 1, "no additional CPU sample on subsequent ticks")
+
+        // 9. Click dependency: before click CPU 0 reads, after click 1 read
+        let clickWidget = try checkedBindingProgram(t, #"widget { variable c = 0; Text("Tap").onClick { c = cpu.usage } }"#)
+        var clickRuntime = try ProgramRuntime(program: clickWidget)
+        t.equal(clickRuntime.neededSystemProperties, [], "actions are not sampled during normal project")
+        let tapFixture = CountingSystemFixture()
+        let initialInput = clickRuntime.neededSystemProperties.isEmpty ? nil : ProgramSystemInput.sample(from: tapFixture, for: clickRuntime.neededSystemProperties)
+        t.equal(tapFixture.cpuCalls, 0)
+        let initialScene = try clickRuntime.project(environment: bindingEnvironment(false), systemInput: initialInput, measure: bindingMeasure)
+        t.equal(tapFixture.cpuCalls, 0, "CPU calls remain 0 before click")
+
+        // Missed click:
+        let missNeeded = clickRuntime.neededSystemProperties(clickAt: SkinPoint(x: -10, y: -10))
+        t.equal(missNeeded, [])
+        let missInput = missNeeded.isEmpty ? nil : ProgramSystemInput.sample(from: tapFixture, for: missNeeded)
+        t.equal(missInput, nil)
+        t.equal(tapFixture.cpuCalls, 0)
+
+        // Valid click hit:
+        let hitNeeded = clickRuntime.neededSystemProperties(clickAt: SkinPoint(x: 5, y: 5))
+        t.equal(hitNeeded, [.cpuUsage])
+        let hitInput = hitNeeded.isEmpty ? nil : ProgramSystemInput.sample(from: tapFixture, for: hitNeeded)
+        t.equal(tapFixture.cpuCalls, 1)
+        let clickedScene = try clickRuntime.click(at: SkinPoint(x: 5, y: 5), expectedGeneration: initialScene.generation,
+                                                   environment: bindingEnvironment(false), systemInput: hitInput, measure: bindingMeasure)
+        t.check(clickedScene != nil)
+        t.equal(tapFixture.cpuCalls, 1, "exactly 1 CPU call after click")
+
+        // 10. Hidden text with dynamic font size preserves layout space and measures without invalidText
+        let hiddenDynamicFont = try checkedBindingProgram(t, #"widget { Text("Hidden").font(cpu.usage / 1%).hidden() }"#)
+        var hiddenRuntime = try ProgramRuntime(program: hiddenDynamicFont)
+        t.equal(hiddenRuntime.neededSystemProperties, [.cpuUsage], "hidden element text/font are layout dependencies to preserve space")
+        let hiddenScene = try hiddenRuntime.project(environment: bindingEnvironment(false), systemInput: systemInput, measure: bindingMeasure)
+        t.check(hiddenScene.size.width > 0)
+
+        // 11. Computed dependency expands only when referenced
+        let computedDependencyWidget = try checkedBindingProgram(t, #"widget { computed mem = "{memory.free, unit: .gib}"; Text(mem) }"#)
+        let computedRuntime = try ProgramRuntime(program: computedDependencyWidget)
+        t.equal(computedRuntime.neededSystemProperties, [.memoryFree])
+
+        let unreferencedComputedWidget = try checkedBindingProgram(t, #"widget { computed unused = "{cpu.usage}%"; Text("Static") }"#)
+        let unreferencedRuntime = try ProgramRuntime(program: unreferencedComputedWidget)
+        t.equal(unreferencedRuntime.neededSystemProperties, [], "unreferenced computed declarations are not expanded")
+
+        // 12. ProgramSystemSampler enforces independent cadences for mixed dependencies: CPU 1s, Memory 2s, Battery 60s, Static once
+        let mixedNeeded: Set<ProgramSystemProperty> = [.cpuUsage, .cpuCoreCount, .memoryUsed, .memoryTotal, .batteryLevel, .batteryCharging]
+        var sampler = ProgramSystemSampler()
+        let samplerFixture = CountingSystemFixture()
+
+        // T = 0.25: Non-integer instant start -> all needed sources sampled initially (bucket 0)
+        let s0 = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 0.25)
+        t.equal(s0?.cpuUsage, 42.0)
+        t.equal(s0?.cpuCoreCount, 8)
+        t.equal(s0?.batteryLevel, 90.0)
+        t.equal(s0?.batteryCharging, true)
+        t.equal(samplerFixture.cpuCalls, 1)
+        t.equal(samplerFixture.procCalls, 1)
+        t.equal(samplerFixture.memCalls, 1)
+        t.equal(samplerFixture.batteryCalls, 1)
+
+        // T = 1.0: 1s integer wall-clock boundary -> CPU re-sampled (1s), memory/battery/proc NOT re-sampled
+        let s1 = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 1.0)
+        t.equal(s1?.cpuUsage, 42.0)
+        t.equal(s1?.cpuCoreCount, 8)
+        t.equal(samplerFixture.cpuCalls, 2, "CPU sampled at 1s boundary even when started at 0.25s")
+        t.equal(samplerFixture.procCalls, 1, "processorCount sampled once")
+        t.equal(samplerFixture.memCalls, 1, "memory not sampled at 1s (needs 2s)")
+        t.equal(samplerFixture.batteryCalls, 1, "battery not sampled at 1s (needs 60s)")
+
+        // T = 2.0: 2s integer wall-clock boundary -> CPU (1s) and Memory (2s) re-sampled; battery/proc NOT re-sampled
+        let s2 = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 2.0)
+        t.equal(s2?.cpuUsage, 42.0)
+        t.equal(samplerFixture.cpuCalls, 3)
+        t.equal(samplerFixture.procCalls, 1)
+        t.equal(samplerFixture.memCalls, 2, "memory sampled at 2s boundary")
+        t.equal(samplerFixture.batteryCalls, 1)
+
+        // T = 60.0: 60s integer wall-clock boundary -> Battery re-sampled
+        let s60 = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 60.0)
+        t.equal(s60?.batteryLevel, 90.0)
+        t.equal(samplerFixture.cpuCalls, 4)
+        t.equal(samplerFixture.memCalls, 3)
+        t.equal(samplerFixture.batteryCalls, 2, "battery level sampled at 60s boundary")
+        t.equal(samplerFixture.procCalls, 1, "processorCount remains once")
+
+        // Positive time jump (e.g. forward 240s across sleep to T = 300.0)
+        _ = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 300.0)
+        t.equal(samplerFixture.cpuCalls, 5, "CPU sampled after positive jump")
+        t.equal(samplerFixture.memCalls, 4, "memory sampled after positive jump")
+        t.equal(samplerFixture.batteryCalls, 3, "battery sampled after positive jump")
+        t.equal(samplerFixture.procCalls, 1, "processorCount never re-read on jump")
+
+        // Negative time jump (e.g. clock adjusted backwards from 300.0 to 10.0)
+        _ = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 10.0)
+        t.equal(samplerFixture.cpuCalls, 6, "CPU re-sampled after negative jump")
+        t.equal(samplerFixture.memCalls, 5, "memory re-sampled after negative jump")
+        t.equal(samplerFixture.batteryCalls, 4, "battery re-sampled after negative jump")
+        t.equal(samplerFixture.procCalls, 1, "processorCount remains once on negative jump")
+
+        // Dynamic memory updates do NOT overwrite once-sampled memoryTotal
+        samplerFixture.memTotal = 64 * 1024 * 1024 * 1024
+        samplerFixture.memUsed = 20 * 1024 * 1024 * 1024
+        let sMem = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 12.0)
+        t.equal(sMem?.memoryUsed, 20 * 1024 * 1024 * 1024)
+        t.equal(sMem?.memoryTotal, 32 * 1024 * 1024 * 1024, "memoryTotal remains once-sampled value and is not overwritten by dynamic memory updates")
+
+        // Power notification invalidates battery cache -> immediate re-sample
+        sampler.invalidateBattery()
+        _ = sampler.sample(from: samplerFixture, for: mixedNeeded, at: 12.5)
+        t.equal(samplerFixture.batteryCalls, 5, "power invalidation causes immediate battery sample")
+        t.equal(samplerFixture.cpuCalls, 7, "CPU not sampled at 12.5 (under 1s)")
+        t.equal(samplerFixture.memCalls, 6, "Memory not sampled at 12.5 (under 2s)")
+
+        // 13. Nil battery device with [.cpuUsage, .batteryCharging] does NOT poll battery every second
+        let noBatFixture = CountingSystemFixture(hasBatteryDevice: false)
+        var noBatSampler = ProgramSystemSampler()
+        let noBatNeeded: Set<ProgramSystemProperty> = [.cpuUsage, .batteryCharging]
+
+        let nb0 = noBatSampler.sample(from: noBatFixture, for: noBatNeeded, at: 0.25)
+        t.equal(nb0?.batteryCharging, false)
+        t.equal(noBatFixture.cpuCalls, 1)
+        t.equal(noBatFixture.batteryCalls, 1, "initial observation of nil battery")
+
+        _ = noBatSampler.sample(from: noBatFixture, for: noBatNeeded, at: 1.0)
+        t.equal(noBatFixture.cpuCalls, 2)
+        t.equal(noBatFixture.batteryCalls, 1, "nil battery is not re-polled on 1s CPU ticks")
+
+        _ = noBatSampler.sample(from: noBatFixture, for: noBatNeeded, at: 2.0)
+        t.equal(noBatFixture.cpuCalls, 3)
+        t.equal(noBatFixture.batteryCalls, 1, "nil battery is still not re-polled at 2s")
+
+        _ = noBatSampler.sample(from: noBatFixture, for: noBatNeeded, at: 60.0)
+        t.equal(noBatFixture.cpuCalls, 4)
+        t.equal(noBatFixture.batteryCalls, 1, "pure event battery is not polled at 60s")
+
+        // Power change event invalidates nil battery cache and allows one re-sample
+        noBatSampler.invalidateBattery()
+        _ = noBatSampler.sample(from: noBatFixture, for: noBatNeeded, at: 60.5)
+        t.equal(noBatFixture.batteryCalls, 2, "event invalidation allows one re-sample for battery")
+
+        // 14. Once-properties with invalid initial values are observed once and not infinitely re-read
+        let invalidStaticFixture = CountingSystemFixture(memTotal: -100, processorCount: 0)
+        var invalidStaticSampler = ProgramSystemSampler()
+        let staticNeeded: Set<ProgramSystemProperty> = [.cpuCoreCount, .memoryTotal]
+        let is0 = invalidStaticSampler.sample(from: invalidStaticFixture, for: staticNeeded, at: 0.0)
+        t.equal(is0?.cpuCoreCount, nil)
+        t.equal(is0?.memoryTotal, nil)
+        t.equal(invalidStaticFixture.procCalls, 1)
+        t.equal(invalidStaticFixture.memCalls, 1)
+
+        _ = invalidStaticSampler.sample(from: invalidStaticFixture, for: staticNeeded, at: 10.0)
+        t.equal(invalidStaticFixture.procCalls, 1, "invalid coreCount is observed once and not infinitely re-read")
+        t.equal(invalidStaticFixture.memCalls, 1, "invalid memoryTotal is observed once and not infinitely re-read")
+
+        // 15. Invalid dynamic memory reading (used < 0) with valid total samples hardware once and preserves valid total
+        let mixedMemFixture = CountingSystemFixture(memUsed: -1, memTotal: 32 * 1024 * 1024 * 1024)
+        var mixedMemSampler = ProgramSystemSampler()
+        let memNeeded: Set<ProgramSystemProperty> = [.memoryUsed, .memoryTotal]
+        let mm0 = mixedMemSampler.sample(from: mixedMemFixture, for: memNeeded, at: 0.0)
+        t.equal(mixedMemFixture.memCalls, 1, "hardware memory status read exactly once per projection turn")
+        t.equal(mm0?.memoryUsed, nil, "invalid used memory (< 0) rejected")
+        t.equal(mm0?.memoryTotal, 32 * 1024 * 1024 * 1024, "valid memoryTotal from same reading accepted")
+
+        let mm1 = mixedMemSampler.sample(from: mixedMemFixture, for: memNeeded, at: 2.0)
+        t.equal(mixedMemFixture.memCalls, 2, "dynamic memory re-sampled on 2s boundary")
+        t.equal(mm1?.memoryTotal, 32 * 1024 * 1024 * 1024, "memoryTotal remains once-sampled value")
+
+        // 16. Finite extreme time values do not trap on Int64 overflow and handle negative/large boundaries safely
+        var extremeSampler = ProgramSystemSampler()
+        let extremeFixture = CountingSystemFixture()
+        let extremeNeeded: Set<ProgramSystemProperty> = [.cpuUsage]
+
+        let sMax = extremeSampler.sample(from: extremeFixture, for: extremeNeeded, at: Double.greatestFiniteMagnitude)
+        t.check(sMax != nil)
+        t.equal(extremeFixture.cpuCalls, 1)
+
+        let sNeg = extremeSampler.sample(from: extremeFixture, for: extremeNeeded, at: -1e20)
+        t.check(sNeg != nil)
+        t.equal(extremeFixture.cpuCalls, 2)
+    }
+}
+
+private final class CountingSystemFixture: SystemDataSource {
+    var cpu: Double
+    var procCalls: Int = 0
+    var customProcessorCount: Int?
+    var processorCount: Int { procCalls += 1; return customProcessorCount ?? 8 }
+    var memUsed: Double
+    var memTotal: Double
+    var cpuCalls: Int = 0
+    var memCalls: Int = 0
+    var batteryCalls: Int = 0
+    var hasBatteryDevice: Bool = true
+    var customBattery: BatteryStatus?
+
+    init(cpu: Double = 42.0, memUsed: Double = 16 * 1024 * 1024 * 1024, memTotal: Double = 32 * 1024 * 1024 * 1024,
+         processorCount: Int? = nil, hasBatteryDevice: Bool = true) {
+        self.cpu = cpu
+        self.memUsed = memUsed
+        self.memTotal = memTotal
+        self.customProcessorCount = processorCount
+        self.hasBatteryDevice = hasBatteryDevice
+        if hasBatteryDevice {
+            self.customBattery = BatteryStatus(percent: 90, isCharging: true, isPluggedIn: true)
+        } else {
+            self.customBattery = nil
+        }
+    }
+
+    func cpuUsage(processor: Int) -> Double { cpuCalls += 1; return cpu }
+    func memoryStatus() -> MemoryStatus { memCalls += 1; return MemoryStatus(physicalTotal: memTotal, physicalUsed: memUsed) }
+    func networkInterfaces() -> [String] { [] }
+    func networkCounters(interface: String?) -> NetworkCounters { NetworkCounters() }
+    func diskSpace(path: String) -> (total: Double, free: Double)? { nil }
+    func availableDiskSpace(path: String) -> Double? { nil }
+    func uptime() -> TimeInterval { 120 }
+    func battery() -> BatteryStatus? { batteryCalls += 1; return customBattery }
+    func isProcessRunning(_ name: String) -> Bool { false }
+    func sysInfo(type: String, data: String) -> (number: Double, string: String?)? { nil }
 }

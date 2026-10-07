@@ -1,4 +1,6 @@
 import AppKit
+import Darwin
+import DeskLanguage
 import DesksetCore
 
 /// App delegate: menu bar item, skin lifecycle, state, Manage window, skin installation, system events.
@@ -11,6 +13,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let defaultSkinsSource: URL?
     /// `#SETTINGSPATH#`: where `Stationery.inc` is kept.
     let settingsDirectory: URL
+    /// Root directory for installed standalone Desk widgets.
+    let widgetsDirectory: URL
     /// False for headless use (`--self-test`, `--snapshot-ui`): skin windows are created but never shown.
     let presentsWindows: Bool
     /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
@@ -67,12 +71,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) var studioSessions: [String: EditingSession] = [:]
     /// Text files the built-in code editor has open outside the skin editor (`showCodeFile`).
     private(set) var codeFileWindows: [CodeFileWindowController] = []
+    /// Standalone Desk widgets running in independent windows on the desktop, by instance ID.
+    private(set) var deskWidgetWindows: [UUID: DeskWidgetWindowController] = [:]
     /// The window `bringToFront` last brought up (also headless, for self-tests).
     weak var lastBroughtToFront: NSWindow?
     private(set) lazy var installer = SkinInstallFlow(app: self)
     /// Watches the mouse outside the skin windows while a skin asks for it (Plugin=Slider sees clicks anywhere).
     private(set) lazy var outsidePointer = OutsidePointerMonitor(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var powerSourceObserver: LivePowerSourceObserver?
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
     private var fontsGenerationSeen = Fonts.generation
@@ -93,7 +100,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
-         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
+         settingsDirectory: URL = Paths.appSupport, widgetsDirectory: URL = Paths.widgets,
+         presentsWindows: Bool = true, threading: SkinThreading = .main,
          workWatchdog: SkinWorkWatchdog = .shared) {
         self.threading = threading
         self.workWatchdog = workWatchdog
@@ -103,6 +111,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.backupsDirectory = backupsDirectory
         self.defaultSkinsSource = defaultSkinsSource
         self.settingsDirectory = settingsDirectory
+        self.widgetsDirectory = widgetsDirectory
         self.presentsWindows = presentsWindows
         opensEditorInSteps = presentsWindows
         defersDesktopUpdates = presentsWindows
@@ -259,6 +268,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = try? session.diskSync.flush()
             session.closeStudioSkin()
         }
+        for widget in Array(deskWidgetWindows.values) {
+            widget.close(deactivate: false)
+        }
         let closing = Array(sortedControllers.reversed())
         let orderedDeadline = deadline.addingTimeInterval(-min(Self.terminationWorkerReserve, max(0, budget) / 4))
         var stalledWorkers: Set<ObjectIdentifier> = []
@@ -282,7 +294,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
-        let late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
+        while !deskWidgetWindows.isEmpty && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: min(deadline, Date(timeIntervalSinceNow: 0.01)))
+        }
+        let lateWidgets = deskWidgetWindows.values.map { $0.source.entry }
+        if !lateWidgets.isEmpty {
+            Log.write("Quitting without waiting longer for Desk widgets \(lateWidgets.joined(separator: ", ")) to close", level: .warning)
+        }
+        var late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
+        late.append(contentsOf: lateWidgets)
         if !late.isEmpty {
             Log.write("Quitting without waiting longer for \(late.joined(separator: ", ")) to close", level: .warning)
         }
@@ -348,6 +368,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         activateInOrder(active.map { ($0.config, $0.state.file) }) { [weak self] in
             self?.restack()
+            self?.loadActiveDeskWidgets()
             then?()
         }
         restack()
@@ -465,6 +486,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // `#CONFIGEDITOR#` follows Settings ▸ Editor.
         observe(NotificationCenter.default, .desksetEditorPreferencesChanged) { _ in
             EnvironmentStore.shared.publishConfigEditor()
+        }
+        powerSourceObserver = LivePowerSourceObserver {
+            SystemMonitor.shared.invalidateBatteryCache()
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
         }
     }
 
@@ -1122,6 +1147,207 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func codeFileWindowDidClose(_ controller: CodeFileWindowController) {
         codeFileWindows.removeAll { $0 === controller }
+    }
+
+    // MARK: Standalone Desk Widgets
+
+    enum DeskWidgetActivationFailure: Error, Equatable {
+        case isTerminating, sourceNotFound, instanceNotFound, instanceSourceMismatch, entryEscapes, invalidPackage, compileFailed, resourceLimit
+    }
+
+    /// Activates an installed Desk widget in its independent window on the desktop.
+    /// Strictly adheres to contract:
+    /// - Rejects activation while isTerminating is true.
+    /// - Validates sourceID / instance relationship and strict two-part path components.
+    /// - Verifies directory and file identity without following symlinks via O_NOFOLLOW / openat.
+    /// - Safely re-reads, checks and compiles from the installed entry.
+    /// - Gives each Host exclusive Prepared resources; never reuses preview/installer cleaned copies.
+    /// - If Host construction throws, cleans up exclusive Prepared copies immediately.
+    @discardableResult
+    func activateDeskWidget(instanceID: UUID,
+                            initialPosition: (x: Double, y: Double)? = nil) throws -> DeskWidgetWindowController {
+        precondition(Thread.isMainThread)
+        if let existing = deskWidgetWindows[instanceID] { return existing }
+        guard let instance = state.deskInstance(instanceID) else {
+            throw DeskWidgetActivationFailure.instanceNotFound
+        }
+        guard let source = state.deskSource(instance.sourceID) else {
+            throw DeskWidgetActivationFailure.sourceNotFound
+        }
+        return try activateDeskWidget(source: source, instance: instance, initialPosition: initialPosition)
+    }
+
+    @discardableResult
+    func activateDeskWidget(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState,
+                            initialPosition: (x: Double, y: Double)? = nil) throws -> DeskWidgetWindowController {
+        precondition(Thread.isMainThread)
+        guard !isTerminating else { throw DeskWidgetActivationFailure.isTerminating }
+        if let existing = deskWidgetWindows[instance.id] { return existing }
+
+        // 1. Verify sourceID / instance relationship
+        guard instance.sourceID == source.id else {
+            throw DeskWidgetActivationFailure.instanceSourceMismatch
+        }
+
+        // 2. Validate entry components: must be exactly [sourceUUID, fileName.desk]
+        guard !source.entry.contains("\0"),
+              let components = DeskPackagePath.safeComponents(source.entry),
+              components.count == 2 else {
+            throw DeskWidgetActivationFailure.entryEscapes
+        }
+        let expectedDir = source.id.uuidString.lowercased()
+        let dirName = components[0]
+        let fileName = components[1]
+        guard dirName == expectedDir, DeskPackagePath.isDeskFile(fileName) else {
+            throw DeskWidgetActivationFailure.entryEscapes
+        }
+
+        // 3. Verify directory and file identity using O_NOFOLLOW via rootFD
+        let widgetsRoot = self.widgetsDirectory
+        try FileManager.default.createDirectory(at: widgetsRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let rootFD = open(widgetsRoot.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard rootFD >= 0 else { throw DeskWidgetActivationFailure.sourceNotFound }
+        defer { Darwin.close(rootFD) }
+
+        let sourceFD = openat(rootFD, dirName, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard sourceFD >= 0 else { throw DeskWidgetActivationFailure.sourceNotFound }
+        defer { Darwin.close(sourceFD) }
+
+        var dirStat = stat()
+        guard fstat(sourceFD, &dirStat) == 0, dirStat.st_mode & S_IFMT == S_IFDIR else {
+            throw DeskWidgetActivationFailure.sourceNotFound
+        }
+
+        let fileFD = openat(sourceFD, fileName, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+        guard fileFD >= 0 else { throw DeskWidgetActivationFailure.sourceNotFound }
+        defer { Darwin.close(fileFD) }
+
+        var fileStat = stat()
+        let catalog = DeskCatalog.current
+        let maxFileBytes = catalog.limits.maximumFileBytes
+        guard fstat(fileFD, &fileStat) == 0, fileStat.st_mode & S_IFMT == S_IFREG,
+              fileStat.st_size >= 0, fileStat.st_size <= maxFileBytes else {
+            throw DeskWidgetActivationFailure.invalidPackage
+        }
+
+        var data = Data(count: Int(fileStat.st_size))
+        let readBytes: Int = data.withUnsafeMutableBytes { buf in
+            guard let base = buf.baseAddress else { return 0 }
+            var totalRead = 0
+            while totalRead < buf.count {
+                let r = Darwin.read(fileFD, base.advanced(by: totalRead), buf.count - totalRead)
+                if r < 0 && errno == EINTR { continue }
+                guard r > 0 else { break }
+                totalRead += r
+            }
+            return totalRead
+        }
+        guard readBytes == fileStat.st_size else { throw DeskWidgetActivationFailure.invalidPackage }
+
+        guard case .text(let decoded, let fileID) = Desk.load(data, fileName: fileName) else {
+            throw DeskWidgetActivationFailure.invalidPackage
+        }
+
+        let package = PackageLoader.load(deskData: data, fileName: fileName, limits: catalog.limits)
+        let service = DeskLanguageService(package: package, openFile: fileID,
+                                          options: DeskServiceOptions(catalog: catalog))
+        let snapshot = service.snapshot
+        let compileResult = Desk.compile(snapshot.checked, catalog: catalog)
+        guard let program = compileResult.program else {
+            throw DeskWidgetActivationFailure.compileFailed
+        }
+
+        // Host must have exclusive Prepared copies
+        let limits = catalog.limits
+        let maximumBytes = min(limits.maximumPackageBytes, DeskCatalog.current.limits.maximumPackageBytes)
+        let maximumFiles = min(limits.maximumPackageFiles, DeskCatalog.current.limits.maximumPackageFiles)
+        guard maximumBytes >= data.count, maximumFiles >= 1 else {
+            throw DeskWidgetActivationFailure.resourceLimit
+        }
+        let language: StudioLanguage = snapshot.options.messageLanguage == .simplifiedChinese ? .chinese : .english
+        let sourceDirectoryURL = widgetsRoot.appendingPathComponent(dirName, isDirectory: true)
+
+        // Verify named source directory matches the held sourceFD before preparation
+        var heldBefore = stat(), namedBefore = stat()
+        guard fstat(sourceFD, &heldBefore) == 0, stat(sourceDirectoryURL.path, &namedBefore) == 0,
+              namedBefore.st_mode & S_IFMT == S_IFDIR,
+              heldBefore.st_dev == namedBefore.st_dev,
+              heldBefore.st_ino == namedBefore.st_ino else {
+            throw DeskWidgetActivationFailure.sourceNotFound
+        }
+
+        let hostPrepared = DeskProgramResources.prepare(root: sourceDirectoryURL,
+                                                       literals: compileResult.imageSources,
+                                                       maximumBytes: maximumBytes - data.count,
+                                                       maximumFiles: maximumFiles - 1,
+                                                       language: language)
+
+        // Verify directory identity was not swapped during preparation
+        var heldAfter = stat(), namedAfter = stat()
+        guard fstat(sourceFD, &heldAfter) == 0, stat(sourceDirectoryURL.path, &namedAfter) == 0,
+              namedAfter.st_mode & S_IFMT == S_IFDIR,
+              heldBefore.st_dev == heldAfter.st_dev, heldBefore.st_ino == heldAfter.st_ino,
+              heldAfter.st_dev == namedAfter.st_dev, heldAfter.st_ino == namedAfter.st_ino else {
+            hostPrepared.removeCopies()
+            throw DeskWidgetActivationFailure.sourceNotFound
+        }
+
+        var retainedPrepared = false
+        defer {
+            if !retainedPrepared {
+                hostPrepared.removeCopies()
+            }
+        }
+
+        let controller = try DeskWidgetWindowController(
+            source: source, instance: instance, directory: sourceDirectoryURL,
+            program: program, prepared: hostPrepared, app: self,
+            executor: skinExecutor(source.entry), clock: .live, initialPosition: initialPosition
+        )
+        retainedPrepared = true
+        return controller
+    }
+
+    func deactivateDeskWidget(instanceID: UUID) {
+        precondition(Thread.isMainThread)
+        guard let controller = deskWidgetWindows[instanceID] else {
+            state.updateDeskInstance(instanceID) { $0.active = false }
+            return
+        }
+        controller.close(deactivate: true)
+    }
+
+    func registerDeskWidgetWindow(_ controller: DeskWidgetWindowController) {
+        precondition(Thread.isMainThread)
+        deskWidgetWindows[controller.instance.id] = controller
+    }
+
+    func deskWidgetWindowDidClose(_ controller: DeskWidgetWindowController) {
+        precondition(Thread.isMainThread)
+        if deskWidgetWindows[controller.instance.id] === controller {
+            deskWidgetWindows.removeValue(forKey: controller.instance.id)
+        }
+    }
+
+    private(set) var deskRestorationFailures: [(entry: String, error: Error)] = []
+
+    func loadActiveDeskWidgets() {
+        precondition(Thread.isMainThread)
+        deskRestorationFailures.removeAll()
+        for (instance, source) in state.activeDeskWidgets {
+            do {
+                try activateDeskWidget(source: source, instance: instance)
+            } catch {
+                // Contract: Keep active intent on failure and provide explicit feedback; write false only on explicit stop
+                deskRestorationFailures.append((source.entry, error))
+                Log.write("Cannot restore Desk widget \(source.entry): \(error)", level: .warning)
+            }
+        }
+        if !deskRestorationFailures.isEmpty {
+            let names = deskRestorationFailures.map(\.entry).joined(separator: ", ")
+            let info = StudioText[.deskWidgetUnavailable] + ": " + names
+            alert(StudioText[.deskWidgetUnavailable], info, style: .warning)
+        }
     }
 
     /// The Manage window when it is open (sheets attach to it).

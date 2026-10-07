@@ -42,30 +42,33 @@ public extension Desk {
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
-        let errors = checked.diagnostics.filter { $0.severity == .error }
-        guard errors.allSatisfy({ $0.id == .fileNotFound }) else {
-            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [], imageSources: [])
-        }
-        do {
-            var compiler = StaticProgramCompiler(checked: checked, catalog: catalog)
-            let program = try compiler.compile()
-            var pending = [program.root], images = Set<String>()
-            while let node = pending.popLast() {
-                switch node.content {
-                case .image(let image): images.insert(image.source)
-                case .column(_, _, let children), .row(_, _, let children): pending.append(contentsOf: children)
-                default: break
-                }
+        let needed = StackGuard.bytesNeeded(toWalk: checked.tree)
+        return StackGuard.run(needing: needed) {
+            let errors = checked.diagnostics.filter { $0.severity == .error }
+            guard errors.allSatisfy({ $0.id == .fileNotFound }) else {
+                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [], imageSources: [])
             }
-            return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: checked.diagnostics,
-                                         issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes))
-        } catch let issue as DeskCompilationIssue {
-            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue], imageSources: [])
-        } catch {
-            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics,
-                                         issues: [DeskCompilationIssue(kind: .invalidProgram, file: checked.tree.file,
-                                                                       range: checked.tree.rootNode.textRange,
-                                                                       message: "Invalid shared program: \(error)")], imageSources: [])
+            do {
+                var compiler = StaticProgramCompiler(checked: checked, catalog: catalog)
+                let program = try compiler.compile()
+                var pending = [program.root], images = Set<String>()
+                while let node = pending.popLast() {
+                    switch node.content {
+                    case .image(let image): images.insert(image.source)
+                    case .column(_, _, let children), .row(_, _, let children): pending.append(contentsOf: children)
+                    default: break
+                    }
+                }
+                return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: checked.diagnostics,
+                                             issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes))
+            } catch let issue as DeskCompilationIssue {
+                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue], imageSources: [])
+            } catch {
+                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics,
+                                             issues: [DeskCompilationIssue(kind: .invalidProgram, file: checked.tree.file,
+                                                                           range: checked.tree.rootNode.textRange,
+                                                                           message: "Invalid shared program: \(error)")], imageSources: [])
+            }
         }
     }
 }

@@ -52,9 +52,11 @@ final class DeskProgramHost {
     private final class Owner: TickTarget {
         let executor: SkinExecutor
         let clock: SkinClock
+        let system: SystemDataSource
         let source: String
         let provider: ContentProvider?
         let scheduler = TickScheduler()
+        var sampler = ProgramSystemSampler()
         var runtime: ProgramRuntime
         var input: Input
         var prepared: DeskProgramResources.Prepared?
@@ -81,10 +83,10 @@ final class DeskProgramHost {
         })
 
         init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
-             prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String) throws {
+             prepared: DeskProgramResources.Prepared?, clock: SkinClock, system: SystemDataSource, source: String) throws {
             runtime = try ProgramRuntime(program: program)
             self.executor = executor; self.provider = provider; self.input = input
-            self.prepared = prepared; self.clock = clock; self.source = source
+            self.prepared = prepared; self.clock = clock; self.system = system; self.source = source
             frames.bitmapResult = { [weak self] result in
                 guard let self, !isClosed else { return }
                 switch result {
@@ -116,6 +118,9 @@ final class DeskProgramHost {
                 self.context = context
                 let input = self.input
                 let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: input.locale)
+                let needed = runtime.neededSystemProperties(clickAt: click)
+                let now = date.instant.timeIntervalSince1970
+                let systemInput = sampler.sample(from: system, for: needed, at: now)
                 let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
                     let pixels = style.fontSize * (96.0 / 72.0) * input.environment.scale
                     guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else { throw Failure.extent }
@@ -127,11 +132,11 @@ final class DeskProgramHost {
                 if let click {
                     guard let current = scene, let value = try candidate.click(at: click, expectedGeneration: current.generation,
                         environment: input.environment, images: prepared?.images ?? [:], dateInput: date,
-                        colorInput: input.colors, measure: measure) else { arm(after: date.instant); return }
+                        colorInput: input.colors, systemInput: systemInput, measure: measure) else { arm(after: date.instant); return }
                     next = value
                 } else {
                     next = try candidate.project(environment: input.environment, images: prepared?.images ?? [:],
-                        dateInput: date, colorInput: input.colors, measure: measure)
+                        dateInput: date, colorInput: input.colors, systemInput: systemInput, measure: measure)
                 }
                 guard next.size.width.isFinite, next.size.height.isFinite,
                       next.size.width >= 0, next.size.height >= 0 else { throw Failure.extent }
@@ -155,7 +160,10 @@ final class DeskProgramHost {
             guard visible, !scheduler.isPaused, !isClosed else { return }
             project()
         }
-        func notifySystemWake() { updateForTick() }
+        func notifySystemWake() {
+            sampler.invalidateTimeBased()
+            updateForTick()
+        }
 
         func capture(scale: CGFloat, appearance: String) -> SkinBitmapDrawing.Capture? {
             guard !isClosed, state == .ready, let scene, let context, let viewport else { return nil }
@@ -210,6 +218,8 @@ final class DeskProgramHost {
     var context: SkinRenderContext? { current.context }
     var frames: SkinFrameProducer { current.frames }
     var isPaused: Bool { current.scheduler.isPaused }
+    var clockPrecision: ProgramClockPrecision? { current.runtime.clockPrecision }
+    var neededSystemProperties: Set<ProgramSystemProperty> { current.runtime.neededSystemProperties }
     /// Synchronous owner callback. The window adapter must capture itself weakly and deliver Main work itself.
     var didPresent: ((Presented) -> Void)? {
         get { current.didPresent }
@@ -225,13 +235,14 @@ final class DeskProgramHost {
     /// On successful construction the owner exclusively owns `prepared`'s copies; never pass preview's generation.
     /// The caller retains cleanup responsibility if construction throws. Nil admits only programs without images.
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
-         prepared: DeskProgramResources.Prepared? = nil, clock: SkinClock = .live, source: String = "Desk",
+         prepared: DeskProgramResources.Prepared? = nil, clock: SkinClock = .live,
+         system: SystemDataSource = SystemMonitor.shared, source: String = "Desk",
          contentMode: SkinFrameContentMode = .bitmap) throws {
         precondition(executor.isCurrent, "DeskProgramHost constructed off its owner")
         guard contentMode == .bitmap else { throw Failure.unsupportedContentMode }
         self.executor = executor
         owner = try Owner(program: program, executor: executor, provider: provider, input: input,
-                          prepared: prepared, clock: clock, source: source)
+                          prepared: prepared, clock: clock, system: system, source: source)
     }
 
     func start(paused: Bool = false) {
@@ -274,6 +285,15 @@ final class DeskProgramHost {
         if updateNow { owner.project() } else { owner.arm(after: owner.clock.now()) }
     }
     func wake() { current.notifySystemWake() }
+    func notifyPowerChange() {
+        let owner = current
+        guard !owner.isClosed else { return }
+        owner.sampler.invalidateBattery()
+        guard owner.visible else { return }
+        let batteryProps: Set<ProgramSystemProperty> = [.batteryLevel, .batteryCharging, .batteryPluggedIn]
+        guard !owner.runtime.neededSystemProperties().isDisjoint(with: batteryProps) else { return }
+        owner.project()
+    }
     func drawFirstFrame() { current.frames.drawFirstFrame() }
 
     /// Points are relative to the presented bitmap's top-left corner, already in points rather than pixels.

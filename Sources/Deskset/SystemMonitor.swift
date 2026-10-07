@@ -759,6 +759,10 @@ final class SystemMonitor: SystemDataSource {
         return result
     }
 
+    func invalidateBatteryCache() {
+        cachedBattery.access { $0 = nil }
+    }
+
     private static func readBattery() -> BatteryStatus? {
         var result: BatteryStatus?
         if let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),

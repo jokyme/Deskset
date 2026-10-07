@@ -449,6 +449,84 @@ enum DeskProgramDrawingSelfTests {
                 t.equal(try Data(contentsOf: original), sourceBytes, "the approved original image is read only")
             }
         }
+
+        t.suite("App: Desk bitmap owner: system data bindings render and advance across clock boundaries") {
+            let program = try compile(#"widget { Text("{cpu.usage}%").font(20).color(.accent) }"#, t)
+            let input = try ownerInput(.aqua, scale: 1), time = try ownerClock()
+            let view = NSView(), provider = BitmapProvider(view)
+            let system = DrawingSystemFixture()
+            var host: DeskProgramHost? = try DeskProgramHost(program: program, executor: time, provider: provider,
+                                                             input: input, clock: time.clock, system: system)
+            defer { host?.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            guard let live = host else { throw Failure.bitmap }
+            var presented: DeskProgramHost.Presented?
+            live.didPresent = { presented = $0 }
+            live.take(facts(input), input: input); live.start(); live.drawFirstFrame()
+            t.equal(live.state, .ready)
+            t.equal(live.clockPrecision, .second)
+            guard let scene1 = live.scene else { throw Failure.bitmap }
+            let text1 = scene1.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.text }; return nil }
+            t.equal(text1, ["25%"])
+            t.equal(presented?.scene.generation, scene1.generation)
+
+            // Advance system state and tick clock
+            system.cpu = 75.0
+            _ = time.advance(by: 1.0)
+            live.frames.runLoopTurn(.beforeWaiting)
+            guard let scene2 = live.scene else { throw Failure.bitmap }
+            let text2 = scene2.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.text }; return nil }
+            t.equal(text2, ["75%"])
+            t.check(scene2.generation > scene1.generation)
+            host?.close(); host = nil
+
+            // Hidden host invalidates battery on power change without projecting; updates when visible
+            let batProgram = try compile(#"widget { Text(battery.charging ? "Charging" : "Discharging").font(20) }"#, t)
+            let batHost = try DeskProgramHost(program: batProgram, executor: time, provider: provider,
+                                              input: input, clock: time.clock, system: system)
+            batHost.take(facts(input), input: input); batHost.start(); batHost.drawFirstFrame()
+            guard let batScene1 = batHost.scene else { throw Failure.bitmap }
+            let batText1 = batScene1.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.text }; return nil }
+            t.equal(batText1, ["Discharging"])
+            let batGen1 = batScene1.generation
+
+            // Hide the host
+            batHost.take(facts(input, ordered: false), input: input)
+            system.batteryCharging = true
+
+            // Power notification while hidden: cache invalidated, but no projection
+            batHost.notifyPowerChange()
+            t.equal(batHost.scene?.generation, batGen1, "hidden host does not project on power change")
+
+            // Restoring visibility samples the fresh battery status
+            batHost.take(facts(input, ordered: true), input: input)
+            guard let batScene2 = batHost.scene else { throw Failure.bitmap }
+            let batText2 = batScene2.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.text }; return nil }
+            t.equal(batText2, ["Charging"], "restored host projects fresh battery status invalidated while hidden")
+            t.check(batScene2.generation > batGen1)
+            batHost.close()
+
+            // Mixed CPU 1s and Memory 2s reading count regression
+            let mixedProgram = try compile(#"widget { Text("{cpu.usage}% {memory.used, unit: .gib}").font(20) }"#, t)
+            let mixedHost = try DeskProgramHost(program: mixedProgram, executor: time, provider: provider,
+                                                input: input, clock: time.clock, system: system)
+            defer { mixedHost.close() }
+            let cpuStart = system.cpuCalls, memStart = system.memCalls
+            mixedHost.take(facts(input), input: input); mixedHost.start(); mixedHost.drawFirstFrame()
+            t.equal(system.cpuCalls, cpuStart + 1)
+            t.equal(system.memCalls, memStart + 1)
+
+            // Advance 1s: CPU sampled, memory NOT sampled (needs 2s)
+            _ = time.advance(by: 1.0)
+            mixedHost.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.cpuCalls, cpuStart + 2, "CPU sampled at 1s tick")
+            t.equal(system.memCalls, memStart + 1, "Memory not re-sampled at 1s tick (needs 2s)")
+
+            // Advance another 1s (total 2s): CPU and Memory both sampled
+            _ = time.advance(by: 1.0)
+            mixedHost.frames.runLoopTurn(.beforeWaiting)
+            t.equal(system.cpuCalls, cpuStart + 3, "CPU sampled at 2s tick")
+            t.equal(system.memCalls, memStart + 2, "Memory sampled at 2s boundary")
+        }
     }
 
     private final class ReleaseProbe {
@@ -577,4 +655,28 @@ enum DeskProgramDrawingSelfTests {
         }
         return result
     }
+}
+
+private final class DrawingSystemFixture: SystemDataSource {
+    var cpu: Double = 25.0
+    var processorCount: Int = 4
+    var batteryCharging: Bool = false
+    var cpuCalls: Int = 0
+    var memCalls: Int = 0
+    var batteryCalls: Int = 0
+    func cpuUsage(processor: Int) -> Double { cpuCalls += 1; return cpu }
+    func memoryStatus() -> MemoryStatus { memCalls += 1; return MemoryStatus(physicalTotal: 16 * 1024 * 1024 * 1024, physicalUsed: 8 * 1024 * 1024 * 1024) }
+    func networkInterfaces() -> [String] { [] }
+    func networkCounters(interface: String?) -> NetworkCounters { NetworkCounters() }
+    func diskSpace(path: String) -> (total: Double, free: Double)? { nil }
+    func availableDiskSpace(path: String) -> Double? { nil }
+    func uptime() -> TimeInterval { 3600 }
+    func battery() -> BatteryStatus? { batteryCalls += 1; return BatteryStatus(percent: 80, isCharging: batteryCharging, isPluggedIn: true) }
+    func isProcessRunning(_ name: String) -> Bool { false }
+    func sysInfo(type: String, data: String) -> (number: Double, string: String?)? { nil }
+    func bestNetworkInterface() -> String? { nil }
+    func volumeInfo(path: String) -> VolumeInfo? { nil }
+    func cpuFrequency() -> Double? { nil }
+    func desktopPicturePath() -> String? { nil }
+    func graphicsAdapterName() -> String? { nil }
 }

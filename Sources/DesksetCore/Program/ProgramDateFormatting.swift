@@ -13,12 +13,17 @@ public struct ProgramDateInput: Equatable, Sendable {
 
 /// The fastest precision actually needed by visible, nonfrozen date text in a successful projection.
 public enum ProgramClockPrecision: Equatable, Sendable {
-    case minute, second
+    case minute, twoSeconds, second
 
     public func delayToNextBoundary(after instant: Date) throws -> TimeInterval {
         let value = instant.timeIntervalSince1970
         guard value.isFinite else { throw ProgramRuntimeError.invalidDateInput }
-        let interval = self == .minute ? 60.0 : 1.0
+        let interval: Double
+        switch self {
+        case .minute: interval = 60.0
+        case .twoSeconds: interval = 2.0
+        case .second: interval = 1.0
+        }
         let remainder = value.truncatingRemainder(dividingBy: interval)
         let delay = interval - (remainder < 0 ? remainder + interval : remainder)
         guard delay.isFinite, delay > 0, delay <= interval else { throw ProgramRuntimeError.invalidDateInput }
@@ -26,7 +31,11 @@ public enum ProgramClockPrecision: Equatable, Sendable {
     }
 
     static func combined(_ a: Self?, _ b: Self?) -> Self? {
-        a == .second || b == .second ? .second : (a ?? b)
+        guard let a else { return b }
+        guard let b else { return a }
+        if a == .second || b == .second { return .second }
+        if a == .twoSeconds || b == .twoSeconds { return .twoSeconds }
+        return .minute
     }
 }
 

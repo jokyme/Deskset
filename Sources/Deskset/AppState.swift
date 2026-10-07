@@ -138,20 +138,28 @@ struct DeskWidgetInstanceState: Codable, Equatable {
     let id: UUID
     let sourceID: UUID
     var active = false
+    var x: Double?
+    var y: Double?
     var unknownKeys: [String: JSONValue] = [:]
 
-    init(id: UUID, sourceID: UUID) { self.id = id; self.sourceID = sourceID }
-    private enum CodingKeys: String, CodingKey, CaseIterable { case id, sourceID, active }
+    init(id: UUID, sourceID: UUID, active: Bool = false, x: Double? = nil, y: Double? = nil) {
+        self.id = id; self.sourceID = sourceID; self.active = active
+        self.x = x.flatMap(SkinState.position); self.y = y.flatMap(SkinState.position)
+    }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, sourceID, active, x, y }
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); sourceID = try c.decode(UUID.self, forKey: .sourceID)
         active = ((try? c.decodeIfPresent(Bool.self, forKey: .active)) ?? nil) ?? false
+        x = ((try? c.decodeIfPresent(Double.self, forKey: .x)) ?? nil).flatMap(SkinState.position)
+        y = ((try? c.decodeIfPresent(Double.self, forKey: .y)) ?? nil).flatMap(SkinState.position)
         unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(sourceID, forKey: .sourceID); try c.encode(active, forKey: .active)
+        try c.encodeIfPresent(x, forKey: .x); try c.encodeIfPresent(y, forKey: .y)
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
     }
@@ -361,6 +369,36 @@ final class AppState {
         next.deskWidgets.instances[instanceKey] = instance
         try write(next)
         data = next
+    }
+
+    func deskInstance(_ id: UUID) -> DeskWidgetInstanceState? {
+        data.deskWidgets.instances[id.uuidString.lowercased()]
+    }
+
+    func deskSource(_ id: UUID) -> DeskWidgetSourceState? {
+        data.deskWidgets.sources[id.uuidString.lowercased()]
+    }
+
+    var activeDeskWidgets: [(instance: DeskWidgetInstanceState, source: DeskWidgetSourceState)] {
+        data.deskWidgets.instances.values
+            .filter { $0.active }
+            .compactMap { instance in
+                guard let source = data.deskWidgets.sources[instance.sourceID.uuidString.lowercased()] else { return nil }
+                return (instance: instance, source: source)
+            }
+            .sorted { $0.instance.id.uuidString < $1.instance.id.uuidString }
+    }
+
+    func updateDeskInstance(_ id: UUID, _ change: (inout DeskWidgetInstanceState) -> Void) {
+        precondition(Thread.isMainThread)
+        let key = id.uuidString.lowercased()
+        guard var instance = data.deskWidgets.instances[key] else { return }
+        change(&instance)
+        instance.x = instance.x.flatMap(SkinState.position)
+        instance.y = instance.y.flatMap(SkinState.position)
+        guard data.deskWidgets.instances[key] != instance else { return }
+        data.deskWidgets.instances[key] = instance
+        scheduleSave()
     }
 
     func saveNow() {

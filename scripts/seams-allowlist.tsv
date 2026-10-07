@@ -44,12 +44,22 @@ effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
+background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	7	FIFO message dispatch to widget host executor owner for lifecycle, fact updates, mouse interactions, and power change notification; not a skin input
+background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	4	presentation callbacks, availability, and close acknowledgments delivered back to main thread; not a skin input
+event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
+event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	2	desktop widget window dragging reads cursor position on main thread; not a skin input
+random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	2	session identifier generation for window fact tracking; not a skin input
+zone.Locale.current	Sources/Deskset/App/DeskWidgetWindowController.swift	1	host input projection preserves system locale for date and time formatting; tests inject explicit locale; not a skin input
+
 background.mainHop	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.global	Sources/Deskset/App/CodeFileWindowController.swift	1	staging and resource preparation off main thread before committing widget install; not a skin input
+background.mainHop	Sources/Deskset/App/CodeFileWindowController.swift	1	completion and UI presentation of staging result onto main thread; not a skin input
 background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
+random.UUID	Sources/Deskset/App/CodeFileWindowController.swift	2	default unique source and instance identifiers for standalone widget installation; not a skin input
 
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
@@ -191,7 +201,7 @@ wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a 
 wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 
 background.mainHop	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
-effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
+effect.fileWrite	Sources/Deskset/AppController.swift	2	app files (state, log, caches); not a skin effect
 effect.terminate	Sources/Deskset/AppController.swift	2	app lifecycle, menus and single-instance handover; not a skin input
 effect.workspace	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
@@ -200,7 +210,9 @@ event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus an
 mono.systemUptime	Sources/Deskset/AppController.swift	1	config lookup rescans at most every 3 s
 random.pid	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
 timer.asyncAfter	Sources/Deskset/AppController.swift	2	re-check of regional settings after a change; the installer's wait for skins to close gives up after its timeout (app lifecycle, not a skin input)
-wall.Date()	Sources/Deskset/AppController.swift	1	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
+wait.runLoop	Sources/Deskset/AppController.swift	1	bounded termination run loop drain while waiting for widget and skin close acknowledgments; not a skin input
+wall.Date()	Sources/Deskset/AppController.swift	2	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
+wall.sinceNow	Sources/Deskset/AppController.swift	1	termination deadline budget calculation; not a skin input
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
 
 effect.fileWrite	Sources/Deskset/AppState.swift	4	app files (state, log, caches); not a skin effect
@@ -460,6 +472,7 @@ zone.localizedText	Sources/Deskset/Studio2/WallpaperSource.swift	*	the Studio wi
 background.queue	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
 effect.fileWrite	Sources/Deskset/Support.swift	5	app files (state, log, caches); not a skin effect
 effect.workspace	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+event.IOKit	Sources/Deskset/Support.swift	1	Main-thread power source change runloop source observed by app lifecycle; not a skin input
 mono.systemUptime	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
 wall.Date()	Sources/Deskset/Support.swift	*	log time stamps, log file, editor lookup cache; not a skin input
 zone.implicitFormatter	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
@@ -683,7 +696,7 @@ wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for 
 background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel replacement is deferred until an applying ScenePatch releases its contentRoot writer; no executor wait inside a claim
 wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt
 
-event.notification	Sources/Deskset/App/CodeFileWindowController.swift	3	App-owned document preview system palette/date/wake notifications; weak owner, main publication, removed at deinit; no skin action or data read
+event.notification	Sources/Deskset/App/CodeFileWindowController.swift	4	App-owned document preview system palette/date/wake/power notifications; weak owner, main publication, removed at deinit; no skin action or data read
 zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramNumberFormatting.swift	1	owner-local formatter receives explicit immutable projection locale; Core reads no current locale

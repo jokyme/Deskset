@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import IOKit.ps
 import UniformTypeIdentifiers
 
 /// Well-known folders.
@@ -236,6 +237,35 @@ extension SkinRect {
 extension Notification.Name {
     /// Posted by `AppController` when skins are loaded, unloaded, refreshed or installed, or a skin's settings change.
     static let desksetSkinsChanged = Notification.Name("DesksetSkinsChanged")
+    /// Posted when power source information (battery, charging, AC line) changes.
+    static let desksetPowerSourceDidChange = Notification.Name("DesksetPowerSourceDidChange")
+}
+
+/// Explicit Main-thread live power source observer (App-owned).
+final class LivePowerSourceObserver {
+    private var runLoopSource: CFRunLoopSource?
+    private let onPowerChange: () -> Void
+
+    init(onPowerChange: @escaping () -> Void) {
+        precondition(Thread.isMainThread)
+        self.onPowerChange = onPowerChange
+        let source = IOPSNotificationCreateRunLoopSource({ context in
+            guard let context else { return }
+            let observer = Unmanaged<LivePowerSourceObserver>.fromOpaque(context).takeUnretainedValue()
+            observer.onPowerChange()
+        }, Unmanaged.passUnretained(self).toOpaque())?.takeRetainedValue()
+        self.runLoopSource = source
+        if let source {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+    }
+
+    deinit {
+        precondition(Thread.isMainThread)
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+    }
 }
 
 /// The few user-defaults calls the app makes outside state.json (the editor window's pane sizes, a setting moved from

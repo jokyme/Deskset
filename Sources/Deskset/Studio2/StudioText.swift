@@ -136,6 +136,11 @@ enum StudioText {
         case deskImageInvalid = "desk.image.invalid"
         case deskImagePreparationFailed = "desk.image.preparationFailed"
         case deskImageRefreshFailed = "desk.image.refreshFailed"
+        case removeWidgetFromDesktop = "widget.remove"
+        case deskWidgetUnavailable = "widget.unavailable"
+        case deskWidgetInstallationFailed = "widget.installFailed"
+        case deskWidgetPreparationFailed = "widget.prepareFailed"
+        case deskWidgetInvalidFile = "widget.invalidFile"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -742,6 +747,11 @@ enum StudioText {
         .deskImageInvalid: ("Image is too large or cannot be decoded: %@", "图片过大或无法解码：%@"),
         .deskImagePreparationFailed: ("Cannot prepare images: %@", "无法准备图片：%@"),
         .deskImageRefreshFailed: ("Images could not be refreshed. Reopen the document to try again.", "无法刷新图片。请重新打开文档后再试。"),
+        .removeWidgetFromDesktop: ("Remove from Desktop", "从桌面移除"),
+        .deskWidgetUnavailable: ("Widget unavailable", "小组件不可用"),
+        .deskWidgetInstallationFailed: ("Cannot place on desktop: %@", "无法放到桌面：%@"),
+        .deskWidgetPreparationFailed: ("Cannot prepare widget resources: %@", "无法准备小组件资源：%@"),
+        .deskWidgetInvalidFile: ("Only .desk files can be placed on the desktop.", "只有 .desk 文件可以放到桌面。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),

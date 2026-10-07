@@ -111,11 +111,118 @@ public struct ProgramRuntime: Sendable {
         self.clickHandlers = clickHandlers
     }
 
+    /// Properties needed for normal projection (or first initialization if variables == nil).
+    public var neededSystemProperties: Set<ProgramSystemProperty> {
+        neededSystemProperties(clickAt: nil)
+    }
+
+    /// Evaluates the set of system properties needed for a project or click operation.
+    /// - For click (`point != nil`):
+    ///   Checks hit map for a valid, non-hidden element with a click handler.
+    ///   If hit: collects properties needed by the hit handler's assignments PLUS subsequent scene projection.
+    ///   If miss or unhandled: returns empty set (no hardware sampling performed).
+    /// - For projection (`point == nil`):
+    ///   If uninitialized (`variables == nil`): collects properties needed by all variable initial expressions,
+    ///   `onLoad` assignments, and element text/font expressions.
+    ///   If already initialized (`variables != nil`): variable values are frozen in memory, so variable initials
+    ///   are NOT evaluated; only element text/font expressions and their transitively referenced `computed`
+    ///   declarations are collected.
+    ///   Note: AST dependency collection conservatively traverses Text values and fontSizeExpressions (including
+    ///   elements marked hidden, because DESK-DESIGN §611 preserves layout space for hidden elements and layout
+    ///   resolves/measures them). Conditional branches are conservatively unioned without dynamic evaluation,
+    ///   so inactive branches may be sampled; complete zero-sampling for hidden layout branches is not yet implemented.
+    public func neededSystemProperties(clickAt point: SkinPoint? = nil) -> Set<ProgramSystemProperty> {
+        if let point {
+            guard point.x.isFinite, point.y.isFinite, variables != nil,
+                  let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
+                  let id = entry.elementID,
+                  let handler = clickHandlers[id] else {
+                return []
+            }
+            var activeExpressions = handler.assignments.map(\.value)
+            return collectProperties(active: &activeExpressions, includeLayoutText: true)
+        } else {
+            var activeExpressions: [ProgramExpression] = []
+            if variables == nil {
+                for decl in program.declarations where decl.kind == .variable {
+                    activeExpressions.append(decl.initial)
+                }
+                for assignment in program.onLoad {
+                    activeExpressions.append(assignment.value)
+                }
+            }
+            return collectProperties(active: &activeExpressions, includeLayoutText: true)
+        }
+    }
+
+    private func collectProperties(active: inout [ProgramExpression], includeLayoutText: Bool) -> Set<ProgramSystemProperty> {
+        if includeLayoutText {
+            var pending = [program.root]
+            while let node = pending.popLast() {
+                if case .text(let text) = node.content {
+                    active.append(text.value)
+                    if let fontExpr = text.fontSizeExpression {
+                        active.append(fontExpr)
+                    }
+                }
+                switch node.content {
+                case .column(_, _, let children), .row(_, _, let children):
+                    pending.append(contentsOf: children)
+                default:
+                    break
+                }
+            }
+        }
+
+        var needed = Set<ProgramSystemProperty>()
+        var visitedComputed = Set<Int>()
+
+        func visitExpression(_ expr: ProgramExpression) {
+            switch expr {
+            case .systemProperty(let prop):
+                needed.insert(prop)
+            case .declaration(let index):
+                guard program.declarations.indices.contains(index) else { break }
+                let decl = program.declarations[index]
+                if decl.kind == .computed && visitedComputed.insert(index).inserted {
+                    active.append(decl.initial)
+                }
+            case .dateIn(let child, _), .formatDate(let child, _), .formatNumber(let child, _),
+                 .negate(let child), .not(let child), .isMissing(let child):
+                active.append(child)
+            case .concatenate(let parts):
+                active.append(contentsOf: parts)
+            case .and(let left, let right), .or(let left, let right),
+                 .equal(let left, let right), .notEqual(let left, let right),
+                 .less(let left, let right), .lessOrEqual(let left, let right),
+                 .greater(let left, let right), .greaterOrEqual(let left, let right),
+                 .add(let left, let right), .subtract(let left, let right),
+                 .multiply(let left, let right), .divide(let left, let right), .remainder(let left, let right),
+                 .ifMissing(let left, let right):
+                active.append(left)
+                active.append(right)
+            case .conditional(let cond, let thenExpr, let otherwiseExpr):
+                active.append(cond)
+                active.append(thenExpr)
+                active.append(otherwiseExpr)
+            case .string, .number, .quantity, .boolean, .timeNow, .appearanceDark:
+                break
+            }
+        }
+
+        while let expr = active.popLast() {
+            visitExpression(expr)
+        }
+
+        return needed
+    }
+
     /// The closure must measure the supplied style exactly as it draws it, under the optional wrapping width.
     /// It is used synchronously and is not retained. Graphics/font resources stay outside Core.
     public mutating func project(environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
                                  dateInput: ProgramDateInput? = nil,
                                  colorInput: ProgramColorInput? = nil,
+                                 systemInput: ProgramSystemInput? = nil,
                                  measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene {
         let appearance = environment.appearance.value
         guard environment.scale.isFinite, environment.scale > 0,
@@ -127,7 +234,8 @@ public struct ProgramRuntime: Sendable {
         try colorInput?.validate()
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
-        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables, dateInput: dateInput)
+        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
+                                                     variables: variables, dateInput: dateInput, systemInput: systemInput)
         if variables == nil {
             try evaluation.initialize()
             // Root startup is part of the first successful scene transaction. These local-only assignments
@@ -183,6 +291,7 @@ public struct ProgramRuntime: Sendable {
     public mutating func click(at point: SkinPoint, expectedGeneration: UInt64, environment: EnvironmentStamp,
                                images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
                                colorInput: ProgramColorInput? = nil,
+                               systemInput: ProgramSystemInput? = nil,
                                measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene? {
         guard point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
               let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
@@ -190,10 +299,11 @@ public struct ProgramRuntime: Sendable {
         var candidate = self
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
-                                                      variables: variables, dateInput: dateInput)
+                                                      variables: variables, dateInput: dateInput, systemInput: systemInput)
         for assignment in handler.assignments { try ActionExecutor.perform(assignment, on: &evaluation) }
         candidate.variables = evaluation.variables
-        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, colorInput: colorInput, measure: measure)
+        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, colorInput: colorInput,
+                                          systemInput: systemInput, measure: measure)
         self = candidate
         return scene
     }

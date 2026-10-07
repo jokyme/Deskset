@@ -24,7 +24,8 @@ enum DeskProgramPreviewSelfTests {
                                 ext: String = "desk", clock: SkinClock = .live,
                                 executor: SkinExecutor = MainSkinExecutor.shared,
                                 locale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
-                                colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:)) throws -> Fixture {
+                                colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
+                                system: SystemDataSource = SystemMonitor.shared) throws -> Fixture {
         let root = t.temporaryDirectory("desk-program-preview")
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: root.appendingPathComponent("Skins"),
@@ -34,7 +35,8 @@ enum DeskProgramPreviewSelfTests {
         let file = root.appendingPathComponent("Preview." + ext)
         try Data(text.utf8).write(to: file)
         let controller = try CodeFileWindowController(file: file, app: app, deskCheckQueue: queue,
-                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale, previewColors: colors)
+                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale, previewColors: colors,
+                                                       previewSystem: system)
         controller.window?.appearance = NSAppearance(named: .aqua)
         controller.codeView.idleCommitDelay = 600
         controller.codeView.typedTextDelay = 600
@@ -1851,6 +1853,90 @@ enum DeskProgramPreviewSelfTests {
             t.equal(p.state, .closed); t.equal(executor.pendingCount, 0)
             t.check(!FileManager.default.fileExists(atPath: nextPath))
         }
+
+        t.suite("Desk: program preview: system data samples cpu and memory on independent boundaries") {
+            let start = Date(timeIntervalSince1970: 1_790_586_000.25)
+            let utc = TimeZone(identifier: "UTC")!
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            let clock = SkinClock(now: { executor.wallClock }, uptime: { executor.uptime }, timeZone: { executor.timeZone })
+            let system = PreviewCountingSystem()
+
+            // 1. Mixed CPU 1s and Memory 2s cadence: real text and boundary assertions
+            let mixedSource = #"widget { Text("{cpu.usage}% {memory.used, unit: .gib}").font(20).padding(8) }"#
+            let f = try fixture(t, mixedSource, clock: clock, executor: executor, system: system)
+            let p = f.preview
+            p.setVisible(true)
+            t.check(settled(f))
+            t.equal(p.state, .ready)
+            t.equal(clockTexts(p), ["42% 16.0 GiB"])
+            t.equal(system.cpuCalls, 1)
+            t.equal(system.memCalls, 1)
+
+            // Advance by 0.75s to reach 1.0s wall-clock boundary: CPU re-sampled (1s), memory NOT (needs 2s)
+            executor.advance(until: 0.75)
+            t.equal(system.cpuCalls, 2, "CPU sampled at 1s boundary")
+            t.equal(system.memCalls, 1, "Memory not re-sampled before 2s boundary")
+
+            // Advance by 1.0s to reach 2.0s wall-clock boundary: CPU and Memory both re-sampled
+            executor.advance(until: 1.75)
+            t.equal(system.cpuCalls, 3)
+            t.equal(system.memCalls, 2, "Memory sampled at 2s boundary")
+
+            // 2. Pure static text with cpu.coreCount: sampled once, 0 subsequent reads
+            let staticSource = #"widget { Text("Cores: {cpu.coreCount}").font(20).padding(8) }"#
+            replace(staticSource, in: f)
+            t.check(settled(f))
+            t.equal(p.state, .ready)
+            t.equal(clockTexts(p), ["Cores: 8"])
+            let cpuBefore = system.cpuCalls, memBefore = system.memCalls
+            executor.advance(by: 5.0)
+            t.equal(system.cpuCalls, cpuBefore, "pure static widget does not read CPU")
+            t.equal(system.memCalls, memBefore, "pure static widget does not read memory")
+
+            // 3. Power change notification while hidden: cache invalidated but not sampled until restore/wake
+            let batSource = #"widget { Text(battery.charging ? "Charging" : "Discharging").font(20).padding(8) }"#
+            replace(batSource, in: f)
+            t.check(settled(f))
+            t.equal(p.state, .ready)
+            t.equal(clockTexts(p), ["Charging"])
+            let batBefore = system.batteryCalls
+            t.check(batBefore >= 1)
+
+            // Hide the preview
+            p.setVisible(false)
+            system.batteryCharging = false
+
+            // Notify power change while hidden (posting notification exercises the real observer in CodeFileWindowController)
+            NotificationCenter.default.post(name: .desksetPowerSourceDidChange, object: nil)
+            t.equal(system.batteryCalls, batBefore, "hidden preview invalidates power cache without sampling hardware")
+
+            // Restore visibility: fresh battery status is immediately sampled
+            p.setVisible(true)
+            t.equal(system.batteryCalls, batBefore + 1, "restored preview samples fresh battery status")
+            t.equal(clockTexts(p), ["Discharging"])
+
+            // System wake notification also refreshes
+            system.batteryCharging = true
+            p.notifySystemWake()
+            t.equal(system.batteryCalls, batBefore + 2, "wake samples fresh battery status")
+            t.equal(clockTexts(p), ["Charging"])
+
+            // 4. Close preview cancels timers and produces no further reads
+            replace(mixedSource, in: f)
+            t.check(settled(f))
+            t.equal(p.state, .ready)
+            t.equal(executor.pendingCount, 1, "mixed system data has a live timer before close")
+            f.editor.discardUncommittedChanges()
+            f.controller.window?.close()
+            t.equal(p.state, .closed)
+            t.equal(executor.pendingCount, 0, "closing cancels the live system-data timer")
+            let cpuClosed = system.cpuCalls, memClosed = system.memCalls, batClosed = system.batteryCalls
+            executor.advance(by: 10.0)
+            t.equal(system.cpuCalls, cpuClosed, "closed preview does not sample CPU")
+            t.equal(system.memCalls, memClosed, "closed preview does not sample memory")
+            t.equal(system.batteryCalls, batClosed, "closed preview does not sample battery")
+            t.equal(executor.pendingCount, 0, "closed preview does not reschedule a system-data timer")
+        }
     }
 
     private static func clockTexts(_ preview: DeskProgramPreviewController) -> [String] {
@@ -2104,6 +2190,38 @@ enum DeskProgramPreviewSelfTests {
                 destination.fillPath(using: .winding)
             }
         }
+    }
+
+    private final class PreviewCountingSystem: SystemDataSource {
+        var cpu: Double = 42.0
+        var cpuCalls: Int = 0
+        var memCalls: Int = 0
+        var batteryCalls: Int = 0
+        var procCalls: Int = 0
+        var batteryCharging: Bool = true
+        var processorCount: Int { procCalls += 1; return 8 }
+
+        func cpuUsage(processor: Int) -> Double { cpuCalls += 1; return cpu }
+        func memoryStatus() -> MemoryStatus {
+            memCalls += 1
+            return MemoryStatus(physicalTotal: 32 * 1024 * 1024 * 1024, physicalUsed: 16 * 1024 * 1024 * 1024)
+        }
+        func networkInterfaces() -> [String] { [] }
+        func networkCounters(interface: String?) -> NetworkCounters { NetworkCounters() }
+        func diskSpace(path: String) -> (total: Double, free: Double)? { nil }
+        func availableDiskSpace(path: String) -> Double? { nil }
+        func uptime() -> TimeInterval { 120 }
+        func battery() -> BatteryStatus? {
+            batteryCalls += 1
+            return BatteryStatus(percent: 90, isCharging: batteryCharging, isPluggedIn: true)
+        }
+        func isProcessRunning(_ name: String) -> Bool { false }
+        func sysInfo(type: String, data: String) -> (number: Double, string: String?)? { nil }
+        func bestNetworkInterface() -> String? { nil }
+        func volumeInfo(path: String) -> VolumeInfo? { nil }
+        func cpuFrequency() -> Double? { nil }
+        func desktopPicturePath() -> String? { nil }
+        func graphicsAdapterName() -> String? { nil }
     }
 
     private final class ReferenceView: NSView {

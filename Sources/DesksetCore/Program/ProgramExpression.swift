@@ -12,6 +12,7 @@ public indirect enum ProgramExpression: Equatable, Sendable {
     case declaration(Int)
     case appearanceDark
     case timeNow
+    case systemProperty(ProgramSystemProperty)
     case dateIn(ProgramExpression, timeZone: String)
     case formatDate(ProgramExpression, ProgramDateFormat)
     case formatNumber(ProgramExpression, ProgramNumberFormat)
@@ -232,7 +233,7 @@ struct ProgramExpressionValidation {
             case .concatenate(let parts):
                 guard parts.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
                 pending.append(contentsOf: parts.reversed().map { ($0, depth + 1) })
-            case .boolean, .appearanceDark, .timeNow: break
+            case .boolean, .appearanceDark, .timeNow, .systemProperty: break
             }
         }
     }
@@ -257,6 +258,15 @@ struct ProgramExpressionValidation {
         case .quantity(let number): result = Info(type: number.type, height: 1)
         case .boolean, .appearanceDark: result = Info(type: .boolean, height: 1)
         case .timeNow: result = Info(type: .date, height: 1)
+        case .systemProperty(let property):
+            let type: ProgramScalarType
+            switch property {
+            case .cpuUsage, .memoryUsage, .batteryLevel: type = .numeric(.percent)
+            case .cpuCoreCount: type = .numeric(.plain)
+            case .memoryUsed, .memoryTotal, .memoryFree: type = .numeric(.bytes, displayBase: 1024)
+            case .batteryCharging, .batteryPluggedIn: type = .boolean
+            }
+            result = Info(type: type, height: 1)
         case .dateIn(let child, _), .formatDate(let child, _):
             let value = try expressionInfo(child, depth: depth + 1)
             guard value.type == .date else { throw ProgramRuntimeError.invalidExpression }
@@ -330,14 +340,17 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
     let declarations: [ProgramDeclaration]
     let dark: Bool
     let dateInput: ProgramDateInput?
+    let systemInput: ProgramSystemInput?
     var variables: [ProgramScalar?]
     private var computed: [Int: Value] = [:]
     private(set) var clockPrecision: ProgramClockPrecision?
 
-    init(declarations: [ProgramDeclaration], dark: Bool, variables: [ProgramScalar?]?, dateInput: ProgramDateInput? = nil) {
+    init(declarations: [ProgramDeclaration], dark: Bool, variables: [ProgramScalar?]?, dateInput: ProgramDateInput? = nil,
+         systemInput: ProgramSystemInput? = nil) {
         self.declarations = declarations
         self.dark = dark
         self.dateInput = dateInput
+        self.systemInput = systemInput
         self.variables = variables ?? Array(repeating: nil, count: declarations.count)
     }
 
@@ -404,6 +417,62 @@ struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
         case .timeNow:
             guard let dateInput, dateInput.instant.timeIntervalSince1970.isFinite else { throw ProgramRuntimeError.invalidDateInput }
             return Value(scalar: .date(ProgramDateValue(instant: dateInput.instant, timeZone: dateInput.timeZone)), currentDate: true)
+        case .systemProperty(let property):
+            switch property {
+            case .cpuUsage:
+                if let val = systemInput?.cpuUsage, val.isFinite, (0...100).contains(val) {
+                    return Value(scalar: .numeric(ProgramNumber(val, dimension: .percent)), precision: .second)
+                }
+                return Value(scalar: .missing(.numeric(.percent)), precision: .second)
+            case .cpuCoreCount:
+                if let val = systemInput?.cpuCoreCount, val >= 1 {
+                    return Value(scalar: .numeric(ProgramNumber(Double(val), dimension: .plain)))
+                }
+                return Value(scalar: .missing(.numeric(.plain)))
+            case .memoryUsed:
+                if let val = systemInput?.memoryUsed, val.isFinite, val >= 0 {
+                    return Value(scalar: .numeric(ProgramNumber(val, dimension: .bytes, displayBase: 1024)), precision: .twoSeconds)
+                }
+                return Value(scalar: .missing(.numeric(.bytes, displayBase: 1024)), precision: .twoSeconds)
+            case .memoryTotal:
+                if let val = systemInput?.memoryTotal, val.isFinite, val >= 0 {
+                    return Value(scalar: .numeric(ProgramNumber(val, dimension: .bytes, displayBase: 1024)))
+                }
+                return Value(scalar: .missing(.numeric(.bytes, displayBase: 1024)))
+            case .memoryFree:
+                if let val = systemInput?.memoryFree, val.isFinite, val >= 0 {
+                    return Value(scalar: .numeric(ProgramNumber(val, dimension: .bytes, displayBase: 1024)), precision: .twoSeconds)
+                }
+                return Value(scalar: .missing(.numeric(.bytes, displayBase: 1024)), precision: .twoSeconds)
+            case .memoryUsage:
+                // Catalog cadence is periodic(seconds: 2); scheduled at 2-second boundaries.
+                if let used = systemInput?.memoryUsed, let total = systemInput?.memoryTotal,
+                   total > 0, used.isFinite, total.isFinite, used >= 0, used <= total {
+                    let usage = (used / total) * 100.0
+                    if usage.isFinite && usage >= 0 && usage <= 100 {
+                        return Value(scalar: .numeric(ProgramNumber(usage, dimension: .percent)), precision: .twoSeconds)
+                    }
+                }
+                return Value(scalar: .missing(.numeric(.percent)), precision: .twoSeconds)
+            case .batteryLevel:
+                // Catalog cadence is eventAndPeriodic(seconds: 60); sampled at minute-boundary cadence.
+                if let val = systemInput?.batteryLevel, val.isFinite, (0...100).contains(val) {
+                    return Value(scalar: .numeric(ProgramNumber(val, dimension: .percent)), precision: .minute)
+                }
+                return Value(scalar: .missing(.numeric(.percent)), precision: .minute)
+            case .batteryCharging:
+                // Catalog cadence is event-driven; not a minute-polled timer. Precision is nil unless combined with periodic sources.
+                if let val = systemInput?.batteryCharging {
+                    return Value(scalar: .boolean(val), precision: nil)
+                }
+                return Value(scalar: .boolean(false), precision: nil)
+            case .batteryPluggedIn:
+                // Catalog cadence is event-driven; not a minute-polled timer. Precision is nil unless combined with periodic sources.
+                if let val = systemInput?.batteryPluggedIn {
+                    return Value(scalar: .boolean(val), precision: nil)
+                }
+                return Value(scalar: .boolean(false), precision: nil)
+            }
         case .dateIn(let child, let identifier):
             let value = try evaluate(child, depth: depth + 1)
             if value.scalar.isMissing && value.scalar.type == .date { return value }

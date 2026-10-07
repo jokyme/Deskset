@@ -27,11 +27,19 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
     private let colorSource: (NSAppearance) throws -> MacAppearance.ProgramValues
+    private let system: SystemDataSource
+    private var sampler = ProgramSystemSampler()
     private var lastColors: ProgramColorInput?
     private let tickScheduler = TickScheduler()
     private var visible = false
     var isClosed: Bool { state == .closed }
-    var updateMilliseconds: Int { runtime?.clockPrecision == .second ? 1000 : 60_000 }
+    var updateMilliseconds: Int {
+        switch runtime?.clockPrecision {
+        case .second: return 1000
+        case .twoSeconds: return 2000
+        case .minute, nil: return 60_000
+        }
+    }
     private(set) var state: State = .checking
     private(set) var scene: WidgetScene?
 
@@ -39,11 +47,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
          clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
          dateLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
          colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
+         system: SystemDataSource = SystemMonitor.shared,
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
         self.dateLocale = dateLocale
         self.colorSource = colors
+        self.system = system
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
@@ -80,7 +90,18 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         project()
     }
 
-    func notifySystemWake() { updateForTick() }
+    func notifySystemWake() {
+        sampler.invalidateTimeBased()
+        updateForTick()
+    }
+    func notifyPowerChange() {
+        guard state != .closed else { return }
+        sampler.invalidateBattery()
+        guard visible, let runtime else { return }
+        let batteryProps: Set<ProgramSystemProperty> = [.batteryLevel, .batteryCharging, .batteryPluggedIn]
+        guard !runtime.neededSystemProperties().isDisjoint(with: batteryProps) else { return }
+        updateForTick()
+    }
 
     /// Date/zone/locale notifications change input, not the checked program or its session variables.
     func refreshDateInput() {
@@ -206,14 +227,18 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: 1)
                 return SkinSize(width: layout.size.width, height: layout.size.height)
             }
+            let needed = runtime.neededSystemProperties(clickAt: click?.point)
+            let now = dateInput.instant.timeIntervalSince1970
+            let systemInput = sampler.sample(from: system, for: needed, at: now)
             let next: WidgetScene
             if let click {
                 guard let clicked = try runtime.click(at: click.point, expectedGeneration: click.generation,
                                                      environment: stamp, images: images, dateInput: dateInput,
-                                                     colorInput: input.colors, measure: measure) else { return }
+                                                     colorInput: input.colors, systemInput: systemInput, measure: measure) else { return }
                 next = clicked
             } else {
-                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, colorInput: input.colors, measure: measure)
+                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, colorInput: input.colors,
+                                          systemInput: systemInput, measure: measure)
             }
             let size = next.size
             guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0 else { throw PreviewFailure.extent }

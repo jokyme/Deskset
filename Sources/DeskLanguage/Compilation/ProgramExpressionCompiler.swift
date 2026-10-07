@@ -195,16 +195,21 @@ struct ProgramExpressionCompiler {
                 }
                 return .timeNow
             }
-            guard checked.symbols[identity] == .builtIn(.member(namespace: "system", name: "dark")),
-                  checked.dataUses.contains(where: { $0.reference == identity && $0.nodePath == "system" && $0.memberPath == "system.dark" && $0.arguments.isEmpty && $0.instanceScope.isEmpty }),
-                  let member = catalog.member(path: "system.dark"), member.kind == .field, member.type == .bool,
-                  member.cadence == .event, member.readsSynchronously, member.permission == nil,
-                  catalog.namespace(named: "system")?.permission == nil, !member.settable,
-                  case .native(let kernel, let options, let field) = member.lowering,
-                  kernel == "appearance", options.isEmpty, field == "dark" else {
-                throw issue(.unsupported, node, "Only checked system.dark and time.now inputs are implemented")
+            if checked.symbols[identity] == .builtIn(.member(namespace: "system", name: "dark")) {
+                guard checked.dataUses.contains(where: { $0.reference == identity && $0.nodePath == "system" && $0.memberPath == "system.dark" && $0.arguments.isEmpty && $0.instanceScope.isEmpty }),
+                      let member = catalog.member(path: "system.dark"), member.kind == .field, member.type == .bool,
+                      member.cadence == .event, member.readsSynchronously, member.permission == nil,
+                      catalog.namespace(named: "system")?.permission == nil, !member.settable,
+                      case .native(let kernel, let options, let field) = member.lowering,
+                      kernel == "appearance", options.isEmpty, field == "dark" else {
+                    throw issue(.unsupported, node, "Unsupported system.dark catalog or checked data identity")
+                }
+                return .appearanceDark
             }
-            return .appearanceDark
+            if let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: node) {
+                return .systemProperty(property)
+            }
+            throw issue(.unsupported, node, "Only checked system.dark, time.now and supported system data inputs are implemented")
         }
         if let call = CallExprSyntax(node), let member = MemberExprSyntax(call.callee.node) {
             // The current checker records type-member calls by checked receiver/result types, not Symbol.
@@ -397,6 +402,56 @@ struct ProgramExpressionCompiler {
     private func supported(_ format: ProgramDateFormat, at node: PositionedNode) throws -> ProgramDateFormat {
         do { _ = try format.precision; return format }
         catch { throw issue(.unsupported, node, "Unsupported date pattern or subsecond display precision") }
+    }
+
+    private func systemProperty(for symbol: Symbol?, identity: NodeID, at node: PositionedNode) throws -> ProgramSystemProperty? {
+        guard case .builtIn(.member(let namespace, let name))? = symbol else { return nil }
+        let fullPath = "\(namespace).\(name)"
+        guard let property = ProgramSystemProperty(rawValue: fullPath) else { return nil }
+        guard checked.dataUses.contains(where: {
+            $0.reference == identity && $0.nodePath == namespace && $0.memberPath == fullPath && $0.arguments.isEmpty && $0.instanceScope.isEmpty
+        }) else {
+            throw issue(.unsupported, node, "Unsupported checked data use for \(fullPath)")
+        }
+        guard let member = catalog.member(path: fullPath),
+              catalog.namespace(named: namespace)?.permission == nil,
+              validateSystemPropertyContract(property: property, member: member) else {
+            throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
+        }
+        return property
+    }
+
+    private func validateSystemPropertyContract(property: ProgramSystemProperty, member: MemberSpec) -> Bool {
+        guard member.kind == .field, member.permission == nil, !member.settable else { return false }
+        switch property {
+        case .cpuUsage:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .periodic(seconds: 1) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("CPU", ["Processor": "0"])
+        case .cpuCoreCount:
+            return member.type == .plainNumber && member.cadence == .once && member.readsSynchronously &&
+                member.lowering == CatalogData.nativeKernel("cpuInfo", field: "coreCount")
+        case .memoryUsed:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory")
+        case .memoryTotal:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .once && member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory", ["Total": "1"])
+        case .memoryFree:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory", ["InvertMeasure": "1"])
+        case .memoryUsage:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == .derived("memory.used / memory.total * 100%")
+        case .batteryLevel:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .eventAndPeriodic(seconds: 60) && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Percent"])
+        case .batteryCharging:
+            return member.type == .bool && member.cadence == .event && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Status"])
+        case .batteryPluggedIn:
+            return member.type == .bool && member.cadence == .event && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "ACLine"])
+        }
     }
 
     private func issue(_ kind: DeskCompilationIssue.Kind, _ node: PositionedNode, _ message: String) -> DeskCompilationIssue {
