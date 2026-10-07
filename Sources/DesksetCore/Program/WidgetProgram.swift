@@ -162,7 +162,28 @@ public struct ProgramIcon: Equatable, Sendable {
     }
 }
 
-/// A box in points. Child order is drawing order; identity is assigned by the producer, never by a syntax version.
+/// One ordered arm of a view-level if. All arms are validated, but only the selected body's elements exist.
+public struct ProgramConditionalBranch: Equatable, Sendable {
+    public let condition: ProgramExpression
+    public let body: [ProgramElement]
+
+    public init(condition: ProgramExpression, body: [ProgramElement]) {
+        self.condition = condition; self.body = body
+    }
+}
+
+/// A transparent child-list selection. The first true condition wins; missing counts as false at this boundary.
+public struct ProgramConditional: Equatable, Sendable {
+    public let branches: [ProgramConditionalBranch]
+    public let otherwise: [ProgramElement]
+
+    public init(branches: [ProgramConditionalBranch], otherwise: [ProgramElement] = []) {
+        self.branches = branches; self.otherwise = otherwise
+    }
+}
+
+/// A box in points, or a transparent conditional child-list item. Child order is drawing order; identity is
+/// assigned by the producer, never by a syntax version or the currently selected branch.
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
@@ -179,6 +200,9 @@ public struct ProgramElement: Equatable, Sendable {
         case column(spacing: Double, align: HorizontalTextAlign, children: [ProgramElement])
         case row(spacing: Double, align: VerticalTextAlign, children: [ProgramElement])
         case freeform(align: ProgramAlignment, children: [ProgramElement])
+        /// Structural only: every field except id/content must have its default value. It cannot be the root,
+        /// owns no box, and splices the selected body into its actual parent without adding layout space.
+        case conditional(ProgramConditional)
     }
 
     public let id: ElementID
@@ -371,8 +395,9 @@ public struct ProgramText: Equatable, Sendable {
     }
 }
 
-/// Current shared-program bounds match the language's default element, block and text budgets. A producer may
-/// enforce a smaller budget; the runtime always guards direct programs too.
+/// Current shared-program bounds use the language's default element, block and text budgets. The element and
+/// depth limits also count transparent conditional items and every possible arm. A producer may enforce a smaller
+/// budget; the runtime always guards direct programs too.
 public enum ProgramLimits {
     public static let maximumElements = 5_000
     public static let maximumDepth = 64

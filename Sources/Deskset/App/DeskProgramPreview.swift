@@ -554,7 +554,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func armClock(after instant: Date) {
-        guard visible, state == .ready, let precision = runtime?.clockPrecision else { return }
+        guard visible, state == .ready || state == .empty, let precision = runtime?.clockPrecision else { return }
         do { tickScheduler.startClockBoundary(after: try precision.delayToNextBoundary(after: instant), for: self) }
         catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
     }

@@ -62,10 +62,14 @@ public extension Desk {
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
     /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
     /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.
+    /// View-level if/else-if/else expands only the selected branch into its real container, without retaining space.
+    /// Every branch is checked and lowered; source references and literal image demands include inactive branches.
+    /// A lone top-level if uses the same implicit Column and preset proposal as several top-level views.
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
     /// Conditional stroke/background/tint, other conditional facets, styles and hover/pressed states remain unsupported.
-    /// Dynamic layout and sibling geometry references, other numeric dimensions, Duration decimals, relative/subsecond Date formats and
+    /// View-level for, branch mount actions, dynamic layout and sibling geometry references, other numeric dimensions,
+    /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
@@ -83,6 +87,9 @@ public extension Desk {
                     switch node.content {
                     case .image(let image): images.insert(image.source)
                     case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending.append(contentsOf: children)
+                    case .conditional(let conditional):
+                        pending.append(contentsOf: conditional.otherwise)
+                        for branch in conditional.branches { pending.append(contentsOf: branch.body) }
                     default: break
                     }
                 }

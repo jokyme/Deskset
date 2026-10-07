@@ -145,7 +145,7 @@ struct ProgramExpressionCompiler {
     /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
     mutating func condition(_ node: PositionedNode) throws -> ProgramExpression {
         guard checked.types[checked.tree.id(of: node)]?.type == .bool else {
-            throw issue(.invalidCheckedModel, node, "A modifier condition requires its checked Bool type")
+            throw issue(.invalidCheckedModel, node, "A condition requires its checked Bool type")
         }
         return try lower(node, depth: 1, displayConditionals: false)
     }

@@ -45,6 +45,28 @@ public struct ProgramRuntime: Sendable {
             guard count <= ProgramLimits.maximumElements else { throw ProgramRuntimeError.elementLimit }
             guard depth <= ProgramLimits.maximumDepth else { throw ProgramRuntimeError.depthLimit }
             guard identities.insert(node.id).inserted else { throw ProgramRuntimeError.duplicateIdentity(node.id) }
+            if case .conditional(let conditional) = node.content {
+                // This is a child-list item, never an invisible box. Reject decorations rather than dropping
+                // them, and validate every possible arm before any condition can select a smaller tree.
+                guard depth > 1, !conditional.branches.isEmpty,
+                      node.width == .fit, node.height == .fit, node.minWidth == 0, node.minHeight == 0,
+                      node.maxWidth == nil, node.maxHeight == nil, node.idealSize == nil,
+                      node.padding == .zero, !node.hidden, node.hiddenIf == nil,
+                      node.stroke == nil, node.cornerRadius == nil, node.background == nil,
+                      node.onClick == nil, node.onClickActions == nil, node.onRightClickActions == nil,
+                      node.position == nil, node.voiceOver == nil else {
+                    throw ProgramRuntimeError.invalidGeometry(node.id)
+                }
+                for branch in conditional.branches { try expressions.validateCondition(branch.condition) }
+                for body in [conditional.otherwise] + conditional.branches.reversed().map(\.body) {
+                    guard body.count <= ProgramLimits.maximumElements - count - pending.count else {
+                        throw ProgramRuntimeError.elementLimit
+                    }
+                    // A transparent item preserves the enclosing real parent's Freeform placement contract.
+                    pending.append(contentsOf: body.reversed().map { ($0, depth + 1, mayPosition) })
+                }
+                continue
+            }
             if let position = node.position {
                 guard mayPosition, position.x.isFinite, position.y.isFinite else {
                     throw ProgramRuntimeError.invalidGeometry(node.id)
@@ -188,6 +210,8 @@ public struct ProgramRuntime: Sendable {
                 guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
                 guard children.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
                 pending.append(contentsOf: children.reversed().map { ($0, depth + 1, true) })
+            case .conditional:
+                throw ProgramRuntimeError.invalidGeometry(node.id) // Handled above, before box validation.
             }
         }
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
@@ -219,6 +243,8 @@ public struct ProgramRuntime: Sendable {
     ///   Static hiding excludes pure display sources. Dynamic hiding conservatively includes potential display
     ///   sources: the next snapshot may show a previously hidden box. It never uses the previous frame's visibility.
     ///   Text/Icon colors, names and font sizes are part of their native measurement and remain layout dependencies.
+    ///   View-if predicates and all potential arms are also collected conservatively before sampling. Selecting an
+    ///   arm later limits evaluation, measurement and clocks; it does not implement inactive-arm zero sampling.
     public func neededSystemProperties(clickAt point: SkinPoint? = nil, event: MouseEventKind = .leftUp) -> Set<ProgramSystemProperty> {
         guard event == .leftUp || event == .rightUp else { return [] }
         if let point {
@@ -257,6 +283,13 @@ public struct ProgramRuntime: Sendable {
         if includeLayoutText {
             var pending = [(program.root, false)]
             while let (node, parentHidden) = pending.popLast() {
+                if case .conditional(let conditional) = node.content {
+                    // Even under a hidden box, the selected arm determines that box's retained layout space.
+                    active.append(contentsOf: conditional.branches.map(\.condition))
+                    pending.append(contentsOf: conditional.otherwise.map { ($0, parentHidden) })
+                    for branch in conditional.branches { pending.append(contentsOf: branch.body.map { ($0, parentHidden) }) }
+                    continue
+                }
                 let hidden = parentHidden || node.hidden
                 if !hidden, let condition = node.hiddenIf { active.append(condition) }
                 if !hidden, let label = node.voiceOver { active.append(label) }
@@ -376,7 +409,6 @@ public struct ProgramRuntime: Sendable {
         let preset: SkinSize?
         if case .preset(_, let size) = program.size { preset = size } else { preset = nil }
         var layoutState = LayoutState(images: images, preset: preset)
-        _ = flexibility(program.root, into: &layoutState)
         var visibleContent: Set<ElementID> = [], pending = [(program.root, false)]
         var accessibilityLabels: [ElementID: String] = [:]
         while let (node, parentHidden) = pending.popLast() {
@@ -390,10 +422,15 @@ public struct ProgramRuntime: Sendable {
             }
             switch node.content {
             case .text, .icon, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
-            case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending += children.map { ($0, hidden) }
+            case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children):
+                let selected = try selectedChildren(children, evaluation: &evaluation, displayed: !hidden)
+                layoutState.activeChildren[node.id] = selected
+                pending.append(contentsOf: selected.reversed().map { ($0, hidden) })
+            case .conditional: throw ProgramRuntimeError.invalidGeometry(node.id)
             default: break
             }
         }
+        _ = try flexibility(program.root, into: &layoutState)
         let resolvedHidden = layoutState.hidden
         let box = try layout(program.root, proposedWidth: preset?.width, proposedHeight: preset?.height, appearance: appearance,
                              resolve: { id, text in
@@ -582,6 +619,8 @@ public struct ProgramRuntime: Sendable {
         let images: [String: ProgramImageResource]
         let preset: SkinSize?
         var hidden: [ElementID: Bool] = [:]
+        /// Selected real children, in source order. Structural items never reach measurement or scene emission.
+        var activeChildren: [ElementID: [ProgramElement]] = [:]
         var flex: [ElementID: Flexibility] = [:]
         var spacerAxes: [ElementID: Bool] = [:]
         var boxes: [ProposalKey: Box] = [:]
@@ -592,7 +631,25 @@ public struct ProgramRuntime: Sendable {
         var gauges: [ElementID: ProgramGaugeValues] = [:]
     }
 
-    private func flexibility(_ node: ProgramElement, parentVertical: Bool? = nil, into state: inout LayoutState) -> Flexibility {
+    private func selectedChildren(_ nodes: [ProgramElement], evaluation: inout ProgramExpressionEvaluation,
+                                  displayed: Bool) throws -> [ProgramElement] {
+        var pending = Array(nodes.reversed()), selected: [ProgramElement] = []
+        while let node = pending.popLast() {
+            if case .conditional(let conditional) = node.content {
+                var body = conditional.otherwise
+                for branch in conditional.branches {
+                    if try evaluation.condition(branch.condition, displayed: displayed) {
+                        body = branch.body
+                        break
+                    }
+                }
+                pending.append(contentsOf: body.reversed())
+            } else { selected.append(node) }
+        }
+        return selected
+    }
+
+    private func flexibility(_ node: ProgramElement, parentVertical: Bool? = nil, into state: inout LayoutState) throws -> Flexibility {
         if case .spacer = node.content {
             if let parentVertical { state.spacerAxes[node.id] = parentVertical }
             let value = Flexibility(width: parentVertical == false, height: parentVertical == true)
@@ -601,12 +658,15 @@ public struct ProgramRuntime: Sendable {
         }
         let children: [ProgramElement]
         switch node.content {
-        case .column(_, _, let nodes), .row(_, _, let nodes), .freeform(_, let nodes): children = nodes
+        case .column, .row, .freeform:
+            guard let nodes = state.activeChildren[node.id] else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+            children = nodes
         case .text, .image, .icon, .rectangle, .shape, .progress, .gauge, .spacer: children = []
+        case .conditional: throw ProgramRuntimeError.invalidGeometry(node.id)
         }
         let childAxis: Bool?
         switch node.content { case .column: childAxis = true; case .row: childAxis = false; default: childAxis = nil }
-        let descendants = children.map { flexibility($0, parentVertical: childAxis, into: &state) }
+        let descendants = try children.map { try flexibility($0, parentVertical: childAxis, into: &state) }
         let value = Flexibility(width: node.width == .fill || (node.width == .fit && descendants.contains { $0.width }),
                                 height: node.height == .fill || (node.height == .fit && descendants.contains { $0.height }))
         state.flex[node.id] = value
@@ -654,6 +714,7 @@ public struct ProgramRuntime: Sendable {
         var children: [(Box, SkinPoint)] = []
         var minimumContent = SkinSize()
         switch node.content {
+        case .conditional: throw ProgramRuntimeError.invalidGeometry(node.id)
         case .text(let text):
             let input: TextInput
             if let old = state.text[node.id] { input = old }
@@ -747,7 +808,8 @@ public struct ProgramRuntime: Sendable {
                 width = vertical ? 0 : length; height = vertical ? length : 0
                 minimumContent = vertical ? SkinSize(height: lower) : SkinSize(width: lower)
             } else { width = 0; height = 0 }
-        case .column(let spacing, _, let nodes), .row(let spacing, _, let nodes):
+        case .column(let spacing, _, _), .row(let spacing, _, _):
+            guard let nodes = state.activeChildren[node.id] else { throw ProgramRuntimeError.invalidGeometry(node.id) }
             let column: Bool
             if case .column = node.content { column = true } else { column = false }
             let gap = try sum([spacing * Double(max(0, nodes.count - 1))])
@@ -883,7 +945,8 @@ public struct ProgramRuntime: Sendable {
             height = column ? mainSize : crossSize
             minimumContent = column ? SkinSize(width: minimumCross, height: minimumMain) : SkinSize(width: minimumMain, height: minimumCross)
             children = boxes.map { ($0, SkinPoint()) }
-        case .freeform(let align, let nodes):
+        case .freeform(let align, _):
+            guard let nodes = state.activeChildren[node.id] else { throw ProgramRuntimeError.invalidGeometry(node.id) }
             let initialWidth = offeredWidth.map { max(0, $0 - horizontal) }
             let initialHeight = offeredHeight.map { max(0, $0 - vertical) }
             let knownWidth = requestedWidth.map { max(0, $0 - horizontal) }
@@ -989,7 +1052,7 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .image, .icon, .rectangle, .shape, .freeform, .progress, .gauge, .spacer: break
+            case .text, .image, .icon, .rectangle, .shape, .freeform, .progress, .gauge, .spacer, .conditional: break
             }
         }
         var layoutBounds = SkinRect(width: width, height: height)
@@ -1040,6 +1103,7 @@ public struct ProgramRuntime: Sendable {
         let kind: ElementKind
         var imageDependencies: [ImageDependency] = []
         switch box.node.content {
+        case .conditional: throw ProgramRuntimeError.invalidGeometry(box.node.id)
         case .text:
             kind = .string
             guard let style = box.style, let text = box.text else { throw ProgramRuntimeError.invalidText(box.node.id) }

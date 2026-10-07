@@ -80,11 +80,11 @@ struct StaticProgramCompiler {
         guard !statements.isEmpty else { throw issue(.unsupported, widget.node, "Widget has no supported element content") }
         let appearance = try defaultAppearance(at: widget.node)
         let root: ProgramElement
-        if statements.count == 1 {
+        if statements.count == 1, statements[0].kind == .callStmt {
             root = try element(statements[0], inherited: appearance, depth: 1)
         } else {
             let index = try reserveIndex(at: widget.node, depth: 1)
-            let children = try statements.map { try element($0, inherited: appearance, depth: 2) }
+            let children = try statements.map { try viewStatement($0, inherited: appearance, depth: 2) }
             let spacing = try defaultNumber(component: "Column", parameter: "spacing", at: widget.node)
             let align = try defaultChoice(component: "Column", parameter: "align", at: widget.node)
             root = ProgramElement(id: ElementID(name: "widget", index: index),
@@ -127,6 +127,42 @@ struct StaticProgramCompiler {
         let value = nextIndex
         nextIndex += 1
         return value
+    }
+
+    /// View control flow is a transparent structural item; its selected children keep their actual container.
+    private mutating func viewStatement(_ node: PositionedNode, inherited: Appearance, depth: Int) throws -> ProgramElement {
+        if node.kind == .callStmt { return try element(node, inherited: inherited, depth: depth) }
+        guard node.kind == .ifStmt else {
+            throw issue(.unsupported, node, "Only supported elements and view-level if statements are implemented")
+        }
+        let index = try reserveIndex(at: node, depth: depth)
+        var branches: [ProgramConditionalBranch] = []
+        var otherwise: [ProgramElement] = []
+        var current: PositionedNode? = node
+        while let statement = current {
+            guard let syntax = IfStmtSyntax(statement), syntax.modifiers.isEmpty,
+                  checked.elements[checked.tree.id(of: statement)] == nil else {
+                throw issue(.invalidCheckedModel, statement, "A view if has no element facets or attached modifiers")
+            }
+            // Validate every branch, including an always-false or unreachable alternative.
+            let condition = try expressions.condition(syntax.condition.node)
+            let children = try syntax.block.items.map { try viewStatement($0, inherited: inherited, depth: depth + 1) }
+            branches.append(ProgramConditionalBranch(condition: condition, body: children))
+            current = nil
+            if let clause = syntax.elseClause {
+                switch clause.body.kind {
+                case .ifStmt: current = clause.body
+                case .block:
+                    guard let block = BlockSyntax(clause.body) else {
+                        throw issue(.invalidCheckedModel, clause.body, "Missing checked else block")
+                    }
+                    otherwise = try block.items.map { try viewStatement($0, inherited: inherited, depth: depth + 1) }
+                default: throw issue(.invalidCheckedModel, clause.body, "Expected an else block or else if")
+                }
+            }
+        }
+        return ProgramElement(id: ElementID(name: "if#\(index)", index: index),
+                              content: .conditional(ProgramConditional(branches: branches, otherwise: otherwise)))
     }
 
     private mutating func element(_ node: PositionedNode, inherited: Appearance, depth: Int) throws -> ProgramElement {
@@ -473,7 +509,7 @@ struct StaticProgramCompiler {
                 }
                 align = choice
             } else { align = try defaultChoice(component: "Freeform", parameter: "align", at: node) }
-            let children = try (call.block?.items ?? []).map { try element($0, inherited: appearance, depth: depth + 1) }
+            let children = try (call.block?.items ?? []).map { try viewStatement($0, inherited: appearance, depth: depth + 1) }
             content = .freeform(align: try alignment(align, at: node), children: children)
         default:
             let arguments = call.arguments?.arguments ?? []
@@ -492,7 +528,7 @@ struct StaticProgramCompiler {
                 guard case .choice(let n) = try constant(value) else { throw issue(.unsupported, value, "Stack alignment must be constant") }
                 align = n
             } else { align = try defaultChoice(component: facts.component, parameter: "align", at: node) }
-            let children = try (call.block?.items ?? []).map { try element($0, inherited: appearance, depth: depth + 1) }
+            let children = try (call.block?.items ?? []).map { try viewStatement($0, inherited: appearance, depth: depth + 1) }
             if facts.component == "Column" {
                 content = .column(spacing: spacing, align: try horizontal(align, at: node), children: children)
             } else {

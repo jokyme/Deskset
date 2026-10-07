@@ -78,6 +78,8 @@ enum AppSelfTest {
         DeskIconPreviewSelfTests.run(t)
         DeskConditionalHostSelfTests.run(t)
         DeskConditionalPreviewSelfTests.run(t)
+        DeskViewIfHostSelfTests.run(t)
+        DeskViewIfPreviewSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)
         DeskWidgetInstallationSelfTests.run(t)
         DeskCodePresentationSelfTests.run(t)
