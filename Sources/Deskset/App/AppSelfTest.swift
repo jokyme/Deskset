@@ -105,6 +105,7 @@ enum AppSelfTest {
         SpriteDrawSelfTests.run(t)
         #endif
         SkinDrawingSelfTests.run(t)
+        SkinBitmapCompositionSelfTests.run(t)
         SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)

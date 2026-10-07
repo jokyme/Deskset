@@ -76,9 +76,17 @@ public struct ProgramShapeStroke: Equatable, Sendable {
     public init(color: ProgramColor, width: Double) { self.color = color; self.width = width }
 }
 
-/// A uniform Rectangle radius, resolved against the final content box after layout.
+/// A uniform box radius. Backgrounds and hits use the outer box, including padding; Rectangle content also
+/// resolves this radius against its own content box. Rounding a container does not clip its children.
 public enum ProgramCornerRadius: Equatable, Sendable {
     case points(Double), full
+}
+
+/// A static box background. Native glass remains a region in the element's drawing order, not transparent paint.
+/// Pictures, gradients and expression-driven paints are not represented by this initial program value.
+public enum ProgramBackground: Equatable, Sendable {
+    case color(ProgramColor)
+    case glass(style: GlassStyle, tint: ProgramColor? = nil)
 }
 
 /// The picture fills its final content box. ImageSource resolution and decoding remain with the host.
@@ -132,8 +140,10 @@ public struct ProgramElement: Equatable, Sendable {
     public let hidden: Bool
     /// Valid only for shape content. A zero-width or transparent stroke paints nothing.
     public let stroke: ProgramShapeStroke?
-    /// Valid only for Rectangle content. Other box decorations are not implied.
+    /// Uniform outer-box rounding, also applied to Rectangle content. Nonzero Image rounding needs picture
+    /// clipping and is not admitted yet; rounding a box never implicitly clips its children.
     public let cornerRadius: ProgramCornerRadius?
+    public let background: ProgramBackground?
     /// A local assignment-only primary click handler. nil has no handler; an empty block still consumes the click.
     /// Supplying both handler forms is rejected by ProgramRuntime, including two empty blocks.
     public let onClick: [ProgramAssignment]?
@@ -149,7 +159,8 @@ public struct ProgramElement: Equatable, Sendable {
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
-                onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil) {
+                onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil,
+                background: ProgramBackground? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -163,6 +174,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.hidden = hidden
         self.stroke = stroke
         self.cornerRadius = cornerRadius
+        self.background = background
         self.onClick = onClick
         self.onClickActions = onClickActions
         self.onRightClickActions = onRightClickActions

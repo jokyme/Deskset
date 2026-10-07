@@ -18,6 +18,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private(set) var window: SkinPanel
     let view: DeskWidgetView
     let content: LayerContentProvider
+    let nativeComposition: SkinNativeCompositionView
+    private let supportsSystemGlass: Bool
     let owner: DeskWidgetHostOwner
 
     private(set) var isStarted = false
@@ -63,6 +65,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         self.window = panel
         self.view = DeskWidgetView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         self.content = LayerContentProvider(in: view)
+        let systemGlass = SkinGlassViews.usesSystemGlass
+        self.supportsSystemGlass = systemGlass
+        self.nativeComposition = SkinNativeCompositionView(systemGlass: systemGlass)
+        view.addSubview(nativeComposition)
         panel.contentView = view
 
         let hostOwner = DeskWidgetHostOwner(program: program, executor: executor, provider: content,
@@ -92,7 +98,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                 }
                 return
             }
-            hostOwner.start(input: initialInput, facts: initialFacts,
+            hostOwner.start(input: initialInput, facts: initialFacts, supportsSystemGlass: systemGlass,
                             onDelivery: { [weak hostOwner] request in
                                 guard let hostOwner else { return }
                                 DispatchQueue.main.async { [weak self] in
@@ -216,7 +222,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             // A display notification can still be queued. Read the actual destination now, including its profile.
             let facts = currentFacts()
             guard delivery.panelGeneration == destinationEpoch,
-                  delivery.frame.scale == facts.scale, delivery.scene.environment.scale == Double(facts.scale),
+                  delivery.content.scale == facts.scale, delivery.scene.environment.scale == Double(facts.scale),
                   delivery.space == facts.colorSpace, facts.colorSpace?.model == .rgb,
                   delivery.appearance == facts.appearance,
                   delivery.scene.environment.appearance.name == facts.appearance else {
@@ -225,17 +231,28 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             }
             guard delivery.serial > lastPresentationSerial, delivery.lifecycle >= lastPresentationLifecycle,
                   delivery.origin.x.isFinite, delivery.origin.y.isFinite,
-                  delivery.frame.size.width.isFinite, delivery.frame.size.height.isFinite,
-                  delivery.frame.size.width > 0, delivery.frame.size.height > 0 else { return }
+                  delivery.content.size.width.isFinite, delivery.content.size.height.isFinite,
+                  delivery.content.size.width > 0, delivery.content.size.height > 0 else { return }
             if delivery.panelGeneration == lastAcceptedEpoch {
                 guard delivery.scene.generation >= lastPresentedGeneration else { return }
             }
+            if case .composition(let composition) = delivery.content {
+                guard composition.systemGlass == supportsSystemGlass, composition.isValid(for: delivery.space) else { return }
+            }
             guard delivery.claimOnMain() else { return }
             let presented = DeskProgramHost.Presented(scene: delivery.scene, origin: delivery.origin,
-                                                       size: delivery.frame.size, scale: delivery.frame.scale)
+                                                       size: delivery.content.size, scale: delivery.content.scale)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            let accepted = content.presentAccepted(delivery.frame)
+            let accepted: Bool
+            switch delivery.content {
+            case .bitmap(let frame):
+                accepted = content.presentAccepted(frame)
+                if accepted { nativeComposition.clear() }
+            case .composition(let composition):
+                accepted = content.releaseContentsAccepted()
+                if accepted { nativeComposition.apply(composition) }
+            }
             if accepted { resize(for: presented) }
             CATransaction.commit()
             guard accepted else { return }
@@ -258,6 +275,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             let accepted = content.releaseContentsAccepted()
+            if accepted { nativeComposition.clear() }
             CATransaction.commit()
             guard accepted else { return }
             lastPresentationSerial = invalidation.serial
@@ -498,7 +516,11 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             hostOwner.close {
                 DispatchQueue.main.async { [self] in
                     self.isClosed = true
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    self.nativeComposition.clear()
                     self.content.teardown()
+                    CATransaction.commit()
                     self.window.orderOut(nil)
                     self.window.close()
                     self.app.deskWidgetWindowDidClose(self)
@@ -543,7 +565,7 @@ final class DeskWidgetHostOwner {
         self.source = source
     }
 
-    func start(input: DeskProgramHost.Input, facts: SkinWindowFacts,
+    func start(input: DeskProgramHost.Input, facts: SkinWindowFacts, supportsSystemGlass: Bool = false,
                onDelivery: @escaping (SkinBitmapRequest) -> Void,
                onUnavailable: @escaping (String, UInt64, SkinBitmapInvalidation?) -> Void) {
         precondition(executor.isCurrent)
@@ -561,6 +583,7 @@ final class DeskWidgetHostOwner {
                 readyHost.close()
                 return
             }
+            readyHost.frames.bitmapCompositionSupportsSystemGlass = supportsSystemGlass
             readyHost.frames.requestBitmapDelivery = { [weak self] request in
                 guard let self else { return }
                 onDelivery(request)
@@ -725,8 +748,8 @@ final class DeskWidgetView: NSView {
         let clickable = Set(presented.scene.hitMap.entries.filter { $0.action(.leftUp) != .absent }.compactMap(\.elementID))
         var parts: [DeskWidgetTextAccessibilityElement] = []
         for element in presented.scene.elements where element.visibility == .visible && clickable.contains(element.id) {
-            // A preset may wrap the sole TextDraw in a uniform presentation transform. The element's frame
-            // already uses the displayed coordinates; only the label comes from the unscaled text recipe.
+            // Decorations and a preset transform share the text recipe. The element's frame already uses
+            // displayed coordinates; only the label comes from its unique unscaled TextDraw.
             guard element.kind == .string, let text = projectedText(in: element.items) else { continue }
             parts.append(DeskWidgetTextAccessibilityElement(id: element.id, text: text,
                 session: controller.sessionID, epoch: controller.lastAcceptedEpoch,
@@ -736,16 +759,21 @@ final class DeskWidgetView: NSView {
     }
 
     private func projectedText(in items: [DrawItem]) -> String? {
-        var current = items
-        for _ in 0...ProgramLimits.maximumDepth {
-            guard current.count == 1, let item = current.first else { return nil }
+        var pending = items.map { ($0, 0) }
+        var label: String?
+        while let (item, depth) = pending.popLast() {
+            guard depth <= ProgramLimits.maximumDepth else { return nil }
             switch item {
-            case .text(let text): return text.text
-            case .transformed(_, let children): current = children
+            case .text(let text):
+                guard label == nil else { return nil }
+                label = text.text
+            case .transformed(_, let children), .antialias(_, let children):
+                pending.append(contentsOf: children.map { ($0, depth + 1) })
+            case .fill, .shape, .glass: break
             default: return nil
             }
         }
-        return nil
+        return label
     }
 
     fileprivate func clearAccessibility() { replaceAccessibility([]) }

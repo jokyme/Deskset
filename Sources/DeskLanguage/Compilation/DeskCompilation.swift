@@ -48,7 +48,7 @@ public extension Desk {
     /// ordered Text/Progress/basic-shape onClick/onRightClick assignments/copy/open actions,
     /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
-    /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, dynamic inherited
+    /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
     /// font sizes, and constant other box/style properties, including checked pt lengths. Missing/invalid font sizes fail the current scene transaction;
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.

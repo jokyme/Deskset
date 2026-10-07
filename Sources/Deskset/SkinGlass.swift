@@ -85,9 +85,21 @@ final class SkinGlassViews {
         guard regions != self.regions || pieces.values.contains(where: { $0.frameView.superview !== container }) else {
             return
         }
-        let system = SkinGlassViews.usesSystemGlass
+        let ordered = reconcile(regions, system: SkinGlassViews.usesSystemGlass).map(\.frameView)
+        // Glass back to front, then the skin's drawing; other subviews (none today) stay in front.
+        let others = container.subviews.filter { !($0 is SkinGlassFrameView) && $0 !== skinView }
+        let wanted = ordered + [skinView] + others
+        if container.subviews != wanted { container.subviews = wanted }
+    }
+
+    /// Reuses the same factory for the legacy glass plane and Desk's interleaved composition. The caller owns
+    /// sibling order and its surrounding transaction. No arbitrary content is added inside NSGlassEffectView:
+    /// only its contentView has a documented position relative to the glass effect.
+    @discardableResult
+    func reconcile(_ regions: [GlassRegion], system: Bool) -> [Piece] {
+        dispatchPrecondition(condition: .onQueue(.main))
         var kept: [String: Piece] = [:]
-        var ordered: [NSView] = []
+        var ordered: [Piece] = []
         for region in regions {
             let piece: Piece
             if let existing = pieces[region.id], existing.isSystemGlass == system {
@@ -98,15 +110,12 @@ final class SkinGlassViews {
             }
             configure(piece, region)
             kept[region.id] = piece
-            ordered.append(piece.frameView)
+            ordered.append(piece)
         }
         for (id, piece) in pieces where kept[id] !== piece { piece.frameView.removeFromSuperview() }
         pieces = kept
         self.regions = regions
-        // Glass back to front, then the skin's drawing; other subviews (none today) stay in front.
-        let others = container.subviews.filter { !($0 is SkinGlassFrameView) && $0 !== skinView }
-        let wanted = ordered + [skinView] + others
-        if container.subviews != wanted { container.subviews = wanted }
+        return ordered
     }
 
     private func configure(_ piece: Piece, _ region: GlassRegion) {

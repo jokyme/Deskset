@@ -1188,9 +1188,10 @@ enum SkinDrawingSelfTests {
         func draw() { frames.setNeedsFrame(); frames.runLoopTurn(.beforeWaiting) }
 
         func present(_ delivery: SkinBitmapDelivery) -> Bool {
+            guard case .bitmap(let frame) = delivery.content else { return false }
             guard delivery.claimOnMain() else { return false }
             CATransaction.begin(); CATransaction.setDisableActions(true)
-            let accepted = content.presentAccepted(delivery.frame)
+            let accepted = content.presentAccepted(frame)
             CATransaction.commit()
             _ = delivery.finishOnMain(accepted: accepted)
             executor.async { [frames] in frames.finishBitmapDelivery(delivery) }
@@ -1218,7 +1219,7 @@ enum SkinDrawingSelfTests {
             guard case .frame(let first)? = f.requests.first else { return t.check(false, "one immutable request") }
             t.check(f.content.shown.image == nil, "owner drawing never publishes before Main")
             t.equal(f.frames.framesDrawn, 0); t.equal(f.presented, [])
-            t.equal(first.scene.generation, 7); t.equal(first.frame.scale, 2)
+            t.equal(first.scene.generation, 7); t.equal(first.content.scale, 2)
             t.equal(first.panelGeneration, 1); t.check(CFEqual(first.space, SkinFrameProducer.sRGB))
             f.scene.generation = 8; f.draw()
             f.scene.generation = 9; f.draw()
@@ -1284,7 +1285,8 @@ enum SkinDrawingSelfTests {
             t.check(f.frames.hasBitmapDelivery)
             f.draw(); t.equal(f.requests.count, 2, "claimed capture cannot be replaced before its ACK")
             CATransaction.begin(); CATransaction.setDisableActions(true)
-            t.check(f.content.presentAccepted(claimed.frame))
+            if case .bitmap(let frame) = claimed.content { t.check(f.content.presentAccepted(frame)) }
+            else { t.check(false, "the bitmap-only fixture must retain its bitmap payload") }
             CATransaction.commit()
             t.check(claimed.finishOnMain(accepted: true))
             f.executor.async { f.frames.finishBitmapDelivery(claimed) }
@@ -1373,7 +1375,8 @@ enum SkinDrawingSelfTests {
                 t.check(!f.frames.canBeSeen)
                 if claimed {
                     CATransaction.begin(); CATransaction.setDisableActions(true)
-                    t.check(f.content.presentAccepted(first.frame))
+                    if case .bitmap(let frame) = first.content { t.check(f.content.presentAccepted(frame)) }
+                    else { t.check(false, "the bitmap-only fixture must retain its bitmap payload") }
                     CATransaction.commit()
                     t.check(first.finishOnMain(accepted: true))
                 }

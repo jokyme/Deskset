@@ -38,6 +38,8 @@ public struct SceneElement: Equatable, Sendable {
     public var container: ElementID?
     public var isContainer: Bool
     public var items: [DrawItem]
+    /// Final skin points. Native glass is composed immediately before this element's content; legacy content
+    /// keeps this value for selections and publishes its complete-scene glass separately in scene.background.
     public var glass: GlassRegion?
     public var imageDependencies: [ImageDependency]
     public var backing: Backing
@@ -93,10 +95,14 @@ public struct WidgetScene: Equatable, Sendable {
     /// One top-level element as drawn in the complete scene. A container's matrix is already inside its mask,
     /// while the clip remains its untransformed layout frame and its children remain in skin coordinates.
     public func drawingItems(for element: SceneElement) -> [DrawItem] {
-        guard element.isContainer else { return element.items }
+        let glass: [DrawItem] = element.backing == .native(.glass) ? element.glass.map { [.glass($0)] } ?? [] : []
+        guard element.isContainer else { return glass + element.items }
         let children = elements.filter { $0.container == element.id && $0.visibility == .visible }
-        guard !children.isEmpty else { return [] }
-        return [.container(clip: element.frame, mask: element.items, content: children.flatMap(\.items))]
+        guard !children.isEmpty else { return glass }
+        return glass + [.container(clip: element.frame, mask: element.items, content: children.flatMap { child in
+            let glass: [DrawItem] = child.backing == .native(.glass) ? child.glass.map { [.glass($0)] } ?? [] : []
+            return glass + child.items
+        })]
     }
 
     /// The bitmap run cache's order: base first, then each top-level composition. Even an empty composition

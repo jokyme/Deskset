@@ -33,6 +33,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
     runDeskFreeformCompilationTests(t)
     runDeskProgressCompilationTests(t)
     runDeskSpacerAndPresetCompilationTests(t)
+    runDeskBackgroundCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -244,7 +245,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
                        #"Rectangle().size(12).fill(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
                        #"Rectangle().size(12).fill(.red, if: true)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
-                       #"Rectangle().size(12).background(.accent)"#, #"Rectangle().size(12).opacity(0.5)"#,
+                       #"Rectangle().size(12).opacity(0.5)"#,
                        #"Circle().size(12).fill(.accent).stroke(.white, dash: [2, 3])"#]
         for element in sources {
             let source = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
@@ -529,9 +530,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.check(noRadius.diagnostics.contains { $0.id == .missingArgument && $0.severity == .error })
         t.check(invalid.program == nil && invalid.issues.isEmpty, "the original checker rejects absent radius, without inventing a default")
         t.equal(invalid.diagnostics.map(\.id), noRadius.diagnostics.map(\.id))
-        let nonRectangle = deskCheck(#"widget { Circle().size(12).rounded(3) }"#)
-        t.check(nonRectangle.diagnostics(.error).isEmpty, deskDescribe(nonRectangle))
-        t.equal(Desk.compile(nonRectangle).issues.first?.kind, .unsupported)
     }
 
     t.suite("Desk: image compilation: literal sources defaults and four modes reach shared scenes") {
@@ -1474,10 +1472,198 @@ private func runDeskSpacerAndPresetCompilationTests(_ t: TestRunner) {
     }
 }
 
+private func runDeskBackgroundCompilationTests(_ t: TestRunner) {
+    let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize(width: 9, height: 8) }
+    t.suite("Desk: backgrounds: checked Color and hex paints fill the padded box before content") {
+        let paints: [(String, ProgramColor)] = [(".text", .text), (".dim", .dim), (".faint", .faint),
+            (".accent", .accent), (".separator", .separator), (".clear", .palette(.clear)),
+            (".red", .palette(.red)), ("Color.accent", .accent),
+            ("\"#12345680\"", .literal(RGBA(r: 18, g: 52, b: 86, a: 128)))]
+        for (source, color) in paints {
+            let program = try compileFixture(t, "widget { Text(\"A\").size(40, 20).padding(3).background(\(source)) }")
+            t.equal(program.root.background, .color(color), source)
+            t.check(program.root.cornerRadius == nil, "a background does not invent rounding")
+        }
+        for appearance in [SkinAppearance.light, .dark] {
+            var runtime = try ProgramRuntime(program: compileFixture(t,
+                #"widget { Text("A").size(40, 20).padding(3).background(.dim) }"#))
+            let scene = try runtime.project(environment: compileEnvironment(appearance), measure: measure)
+            guard case .fill(let frame, let paint)? = scene.drawingItems.first else { throw CompilationFixtureError.missingProgram }
+            t.equal(frame, SkinRect(width: 40, height: 20))
+            t.equal(paint.color, appearance.secondaryLabelColor)
+            t.equal(compiledDraws(scene).first?.contentFrame.x, 3); t.equal(compiledDraws(scene).first?.contentFrame.y, 3)
+            t.check(scene.elements[0].glass == nil)
+        }
+        let rectangle = try compileFixture(t, "widget { Rectangle().size(12).background(.accent) }")
+        t.equal(rectangle.root.background, .color(.accent))
+        t.equal(rectangle.root.content, .rectangle(fill: .text), "the shape's own paint remains separate")
+    }
+
+    t.suite("Desk: backgrounds: regular clear glass and tint preserve checked box geometry without default rounding") {
+        let values: [(String, GlassStyle, ProgramColor?)] = [(".glass", .regular, nil),
+            (".clearGlass", .clear, nil), (".glass, tint: .accent", .regular, .accent),
+            (".clearGlass, tint: \"#12345680\"", .clear, .literal(RGBA(r: 18, g: 52, b: 86, a: 128)))]
+        for (source, style, tint) in values {
+            let program = try compileFixture(t, "widget { Text(\"A\").size(40, 20).padding(3).background(\(source)) }")
+            t.equal(program.root.background, .glass(style: style, tint: tint))
+            t.check(program.root.cornerRadius == nil)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            guard let glass = scene.elements.first?.glass else { throw CompilationFixtureError.missingProgram }
+            t.equal(glass.rect, SkinRect(width: 40, height: 20)); t.equal(glass.style, style)
+            t.equal(glass.cornerRadius, 0)
+            t.equal(glass.tint, try tint?.resolved(in: .light, colorInput: nil))
+            t.equal(scene.elements[0].backing, .native(.glass))
+            t.equal(scene.drawingItems.count, 2)
+            guard scene.drawingItems.count == 2, case .glass(let first) = scene.drawingItems[0],
+                  case .text(let text) = scene.drawingItems[1],
+                  let own = scene.elements[0].items.first, case .text = own else { throw CompilationFixtureError.missingProgram }
+            t.equal(first, glass); t.equal(text.text, "A")
+            t.equal(scene.elements[0].items.count, 1, "native glass is an ordered scene item, not a fake transparent fill")
+        }
+        let source = "widget { Column(spacing: 0) { Progress(cpu.usage) }.padding(12).background(.glass) }"
+        let cpu = try compileFixture(t, source)
+        t.equal(cpu.root.background, .glass(style: .regular)); t.check(cpu.root.cornerRadius == nil)
+        var rounded = try ProgramRuntime(program: compileFixture(t,
+            #"widget { Text("A").size(40, 20).padding(3).background(.clearGlass).rounded(.full) }"#))
+        t.equal(try rounded.project(environment: compileEnvironment(), measure: measure).elements.first?.glass?.cornerRadius, 10)
+    }
+
+    t.suite("Desk: backgrounds: uniform rounding uses checked precedence on all nonimage boxes") {
+        for component in [#"Text("A")"#, "Column { Text(\"A\") }", "Row { Text(\"A\") }",
+                          "Freeform { Rectangle().size(2) }", "Progress(0.5)", "Circle()", "Ellipse()", "Capsule()"] {
+            let program = try compileFixture(t, "widget { \(component).size(40, 20).background(.glass).rounded(3pt) }")
+            t.equal(program.root.cornerRadius, .points(3), component)
+            t.equal(program.root.background, .glass(style: .regular), component)
+        }
+        for suffix in [".rounded(7, topLeft: 3, topRight: 3, bottomLeft: 3, bottomRight: 3)",
+                       ".rounded(topLeft: 3, topRight: 3, bottomLeft: 3, bottomRight: 3)"] {
+            t.equal(try compileFixture(t, "widget { Text(\"A\")\(suffix) }").root.cornerRadius, .points(3))
+        }
+        t.equal(try compileFixture(t, #"widget { Text("A").rounded(topLeft: 0) }"#).root.cornerRadius, .points(0))
+        let first = try compileFixture(t, #"widget { Text("A").size(40, 20).padding(3).background(.glass).rounded(3pt) }"#)
+        let second = try compileFixture(t, #"widget { Text("A").rounded(3pt).background(.glass).padding(3).size(40, 20) }"#)
+        t.equal(first, second, "written modifier order does not change the box structure")
+        var plainCircle = try ProgramRuntime(program: compileFixture(t, "widget { Circle().size(12) }"))
+        var roundedCircle = try ProgramRuntime(program: compileFixture(t, "widget { Circle().size(12).rounded(3) }"))
+        let plainScene = try plainCircle.project(environment: compileEnvironment(), measure: measure)
+        let roundedScene = try roundedCircle.project(environment: compileEnvironment(), measure: measure)
+        guard case .shape(let plain)? = plainScene.drawingItems.first,
+              case .shape(let rounded)? = roundedScene.drawingItems.first else { throw CompilationFixtureError.missingProgram }
+        t.equal(rounded.shapes, plain.shapes, "box rounding does not replace the Circle's own path or paint")
+        t.equal(rounded.contentFrame, plain.contentFrame)
+    }
+
+    t.suite("Desk: backgrounds: empty and zeroarea containers and unrounded images retain truthful content") {
+        for component in ["Column", "Row", "Freeform"] {
+            let program = try compileFixture(t, "widget { \(component) { }.size(40, 20).background(.glass).rounded(3) }")
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(scene.size, SkinSize(width: 40, height: 20)); t.equal(scene.elements.count, 1)
+            t.equal(scene.elements[0].glass?.rect, SkinRect(width: 40, height: 20))
+            t.equal(scene.elements[0].glass?.cornerRadius, 3)
+        }
+        let empty = try compileFixture(t, "widget { Column { }.size(0, 10).background(.glass).rounded(3) }")
+        t.equal(empty.root.background, .glass(style: .regular)); t.equal(empty.root.cornerRadius, .points(3))
+        var runtime = try ProgramRuntime(program: empty)
+        let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(scene.elements[0].frame, SkinRect(height: 10)); t.check(scene.elements[0].glass == nil)
+        t.check(scene.drawingItems.isEmpty, "zeroarea boxes emit neither glass nor transparent paint")
+        for suffix in ["", ".rounded(0)", ".rounded(0pt)"] {
+            let checked = deskCheck(#"widget { Image("A.png").size(20, 10).background(.glass)"# + suffix + " }")
+            let result = Desk.compile(checked)
+            t.check(result.issues.isEmpty, "\(result.issues)"); t.check(result.program != nil)
+            t.equal(result.imageSources, ["A.png"])
+            t.equal(result.program?.root.background, .glass(style: .regular))
+        }
+    }
+
+    t.suite("Desk: backgrounds: unsupported paints clipping and dynamic facets reject the entire checked document") {
+        let elements = [#"Text("A").background(gradient(.black, .white))"#,
+            #"Text("A").background(radialGradient(.white, .clear))"#,
+            #"Text("A").background(image: "A.png")"#,
+            #"Text("A").background(system.accentColor)"#,
+            #"Text("A").background(.glass, tint: system.accentColor)"#,
+            #"Text("A").background(.glass(123))"#,
+            #"Text("A").background(.accent(123))"#,
+            #"Text("A").background(.glass, if: true)"#,
+            #"Text("A").background(.glass).rounded(3, topLeft: 0)"#,
+            #"Text("A").background(.glass).rounded(3, if: true)"#,
+            #"Image("A.png").background(.glass).rounded(3)"#,
+            #"Image("A.png").background(.glass).rounded(.full)"#]
+        for element in elements {
+            let source = "widget { Column { Text(\"must not publish partially\"); \(element) } }"
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && result.elementRefs.isEmpty, source)
+            t.equal(result.issues.first?.kind, .unsupported, source)
+            t.check(result.imageSources.isEmpty, "unsupported background does not initiate asset reads")
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+        for source in [#"widget { Text("A").background(.accent, tint: .dim) }"#,
+                       #"widget { Text("A").rounded(7).rounded(3, topLeft: 3) }"#,
+                       #"widget { Row(spacing: 0) { Spacer(min: 2).background(.glass).rounded(3) }.size(30, 10) }"#] {
+            let invalid = deskCheck(source), result = Desk.compile(invalid)
+            t.check(result.program == nil && result.elementRefs.isEmpty)
+            t.equal(result.diagnostics, invalid.diagnostics)
+            if !invalid.diagnostics(.error).isEmpty { t.check(result.issues.isEmpty) }
+            if source.contains("Spacer") {
+                t.equal(invalid.diagnostics.filter { $0.id == .notApplicable && $0.severity == .error }.count, 2)
+            }
+        }
+    }
+
+    t.suite("Desk: backgrounds: stale facet symbol numeric and catalog receipts never publish partial output") {
+        let checked = deskCheck(#"widget { Text("A").background(.glass, tint: .accent).rounded(3pt) }"#)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        guard let ref = checked.root, let facts = checked.elements[ref], let node = checked.tree.resolve(ref),
+              let call = CallStmtSyntax(node), let paint = facts.facets["background"]?.first?.value,
+              let tint = facts.facets["background.tint"]?.first?.value,
+              let radius = facts.facets["rounded.topLeft"]?.first?.value,
+              let modifier = call.modifiers.first(where: { $0.name.token.text == "background" }) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.check(Desk.compile(checked).program != nil)
+        func rejected(_ value: CheckedFile, catalog: DeskCatalog = .current) {
+            let result = Desk.compile(value, catalog: catalog)
+            t.check(result.program == nil && result.elementRefs.isEmpty)
+            t.check(result.imageSources.isEmpty); t.equal(result.diagnostics, checked.diagnostics)
+            t.check(!result.issues.isEmpty)
+        }
+        for identity in [paint, tint, checked.tree.id(of: modifier.node)] {
+            var symbols = checked.symbols; symbols.removeValue(forKey: identity)
+            rejected(compilationReplacingFacts(checked, symbols: symbols))
+        }
+        var types = checked.types; types[paint] = SemType(type: .color)
+        rejected(compilationReplacingFacts(checked, types: types))
+        for key in ["background.tint", "rounded.topRight"] {
+            var elements = checked.elements; elements[ref]?.facets.removeValue(forKey: FacetID(key))
+            rejected(compilationReplacingFacts(checked, elements: elements))
+        }
+        var elements = checked.elements
+        elements[ref]?.facets["background"]?[0].value = tint
+        rejected(compilationReplacingFacts(checked, elements: elements))
+        elements = checked.elements; elements[ref]?.facets["background"]?[0].fixedValue = ".glass"
+        rejected(compilationReplacingFacts(checked, elements: elements))
+        var numeric = checked; numeric.canonicalNumericValues.removeValue(forKey: radius)
+        rejected(numeric)
+        var catalog = DeskCatalog.current
+        guard let background = catalog.modifiers.firstIndex(where: { $0.name == "background" }),
+              let rounded = catalog.modifiers.firstIndex(where: { $0.name == "rounded" }) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        catalog.modifiers[background].signatures[0].params[0].type = .color
+        rejected(checked, catalog: catalog)
+        catalog = .current; catalog.modifiers[rounded].signatures[0].params[0].defaultValue = .source("12")
+        rejected(checked, catalog: catalog)
+    }
+}
+
 private func compilationReplacingFacts(_ checked: CheckedFile, symbols: [NodeID: Symbol]? = nil,
+                                       types: [NodeID: SemType]? = nil, elements: [NodeID: ElementFacts]? = nil,
                                        dataUses: [DataUse]? = nil) -> CheckedFile {
-    var value = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols ?? checked.symbols, types: checked.types,
-                            elements: checked.elements, dataUses: dataUses ?? checked.dataUses, dependencies: checked.dependencies,
+    var value = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols ?? checked.symbols, types: types ?? checked.types,
+                            elements: elements ?? checked.elements, dataUses: dataUses ?? checked.dataUses, dependencies: checked.dependencies,
                             reactions: checked.reactions, freeformOrders: checked.freeformOrders, stringTable: checked.stringTable,
                             requirements: checked.requirements, options: checked.options, styles: checked.styles,
                             translations: checked.translations, root: checked.root)

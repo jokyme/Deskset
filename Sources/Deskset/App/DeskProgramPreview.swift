@@ -414,6 +414,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             }
         case .bar(let bar):
             return (bar.color.a > 0 || bar.path != nil) && bar.visibleRects.contains { $0.width > 0 && $0.height > 0 }
+        case .glass(let region):
+            let visible = region.clip.map { region.rect.cgRect.intersection($0.cgRect) } ?? region.rect.cgRect
+            return !visible.isEmpty
         case .transformed(_, let children), .antialias(_, let children):
             return children.contains(where: hasVisibleContent)
         default: return false
@@ -802,7 +805,7 @@ final class DeskProgramPreviewCanvas: NSView {
         destination.saveGState()
         defer { destination.restoreGState() }
         DesksetDraw.DrawExecutor.draw(scene: scene, in: destination, context: context, cycle: 1,
-                                     target: DrawTarget.capture(destination, glass: .none))
+                                     target: DrawTarget.capture(destination, glass: .placeholder(dark: scene.environment.appearance.value.isDark)))
     }
 
     override func viewDidChangeEffectiveAppearance() {

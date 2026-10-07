@@ -41,6 +41,7 @@ enum SceneDrawingSelfTests {
         libraryContextTests(t)
         selectionTests(t)
         glassTests(t)
+        nativeBackgroundTests(t)
         stateTests(t)
     }
 
@@ -342,6 +343,55 @@ enum SceneDrawingSelfTests {
                         DrawExecutor.draw(elements: sample.elements, in: $0, context: cold, cycle: 2, glass: sample.glass)
                     }
                     t.equal(current, sample.pictures[index], "cold selection after owner release")
+                }
+            }
+        }
+    }
+
+    private static func nativeBackgroundTests(_ t: AppTestRunner) {
+        t.suite("Runtime: scene drawing: native child glass interleaves with parent color and keeps one final transform") {
+            let red = Paint(color: RGBA(r: 220, g: 35, b: 50)), blue = Paint(color: RGBA(r: 30, g: 90, b: 220))
+            let frame = SkinRect(x: 10, y: 10, width: 130, height: 95)
+            let region = GlassRegion(id: "desk-background:1:child", rect: SkinRect(x: 30, y: 20, width: 80, height: 60),
+                                     cornerRadius: 8, tint: RGBA(r: 30, g: 180, b: 140, a: 80))
+            let parent = SceneElement(id: ElementID(name: "parent", index: 0), kind: .unknown("Freeform"), frame: frame,
+                anchor: SkinPoint(x: frame.x, y: frame.y), visibility: .visible, container: nil, isContainer: false,
+                items: [.fill(frame, red)], glass: nil, imageDependencies: [])
+            let matrix = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 20, ty: 10)
+            let content = DrawItem.transformed(matrix, [.fill(SkinRect(x: 48, y: 50, width: 40, height: 30), blue)])
+            let child = SceneElement(id: ElementID(name: "child", index: 1), kind: .shape, frame: region.rect,
+                anchor: SkinPoint(x: region.rect.x, y: region.rect.y), visibility: .visible, container: nil, isContainer: false,
+                items: [content], glass: region, imageDependencies: [], backing: .native(.glass))
+            let scene = WidgetScene(generation: 1, size: SkinSize(width: 180, height: 140), background: [],
+                backgroundImageDependencies: [], glass: [], elements: [parent, child], hitMap: SkinHitMap(),
+                environment: Environment().stamp)
+            let ordered: [DrawItem] = [.fill(frame, red), .glass(region), content]
+            let underlays: [DrawItem] = [.glass(region), .fill(frame, red), content]
+            for paint in [SkinRenderer.GlassDrawing.placeholder(dark: false), .placeholder(dark: true), .window, .none] {
+                for variant in variants {
+                    let current = try pixels(variant) {
+                        DrawExecutor.draw(scene: scene, in: $0, context: SkinRenderContext(), cycle: 0, glass: paint)
+                    }
+                    let expected = try pixels(variant) {
+                        DrawExecutor.draw(ordered, in: $0, context: SkinRenderContext(), cycle: 0, glass: paint)
+                    }
+                    let selected = try pixels(variant) {
+                        DrawExecutor.draw(elements: scene.elements, in: $0, context: SkinRenderContext(), cycle: 0, glass: paint)
+                    }
+                    t.equal(current, expected, "whole scene preserves source-order background pixels, \(paint), \(variant)")
+                    t.equal(selected, expected, "selection uses the same native-element ordering, \(paint), \(variant)")
+                    var legacyChild = child
+                    legacyChild.backing = .content
+                    let legacySelection = try pixels(variant) {
+                        DrawExecutor.draw(elements: [parent, legacyChild], in: $0, context: SkinRenderContext(), cycle: 0, glass: paint)
+                    }
+                    let behind = try pixels(variant) {
+                        DrawExecutor.draw(underlays, in: $0, context: SkinRenderContext(), cycle: 0, glass: paint)
+                    }
+                    t.equal(legacySelection, behind, "legacy selections retain all-glass-before-content semantics")
+                    if paint != .none {
+                        t.check(current != behind, "overlapping child glass must appear above the earlier parent color")
+                    } else { t.equal(current, behind, "a bitmap-only destination omits native glass") }
                 }
             }
         }

@@ -17,13 +17,17 @@ public enum DrawExecutor {
     }
 
     /// Studio selections keep the requested order and draw each element itself, including a selected container's
-    /// own mask. All selected glass is behind all selected content; visibility and container expansion do not apply.
+    /// own mask. Legacy glass stays behind all selected content. Native element backgrounds interleave with that
+    /// element's content; visibility and container expansion do not apply.
     public static func draw(elements: [SceneElement], in ctx: CGContext, context: DrawContext, cycle: Int,
                             target: DrawTarget) {
-        for element in elements {
+        for element in elements where element.backing != .native(.glass) {
             if let region = element.glass { drawGlass(region, in: ctx, glass: target.glassPaint) }
         }
         for element in elements {
+            if element.backing == .native(.glass), let region = element.glass {
+                drawGlass(region, in: ctx, glass: target.glassPaint)
+            }
             draw(element.items, in: ctx, context: context, cycle: cycle, target: target)
         }
     }

@@ -148,12 +148,16 @@ struct StaticProgramCompiler {
         var allowedModifiers: Set<String> = spacer ? ["hidden"] : progress ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
+        allowedModifiers.formUnion(["background", "rounded"])
         if !spacer { allowedModifiers.insert("position") }
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
         for modifier in call.modifiers {
             let modifierName = modifier.name.token.text
+            if ["background", "rounded"].contains(modifierName) {
+                try boxModifierContract(modifier, kind: facts.kind)
+            }
             if progress && ["color", "track"].contains(modifierName) {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)),
                       let paint = catalog.modifier(named: modifierName), paint.appliesTo.contains(.progress),
@@ -223,6 +227,8 @@ struct StaticProgramCompiler {
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor"]) }
+        allowedFacets.formUnion(["background", "background.tint", "rounded.topLeft", "rounded.topRight",
+                                 "rounded.bottomLeft", "rounded.bottomRight"])
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
@@ -251,9 +257,13 @@ struct StaticProgramCompiler {
             guard case .boolean(let n) = value else { throw issue(.unsupported, node, "Hidden requires a constant boolean") }
             hidden = n
         } else { hidden = false }
+        let background = try background(facts, call: call)
+        let radius = try uniformRadius(facts, call: call)
+        if image, let radius, radius != .points(0) {
+            throw issue(.unsupported, node, "Nonzero Image rounding requires picture clipping, which is not implemented")
+        }
         let content: ProgramElement.Content
         var stroke: ProgramShapeStroke?
-        var radius: ProgramCornerRadius?
         switch facts.component {
         case "Spacer":
             let arguments = call.arguments?.arguments ?? []
@@ -325,26 +335,6 @@ struct StaticProgramCompiler {
                     width = n
                 }
                 stroke = ProgramShapeStroke(color: try color(paint, at: node), width: width)
-            }
-            if facts.component == "Rectangle" {
-                var corners: [ProgramCornerRadius] = []
-                let keys = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"]
-                for key in keys {
-                    guard let value = try roundedFacet(facts, key, at: node) else { corners.append(.points(0)); continue }
-                    switch value {
-                    case .number(let n) where n >= 0: corners.append(.points(n))
-                    case .choice("full"): corners.append(.full)
-                    default: throw issue(.unsupported, node, "Corner radii require nonnegative constants or .full")
-                    }
-                }
-                if keys.contains(where: { facts.facets[FacetID($0)] != nil }) {
-                    guard let first = corners.first, corners.allSatisfy({ $0 == first }) else {
-                        throw issue(.unsupported, node, "Different corner radii are not implemented")
-                    }
-                    radius = first
-                } else if call.modifiers.contains(where: { $0.name.token.text == "rounded" }) {
-                    throw issue(.unsupported, node, "Rounded requires an explicit radius; the catalog supplies no default")
-                }
             }
             let fill: ProgramColor
             if let own = try facet(facts, "fill", at: node) { fill = try color(own, at: node) }
@@ -455,7 +445,7 @@ struct StaticProgramCompiler {
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape || progress ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
-                              onRightClickActions: onRightClickActions, position: position)
+                              onRightClickActions: onRightClickActions, position: position, background: background)
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {
@@ -620,6 +610,145 @@ struct StaticProgramCompiler {
         }
     }
 
+    private func boxModifierContract(_ modifier: ModifierAppSyntax, kind: ElementKind) throws {
+        let name = modifier.name.token.text
+        guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(name)),
+              let spec = catalog.modifier(named: name), spec.appliesTo.contains(kind),
+              spec.boxLayer == .background, !spec.inheritable, spec.block == .none else {
+            throw issue(.unsupported, modifier.node, "Unsupported checked box modifier contract")
+        }
+        if name == "background" {
+            guard spec.signatures.count == 2, spec.signatures[0].params.count == 2,
+                  let paint = spec.signatures[0].param(named: "paint"), paint.label == nil,
+                  paint.type == .paint, paint.facets == [FacetID("background")], paint.defaultValue == nil,
+                  let tint = spec.signatures[0].param(named: "tint"), tint.label == "tint",
+                  tint.type == .color, tint.facets == [FacetID("background.tint")], tint.defaultValue == nil else {
+                throw issue(.unsupported, modifier.node, "Unsupported checked background paint/tint contract")
+            }
+        } else {
+            let corners = ["topLeft", "topRight", "bottomLeft", "bottomRight"]
+            guard spec.signatures.count == 1, spec.signatures[0].params.count == 5,
+                  let radius = spec.signatures[0].param(named: "radius"), radius.label == nil,
+                  radius.type == .oneOf([.length, .enumeration("RadiusKeyword")]),
+                  radius.facets == corners.map({ FacetID("rounded.\($0)") }),
+                  radius.defaultValue == nil,
+                  corners.allSatisfy({ name in
+                      guard let param = spec.signatures[0].param(named: name) else { return false }
+                      return param.label == name && param.type == .length && param.facets == [FacetID("rounded.\(name)")] && param.defaultValue == nil
+                  }) else {
+                throw issue(.unsupported, modifier.node, "Unsupported checked uniform rounding contract")
+            }
+        }
+    }
+
+    /// A new box property consumes an actual checked argument from this element, never a fabricated fixed value.
+    private func boxArgument(_ facts: ElementFacts, _ key: String, modifier name: String,
+                             call: CallStmtSyntax) throws -> PositionedNode? {
+        guard let best = facts.facets[FacetID(key)]?.first else {
+            let hasArgument = call.modifiers.filter { $0.name.token.text == name }.contains { modifier in
+                (modifier.arguments?.arguments ?? []).contains { argument in
+                    let parameter = argument.label?.name ?? (name == "background" ? "paint" : "radius")
+                    return catalog.modifier(named: name)?.signatures.contains {
+                        $0.param(named: parameter)?.facets.contains(FacetID(key)) == true
+                    } == true
+                }
+            }
+            guard !hasArgument else { throw issue(.invalidCheckedModel, call.node, "Box argument has no checked facet receipt") }
+            return nil
+        }
+        guard best.fixedValue == nil, case .own(let owner) = best.origin,
+              let modifier = call.modifiers.first(where: { checked.tree.id(of: $0.node) == owner && $0.name.token.text == name }),
+              let value = checked.tree.resolve(best.value),
+              let argument = modifier.arguments?.arguments.first(where: { checked.tree.id(of: $0.value.node) == best.value }),
+              let spec = catalog.modifier(named: name) else {
+            throw issue(.invalidCheckedModel, call.node, "Box facet does not refer to its checked own modifier argument")
+        }
+        let parameter = argument.label?.name ?? (name == "background" ? "paint" : "radius")
+        guard spec.signatures.contains(where: { $0.param(named: parameter)?.facets.contains(FacetID(key)) == true }) else {
+            throw issue(.invalidCheckedModel, value, "Box facet does not match its checked parameter")
+        }
+        return value
+    }
+
+    private func checkedBoxColor(_ node: PositionedNode) throws -> ProgramColor {
+        let identity = checked.tree.id(of: node)
+        if let string = StringLiteralSyntax(node)?.literalValue, checked.types[identity]?.type == .string {
+            return try color(.string(string), at: node)
+        }
+        let implicit = ImplicitMemberExprSyntax(node)
+        let name = implicit?.name.token.text ?? MemberExprSyntax(node)?.name.token.text
+        guard implicit?.arguments == nil, let name, checked.types[identity]?.type == .color,
+              checked.symbols[identity] == .enumCase(type: "Color", case: name),
+              catalog.index.namedValues["Color.\(name)"]?.type == "Color" else {
+            throw issue(.unsupported, node, "Background colors require a checked literal or catalog Color value")
+        }
+        return try color(.choice(name), at: node)
+    }
+
+    private func background(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramBackground? {
+        guard let paint = try boxArgument(facts, "background", modifier: "background", call: call) else {
+            guard !call.modifiers.contains(where: { $0.name.token.text == "background" }), facts.facets["background.tint"] == nil else {
+                throw issue(.invalidCheckedModel, call.node, "Background has no checked paint argument")
+            }
+            return nil
+        }
+        let tint = try boxArgument(facts, "background.tint", modifier: "background", call: call)
+        let identity = checked.tree.id(of: paint)
+        if let implicit = ImplicitMemberExprSyntax(paint), implicit.arguments != nil {
+            throw issue(.unsupported, paint, "Background catalog values cannot take arguments")
+        }
+        if case .enumCase(type: "Paint", case: let name)? = checked.symbols[identity],
+           checked.types[identity]?.type == .paint, catalog.index.namedValues["Paint.\(name)"]?.type == "Paint",
+           ImplicitMemberExprSyntax(paint)?.name.token.text == name || MemberExprSyntax(paint)?.name.token.text == name {
+            let style: GlassStyle
+            switch name {
+            case "glass": style = .regular
+            case "clearGlass": style = .clear
+            default: throw issue(.unsupported, paint, "Unsupported catalog background Paint")
+            }
+            return .glass(style: style, tint: try tint.map(checkedBoxColor))
+        }
+        guard tint == nil else { throw issue(.unsupported, paint, "A background tint is implemented only for glass") }
+        return .color(try checkedBoxColor(paint))
+    }
+
+    private func uniformRadius(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramCornerRadius? {
+        let keys = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"]
+        guard keys.contains(where: { facts.facets[FacetID($0)] != nil }) else {
+            guard !call.modifiers.contains(where: { $0.name.token.text == "rounded" }) else {
+                throw issue(.invalidCheckedModel, call.node, "Rounded has no checked explicit radius")
+            }
+            return nil
+        }
+        var corners: [ProgramCornerRadius] = []
+        for key in keys {
+            guard let value = try boxArgument(facts, key, modifier: "rounded", call: call) else {
+                corners.append(.points(0)); continue
+            }
+            let identity = checked.tree.id(of: value)
+            switch try roundedFacet(facts, key, at: call.node) {
+            case .number(let n)? where n >= 0:
+                guard checked.types[identity]?.type == .length || checked.types[identity]?.type == .plainNumber,
+                      checked.canonicalNumericValues[identity] == n else {
+                    throw issue(.unsupported, value, "Rounded requires a checked finite Length literal receipt")
+                }
+                corners.append(.points(n))
+            case .choice("full")?:
+                guard checked.types[identity]?.type == .enumeration("RadiusKeyword"),
+                      checked.symbols[identity] == .enumCase(type: "RadiusKeyword", case: "full"),
+                      catalog.enumeration("RadiusKeyword")?.enumCase(named: "full") != nil else {
+                    throw issue(.unsupported, value, "Full rounding requires the checked RadiusKeyword case")
+                }
+                corners.append(.full)
+            default: throw issue(.unsupported, value, "Corner radii require nonnegative constants or .full")
+            }
+        }
+        guard let first = corners.first, corners.allSatisfy({ $0 == first }) else {
+            throw issue(.unsupported, call.node, "Different corner radii are not implemented")
+        }
+        return first
+    }
+
     private func color(_ value: Value, at node: PositionedNode) throws -> ProgramColor {
         switch value {
         case .choice(let n):
@@ -754,7 +883,7 @@ struct StaticProgramCompiler {
         return try constant(node)
     }
 
-    /// Explicit points are a checked Length spelling for rectangle corners, not a general constant/unit extension.
+    /// Explicit points are a checked Length spelling for box corners, not a general constant/unit extension.
     private func roundedFacet(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> Value? {
         guard let best = facts.facets[FacetID(key)]?.first, best.fixedValue == nil,
               let value = checked.tree.resolve(best.value), let literal = NumberLiteralSyntax(value),
@@ -765,7 +894,7 @@ struct StaticProgramCompiler {
               let canonical = checked.canonicalNumericValues[best.value], canonical.isFinite, canonical >= 0,
               let unit = catalog.unit(spelling: "pt"), unit.dimension == .length,
               unit.factor.isFinite, unit.offset == 0 else {
-            throw issue(.unsupported, value, "Rectangle point radii require a checked finite nonnegative Length literal")
+            throw issue(.unsupported, value, "Point radii require a checked finite nonnegative Length literal")
         }
         return .number(canonical)
     }

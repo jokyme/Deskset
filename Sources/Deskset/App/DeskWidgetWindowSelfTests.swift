@@ -657,6 +657,70 @@ enum DeskWidgetWindowSelfTests {
     }
 
     private static func mainDeliveryTests(_ t: AppTestRunner) {
+        t.suite("App: Desk native glass: text pixels glass and window size commit before the owner ACK") {
+            let source = #"widget { variable n = 0; Text("{n}").font(20).padding(6).background(.glass).rounded(6).onClick { n = n + 100000 } }"#
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let element = original.scene.elements.first, let glass = element.glass else { throw Failure.fixture }
+            t.check(widget.content.shown.image == nil, "a whole-window bitmap cannot cover the glass")
+            t.equal(widget.nativeComposition.subviews.count, 2, "native glass then foreground pixels")
+            guard let oldGlass = widget.nativeComposition.subviews.first as? SkinGlassFrameView else { throw Failure.fixture }
+            let oldFrame = oldGlass.frame, oldWindow = widget.window.frame
+            t.equal(oldFrame.size, NSSize(width: glass.rect.width, height: glass.rect.height))
+            t.check(widget.nativeComposition.hitTest(NSPoint(x: 8, y: 8)) == nil, "the parent keeps mouse handling")
+            let point = SkinPoint(x: element.frame.x + element.frame.width / 2 - original.origin.x,
+                                  y: element.frame.y + element.frame.height / 2 - original.origin.y)
+            host.primaryPress(at: point); host.primaryRelease(at: point)
+            host.frames.runLoopTurn(.beforeWaiting)
+            guard let exported = host.scene else { throw Failure.fixture }
+            t.check(host.frames.hasBitmapDelivery)
+            t.equal(oldGlass.frame, oldFrame, "owner rendering cannot change AppKit geometry")
+            t.equal(widget.window.frame, oldWindow)
+            var committed = false
+            DispatchQueue.main.async {
+                t.equal(widget.latestPresented?.scene.generation, exported.generation)
+                t.equal(widget.nativeComposition.frame.size, widget.view.frame.size)
+                t.equal(widget.window.frame.size, widget.view.frame.size)
+                t.check(widget.window.frame.width > oldWindow.width)
+                t.equal(widget.nativeComposition.subviews.first?.frame.size, widget.view.frame.size)
+                t.check(widget.content.shown.image == nil)
+                t.equal(host.presented?.scene.generation, original.scene.generation, "Main committed before the FIFO ACK")
+                committed = true
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { committed && !host.frames.hasBitmapDelivery })
+            t.equal(host.presented?.scene.generation, exported.generation)
+        }
+
+        t.suite("App: Desk native glass: negative viewport clear recovery and close retain no stale views") {
+            let source = #"widget { Freeform { Text("Glass").font(20).size(80, 32).position(x: -30, y: -20).background(.clearGlass).rounded(8) } }"#
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented else { throw Failure.fixture }
+            t.equal(original.origin, SkinPoint(x: -30, y: -20))
+            t.equal(widget.nativeComposition.subviews.first?.frame, NSRect(x: 0, y: 0, width: 80, height: 32))
+            let serial = widget.lastPresentationSerial
+            let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                 scale: widget.window.backingScaleFactor)
+            host.take(widget.currentFacts(), input: input); host.frames.releaseUnseen()
+            t.check(AppSelfTest.spin(timeout: 10) { widget.latestPresented == nil && widget.nativeComposition.subviews.isEmpty })
+            t.check(widget.content.shown.image == nil && widget.view.accessibilityParts.isEmpty)
+            host.drawFirstFrame()
+            t.check(AppSelfTest.spin(timeout: 10) { widget.latestPresented != nil && !host.frames.hasBitmapDelivery })
+            t.equal(widget.latestPresented?.scene.generation, original.scene.generation)
+            t.check(widget.lastPresentationSerial > serial)
+            t.equal(widget.nativeComposition.subviews.first?.frame.origin, .zero)
+            // Resume the controlled visible state before requesting an ordinary frame.
+            // drawFirstFrame intentionally does nothing once released contents have recovered.
+            var visible = widget.currentFacts()
+            visible.isOrderedIn = true; visible.isVisible = true
+            host.take(visible, input: input)
+            host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+            t.check(host.frames.hasBitmapDelivery, "the visible owner queued a frame before close")
+            widget.close(deactivate: false)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.check(widget.nativeComposition.subviews.isEmpty && widget.content.shown.image == nil)
+            t.check(widget.latestPresented == nil && widget.view.accessibilityParts.isEmpty)
+        }
+
         t.suite("App: Desk Main delivery: held pixels and geometry commit together before the owner ACK") {
             let source = #"widget { variable n = 0; Text("{n}").font(20).onClick { n = n + 100000 } }"#
             let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
@@ -756,7 +820,7 @@ enum DeskWidgetWindowSelfTests {
             guard let delivery = captured else { throw Failure.fixture }
             let alternate = [CGColorSpace(name: CGColorSpace.sRGB)!, CGColorSpace(name: CGColorSpace.displayP3)!]
                 .first { $0 != delivery.space }!
-            let bad = SkinBitmapDelivery(frame: delivery.frame, scene: delivery.scene, origin: delivery.origin,
+            let bad = SkinBitmapDelivery(content: delivery.content, scene: delivery.scene, origin: delivery.origin,
                 space: alternate, appearance: delivery.appearance, panelGeneration: delivery.panelGeneration,
                 serial: delivery.serial, lifecycle: delivery.lifecycle)
             let count = widget.content.state.presented, image = widget.content.shown.image
@@ -1254,6 +1318,33 @@ enum DeskWidgetWindowSelfTests {
     }
 
     private static func accessibilityTests(_ t: AppTestRunner) {
+        t.suite("App: Desk background accessibility: decorated preset Text preserves its label and action") {
+            for background in [".background(.red).rounded(6)", ".background(.glass).rounded(.full)"] {
+                let source = """
+                info { size: .small }
+                widget { variable count = 0; Freeform {
+                    Text("Value {count}😀").font(20).size(80, 40).padding(4).position(x: -20, y: -10)
+                        \(background).onClick { count = count + 1; copy("{count}") }
+                }.size(200) }
+                """
+                let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: source)
+                t.equal(widget.view.accessibilityParts.count, 1)
+                guard let child = widget.view.accessibilityParts.first, let presented = widget.latestPresented,
+                      let element = presented.scene.elements.first(where: { $0.id == child.id }) else { throw Failure.fixture }
+                t.equal(child.accessibilityLabel(), "Value 0😀")
+                let frame = NSRect(x: element.frame.x - presented.origin.x, y: element.frame.y - presented.origin.y,
+                                   width: element.frame.width, height: element.frame.height)
+                t.equal(child.accessibilityFrame(), NSAccessibility.screenRect(fromView: widget.view, rect: frame))
+                t.check(child.accessibilityPerformPress())
+                t.check(AppSelfTest.spin(timeout: 10) {
+                    recorder.calls == ["copy:1"] && widget.view.accessibilityParts.first?.accessibilityLabel() == "Value 1😀"
+                })
+                t.check(!child.accessibilityPerformPress(), "decorations do not bypass stale-frame guards")
+                widget.close(deactivate: false)
+                t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            }
+        }
+
         t.suite("App: Desk Freeform accessibility: actual negative Text frame maps to screen and activates once from a worker") {
             let worker = SkinThreadExecutor(name: "Desk Freeform accessibility worker test")
             var created: DeskWidgetWindowController?

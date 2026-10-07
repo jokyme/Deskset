@@ -90,8 +90,17 @@ public struct ProgramRuntime: Sendable {
                 }
             }
             if let radius = node.cornerRadius {
-                guard case .rectangle = node.content else { throw ProgramRuntimeError.invalidGeometry(node.id) }
                 if case .points(let value) = radius, !value.isFinite || value < 0 { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                if case .image = node.content, radius != .points(0) { throw ProgramRuntimeError.invalidGeometry(node.id) }
+            }
+            if let background = node.background {
+                contentCount += 1
+                let color: ProgramColor?
+                switch background {
+                case .color(let value): color = value
+                case .glass(_, let tint): color = tint
+                }
+                if let color, case .literal(let value) = color, !Self.valid(value) { throw ProgramRuntimeError.invalidPaint(node.id) }
             }
             switch node.content {
             case .text(let text):
@@ -326,6 +335,17 @@ public struct ProgramRuntime: Sendable {
                 guard point.x.isFinite, point.y.isFinite else { throw ProgramRuntimeError.layoutOverflow(elements[index].id) }
                 elements[index].anchor = SkinPoint(x: point.x, y: point.y)
                 if !elements[index].items.isEmpty { elements[index].items = [.transformed(transform, elements[index].items)] }
+                if var glass = elements[index].glass {
+                    glass.rect = try transformed(glass.rect, by: transform, element: elements[index].id)
+                    glass.cornerRadius *= transform.a
+                    guard glass.cornerRadius.isFinite else { throw ProgramRuntimeError.layoutOverflow(elements[index].id) }
+                    if glass.rect.width > 0, glass.rect.height > 0 { elements[index].glass = glass }
+                    else {
+                        // A finite preset fit can underflow a tiny box to zero; it has no native surface or hit.
+                        elements[index].glass = nil
+                        elements[index].backing = .content
+                    }
+                }
             }
         }
         let sceneSize = preset ?? box.size
@@ -400,12 +420,7 @@ public struct ProgramRuntime: Sendable {
     }
 
     private static func clickShape(_ frame: SkinRect, radius: ProgramCornerRadius?) -> MouseShape {
-        let value: Double
-        switch radius {
-        case .points(let n): value = min(n, min(frame.width, frame.height) / 2)
-        case .full: value = min(frame.width, frame.height) / 2
-        case nil: value = 0
-        }
+        let value = cornerRadius(radius, in: frame)
         guard value > 0 else { return .rect(frame) }
         let geometry = ShapeGeometry.path(ShapePath(subpaths: [ShapeGeometryBuilder.rectangle(x: 0, y: 0,
                                          width: frame.width, height: frame.height, radiusX: value)], fillRule: .nonZero))
@@ -414,6 +429,14 @@ public struct ProgramRuntime: Sendable {
                              strokeStyle: ShapeStrokeStyle(), strokePlan: nil, paintTransform: .identity, bounds: bounds, visualBounds: bounds)
         return .shapes(ShapeMouseShape(frame: frame, originX: frame.x, originY: frame.y, inverse: nil,
                                      solidBackground: false, items: [item], regions: [ShapeHitTester.FlatRegion(geometry)]))
+    }
+
+    private static func cornerRadius(_ radius: ProgramCornerRadius?, in frame: SkinRect) -> Double {
+        switch radius {
+        case .points(let value): return min(value, min(frame.width, frame.height) / 2)
+        case .full: return min(frame.width, frame.height) / 2
+        case nil: return 0
+        }
     }
 
     private static func valid(_ color: RGBA) -> Bool {
@@ -433,6 +456,8 @@ public struct ProgramRuntime: Sendable {
         let track: RGBA?
         let progress: Double?
         let stroke: RGBA?
+        let backgroundColor: RGBA?
+        let backgroundTint: RGBA?
         let image: ProgramImageResource?
         let children: [(Box, SkinPoint)]
     }
@@ -841,12 +866,23 @@ public struct ProgramRuntime: Sendable {
                 layoutBounds = layoutBounds.union(slot)
             }
         }
+        let backgroundColor: RGBA?, backgroundTint: RGBA?
+        switch node.background {
+        case .color(let color):
+            backgroundColor = try color.resolved(in: appearance, colorInput: state.colors)
+            backgroundTint = nil
+        case .glass(_, let tint):
+            backgroundColor = nil
+            backgroundTint = try tint.map { try $0.resolved(in: appearance, colorInput: state.colors) }
+        case nil: backgroundColor = nil; backgroundTint = nil
+        }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
                       layoutBounds: layoutBounds,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth,
                                         height: max(innerHeight, textSize?.height ?? 0)),
                       style: style, text: resolvedText, textSize: textSize, fill: fill, track: track, progress: fraction,
-                      stroke: try node.stroke.map { try $0.color.resolved(in: appearance, colorInput: state.colors) }, image: image, children: children)
+                      stroke: try node.stroke.map { try $0.color.resolved(in: appearance, colorInput: state.colors) },
+                      backgroundColor: backgroundColor, backgroundTint: backgroundTint, image: image, children: children)
         state.boxes[key] = box
         return box
     }
@@ -942,9 +978,31 @@ public struct ProgramRuntime: Sendable {
                 }
             }
         }
+        var glass: GlassRegion?
+        if !hidden, frame.width > 0, frame.height > 0 {
+            let radius = Self.cornerRadius(box.node.cornerRadius, in: frame)
+            switch box.node.background {
+            case .color:
+                guard let color = box.backgroundColor else { throw ProgramRuntimeError.invalidPaint(box.node.id) }
+                if radius == 0 { items.insert(.fill(frame, Paint(color: color)), at: 0) }
+                else {
+                    let geometry = ShapeGeometry.path(ShapePath(subpaths: [ShapeGeometryBuilder.rectangle(
+                        x: 0, y: 0, width: frame.width, height: frame.height, radiusX: radius)], fillRule: .nonZero))
+                    let bounds = ShapeRect(minX: 0, minY: 0, maxX: frame.width, maxY: frame.height)
+                    let shape = ShapeItem(index: 0, geometry: geometry, closed: true, fill: .color(color), stroke: .none,
+                        strokeStyle: ShapeStrokeStyle(), strokePlan: nil, paintTransform: .identity, bounds: bounds, visualBounds: bounds)
+                    items.insert(.shape(ShapeDraw(shapes: [shape], contentFrame: frame)), at: 0)
+                }
+            case .glass(let style, _):
+                glass = GlassRegion(id: "desk-background:\(box.node.id.index):\(box.node.id.name)", rect: frame,
+                                    cornerRadius: radius, style: style, tint: box.backgroundTint)
+            case nil: break
+            }
+        }
         elements.append(SceneElement(id: box.node.id, kind: kind, frame: frame, anchor: point,
                                      visibility: hidden ? .hiddenKeepsSpace : .visible, container: nil, isContainer: false,
-                                     items: items, glass: nil, imageDependencies: imageDependencies))
+                                     items: items, glass: glass, imageDependencies: imageDependencies,
+                                     backing: glass == nil ? .content : .native(.glass)))
         for (child, offset) in box.children {
             try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden, into: &elements)
         }
@@ -1038,12 +1096,7 @@ public struct ProgramRuntime: Sendable {
             path = ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: w, height: h, radiusX: min(w, h) / 2)
             bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
         case .rectangle:
-            let radius: Double
-            switch node.cornerRadius {
-            case .points(let n): radius = min(n, min(w, h) / 2)
-            case .full: radius = min(w, h) / 2
-            case nil: radius = 0
-            }
+            let radius = Self.cornerRadius(node.cornerRadius, in: content)
             path = ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: w, height: h, radiusX: radius)
             bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
         default: throw ProgramRuntimeError.invalidGeometry(node.id)

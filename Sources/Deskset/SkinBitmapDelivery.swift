@@ -49,7 +49,7 @@ private final class SkinBitmapClaim {
 
 /// Immutable inputs to one Main bitmap transaction. The producer retains its private capture until the ACK.
 final class SkinBitmapDelivery {
-    let frame: SkinFrame
+    let content: SkinBitmapContent
     let scene: WidgetScene
     let origin: SkinPoint
     let space: CGColorSpace
@@ -60,11 +60,17 @@ final class SkinBitmapDelivery {
     private let claim = SkinBitmapClaim()
     var state: SkinBitmapDeliveryState { claim.state }
 
-    init(frame: SkinFrame, scene: WidgetScene, origin: SkinPoint, space: CGColorSpace, appearance: String,
+    init(content: SkinBitmapContent, scene: WidgetScene, origin: SkinPoint, space: CGColorSpace, appearance: String,
          panelGeneration: UInt64, serial: UInt64, lifecycle: UInt64) {
-        self.frame = frame; self.scene = scene; self.origin = origin; self.space = space
+        self.content = content; self.scene = scene; self.origin = origin; self.space = space
         self.appearance = appearance; self.panelGeneration = panelGeneration; self.serial = serial
         self.lifecycle = lifecycle
+    }
+
+    convenience init(frame: SkinFrame, scene: WidgetScene, origin: SkinPoint, space: CGColorSpace, appearance: String,
+                     panelGeneration: UInt64, serial: UInt64, lifecycle: UInt64) {
+        self.init(content: .bitmap(frame), scene: scene, origin: origin, space: space, appearance: appearance,
+                  panelGeneration: panelGeneration, serial: serial, lifecycle: lifecycle)
     }
 
     func claimOnMain() -> Bool { claim.claimOnMain() }

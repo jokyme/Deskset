@@ -7,6 +7,7 @@ enum ScenePreparerSelfTests {
         compositionTests(t)
         unknownTests(t)
         glassAndVersionTests(t)
+        nativeBackgroundTests(t)
         lifetimeAndDrawingTests(t)
     }
 
@@ -145,6 +146,39 @@ enum ScenePreparerSelfTests {
                     [ImageDependency(path: "/missing/child.png", stamp: nil)], "old element dependencies stay nil")
             t.equal(hitArea.scene.environment, environment, "old environment generations stay frozen")
             t.equal(changed.scene.elements[0].drawGeneration, 11, "resource changes do not invent element revisions")
+        }
+    }
+
+    private static func nativeBackgroundTests(_ t: AppTestRunner) {
+        t.suite("Runtime: scene preparation: native element backgrounds keep final geometry in their own drawing run") {
+            let context = DrawContext(fonts: AppFontResolver())
+            let ctx = try bitmap(scale: 1, bgra: false)
+            ctx.translateBy(x: 0, y: CGFloat(ctx.height)); ctx.scaleBy(x: 1, y: -1)
+            let region = GlassRegion(id: "desk-background:1:child", rect: SkinRect(x: 2, y: 3, width: 14, height: 12),
+                                     cornerRadius: 3, style: .clear)
+            let transform = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 10, ty: 10)
+            let parent = element("Parent", 0, [fill(0, 0, 30, 24)])
+            var child = element("Child", 1, [.transformed(transform, [fill(-12, -8, 8, 6)])], frame: region.rect, glass: region)
+            child.backing = .native(.glass)
+            let scene = makeScene(elements: [parent, child])
+            let hit = ScenePreparer.prepare(scene, context: context, target: .capture(ctx, glass: .hitArea))
+            t.equal(scene.drawingRuns, [[], parent.items, [.glass(region)] + child.items])
+            t.equal(hit.elementInk, [rectangle(0, 0, 30, 24), rectangle(2, 3, 16, 15)])
+            t.equal(hit.runInk, [.empty, rectangle(0, 0, 30, 24), rectangle(2, 3, 16, 15)],
+                    "native glass stays in the child run after its parent's color")
+            let none = ScenePreparer.prepare(scene, context: context, target: .capture(ctx, glass: .none))
+            t.equal(none.elementInk, [rectangle(0, 0, 30, 24), rectangle(4, 6, 8, 9)])
+            t.equal(none.runInk, [.empty, rectangle(0, 0, 30, 24), rectangle(4, 6, 8, 9)],
+                    "omitting native pixels preserves the independently transformed bitmap candidate")
+            ctx.saveGState(); ctx.scaleBy(x: 2, y: 2)
+            let twice = ScenePreparer.prepare(scene, context: context, target: .capture(ctx, glass: .hitArea))
+            ctx.restoreGState()
+            t.equal(twice.runInk, [.empty, rectangle(0, 0, 60, 48), rectangle(4, 6, 32, 30)],
+                    "the destination density applies once to already-final glass coordinates")
+            let placeholder = ScenePreparer.prepare(scene, context: context,
+                target: .capture(ctx, glass: .placeholder(dark: false)))
+            t.equal(placeholder.runInk, [.empty, rectangle(0, 0, 30, 24), .unknown(.unresolvedRasterization)])
+            t.equal(hit.scene, scene)
         }
     }
 

@@ -9,6 +9,209 @@ private func programDraws(_ scene: WidgetScene) -> [TextDraw] {
     scene.drawingItems.compactMap { if case .text(let value) = $0 { return value }; return nil }
 }
 
+private func runProgramBackgroundTests(_ t: TestRunner) {
+    let rootID = ElementID(name: "root", index: 0)
+    let red = RGBA(r: 220, g: 30, b: 50)
+    let blue = RGBA(r: 30, g: 90, b: 220)
+    let noText: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in
+        throw ProgramRuntimeError.invalidMeasurement(rootID)
+    }
+
+    t.suite("Program: backgrounds: parent color and overlapping native children retain source order and full identities") {
+        let first = ProgramElement(id: ElementID(name: "same:name", index: 1), content: .rectangle(fill: .literal(blue)),
+            width: .fixed(30), height: .fixed(20))
+        let second = ProgramElement(id: ElementID(name: "same:name", index: 2), content: .text(ProgramText("Front")),
+            width: .fixed(30), height: .fixed(20), padding: SkinInsets(left: 3, top: 2, right: 3, bottom: 2),
+            cornerRadius: .points(4), position: ProgramPosition(x: 5, y: 5),
+            background: .glass(style: .regular, tint: .accent))
+        let third = ProgramElement(id: ElementID(name: "same:name", index: 3), content: .freeform(align: .topLeft, children: []),
+            width: .fixed(10), height: .fixed(10), position: ProgramPosition(x: 40), background: .glass(style: .clear))
+        let root = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [first, second, third]),
+            width: .fixed(60), height: .fixed(40), background: .color(.literal(red)))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Ordered backgrounds", root: root))
+        let scene = try runtime.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 12, height: 8) }
+        t.equal(scene.elements.map(\.id), [rootID, first.id, second.id, third.id])
+        t.check(scene.background.isEmpty && scene.glass.isEmpty, "Desk does not publish a global underlay")
+        guard let region = scene.elements[2].glass, let clear = scene.elements[3].glass else {
+            return t.check(false, "each native background owns its region")
+        }
+        t.equal(region.rect, SkinRect(x: 5, y: 5, width: 30, height: 20))
+        t.equal(region.cornerRadius, 4); t.equal(region.style, .regular)
+        t.equal(region.tint, SkinAppearance.light.accentColor)
+        t.equal(clear.rect, SkinRect(x: 40, width: 10, height: 10)); t.equal(clear.style, .clear)
+        t.equal(clear.cornerRadius, 0); t.equal(clear.tint, nil)
+        t.check(region.id != clear.id, "same spelling at different full ElementIDs never aliases native views")
+        t.equal(scene.elements.map(\.backing), [.content, .content, .native(.glass), .native(.glass)])
+        let expected = scene.elements[0].items + scene.elements[1].items + [.glass(region)] + scene.elements[2].items + [.glass(clear)]
+        t.equal(scene.drawingItems, expected, "a child's glass follows the parent and earlier overlapping bitmap")
+        t.equal(scene.drawingRuns.count, 5)
+        t.equal(scene.drawingRuns[3], [.glass(region)] + scene.elements[2].items)
+        let dark = try runtime.project(environment: programEnvironment(.dark, scale: 2)) { _, _, _ in SkinSize(width: 12, height: 8) }
+        t.equal(dark.elements[2].glass?.id, region.id); t.equal(dark.elements[3].glass?.id, clear.id)
+        t.equal(dark.elements[2].glass?.rect, region.rect, "backing density does not scale point geometry")
+        t.equal(dark.elements[2].glass?.tint, SkinAppearance.dark.accentColor)
+
+        var legacy = scene
+        legacy.background = [.glass(region), .glass(clear)]; legacy.glass = [region, clear]
+        legacy.elements[2].backing = .content; legacy.elements[3].backing = .content
+        t.equal(legacy.drawingItems, legacy.background + legacy.elements.flatMap(\.items),
+                "the existing INI backing still publishes glass once behind all content")
+    }
+
+    t.suite("Program: backgrounds: padding and rounded hits use the outer box while Rectangle rounds its content") {
+        let id = ElementID(name: "card", index: 1)
+        let padding = SkinInsets(left: 6, top: 4, right: 6, bottom: 4)
+        let node = ProgramElement(id: id, content: .rectangle(fill: .literal(.clear)), width: .fixed(40), height: .fixed(30),
+            padding: padding, cornerRadius: .full, onClickActions: [.copy(.string("card"))], background: .glass(style: .regular))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rounded glass", root: node))
+        let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+        guard let region = scene.elements[0].glass, case .shape(let content)? = scene.elements[0].items.first,
+              case .path(let path) = content.shapes[0].geometry else { return t.check(false, "rounded glass and rectangle") }
+        t.equal(region.rect, SkinRect(width: 40, height: 30)); t.equal(region.cornerRadius, 15)
+        t.equal(content.contentFrame, SkinRect(x: 6, y: 4, width: 28, height: 22))
+        t.equal(path.subpaths.first?.start, ShapePoint(11, 0), "Rectangle's radius is clamped against its content")
+        t.equal(scene.hitMap.entries.first?.frame, region.rect)
+        t.equal(scene.hitMap.entry(at: 1, 15, handling: .leftUp, images: nil)?.elementID, id,
+                "transparent content still hits the padding inside the rounded box")
+        t.equal(scene.hitMap.entry(at: 0, 0, handling: .leftUp, images: nil)?.elementID, nil)
+        t.check(region.contains(x: 1, y: 15) && !region.contains(x: 0, y: 0))
+
+        for radius in [ProgramCornerRadius.points(50), .full] {
+            let colored = ProgramElement(id: id, content: .text(ProgramText("Caption")), width: .fixed(40), height: .fixed(30),
+                padding: padding, cornerRadius: radius, background: .color(.literal(red)))
+            var colorRuntime = try ProgramRuntime(program: WidgetProgram(name: "Rounded color", root: colored))
+            let color = try colorRuntime.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 10, height: 8) }
+            guard case .shape(let background)? = color.elements[0].items.first,
+                  case .path(let path) = background.shapes[0].geometry,
+                  case .text? = color.elements[0].items.last else { return t.check(false, "outer color precedes text") }
+            t.equal(background.contentFrame, SkinRect(width: 40, height: 30))
+            t.equal(path.subpaths.first?.start, ShapePoint(15, 0)); t.equal(background.shapes[0].fill, .color(red))
+            t.equal(color.elements[0].glass, nil); t.equal(color.elements[0].backing, .content)
+        }
+        let circle = ProgramElement(id: id, content: .shape(kind: .circle, fill: .literal(blue)), width: .fixed(40), height: .fixed(30),
+            cornerRadius: .points(3), background: .color(.literal(red)))
+        var roundedCircle = try ProgramRuntime(program: WidgetProgram(name: "Circle box", root: circle))
+        let circleScene = try roundedCircle.project(environment: programEnvironment(), measure: noText)
+        guard case .shape(let drawing)? = circleScene.elements[0].items.last else { return t.check(false, "circle content") }
+        t.equal(drawing.shapes[0].bounds, ShapeRect(minX: 5, minY: 0, maxX: 35, maxY: 30),
+                "box rounding does not turn a Circle into a rounded rectangle")
+    }
+
+    t.suite("Program: backgrounds: Freeform negatives and preset overflow transform glass color content and hits once") {
+        let childID = ElementID(name: "negative", index: 1)
+        let child = ProgramElement(id: childID, content: .text(ProgramText("A")), width: .fixed(200), height: .fixed(200),
+            padding: SkinInsets(left: 10, top: 10, right: 10, bottom: 10), cornerRadius: .points(20),
+            onClickActions: [.copy(.string("negative"))], position: ProgramPosition(x: -100, y: -100),
+            background: .glass(style: .clear))
+        let root = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [child]), width: .fixed(100), height: .fixed(100),
+            cornerRadius: .points(30), background: .color(.literal(red)))
+        let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize(width: 10, height: 10) }
+        var fit = try ProgramRuntime(program: WidgetProgram(name: "Negative", root: root))
+        let raw = try fit.project(environment: programEnvironment(), measure: measure)
+        t.equal(raw.elements[1].glass?.rect, SkinRect(x: -100, y: -100, width: 200, height: 200))
+        t.equal(raw.elements[1].glass?.cornerRadius, 20)
+        var preset = try ProgramRuntime(program: WidgetProgram(name: "Preset negative", root: root,
+            size: .preset(.small, size: SkinSize(width: 100, height: 100))))
+        let scene = try preset.project(environment: programEnvironment(), measure: measure)
+        let matrix = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 50, ty: 50)
+        let frame = SkinRect(width: 100, height: 100)
+        t.equal(scene.elements[0].frame, SkinRect(x: 50, y: 50, width: 50, height: 50))
+        t.equal(scene.elements[1].frame, frame); t.equal(scene.elements[1].anchor, SkinPoint())
+        t.equal(scene.elements[1].glass?.rect, frame); t.equal(scene.elements[1].glass?.cornerRadius, 10)
+        t.equal(scene.hitMap.entries.first?.frame, frame)
+        guard case .transformed(let rootTransform, let rootItems)? = scene.elements[0].items.first,
+              case .shape(let background)? = rootItems.first,
+              case .transformed(let childTransform, let childItems)? = scene.elements[1].items.first,
+              case .text(let text)? = childItems.first,
+              let glass = scene.elements[1].glass else { return t.check(false, "one shared final fit") }
+        t.equal(rootTransform, matrix); t.equal(childTransform, matrix)
+        t.equal(background.contentFrame, SkinRect(width: 100, height: 100))
+        t.equal(text.frame, SkinRect(x: -100, y: -100, width: 200, height: 200))
+        t.equal(scene.drawingItems, scene.elements[0].items + [.glass(glass)] + scene.elements[1].items,
+                "final glass coordinates stay outside the bitmap's transform")
+        t.equal(scene.hitMap.entry(at: 0, 0, handling: .leftUp, images: nil)?.elementID, nil)
+        t.equal(scene.hitMap.entry(at: 2, 50, handling: .leftUp, images: nil)?.elementID, childID)
+        let clicked = try preset.clickWithEffects(at: SkinPoint(x: 2, y: 50), expectedGeneration: scene.generation,
+            environment: programEnvironment(), measure: measure)
+        t.equal(clicked?.effects, [.copy("negative")]); t.equal(clicked?.scene.elements[1].glass, glass)
+    }
+
+    t.suite("Program: backgrounds: hidden and zero boxes omit native views while transparent color stays ordinary paint") {
+        for background in [ProgramBackground.color(.literal(.clear)), .glass(style: .regular), .glass(style: .clear)] {
+            for (width, height, hidden) in [(0.0, 20.0, false), (20.0, 0.0, false), (20.0, 20.0, true)] {
+                let node = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: []), width: .fixed(width),
+                    height: .fixed(height), hidden: hidden, cornerRadius: .full, onClickActions: [], background: background)
+                var runtime = try ProgramRuntime(program: WidgetProgram(name: "Empty background", root: node))
+                let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+                t.equal(scene.elements[0].frame, SkinRect(width: width, height: height))
+                t.check(scene.drawingItems.isEmpty && scene.hitMap.entries.isEmpty)
+                t.equal(scene.elements[0].glass, nil); t.equal(scene.elements[0].backing, .content)
+            }
+        }
+        let child = ProgramElement(id: ElementID(name: "nested", index: 1), content: .freeform(align: .topLeft, children: []),
+            width: .fixed(20), height: .fixed(20), background: .glass(style: .clear))
+        let hidden = ProgramElement(id: rootID, content: .column(spacing: 0, align: .left, children: [child]), hidden: true,
+            background: .glass(style: .regular))
+        var hiddenRuntime = try ProgramRuntime(program: WidgetProgram(name: "Hidden subtree", root: hidden))
+        let hiddenScene = try hiddenRuntime.project(environment: programEnvironment(), measure: noText)
+        t.check(hiddenScene.elements.allSatisfy { $0.visibility == .hiddenKeepsSpace && $0.items.isEmpty && $0.glass == nil })
+        t.equal(hiddenScene.size, SkinSize(width: 20, height: 20))
+        let transparent = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: []), width: .fixed(20),
+            height: .fixed(20), onClickActions: [], background: .color(.literal(.clear)))
+        var transparentRuntime = try ProgramRuntime(program: WidgetProgram(name: "Transparent color", root: transparent))
+        let scene = try transparentRuntime.project(environment: programEnvironment(), measure: noText)
+        t.equal(scene.elements[0].backing, .content); t.equal(scene.elements[0].glass, nil)
+        t.equal(scene.drawingItems, [.fill(SkinRect(width: 20, height: 20), Paint(color: .clear))])
+        t.equal(scene.hitMap.entry(at: 10, 10, handling: .leftUp, images: nil)?.elementID, rootID)
+
+        let tiny = ProgramElement(id: ElementID(name: "tiny", index: 1), content: .freeform(align: .topLeft, children: []),
+            width: .fixed(1e-300), height: .fixed(1e-300), cornerRadius: .full, onClickActions: [], background: .glass(style: .regular))
+        let huge = ProgramElement(id: ElementID(name: "huge", index: 2), content: .freeform(align: .topLeft, children: []),
+            width: .fixed(1e300), height: .fixed(1e300))
+        var underflow = try ProgramRuntime(program: WidgetProgram(name: "Finite fit underflow", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [tiny, huge])),
+            size: .preset(.small, size: SkinSize(width: 100, height: 100))))
+        let zero = try underflow.project(environment: programEnvironment(), measure: noText)
+        t.equal(zero.elements[1].frame.width, 0); t.equal(zero.elements[1].frame.height, 0)
+        t.equal(zero.elements[1].glass, nil); t.equal(zero.elements[1].backing, .content)
+        t.check(zero.drawingItems.isEmpty && zero.hitMap.entries.isEmpty, "a zero final box cannot create a native view")
+    }
+
+    t.suite("Program: backgrounds: invalid colors radii and overflowing geometry fail before publishing") {
+        for color in [RGBA(r: .nan, g: 0, b: 0), RGBA(r: 0, g: .infinity, b: 0),
+                      RGBA(r: -1, g: 0, b: 0), RGBA(r: 0, g: 0, b: 0, a: 256)] {
+            for background in [ProgramBackground.color(.literal(color)), .glass(style: .regular, tint: .literal(color))] {
+                let node = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: []), background: background)
+                programFailure(t, .invalidPaint(rootID)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid paint", root: node)) }
+            }
+        }
+        for radius in [-1.0, .nan, .infinity] {
+            let node = ProgramElement(id: rootID, content: .text(ProgramText("A")), cornerRadius: .points(radius),
+                background: .glass(style: .regular))
+            programFailure(t, .invalidGeometry(rootID)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid radius", root: node)) }
+        }
+        for width in [-1.0, .nan, .infinity] {
+            let node = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: []), width: .fixed(width),
+                background: .glass(style: .regular))
+            programFailure(t, .invalidGeometry(rootID)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid extent", root: node)) }
+        }
+        let child = ProgramElement(id: ElementID(name: "overflow", index: 1), content: .freeform(align: .topLeft, children: []),
+            width: .fixed(.greatestFiniteMagnitude), height: .fixed(10), position: ProgramPosition(x: .greatestFiniteMagnitude),
+            background: .glass(style: .regular))
+        let root = ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [child]))
+        var overflow = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: root))
+        do {
+            _ = try overflow.project(environment: programEnvironment(), measure: noText)
+            t.check(false, "finite inputs with an overflowing box cannot publish")
+        } catch {
+            guard let failure = error as? ProgramRuntimeError, case .layoutOverflow = failure else {
+                return t.check(false, "typed geometry overflow")
+            }
+        }
+        t.equal(overflow.generation, 0)
+    }
+}
+
 private func programFailure(_ t: TestRunner, _ expected: ProgramRuntimeError, _ body: () throws -> Void) {
     do { try body(); t.check(false, "expected \(expected)") }
     catch { t.equal(error as? ProgramRuntimeError, expected) }
@@ -21,6 +224,7 @@ func runProgramRuntimeTests(_ t: TestRunner) {
     runProgramFreeformTests(t)
     runProgramPaletteTests(t)
     runProgramPointerTests(t)
+    runProgramBackgroundTests(t)
     func rectangle(_ index: Int, width: ProgramLength = .fill, height: ProgramLength = .fill,
                    minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                    ideal: SkinSize = SkinSize(width: 10, height: 10), hidden: Bool = false) -> ProgramElement {
@@ -579,8 +783,8 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         programFailure(t, .invalidPaint(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid color", root: badColor)) }
         let badText = ProgramElement(id: id, content: .text(ProgramText("A")), stroke: ProgramShapeStroke(color: .accent, width: 1))
         programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Not a shape", root: badText)) }
-        let badCircle = ProgramElement(id: id, content: .shape(kind: .circle, fill: .accent), width: .fixed(20), height: .fixed(14), cornerRadius: .full)
-        programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Not a rectangle", root: badCircle)) }
+        let badImage = ProgramElement(id: id, content: .image(ProgramImage(source: "picture")), cornerRadius: .full)
+        programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Picture clipping is not implemented", root: badImage)) }
         let huge = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(.greatestFiniteMagnitude), height: .fixed(8),
                                   stroke: ProgramShapeStroke(color: .accent, width: .greatestFiniteMagnitude))
         var runtime = try ProgramRuntime(program: WidgetProgram(name: "Finite paint overflow", root: huge))

@@ -424,6 +424,10 @@ final class SkinFrameProducer {
     var bitmapResult: ((BitmapResult) -> Void)?
     /// Opt-in immutable Main delivery. Without it, bitmap owners keep their direct presentation contract.
     var requestBitmapDelivery: ((SkinBitmapRequest) -> Void)?
+    /// Captured on Main by the destination, then set only on this producer's owner. Drawing never consults the
+    /// global AppKit glass capability or creates native views on the owner thread.
+    var bitmapCompositionSupportsSystemGlass = false
+    private(set) var bitmapCompositionFailure: SkinBitmapComposer.Failure?
     private struct PendingBitmap {
         let delivery: SkinBitmapDelivery
         let capture: SkinBitmapDrawing.Capture
@@ -843,7 +847,7 @@ final class SkinFrameProducer {
             drawNativeFrame(nativeStage, skin: skin, size: size, began: began)
             return
         }
-        var picture: CGImage?
+        var content: SkinBitmapContent?
         if case let .layers(partition, budget, _) = contentMode {
             guard let skin, let size else { return }
             drawLayerContent(skin, size: size, partition: partition, budget: budget, began: began)
@@ -852,6 +856,7 @@ final class SkinFrameProducer {
         // The drawing appearance AppKit set while the view drew. Both owners use this same bitmap path.
         var source = ""
         var captured: SkinBitmapDrawing.Capture?
+        bitmapCompositionFailure = nil
         SkinFrameProducer.withAppearance(appearance) {
             let capture: SkinBitmapDrawing.Capture?
             if let skin, let size {
@@ -862,11 +867,25 @@ final class SkinFrameProducer {
             guard let capture else { return }
             captured = capture
             source = capture.source
-            picture = drawing.picture(capture, scale: scale, space: space, beforeDrawing: bitmapValidation.map { validate in
+            let validate = bitmapValidation.map { validate in
                 { ctx in validate(capture, ctx) }
-            })
+            }
+            if requestBitmapDelivery != nil, SkinBitmapComposer.needsComposition(capture.scene) {
+                drawing.releaseKept()
+                do {
+                    content = .composition(try SkinBitmapComposer.make(capture, scale: scale, space: space,
+                        systemGlass: bitmapCompositionSupportsSystemGlass, beforeDrawing: validate))
+                } catch let failure as SkinBitmapComposer.Failure {
+                    bitmapCompositionFailure = failure
+                    Log.write("Native bitmap composition declined: \(failure)", level: .warning, source: source)
+                } catch {
+                    Log.write("Native bitmap composition failed: \(error)", level: .warning, source: source)
+                }
+            } else if let image = drawing.picture(capture, scale: scale, space: space, beforeDrawing: validate) {
+                content = .bitmap(SkinFrame(image: image, scale: scale))
+            }
         }
-        guard let picture else {
+        guard let content else {
             if requestBitmapDelivery != nil {
                 cancelBitmapDelivery()
                 drawing.releaseKept()
@@ -876,18 +895,18 @@ final class SkinFrameProducer {
             bitmapResult?(.failed)
             return
         }
-        let frame = SkinFrame(image: picture, scale: scale)
         if let requestBitmapDelivery, let captured {
             pendingBitmapInvalidation?.cancel()
             pendingBitmapInvalidation = nil
             bitmapSerial &+= 1
-            let delivery = SkinBitmapDelivery(frame: frame, scene: captured.scene, origin: captured.origin,
+            let delivery = SkinBitmapDelivery(content: content, scene: captured.scene, origin: captured.origin,
                 space: space, appearance: appearance, panelGeneration: panelGeneration,
                 serial: bitmapSerial, lifecycle: bitmapLifecycle)
             pendingBitmap = PendingBitmap(delivery: delivery, capture: captured, began: began, forShowing: forShowing)
             requestBitmapDelivery(.frame(delivery))
             return
         }
+        guard case .bitmap(let frame) = content else { return }
         provider.present(frame)
         recordPresented(began: began, source: source)
         if let captured { bitmapResult?(.presented(captured)) }

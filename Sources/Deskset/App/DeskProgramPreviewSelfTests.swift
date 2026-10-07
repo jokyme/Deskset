@@ -66,6 +66,55 @@ enum DeskProgramPreviewSelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
+        t.suite("Desk: background preview: glass-only boxes show the appearance-aware placeholder") {
+            for (name, style) in [("glass", GlassStyle.regular), ("clearGlass", .clear)] {
+                let source = "widget { Column { }.size(32, 24).padding(4).background(.\(name), tint: \"#FF000080\").rounded(6) }"
+                let f = try fixture(t, source), p = f.preview
+                for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                    p.canvas.appearance = NSAppearance(named: appearance)
+                    p.refreshEnvironment()
+                    t.equal(p.state, .ready, "glass alone is visible content")
+                    t.check(!p.canvas.isHidden)
+                    let region = GlassRegion(id: "reference", rect: SkinRect(width: 32, height: 24), cornerRadius: 6,
+                                             style: style, tint: RGBA(r: 255, g: 0, b: 0, a: 128))
+                    let reference = ReferenceView(items: [.glass(region)], size: NSSize(width: 32, height: 24),
+                                                  glass: .placeholder(dark: appearance == .darkAqua))
+                    let omitted = ReferenceView(items: [.glass(region)], size: reference.frame.size)
+                    for scale in [1, 2] {
+                        let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        try canaries(t, actual); try canaries(t, expected)
+                        t.check(try ink(actual) > 0)
+                        t.equal(try bytes(actual), try bytes(expected), "literal outer box includes padding at \(scale)x")
+                        t.equal(try ink(paint(omitted, scale: scale)), 0, "omitted glass cannot pass as visible")
+                    }
+                }
+                replace("widget { Column { }.size(32, 24).background(.\(name)).hidden() }", in: f)
+                t.check(settled(f)); t.equal(p.state, .empty); t.check(p.canvas.isHidden)
+                t.equal(try Data(contentsOf: f.file), Data(source.utf8), "preview edits do not save")
+            }
+        }
+
+        t.suite("Desk: background preview: colored parents paint before child glass and recover after errors") {
+            let source = ##"widget { Freeform { Column { }.size(24, 16).position(x: 8, y: 8).background(.glass) }.size(40, 32).background("#123456") }"##
+            let f = try fixture(t, source), p = f.preview
+            t.equal(p.state, .ready)
+            let parent = DrawItem.fill(SkinRect(width: 40, height: 32), Paint(color: RGBA(r: 18, g: 52, b: 86)))
+            let child = DrawItem.glass(GlassRegion(id: "child", rect: SkinRect(x: 8, y: 8, width: 24, height: 16), cornerRadius: 0))
+            let expected = ReferenceView(items: [parent, child], size: NSSize(width: 40, height: 32), glass: .placeholder(dark: false))
+            let wrongOrder = ReferenceView(items: [child, parent], size: expected.frame.size, glass: .placeholder(dark: false))
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale)
+                try canaries(t, actual)
+                t.equal(try bytes(actual), try bytes(paint(expected, scale: scale)))
+                t.check(try bytes(actual) != bytes(paint(wrongOrder, scale: scale)), "moving glass behind its parent must fail")
+            }
+            replace("widget { Column { }.background(.glass).rounded() }", in: f)
+            t.check(settled(f)); t.check(p.scene == nil && p.canvas.isHidden)
+            replace(source, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            t.equal(try bytes(paint(p.canvas)), try bytes(paint(expected)), "valid edits replace the cleared preview")
+        }
+
         t.suite("Desk: program preview: actual document paints shared text with independent native reference") {
             let source = "\u{FEFF}info { name: \"预览😀\" }\r\nwidget { Text(\"预览 中文😀\").font(20).color(.accent).padding(8) }\r\n"
             let f = try fixture(t, source)
@@ -3038,17 +3087,19 @@ enum DeskProgramPreviewSelfTests {
 
     private final class ReferenceView: NSView {
         let items: [DrawItem]
+        let glass: GlassPaint
         let context = DrawContext(fonts: AppFontResolver())
         override var isFlipped: Bool { true }
-        init(items: [DrawItem], size: NSSize) {
+        init(items: [DrawItem], size: NSSize, glass: GlassPaint = .none) {
             self.items = items
+            self.glass = glass
             super.init(frame: NSRect(origin: .zero, size: size))
         }
         required init?(coder: NSCoder) { fatalError("not used") }
         override func draw(_ dirtyRect: NSRect) {
             guard let destination = NSGraphicsContext.current?.cgContext else { return }
             DesksetDraw.DrawExecutor.draw(items, in: destination, context: context, cycle: 1,
-                                         target: DrawTarget.capture(destination, glass: .none))
+                                         target: DrawTarget.capture(destination, glass: glass))
         }
     }
 
