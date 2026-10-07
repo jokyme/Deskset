@@ -77,11 +77,12 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
                 checking?.imageResources(for: snapshot) ?? .pending
             }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale,
                preferredLanguages: previewPreferredLanguages, colors: previewColors,
-               system: previewSystem) { [weak self] snapshot in
+               system: previewSystem, presentsOptions: app.presentsWindows) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true
             }
             deskPreview = preview
+            preview.onMoreStyles = { [weak self] in self?.reveal(line: nil) }
             let codeController = NSViewController()
             codeController.view = codeView
             let split = NSSplitViewController()

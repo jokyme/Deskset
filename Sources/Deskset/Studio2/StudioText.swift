@@ -147,6 +147,15 @@ enum StudioText {
         case deskActionRecordsCount = "desk.action.recordsCount"
         case deskActionRecordsEmpty = "desk.action.recordsEmpty"
         case deskActionPreviewNotice = "desk.action.previewNotice"
+        case deskOptions = "desk.options.open"
+        case deskOptionsRestore = "desk.options.restore"
+        case deskOptionsMoreStyles = "desk.options.moreStyles"
+        case deskOptionsSaveFailed = "desk.options.saveFailed"
+        case deskOptionsClosingSaveFailed = "desk.options.closingSaveFailed"
+        case deskOptionsChangeFailed = "desk.options.changeFailed"
+        case deskOptionsRecovered = "desk.options.recovered"
+        case deskOptionsPreview = "desk.options.preview"
+        case deskOptionsInvalidNumber = "desk.options.invalidNumber"
         case deskInspectorReadOnly = "desk.inspector.readOnly"
         case deskInspectorExpression = "desk.inspector.expression"
         case deskInspectorConditional = "desk.inspector.conditional"
@@ -792,6 +801,19 @@ enum StudioText {
         .deskActionRecordsEmpty: ("Click the preview to see what it would do.", "点击预览，查看它会执行什么动作。"),
         .deskActionPreviewNotice: ("Preview only · actions are recorded here; nothing is copied or opened.",
                                   "只是预览 · 这里仅记录动作，不会复制文字或打开目标。"),
+        .deskOptions: ("Options…", "选项…"),
+        .deskOptionsRestore: ("Restore Defaults", "恢复默认"),
+        .deskOptionsMoreStyles: ("More Styles…", "更多样式…"),
+        .deskOptionsSaveFailed: ("These changes could not be saved. Keep this panel open and try closing it again.",
+                                 "无法保存这些改动。请保留此面板，稍后再次关闭以重试。"),
+        .deskOptionsClosingSaveFailed: ("The latest options could not be saved. They are kept until the app quits; open Options to retry.",
+                                        "无法保存最新选项。改动会保留到退出应用前，请打开“选项”重试。"),
+        .deskOptionsChangeFailed: ("This change could not be applied. The previous settings are still in use.",
+                                   "无法应用此改动，仍在使用之前的设置。"),
+        .deskOptionsRecovered: ("Some saved settings no longer match this widget and were restored to their defaults.",
+                                "部分已保存的设置不再适用于此小组件，已恢复默认值。"),
+        .deskOptionsPreview: ("Changes apply only to this preview.", "改动仅用于此预览。"),
+        .deskOptionsInvalidNumber: ("Enter a number within this control’s range.", "请输入此控件范围内的数值。"),
         .deskInspectorReadOnly: ("Edit this value in the code.", "请在代码中编辑此值。"),
         .deskInspectorExpression: ("Expression", "表达式"),
         .deskInspectorConditional: ("Conditional or repeated element", "条件或循环中的元素"),

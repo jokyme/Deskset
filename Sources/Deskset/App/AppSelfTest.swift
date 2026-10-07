@@ -91,6 +91,8 @@ enum AppSelfTest {
         DeskLocalizationIntegrationSelfTests.run(t)
         DeskProgramLocalizationPreviewSelfTests.run(t)
         DeskStylePreviewSelfTests.run(t)
+        DeskOptionsIntegrationSelfTests.run(t)
+        DeskProgramOptionsPanelSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)
         DeskWidgetInstallationSelfTests.run(t)
         DeskCodePresentationSelfTests.run(t)

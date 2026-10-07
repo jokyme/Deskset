@@ -140,13 +140,15 @@ struct DeskWidgetInstanceState: Codable, Equatable {
     var active = false
     var x: Double?
     var y: Double?
+    /// Typed option records are interpreted against the currently checked program when it is loaded.
+    var optionValues: [String: JSONValue] = [:]
     var unknownKeys: [String: JSONValue] = [:]
 
     init(id: UUID, sourceID: UUID, active: Bool = false, x: Double? = nil, y: Double? = nil) {
         self.id = id; self.sourceID = sourceID; self.active = active
         self.x = x.flatMap(SkinState.position); self.y = y.flatMap(SkinState.position)
     }
-    private enum CodingKeys: String, CodingKey, CaseIterable { case id, sourceID, active, x, y }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, sourceID, active, x, y, optionValues }
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -154,12 +156,14 @@ struct DeskWidgetInstanceState: Codable, Equatable {
         active = ((try? c.decodeIfPresent(Bool.self, forKey: .active)) ?? nil) ?? false
         x = ((try? c.decodeIfPresent(Double.self, forKey: .x)) ?? nil).flatMap(SkinState.position)
         y = ((try? c.decodeIfPresent(Double.self, forKey: .y)) ?? nil).flatMap(SkinState.position)
+        optionValues = (try? c.decode([String: JSONValue].self, forKey: .optionValues)) ?? [:]
         unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(sourceID, forKey: .sourceID); try c.encode(active, forKey: .active)
         try c.encodeIfPresent(x, forKey: .x); try c.encodeIfPresent(y, forKey: .y)
+        if !optionValues.isEmpty { try c.encode(optionValues, forKey: .optionValues) }
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
     }
@@ -373,6 +377,25 @@ final class AppState {
 
     func deskInstance(_ id: UUID) -> DeskWidgetInstanceState? {
         data.deskWidgets.instances[id.uuidString.lowercased()]
+    }
+
+    enum DeskOptionsSaveFailure: Error { case instanceChanged, valueLimit, totalLimit }
+
+    /// Only a successfully written snapshot becomes durable state. Position/activation changes and unknown
+    /// fields come from the latest instance, rather than from the panel's older copy.
+    func saveDeskOptions(_ id: UUID, sourceID: UUID, values: [String: JSONValue]) throws {
+        precondition(Thread.isMainThread)
+        let key = id.uuidString.lowercased()
+        guard var instance = data.deskWidgets.instances[key], instance.sourceID == sourceID else {
+            throw DeskOptionsSaveFailure.instanceChanged
+        }
+        try DeskProgramOptionStore.validateSize(values)
+        guard instance.optionValues != values else { return }
+        instance.optionValues = values
+        var next = data
+        next.deskWidgets.instances[key] = instance
+        try write(next)
+        data = next
     }
 
     func deskSource(_ id: UUID) -> DeskWidgetSourceState? {

@@ -24,6 +24,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let context: DrawContext
         let fontGeneration: Int
         let activation: Activation?
+        let options: DeskProgramOptionsChange?
         var preparationID: UUID?
         var ticket: DeskIconResources.Ticket?
         var deferredRefresh = false
@@ -31,9 +32,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         init(base: ProgramRuntime, snapshot: DeskSnapshot,
              input: (stamp: EnvironmentStamp, colors: ProgramColorInput), date: ProgramDateInput,
              systemInput: ProgramSystemInput?, images: [String: ProgramImageResource], context: DrawContext,
-             activation: Activation?) {
+             activation: Activation?, options: DeskProgramOptionsChange?) {
             self.base = base; self.snapshot = snapshot; self.input = input; self.date = date
             self.systemInput = systemInput; self.images = images; self.context = context; self.activation = activation
+            self.options = options
             fontGeneration = context.icons.fontGeneration
         }
     }
@@ -48,6 +50,12 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private let status = StudioPageStyle.wrapping("")
     private let fitButton = NSButton(title: StudioText[.zoomToFit], target: nil, action: nil)
     private let actualButton = NSButton(title: StudioText[.actualSizeShort], target: nil, action: nil)
+    let optionsButton = NSButton(title: StudioText[.sectionOptions], target: nil, action: nil)
+    private(set) var optionsSession: DeskProgramOptionsSession?
+    private var optionDraft: ProgramOptionsInput?
+    private var optionFile: DeskFileID?
+    private let presentsOptions: Bool
+    var onMoreStyles: (() -> Void)?
     let actionRecordsButton = EditorStyle.disclosure("", open: false)
     let actionRecordsClearButton = NSButton(title: StudioText[.logClear], target: nil, action: nil)
     let actionRecordsText = NSTextView(frame: .zero)
@@ -118,6 +126,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
          prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
          presentsTooltips: Bool = true,
          presentsMenus: Bool = true,
+         presentsOptions: Bool = true,
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
@@ -126,6 +135,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         self.colorSource = colors
         self.system = system
         self.prepareIcons = prepareIcons
+        self.presentsOptions = presentsOptions
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
@@ -283,7 +293,15 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         actualButton.action = #selector(actualSize)
         fitButton.bezelStyle = .rounded
         actualButton.bezelStyle = .rounded
-        let toolbar = NSStackView(views: [heading, NSView(), actualButton, fitButton])
+        optionsButton.target = self
+        optionsButton.action = #selector(showOptions)
+        optionsButton.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: StudioText[.sectionOptions])
+        optionsButton.imagePosition = .imageOnly
+        optionsButton.bezelStyle = .rounded
+        optionsButton.toolTip = StudioText[.deskOptions]
+        optionsButton.setAccessibilityLabel(StudioText[.sectionOptions])
+        optionsButton.isHidden = true
+        let toolbar = NSStackView(views: [heading, NSView(), optionsButton, actualButton, fitButton])
         toolbar.orientation = .horizontal
         toolbar.spacing = 8
         actionRecordsButton.target = self
@@ -377,6 +395,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     func show(_ candidate: DeskSnapshot, readError: String?) {
         precondition(Thread.isMainThread)
         guard state != .closed else { return }
+        optionsSession?.close()
+        optionsSession = nil
         cancelMenu()
         cancelProjection()
         primaryPress = nil
@@ -409,11 +429,16 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         do {
             let languages = preferredLanguages()
             let localization = DeskProgramLocalization(program: program, preferredLanguages: languages, locale: dateLocale())
-            let next = try ProgramRuntime(program: program, language: localization.language)
+            let schema = try ProgramOptionsSchema(options: program.options, translations: program.translations)
+            let options = schema.reconcilePersisted(optionFile == candidate.file ? optionDraft?.values ?? [:] : [:]).input
+            let next = try ProgramRuntime(program: program, language: localization.language, options: options)
             guard accepts?(candidate) == true else { clear(.checking); return }
             clear(.checking)
             snapshot = candidate
             runtime = next
+            optionDraft = options
+            optionFile = candidate.file
+            optionsButton.isHidden = program.options.isEmpty
             programLanguages = languages
             self.localization = localization
             elementRefs = result.elementRefs
@@ -432,9 +457,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func project(activation: Activation? = nil,
-                         captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
+                         captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil,
+                         options: DeskProgramOptionsChange? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
-              let runtime, let localization else { return }
+              let runtime, let localization else {
+            options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled)); return
+        }
+        if options != nil { cancelProjection() }
         if let pending {
             if activation == nil { pending.deferredRefresh = true; armClock(after: clock.now()) }
             return
@@ -445,8 +474,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             let input = try captured ?? environment()
             let images: [String: ProgramImageResource]
             switch resources?(snapshot) ?? .pending {
-            case .pending: clear(.checking); return
-            case .failed(let message): clear(.unavailable(message)); return
+            case .pending: options?.finish(.failure(DeskProgramHost.Failure.resources)); clear(.checking); return
+            case .failed(let message): options?.finish(.failure(DeskProgramHost.Failure.resources)); clear(.unavailable(message)); return
             case .ready(let values): images = values
             }
             let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: localization.locale)
@@ -458,9 +487,49 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             }
             let systemInput = sampler.sample(from: system, for: needed, at: date.instant.timeIntervalSince1970)
             let projection = Projection(base: runtime, snapshot: snapshot, input: input, date: date,
-                systemInput: systemInput, images: images, context: context, activation: activation)
+                systemInput: systemInput, images: images, context: context, activation: activation, options: options)
             _ = attempt(projection, schedulingAfter: date.instant)
-        } catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+        } catch {
+            options?.finish(.failure(error))
+            if options == nil || scene == nil { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+            else { armClock(after: clock.now()) }
+        }
+    }
+
+    @objc func showOptions() {
+        guard let runtime, let source = snapshot, accepts?(source) == true, !runtime.program.options.isEmpty else { return }
+        if let optionsSession { optionsSession.panel.present(relativeTo: view.window?.frame); return }
+        do {
+            let resolved = try runtime.resolveOptions(dateInput: ProgramDateInput(instant: clock.now(),
+                timeZone: clock.timeZone(), locale: localization?.locale ?? dateLocale()))
+            let schema = try ProgramOptionsSchema(options: runtime.program.options, translations: runtime.program.translations)
+            let session = DeskProgramOptionsSession(snapshot: resolved, defaults: schema.defaults, isPreview: true,
+                presentsWindows: presentsOptions, update: { [weak self] input, revision, completion in
+                    guard let self, self.snapshot?.tree.version == source.tree.version,
+                          self.accepts?(source) == true else {
+                        completion(.failure(DeskProgramHost.Failure.optionsCancelled)); return
+                    }
+                    self.updateOptions(input, expectedRevision: revision, completion: completion)
+                }, save: { _ in }, moreStyles: { [weak self] in self?.onMoreStyles?() })
+            session.onClosed = { [weak self, weak session] in
+                guard let self, self.optionsSession === session else { return }
+                self.optionsSession = nil
+            }
+            optionsSession = session
+            session.panel.displayTitle = runtime.displayName
+            session.panel.present(relativeTo: view.window?.frame)
+        } catch { status.stringValue = StudioText[.deskOptionsChangeFailed] }
+    }
+
+    func optionsSnapshot() throws -> ProgramOptionsSnapshot {
+        guard let runtime else { throw DeskProgramHost.Failure.optionsCancelled }
+        return try runtime.resolveOptions(dateInput: ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(),
+                                                                      locale: localization?.locale ?? dateLocale()))
+    }
+
+    func updateOptions(_ input: ProgramOptionsInput, expectedRevision: UInt64,
+                       completion: @escaping (Result<ProgramOptionsSnapshot, Error>) -> Void) {
+        project(options: DeskProgramOptionsChange(input: input, revision: expectedRevision, completion: completion))
     }
 
     private func isCurrent(_ projection: Projection) -> Bool {
@@ -476,7 +545,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     @discardableResult
     private func attempt(_ projection: Projection, schedulingAfter instant: Date) -> Bool {
-        guard !projecting, isCurrent(projection) else { return false }
+        guard !projecting, isCurrent(projection) else {
+            projection.options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled)); return false
+        }
         projecting = true
         defer { projecting = false }
         let input = projection.input, context = projection.context, stamp = input.stamp
@@ -505,7 +576,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             var candidate = projection.base
             let next: WidgetScene
             var effects: [ProgramEffect] = []
-            if let activation = projection.activation {
+            if let options = projection.options {
+                guard let updated = try candidate.updateOptions(options.input, expectedRevision: options.revision,
+                    environment: stamp, images: projection.images, dateInput: projection.date, colorInput: input.colors,
+                    systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure) else {
+                    throw DeskProgramHost.Failure.staleOptions
+                }
+                next = updated
+            } else if let activation = projection.activation {
                 let result: ProgramClickResult?
                 switch activation {
                 case .point(let point, let generation, let event):
@@ -543,13 +621,17 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             if visible, let precision = candidate.clockPrecision {
                 nextClockDelay = try precision.delayToNextBoundary(after: instant)
             } else { nextClockDelay = nil }
+            let optionSnapshot = projection.options != nil || optionsSession != nil
+                ? try candidate.resolveOptions(dateInput: projection.date) : nil
             guard isCurrent(projection), context.icons.fontGeneration == projection.fontGeneration else {
+                projection.options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled))
                 if pending === projection { cancelProjection() }
                 return false
             }
             iconResources.commitProjection()
             pending = nil
             self.runtime = candidate
+            optionDraft = candidate.optionValues
             if let menuSession, !menuSession.isAvailable(in: candidate) { cancelMenu() }
             lastColors = input.colors
             scene = next; canvas.scene = next
@@ -582,6 +664,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             canvas.programTooltips?.refresh()
             tickScheduler.cancel()
             if let nextClockDelay { tickScheduler.startClockBoundary(after: nextClockDelay, for: self) }
+            if let optionSnapshot {
+                optionsSession?.receive(optionSnapshot)
+                projection.options?.finish(.success(optionSnapshot))
+            }
             if !effects.isEmpty {
                 recordedEffects.append(contentsOf: effects)
                 if recordedEffects.count > Self.recordedEffectLimit {
@@ -594,7 +680,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         } catch {
             // Fake collection sizes can overflow; resolve all collected demands before deciding the real layout.
             if !missing.isEmpty, isCurrent(projection) { prepare(missing, for: projection); return false }
-            guard isCurrent(projection) else { return false }
+            guard isCurrent(projection) else {
+                projection.options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled)); return false
+            }
+            if projection.options != nil, scene != nil {
+                projection.options?.finish(.failure(error))
+                cancelProjection(); armClock(after: clock.now()); return false
+            }
+            projection.options?.finish(.failure(error))
             let message = (error as? PreviewFailure) == .extent
                 ? StudioText[.deskPreviewTooLarge] : previewMessage(for: error)
             clear(.unavailable(message), keepingProgram: true)
@@ -604,6 +697,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     private func prepare(_ demands: [DeskIconResources.Demand], for projection: Projection) {
         guard isCurrent(projection), demands.allSatisfy({ $0.fontGeneration == projection.fontGeneration }) else {
+            projection.options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled))
             cancelProjection(); return
         }
         pending = projection
@@ -655,7 +749,11 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                   isCurrent(projection) else { return }
             if projection.deferredRefresh { project() }
         } catch {
-            if isCurrent(projection) { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+            projection.options?.finish(.failure(error))
+            if isCurrent(projection) {
+                if projection.options != nil, scene != nil { cancelProjection(); armClock(after: clock.now()) }
+                else { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
+            }
         }
     }
 
@@ -663,6 +761,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let retiring = pending
         pending = nil
         retiring?.ticket?.cancel()
+        retiring?.options?.finish(.failure(DeskProgramHost.Failure.optionsCancelled))
         iconResources.cancelProjection()
     }
 
@@ -870,6 +969,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         // A current program can recover when a display/font changes; errors retain no previous scene or cache.
         // Pending/failed source checks and closing release that program too.
         if !keepingProgram {
+            optionsSession?.close()
+            optionsSession = nil
+            optionsButton.isHidden = true
             snapshot = nil
             runtime = nil
             programLanguages = nil
@@ -1006,6 +1108,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         precondition(Thread.isMainThread)
         actionRecordsExpanded = false
         clear(.closed)
+        optionDraft = nil
+        optionFile = nil
+        onMoreStyles = nil
         canvas.programTooltips?.close()
         canvas.programMenus?.close()
         for observer in tooltipObservers { NotificationCenter.default.removeObserver(observer) }

@@ -44,8 +44,8 @@ effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
-background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	14	FIFO lifecycle, fact and bitmap ACK delivery, pointer and accessibility actions, and asynchronous menu resolve, cancellation and selection; not a skin input
-background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	8	FIFO presentation, availability and close callbacks, resolved menu values and qualified immutable effect batches; issued session/epoch/serial checked before injected external services
+background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	16	FIFO lifecycle, fact and bitmap ACK delivery, pointer and accessibility actions, menu resolve/cancellation/selection, and checked option snapshot reads and updates; not a skin input
+background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	11	FIFO presentation, availability and close callbacks, resolved menu values, accepted option snapshots and qualified immutable effect batches; issued session/epoch/serial checked before injected external services
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag and accepted-scene hover pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	3	window session and opened menu identifiers reject obsolete replies and repeated selections; not a program input
@@ -376,6 +376,9 @@ event.notification	Sources/Deskset/App/DeskProgramTooltips.swift	2	current paren
 event.pointerState	Sources/Deskset/App/DeskProgramTooltips.swift	1	default Main tooltip pointer source; adapters and tests inject the screen point; only immutable accepted scene targets are queried
 random.UUID	Sources/Deskset/App/DeskProgramTooltips.swift	4	cancellable Main tooltip dwell tickets reject stale reveal callbacks; unrelated to program evaluation or randomness
 random.UUID	Sources/Deskset/App/DeskProgramMenus.swift	1	Main presenter identity separates menu requests across view lifetimes; selections use resolved item IDs and owner transactions, not random program input
+random.UUID	Sources/Deskset/App/DeskProgramOptionsPanel.swift	1	Main control edit identifiers keep an older accepted reply from clearing a newer draft; not a program input
+background.mainHop	Sources/Deskset/App/DeskProgramOptionsSession.swift	1	defer the next coalesced control edit or close until a synchronous preview projection leaves its measurement boundary; the panel lease rejects retired callbacks
+random.UUID	Sources/Deskset/App/DeskProgramOptionsSession.swift	2	Main panel lease and restore-default edit identifiers reject retired callbacks and preserve newer drafts; not a program input
 timer.executorAfter	Sources/Deskset/App/DeskProgramTooltips.swift	1	Main tooltip dwell uses the shared delay preference through an injected executor; native tests advance virtual time and never present real windows
 background.mainHop	Sources/Deskset/IconImages.swift	2	Main prepares immutable native vector symbols in cancellable bounded batches; workers never synchronously wait for Main or retain native views
 background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal

@@ -9,6 +9,9 @@ struct ProgramExpressionCompiler {
     private var slots: [NodeID: Int] = [:]
     private var initializers: [NodeID: PositionedNode] = [:]
     private var assignmentTypes: [Int: DeskType] = [:]
+    private var options: [String: OptionFacts] = [:]
+    private var localEnums: [String: String] = [:]
+    private var userOnlyOptions = Set<String>()
     private var count = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog, translations: ProgramTranslationCompiler? = nil) {
@@ -18,6 +21,91 @@ struct ProgramExpressionCompiler {
     }
 
     var translations: ProgramTranslations { translationCompiler?.translations ?? ProgramTranslations() }
+
+    mutating func registerOptions(_ values: [String: OptionFacts]) throws {
+        options = values
+        localEnums.removeAll(keepingCapacity: true)
+        userOnlyOptions = Set(checked.requirements.commands.compactMap(\.scriptOption))
+        for name in values.keys.sorted() {
+            guard let facts = values[name], facts.name == name, facts.scope == .widget else {
+                throw issue(.invalidCheckedModel, checked.tree.rootNode, "Local option identities do not match their declarations")
+            }
+            if let type = facts.localEnum {
+                guard facts.type == .enumeration(type), localEnums[type] == nil else {
+                    throw issue(.invalidCheckedModel, checked.tree.rootNode, "Local option enum identities must be distinct")
+                }
+                localEnums[type] = name
+            }
+        }
+    }
+
+    mutating func accountOptionNode(_ node: PositionedNode) throws {
+        count += 1
+        guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+            throw issue(.resourceLimit, node, "Shared option and expression limit exceeded")
+        }
+    }
+
+    /// A descriptor uses the checked constant, not the current value of any runtime input.
+    mutating func optionNumber(_ node: PositionedNode) throws -> ProgramNumber {
+        let value = try lower(node, depth: 1, displayConditionals: false)
+        switch value {
+        case .number(let number): return ProgramNumber(number, dimension: .plain)
+        case .quantity(let number): return number
+        default: throw issue(.unsupported, node, "Numeric option metadata requires a checked canonical constant")
+        }
+    }
+
+    mutating func optionTitle(_ text: String, key: String, at node: PositionedNode) throws -> ProgramExpression {
+        try accountOptionNode(node)
+        return try translationCompiler?.optionTitle(text, key: key, at: node, in: checked) ?? .string(text)
+    }
+
+    mutating func clickAssignment(_ syntax: AssignmentSyntax) throws -> ProgramAction {
+        if syntax.target.path.count == 1 { return .assign(try assignment(syntax)) }
+        let path = syntax.target.path
+        guard syntax.isPlainAssignment, path.count == 2, path[0] == "options", let facts = options[path[1]],
+              checked.symbols[checked.tree.id(of: syntax.target.node)] == .option(facts.node, file: checked.tree.file) else {
+            throw issue(.unsupported, syntax.target.node, "Only checked local option and session variable assignments are implemented")
+        }
+        guard !userOnlyOptions.contains(facts.name) else {
+            throw issue(.unsupported, syntax.target.node, "This option can only be changed in the Options panel")
+        }
+        if facts.localEnum != nil, syntax.value.node.kind == .implicitMemberExpr {
+            // The checker defers an open option's bare case without publishing a RHS type or symbol.
+            // Its final declaration and exact case membership provide the receiver context instead.
+            return .assignOption(name: facts.name, value: try optionCase(syntax.value.node, facts: facts, allowsAbsentReceipt: true))
+        }
+        guard checked.types[checked.tree.id(of: syntax.value.node)]?.type == facts.type else {
+            throw issue(.invalidCheckedModel, syntax.value.node, "Checked option assignment type does not match its declaration")
+        }
+        return .assignOption(name: facts.name, value: try lower(syntax.value.node, depth: 1, displayConditionals: false))
+    }
+
+    mutating func optionCase(_ node: PositionedNode, facts: OptionFacts, allowsAbsentReceipt: Bool) throws -> ProgramExpression {
+        try accountOptionNode(node)
+        if let paren = ParenExprSyntax(node) {
+            let identity = checked.tree.id(of: node)
+            guard checked.types[identity]?.type == facts.type, checked.symbols[identity] == nil,
+                  checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+                throw issue(.invalidCheckedModel, node, "Local option case parentheses have inconsistent receipts")
+            }
+            return try optionCase(paren.value.node, facts: facts, allowsAbsentReceipt: allowsAbsentReceipt)
+        }
+        guard let type = facts.localEnum, facts.type == .enumeration(type), localEnums[type] == facts.name,
+              let name = ImplicitMemberExprSyntax(node)?.name.token.name ?? MemberExprSyntax(node)?.name.token.name,
+              facts.choices.contains(name), ImplicitMemberExprSyntax(node)?.arguments == nil,
+              MemberExprSyntax(node).map({ IdentifierExprSyntax($0.base.node)?.name == type }) ?? true else {
+            throw issue(.invalidCheckedModel, node, "Local option case does not belong to its checked nominal enum")
+        }
+        let identity = checked.tree.id(of: node)
+        guard (allowsAbsentReceipt && checked.types[identity] == nil || checked.types[identity]?.type == facts.type),
+              (allowsAbsentReceipt && checked.symbols[identity] == nil || checked.symbols[identity] == .enumCase(type: type, case: name)),
+              checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "Local option case has inconsistent checked receipts")
+        }
+        return .localCase(option: facts.name, name: name)
+    }
 
     mutating func nameKey(_ node: PositionedNode) throws -> String? {
         guard checked.types[checked.tree.id(of: node)]?.type == .string,
@@ -144,7 +232,7 @@ struct ProgramExpressionCompiler {
         guard let type = checked.types[checked.tree.id(of: node)]?.type else {
             throw issue(.invalidCheckedModel, node, "Missing checked copy argument type")
         }
-        guard type == .string || type == .bool || type == .date || numberDimension(type) != nil else {
+        guard type == .string || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil else {
             throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle display values")
         }
         return try displayed(node, depth: 1, translateLiterals: false)
@@ -184,12 +272,12 @@ struct ProgramExpressionCompiler {
 
     private mutating func displayed(_ node: PositionedNode, depth: Int, translateLiterals: Bool) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
-        guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil else {
+        guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil || type.flatMap(localOption) != nil else {
             throw issue(.unsupported, node, "Text requires String, Bool, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
         }
         let value = try lower(node, depth: depth, translateLiterals: translateLiterals)
         if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
-        if type == .bool { return .concatenate([value]) }
+        if type == .bool || type.flatMap(localOption) != nil { return .concatenate([value]) }
         return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
     }
 
@@ -235,6 +323,11 @@ struct ProgramExpressionCompiler {
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
+        if checked.canonicalNumericValues[identity] != nil,
+           let source = try? unparenthesized(node), let member = MemberExprSyntax(source),
+           IdentifierExprSyntax(member.base.node)?.name == "options" {
+            throw issue(.invalidCheckedModel, node, "Live option values cannot have constant receipts")
+        }
         if checked.canonicalNumericValues[identity] != nil || coercion != nil {
             let source = try unparenthesized(node)
             let symbol = checked.symbols[checked.tree.id(of: source)]
@@ -316,10 +409,11 @@ struct ProgramExpressionCompiler {
                         let formatted = ProgramExpression.formatDate(expression, format)
                         parts.append(formatted); values.append(formatted)
                     } else {
-                        guard interpolation.formatOptions.isEmpty, type == .string || type == .bool else {
+                        guard interpolation.formatOptions.isEmpty, type == .string || type == .bool || type.flatMap(localOption) != nil else {
                             throw issue(.unsupported, interpolation.node, "Only unformatted String/Bool and formatted Date interpolation are implemented")
                         }
-                        parts.append(expression); values.append(expression)
+                        let displayed = type.flatMap(localOption) == nil ? expression : ProgramExpression.concatenate([expression])
+                        parts.append(displayed); values.append(displayed)
                     }
                 }
             }
@@ -369,8 +463,20 @@ struct ProgramExpressionCompiler {
             }
             return .declaration(slot)
         }
+        if let owner = localOption(type), let facts = options[owner],
+           ImplicitMemberExprSyntax(node) != nil || MemberExprSyntax(node).map({ IdentifierExprSyntax($0.base.node)?.name == facts.localEnum }) == true {
+            return try optionCase(node, facts: facts, allowsAbsentReceipt: false)
+        }
         if let value = MemberExprSyntax(node) {
             let identity = checked.tree.id(of: node)
+            if IdentifierExprSyntax(value.base.node)?.name == "options" {
+                guard let facts = options[value.name.token.name], type == facts.type,
+                      checked.symbols[identity] == .option(facts.node, file: checked.tree.file),
+                      checked.types[identity]?.displayBase == facts.displayBase else {
+                    throw issue(.invalidCheckedModel, node, "Option read has no matching local declaration receipt")
+                }
+                return .option(facts.name)
+            }
             if value.name.token.name == "isMissing" {
                 guard type == .bool, let receiver = checked.types[checked.tree.id(of: value.base.node)]?.type,
                       supportedType(receiver), let spec = catalog.member("isMissing", of: receiver, call: false),
@@ -500,7 +606,12 @@ struct ProgramExpressionCompiler {
     }
 
     private func supportedType(_ type: DeskType) -> Bool {
-        type == .string || type == .symbolName || type == .bool || type == .date || numberDimension(type) != nil
+        type == .string || type == .symbolName || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil
+    }
+
+    private func localOption(_ type: DeskType) -> String? {
+        guard case .enumeration(let name) = type else { return nil }
+        return localEnums[name]
     }
 
     private func numberDimension(_ type: DeskType) -> ProgramNumberDimension? {

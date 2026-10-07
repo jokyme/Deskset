@@ -136,7 +136,9 @@ enum DeskProgramImageValidation {
 /// An accepted Desk program on its executor, using the existing bitmap producer. Installing a document, the Main
 /// window adapter and C/E presentation are outside this owner. No Skin or second expression evaluator is involved.
 final class DeskProgramHost {
-    enum Failure: Error, Equatable { case unsupportedContentMode, extent, resources, bitmap, cycleOverflow }
+    enum Failure: Error, Equatable {
+        case unsupportedContentMode, extent, resources, bitmap, cycleOverflow, optionsCancelled, staleOptions
+    }
     enum State: Equatable { case idle, ready, unavailable(String), closed }
     typealias IconPreparation = ([DeskIconResources.Demand], @escaping (Result<DeskIconResources.Batch, Error>) -> Void) -> DeskIconResources.Ticket
 
@@ -179,15 +181,17 @@ final class DeskProgramHost {
             let cycle: Int
             let activation: Activation?
             let completion: (([ProgramEffect]) -> Void)?
+            let options: DeskProgramOptionsChange?
             var ticket: DeskIconResources.Ticket?
             var deferredRefresh = false
 
             init(base: ProgramRuntime, input: Input, date: ProgramDateInput, systemInput: ProgramSystemInput?,
                  images: [String: ProgramImageResource], context: SkinRenderContext, cycle: Int,
-                 activation: Activation?, completion: (([ProgramEffect]) -> Void)?) {
+                 activation: Activation?, completion: (([ProgramEffect]) -> Void)?, options: DeskProgramOptionsChange?) {
                 self.base = base; self.input = input; self.date = date; self.systemInput = systemInput
                 self.images = images; self.context = context; self.fontGeneration = context.drawing.icons.fontGeneration
                 self.cycle = cycle; self.activation = activation; self.completion = completion
+                self.options = options
             }
         }
         private enum ProjectionResult { case completed([ProgramEffect]), waiting, failed }
@@ -226,6 +230,8 @@ final class DeskProgramHost {
         var menuSession: DeskProgramMenuSession?
         var didPresent: ((Presented) -> Void)?
         var didBecomeUnavailable: ((String) -> Void)?
+        var didChangeOptions: ((ProgramOptionsSnapshot) -> Void)?
+        private var optionsLocale: Locale?
         var isClosed: Bool { state == .closed }
         var updateMilliseconds: Int { -1 } // Only startClockBoundary is used; never the Rainmeter periodic clock.
         lazy var frames = SkinFrameProducer(provider: provider, bitmapCapture: { [weak self] scale, appearance in
@@ -236,8 +242,8 @@ final class DeskProgramHost {
 
         init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
              prepared: DeskProgramResources.Prepared?, clock: SkinClock, system: SystemDataSource, source: String,
-             prepareIcons: @escaping IconPreparation) throws {
-            runtime = try ProgramRuntime(program: program, language: input.language)
+             prepareIcons: @escaping IconPreparation, options: ProgramOptionsInput?) throws {
+            runtime = try ProgramRuntime(program: program, language: input.language, options: options)
             self.executor = executor; self.provider = provider; self.input = input
             self.prepared = prepared; self.clock = clock; self.system = system; self.source = source
             self.prepareIcons = prepareIcons
@@ -262,9 +268,13 @@ final class DeskProgramHost {
 
         @discardableResult
         func project(activation: Activation? = nil,
-                     completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
+                     completion: (([ProgramEffect]) -> Void)? = nil,
+                     options: DeskProgramOptionsChange? = nil) -> [ProgramEffect]? {
             precondition(executor.isCurrent)
-            guard !isClosed, !projecting else { return nil }
+            guard !isClosed, !projecting else {
+                options?.finish(.failure(Failure.optionsCancelled)); return nil
+            }
+            if options != nil { cancelProjection() }
             do {
                 guard destinationReady else { throw ProgramRuntimeError.invalidEnvironment }
                 guard prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
@@ -293,17 +303,24 @@ final class DeskProgramHost {
                 let systemInput = sampler.sample(from: system, for: needed, at: now)
                 let projection = Projection(base: runtime, input: input, date: date, systemInput: systemInput,
                     images: prepared?.images ?? [:], context: context, cycle: nextCycle.partialValue,
-                    activation: activation, completion: completion)
+                    activation: activation, completion: completion, options: options)
                 if case .completed(let effects) = attempt(projection, schedulingAfter: date.instant) {
                     return activation == nil ? nil : effects
                 }
                 return nil
-            } catch { fail(error); return nil }
+            } catch {
+                options?.finish(.failure(error))
+                if options == nil || scene == nil { fail(error) }
+                else { arm(after: clock.now()) }
+                return nil
+            }
         }
 
         private func attempt(_ projection: Projection, schedulingAfter instant: Date) -> ProjectionResult {
             precondition(executor.isCurrent)
-            guard !isClosed, !projecting else { return .failed }
+            guard !isClosed, !projecting else {
+                projection.options?.finish(.failure(Failure.optionsCancelled)); return .failed
+            }
             projecting = true
             defer { projecting = false }
             let input = projection.input, context = projection.context
@@ -330,7 +347,14 @@ final class DeskProgramHost {
                 var candidate = projection.base
                 let next: WidgetScene
                 var effects: [ProgramEffect] = []
-                if let activation = projection.activation {
+                if let options = projection.options {
+                    guard let value = try candidate.updateOptions(options.input, expectedRevision: options.revision,
+                        environment: input.environment, images: projection.images, dateInput: projection.date,
+                        colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure) else {
+                        throw Failure.staleOptions
+                    }
+                    next = value
+                } else if let activation = projection.activation {
                     let value: ProgramClickResult?
                     switch activation {
                     case .point(let point, let event):
@@ -370,6 +394,9 @@ final class DeskProgramHost {
                 if visible, let precision = candidate.clockPrecision {
                     nextClockDelay = try precision.delayToNextBoundary(after: instant)
                 } else { nextClockDelay = nil }
+                let optionsSnapshot = projection.options != nil || candidate.optionsRevision != runtime.optionsRevision || scene == nil
+                    || optionsLocale != input.locale
+                    ? try candidate.resolveOptions(dateInput: projection.date) : nil
                 context.iconResources.commitProjection()
                 pending = nil
                 runtime = candidate
@@ -385,20 +412,33 @@ final class DeskProgramHost {
                 }) { secondaryPress = nil }
                 frames.setNeedsFrame()
                 if let nextClockDelay { scheduler.startClockBoundary(after: nextClockDelay, for: self) }
+                if let optionsSnapshot {
+                    optionsLocale = input.locale
+                    didChangeOptions?(optionsSnapshot)
+                    projection.options?.finish(.success(optionsSnapshot))
+                }
                 // The source hit was already presented. A later coalesced redraw is not an action replay or ACK.
                 return .completed(effects)
             } catch {
                 // An unknown symbol eventually measures as zero, so even an overflow caused by provisional
                 // 1x1 boxes must wait for real resources before deciding whether the program is invalid.
                 if !missing.isEmpty { return prepare(missing, for: projection) }
-                fail(error); return .failed
+                reject(projection, error: error); return .failed
             }
+        }
+
+        private func reject(_ projection: Projection, error: Error) {
+            projection.options?.finish(.failure(error))
+            if projection.options != nil, scene != nil, prepared?.failure == nil, prepared?.unchanged() ?? true {
+                cancelProjection()
+                arm(after: clock.now())
+            } else { fail(error) }
         }
 
         private func prepare(_ demands: [DeskIconResources.Demand], for projection: Projection) -> ProjectionResult {
             guard demands.allSatisfy({ $0.fontGeneration == projection.fontGeneration }),
                   projection.context.drawing.icons.fontGeneration == projection.fontGeneration else {
-                fail(Failure.resources); return .failed
+                reject(projection, error: Failure.resources); return .failed
             }
             pending = projection
             primaryPress = nil; secondaryPress = nil
@@ -436,13 +476,14 @@ final class DeskProgramHost {
                 guard !isClosed, state == .ready, pending == nil else { return }
                 if firstFrame { frames.drawFirstFrame() }
                 if projection.deferredRefresh, !isClosed, state == .ready { project() }
-            } catch { fail(error) }
+            } catch { reject(projection, error: error) }
         }
 
         func cancelProjection() {
             let retiring = pending
             pending = nil
             retiring?.ticket?.cancel()
+            retiring?.options?.finish(.failure(Failure.optionsCancelled))
             context?.iconResources.cancelProjection()
         }
 
@@ -500,6 +541,7 @@ final class DeskProgramHost {
             menuSession = nil
             cancelProjection()
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
+            didChangeOptions = nil
             state = .closed
             frames.stop(); frames.clearBitmapContents(); frames.bitmapResult = nil
             scene = nil; viewport = nil; presented = nil; context = nil
@@ -523,6 +565,24 @@ final class DeskProgramHost {
     var clockPrecision: ProgramClockPrecision? { current.runtime.clockPrecision }
     var neededSystemProperties: Set<ProgramSystemProperty> { current.runtime.neededSystemProperties }
     var isPreparingIcons: Bool { current.isPreparingIcons }
+    var didChangeOptions: ((ProgramOptionsSnapshot) -> Void)? {
+        get { current.didChangeOptions }
+        set { current.didChangeOptions = newValue }
+    }
+
+    func optionsSnapshot() throws -> ProgramOptionsSnapshot {
+        let owner = current
+        return try owner.runtime.resolveOptions(dateInput: ProgramDateInput(instant: owner.clock.now(),
+            timeZone: owner.clock.timeZone(), locale: owner.input.locale))
+    }
+
+    /// A panel update cancels any older resource wait. Its frozen candidate shares the same resource and raster
+    /// preflight as an action; only a successful projection publishes values or reports success.
+    func updateOptions(_ input: ProgramOptionsInput, expectedRevision: UInt64,
+                       completion: @escaping (Result<ProgramOptionsSnapshot, Error>) -> Void) {
+        let owner = current
+        owner.project(options: DeskProgramOptionsChange(input: input, revision: expectedRevision, completion: completion))
+    }
     /// Synchronous owner callback. The window adapter must capture itself weakly and deliver Main work itself.
     var didPresent: ((Presented) -> Void)? {
         get { current.didPresent }
@@ -541,12 +601,14 @@ final class DeskProgramHost {
          prepared: DeskProgramResources.Prepared? = nil, clock: SkinClock = .live,
          system: SystemDataSource = SystemMonitor.shared, source: String = "Desk",
          contentMode: SkinFrameContentMode = .bitmap,
-         prepareIcons: @escaping IconPreparation = DeskIconResources.prepare) throws {
+         prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
+         options: ProgramOptionsInput? = nil) throws {
         precondition(executor.isCurrent, "DeskProgramHost constructed off its owner")
         guard contentMode == .bitmap else { throw Failure.unsupportedContentMode }
         self.executor = executor
         owner = try Owner(program: program, executor: executor, provider: provider, input: input,
-                          prepared: prepared, clock: clock, system: system, source: source, prepareIcons: prepareIcons)
+                          prepared: prepared, clock: clock, system: system, source: source,
+                          prepareIcons: prepareIcons, options: options)
     }
 
     func start(paused: Bool = false) {

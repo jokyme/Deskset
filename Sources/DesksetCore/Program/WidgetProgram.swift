@@ -8,10 +8,12 @@ public struct WidgetProgram: Equatable, Sendable {
     public let size: ProgramWidgetSize
     public let translations: ProgramTranslations
     public let nameKey: String?
+    public let options: [ProgramOptionNode]
 
     public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = [],
                 onLoad: [ProgramAssignment] = [], size: ProgramWidgetSize = .fit,
-                translations: ProgramTranslations = ProgramTranslations(), nameKey: String? = nil) {
+                translations: ProgramTranslations = ProgramTranslations(), nameKey: String? = nil,
+                options: [ProgramOptionNode] = []) {
         self.name = name
         self.root = root
         self.declarations = declarations
@@ -19,6 +21,7 @@ public struct WidgetProgram: Equatable, Sendable {
         self.size = size
         self.translations = translations
         self.nameKey = nameKey
+        self.options = options
     }
 
     /// Metadata can be displayed on Main from the immutable program, without accessing its runtime owner.

@@ -67,7 +67,12 @@ public extension Desk {
     /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state sources remain unsupported.
     /// Ordinary menus lower Item/Divider/nested Menu and menu-level if/else-if/else, with supported display titles,
     /// Bool checked/enabled values and Item onClick assignments/copy/open. Menu entries have no view geometry or source element refs.
-    /// Menu-level for, persistent options and saved values, other menu actions and view modifiers remain unsupported.
+    /// Local per-instance Toggle/Input/Slider/Stepper/Picker options retain Bool/String/supported numeric dimensions
+    /// and nominal local cases, constant defaults/constraints, ordered Sections, localized panel text, and options-only hidden conditions.
+    /// Checked local option reads and primary/secondary/menu assignments use independent persistent option identities;
+    /// root onLoad remains session-variable-only. Slider steps are optional; off-grid values within bounds are valid.
+    /// Package options, catalog-enum/Color and other controls, dynamic option metadata, menu-level for and saved values,
+    /// other menu actions and view modifiers remain unsupported.
     /// Checked translations localize display literals and reorder their original formatted placeholders. Package
     /// translations are shared; a widget's own entry wins. Stored literals, copy/open and resource names retain their source values.
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,

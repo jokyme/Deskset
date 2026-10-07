@@ -50,6 +50,22 @@ struct ProgramTranslationCompiler {
         })
     }
 
+    /// A Picker's implicit title is display text even when its value is a stored literal or a local case.
+    /// The caller has proved that value's original declaration; no replacement StringEntry is manufactured.
+    mutating func optionTitle(_ text: String, key: String, at node: PositionedNode, in checked: CheckedFile) throws -> ProgramExpression {
+        guard sources[checked.tree.version]?.tree.file == checked.tree.file,
+              text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
+            throw Self.issue(checked, node, "Option title belongs to an invalid source or exceeds the text limit")
+        }
+        guard !key.isEmpty, patterns.values.contains(where: { $0[key] != nil }) else { return .string(text) }
+        let parts: [ProgramTranslationPart] = [.text(text)]
+        guard source[key] == nil || source[key] == parts else {
+            throw Self.issue(checked, node, "An option title has a conflicting source translation pattern")
+        }
+        source[key] = parts
+        return .localized(key: key, values: [])
+    }
+
     /// Only a checked literal reaching a supported translatable parameter can emit a localized expression.
     mutating func key(for string: StringLiteralSyntax, in checked: CheckedFile, allowed: Bool) throws -> String? {
         guard sources[checked.tree.version]?.tree.file == checked.tree.file else {

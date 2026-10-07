@@ -1,12 +1,14 @@
 /// One ordered primary-click statement. Core resolves these values without calling host services.
 public enum ProgramAction: Equatable, Sendable {
     case assign(ProgramAssignment)
+    case assignOption(name: String, value: ProgramExpression)
     case copy(ProgramExpression)
     case open(ProgramExpression)
 
     var expression: ProgramExpression {
         switch self {
         case .assign(let assignment): return assignment.value
+        case .assignOption(_, let value): return value
         case .copy(let value), .open(let value): return value
         }
     }

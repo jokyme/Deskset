@@ -73,6 +73,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) var codeFileWindows: [CodeFileWindowController] = []
     /// Standalone Desk widgets running in independent windows on the desktop, by instance ID.
     private(set) var deskWidgetWindows: [UUID: DeskWidgetWindowController] = [:]
+    struct DeskOptionDraft {
+        let sourceID: UUID
+        let values: ProgramOptionsInput
+    }
+    /// Accepted live settings survive a language/session reload even if the last durable write failed.
+    var deskOptionDrafts: [UUID: DeskOptionDraft] = [:]
     /// The window `bringToFront` last brought up (also headless, for self-tests).
     weak var lastBroughtToFront: NSWindow?
     private(set) lazy var installer = SkinInstallFlow(app: self)

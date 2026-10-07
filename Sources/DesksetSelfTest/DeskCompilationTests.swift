@@ -145,7 +145,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
 
     t.suite("Desk: compilation: unsupported semantics fail with original source diagnostics") {
         let cases = [#"info { description: "Metadata" }"# + "\n" + #"widget { Text("A") }"#,
-                     #"options { show = Toggle("Show") }"# + "\n" + #"widget { Text("A") }"#,
                      #"widget { Grid(columns: 2) { Text("A") } }"#,
                      #"widget { Text("A").width(.fill).margin(1) }"#,
                      #"widget { Text("A").width(20, min: 10).margin(1) }"#,

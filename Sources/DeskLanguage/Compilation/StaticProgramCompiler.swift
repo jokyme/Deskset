@@ -15,6 +15,7 @@ struct StaticProgramCompiler {
     private var clickActionCount = 0
     private var widgetSize = ProgramWidgetSize.fit
     private var seenElements = Set<NodeID>()
+    private var optionNodeCount = 0
     private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
     init(checked: CheckedFile, catalog: DeskCatalog, package: CheckedFile? = nil) throws {
@@ -24,6 +25,10 @@ struct StaticProgramCompiler {
             translations: try ProgramTranslationCompiler(checked: checked, package: package, catalog: catalog))
         sourceFiles[checked.tree.version] = checked
         if let package {
+            guard package.options.isEmpty,
+                  !package.tree.rootNode.childNodes.contains(where: { $0.kind == .optionsBlock }) else {
+                throw sourceCompiler(package).issue(.unsupported, package.tree.rootNode, "Package options require package persistence")
+            }
             guard sourceFiles[package.tree.version] == nil else {
                 throw sourceCompiler(package).issue(.invalidCheckedModel, package.tree.rootNode, "Shared source tree versions must be distinct")
             }
@@ -50,6 +55,9 @@ struct StaticProgramCompiler {
     }
 
     mutating func compile() throws -> WidgetProgram {
+        var optionCompiler = try ProgramOptionsCompiler(checked: checked, catalog: catalog)
+        let options = try optionCompiler.compile(expressions: &expressions)
+        optionNodeCount = optionCompiler.nodeCount
         var name = URL(fileURLWithPath: checked.tree.file.path).deletingPathExtension().lastPathComponent
         var nameKey: String?
         guard let sizeField = catalog.infoFields.first(where: { $0.name == "size" }),
@@ -92,6 +100,7 @@ struct StaticProgramCompiler {
                 }
                 widget = block.block
             case .styleDecl: break // Definitions are version-qualified and expanded only at their checked applications.
+            case .optionsBlock: break // Authored local controls and their receipts were lowered before runtime expressions.
             case .translationsBlock: break // The checked table and every authored pattern were validated at initialization.
             default: throw issue(.unsupported, item, "Unsupported top-level construct: \(item.kind.rawValue)")
             }
@@ -116,7 +125,7 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, widget.node, "Checked elements do not match the supported view and menu calls")
         }
         let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize,
-                                    translations: expressions.translations, nameKey: nameKey)
+                                    translations: expressions.translations, nameKey: nameKey, options: options)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
         catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
         catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
@@ -515,7 +524,7 @@ struct StaticProgramCompiler {
         guard depth <= min(ProgramLimits.maximumDepth, catalog.limits.maximumBlockNesting) else {
             throw issue(.resourceLimit, node, "Shared program nesting limit exceeded")
         }
-        guard nextIndex < min(ProgramLimits.maximumElements, catalog.limits.maximumElementInstances) else {
+        guard nextIndex < min(ProgramLimits.maximumElements, catalog.limits.maximumElementInstances) - optionNodeCount else {
             throw issue(.resourceLimit, node, "Shared program element limit exceeded")
         }
         let value = nextIndex
@@ -1281,14 +1290,14 @@ struct StaticProgramCompiler {
 
     private mutating func clickAction(_ statement: PositionedNode) throws -> ProgramAction {
         if let assignment = AssignmentSyntax(statement) {
-            return .assign(try expressions.assignment(assignment))
+            return try expressions.clickAssignment(assignment)
         }
         guard let call = CallStmtSyntax(statement), call.callee.path.count == 1,
               let name = call.callee.path.first, name == "copy" || name == "open",
               call.block == nil, call.modifiers.isEmpty,
               let arguments = call.arguments?.arguments, arguments.count == 1,
               arguments[0].label == nil else {
-            throw issue(.unsupported, statement, "Only session variable assignments, copy and open are implemented in click events")
+            throw issue(.unsupported, statement, "Only local option or session variable assignments, copy and open are implemented in click events")
         }
         guard checked.symbols[checked.tree.id(of: call.callee.node)] == .builtIn(.function(name)) else {
             throw issue(.invalidCheckedModel, call.callee.node, "Missing checked built-in action identity")

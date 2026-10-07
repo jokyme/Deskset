@@ -64,6 +64,10 @@ internal enum ActionExecutor {
         case .assign(let assignment):
             try perform(assignment, on: &target)
             return nil
+        case .assignOption(let name, let expression):
+            let value = try target.resolveAssignmentValue(expression)
+            try target.setProgramOption(value, named: name)
+            return nil
         case .copy(let expression):
             return .copy(try target.resolveActionString(expression))
         case .open(let expression):
@@ -147,4 +151,5 @@ internal protocol ProgramAssignmentTarget {
 /// Extends the borrowed local transaction with strict String resolution, not host execution capabilities.
 internal protocol ProgramActionTarget: ProgramAssignmentTarget {
     mutating func resolveActionString(_ expression: ProgramExpression) throws -> String
+    mutating func setProgramOption(_ value: ProgramScalar, named name: String) throws
 }

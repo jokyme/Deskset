@@ -10,6 +10,8 @@ public indirect enum ProgramExpression: Equatable, Sendable {
     case quantity(ProgramNumber)
     /// Declaration occurrence in WidgetProgram.declarations, in original source order.
     case declaration(Int)
+    case option(String)
+    case localCase(option: String, name: String)
     case appearanceDark
     case timeNow
     case systemProperty(ProgramSystemProperty)
@@ -69,6 +71,7 @@ public struct ProgramNumber: Equatable, Sendable {
 enum ProgramScalarType: Equatable, Sendable {
     case string, boolean, date
     case numeric(ProgramNumberDimension, displayBase: Int? = nil)
+    case localEnum(String)
     static var number: Self { .numeric(.plain) }
     var dimension: ProgramNumberDimension? { if case .numeric(let d, _) = self { return d }; return nil }
     var displayBase: Int? { if case .numeric(_, let b) = self { return b }; return nil }
@@ -77,6 +80,7 @@ enum ProgramScalarType: Equatable, Sendable {
         switch (lhs, rhs) {
         case (.string, .string), (.boolean, .boolean), (.date, .date): return true
         case (.numeric(let a, _), .numeric(let b, _)): return a == b
+        case (.localEnum(let a), .localEnum(let b)): return a == b
         default: return false
         }
     }
@@ -85,6 +89,7 @@ enum ProgramScalarType: Equatable, Sendable {
 enum ProgramScalar: Equatable, Sendable {
     case string(String), boolean(Bool), date(ProgramDateValue)
     case numeric(ProgramNumber), missing(ProgramScalarType), formattedString(ProgramTextValue)
+    case localCase(option: String, name: String)
     static func number(_ value: Double) -> Self { .numeric(ProgramNumber(value, dimension: .plain)) }
 
     var type: ProgramScalarType {
@@ -93,6 +98,7 @@ enum ProgramScalar: Equatable, Sendable {
         case .boolean: return .boolean
         case .date: return .date
         case .numeric(let value): return value.type
+        case .localCase(let option, _): return .localEnum(option)
         case .missing(let type): return type
         }
     }
@@ -113,6 +119,7 @@ enum ProgramScalar: Equatable, Sendable {
         case (.boolean(let a), .boolean(let b)): return a == b
         case (.date(let a), .date(let b)): return a == b
         case (.numeric(let a), .numeric(let b)): return a.dimension == b.dimension && a.value == b.value
+        case (.localCase(let a, let x), .localCase(let b, let y)): return a == b && x == y
         case (.missing(let a), .missing(let b)): return a == b
         default: return false
         }
@@ -159,14 +166,17 @@ private enum ProgramArithmetic {
 struct ProgramExpressionValidation {
     private struct Info { let type: ProgramScalarType; let height: Int }
     private let declarations: [ProgramDeclaration]
+    private let options: [String: ProgramOption]
     private let translationPlaceholders: [String: Int]
     private var info: [Info?]
     private var visiting: Set<Int> = []
     private var count = 0
 
-    init(declarations: [ProgramDeclaration], translations: ProgramTranslations = ProgramTranslations()) throws {
+    init(declarations: [ProgramDeclaration], translations: ProgramTranslations = ProgramTranslations(),
+         options: [String: ProgramOption] = [:]) throws {
         guard declarations.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
         self.declarations = declarations
+        self.options = options
         let table = try translations.validated()
         translationPlaceholders = table.placeholders
         count = table.cost
@@ -189,6 +199,47 @@ struct ProgramExpressionValidation {
     mutating func validateCondition(_ expression: ProgramExpression) throws {
         try register(expression)
         guard try expressionInfo(expression, depth: 1).type == .boolean else { throw ProgramRuntimeError.invalidExpression }
+    }
+
+    mutating func validateOptionText(_ expression: ProgramExpression) throws {
+        try restrictOptionMetadata(expression, allowsOptions: false)
+        try validateText(expression)
+    }
+
+    mutating func validateOptionCondition(_ expression: ProgramExpression) throws {
+        try restrictOptionMetadata(expression, allowsOptions: true)
+        try validateCondition(expression)
+    }
+
+    /// Metadata shares the scalar evaluator, but never pulls variables, services, dates or appearance.
+    /// Text accepts only constant leaves; hidden predicates may additionally read typed option values.
+    private func restrictOptionMetadata(_ expression: ProgramExpression, allowsOptions: Bool) throws {
+        var pending = [(expression, 1)], count = 0
+        while let (expression, depth) = pending.popLast() {
+            count += 1
+            guard count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
+            guard depth <= ProgramLimits.maximumExpressionDepth else { throw ProgramRuntimeError.expressionDepth }
+            let children: [ProgramExpression]
+            switch expression {
+            case .string, .boolean, .number, .quantity: children = []
+            case .option, .localCase:
+                guard allowsOptions else { throw ProgramRuntimeError.invalidExpression }
+                children = []
+            case .declaration, .appearanceDark, .timeNow, .systemProperty, .dateIn, .formatDate:
+                throw ProgramRuntimeError.invalidExpression
+            case .not(let value), .negate(let value), .isMissing(let value), .formatNumber(let value, _): children = [value]
+            case .concatenate(let values), .localized(_, let values): children = values
+            case .add(let a, let b), .subtract(let a, let b), .multiply(let a, let b), .divide(let a, let b),
+                 .remainder(let a, let b), .and(let a, let b), .or(let a, let b), .equal(let a, let b),
+                 .notEqual(let a, let b), .less(let a, let b), .lessOrEqual(let a, let b),
+                 .greater(let a, let b), .greaterOrEqual(let a, let b), .ifMissing(let a, let b): children = [a, b]
+            case .conditional(let condition, let yes, let no): children = [condition, yes, no]
+            }
+            guard children.count <= ProgramLimits.maximumExpressions - count - pending.count else {
+                throw ProgramRuntimeError.expressionLimit
+            }
+            pending.append(contentsOf: children.map { ($0, depth + 1) })
+        }
     }
 
     /// Color selections share the expression budget. Static paints keep their original zero-expression cost.
@@ -263,6 +314,12 @@ struct ProgramExpressionValidation {
     mutating func validateAction(_ action: ProgramAction) throws {
         switch action {
         case .assign(let assignment): try validateAssignment(assignment)
+        case .assignOption(let name, let expression):
+            guard let option = options[name] else { throw ProgramRuntimeError.invalidOption(name) }
+            try register(expression)
+            guard try expressionInfo(expression, depth: 1).type == option.defaultValue.scalar.type else {
+                throw ProgramRuntimeError.invalidOption(name)
+            }
         case .copy(let expression), .open(let expression): try validateText(expression)
         }
     }
@@ -281,6 +338,11 @@ struct ProgramExpressionValidation {
             case .quantity(let value): try value.validate()
             case .declaration(let index):
                 guard declarations.indices.contains(index) else { throw ProgramRuntimeError.invalidDeclaration(index) }
+            case .option(let name):
+                guard options[name] != nil else { throw ProgramRuntimeError.invalidOption(name) }
+            case .localCase(let owner, let name):
+                guard let option = options[owner] else { throw ProgramRuntimeError.invalidOption(owner) }
+                _ = try ProgramOptionsSchema.validated(.localCase(option: owner, name: name), for: option)
             case .not(let child), .negate(let child), .isMissing(let child): pending.append((child, depth + 1))
             case .and(let left, let right), .or(let left, let right), .equal(let left, let right), .notEqual(let left, let right),
                  .add(let left, let right), .subtract(let left, let right), .multiply(let left, let right),
@@ -330,6 +392,10 @@ struct ProgramExpressionValidation {
         case .string: result = Info(type: .string, height: 1)
         case .number: result = Info(type: .number, height: 1)
         case .quantity(let number): result = Info(type: number.type, height: 1)
+        case .option(let name):
+            guard let option = options[name] else { throw ProgramRuntimeError.invalidOption(name) }
+            result = Info(type: option.defaultValue.scalar.type, height: 1)
+        case .localCase(let option, _): result = Info(type: .localEnum(option), height: 1)
         case .boolean, .appearanceDark: result = Info(type: .boolean, height: 1)
         case .timeNow: result = Info(type: .date, height: 1)
         case .systemProperty(let property):
@@ -360,8 +426,16 @@ struct ProgramExpressionValidation {
             var height = 1
             for part in parts {
                 let value = try expressionInfo(part, depth: depth + 1)
-                guard value.type == .string || value.type == .boolean || value.type.dimension != nil else { throw ProgramRuntimeError.invalidExpression }
+                let isEnum: Bool
+                if case .localEnum = value.type { isEnum = true } else { isEnum = false }
+                guard value.type == .string || value.type == .boolean || value.type.dimension != nil || isEnum else { throw ProgramRuntimeError.invalidExpression }
                 height = max(height, value.height + 1)
+                if case .localEnum(let owner) = value.type, let option = options[owner], case .picker(let choices) = option.control {
+                    for choice in choices {
+                        let label = try expressionInfo(choice.title, depth: depth + 2)
+                        height = max(height, label.height + 2)
+                    }
+                }
             }
             result = Info(type: .string, height: height)
         case .declaration(let index):
@@ -426,19 +500,23 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
     let systemInput: ProgramSystemInput?
     let translations: ProgramTranslations
     let language: String?
+    let options: [String: ProgramOption]
     var variables: [ProgramScalar?]
+    var optionValues: [String: ProgramOptionValue]
     private var computed: [Int: Value] = [:]
     private(set) var clockPrecision: ProgramClockPrecision?
 
     init(declarations: [ProgramDeclaration], dark: Bool, variables: [ProgramScalar?]?, dateInput: ProgramDateInput? = nil,
          systemInput: ProgramSystemInput? = nil, translations: ProgramTranslations = ProgramTranslations(),
-         language: String? = nil) {
+         language: String? = nil, options: [String: ProgramOption] = [:], optionValues: [String: ProgramOptionValue] = [:]) {
         self.declarations = declarations
         self.dark = dark
         self.dateInput = dateInput
         self.systemInput = systemInput
         self.translations = translations
         self.language = language
+        self.options = options
+        self.optionValues = optionValues
         self.variables = variables ?? Array(repeating: nil, count: declarations.count)
     }
 
@@ -589,6 +667,9 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         case .date(let date):
             guard date.instant.timeIntervalSince1970.isFinite else { throw ProgramRuntimeError.invalidDateInput }
         case .numeric(let number): try number.validate()
+        case .localCase(let owner, let name):
+            guard let option = options[owner] else { throw ProgramRuntimeError.invalidOption(owner) }
+            _ = try ProgramOptionsSchema.validated(.localCase(option: owner, name: name), for: option)
         case .boolean, .missing: break
         }
         variables[index] = value
@@ -596,7 +677,15 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         computed.removeAll(keepingCapacity: true)
     }
 
-    private func displayedText(_ scalar: ProgramScalar) throws -> ProgramTextValue {
+    mutating func setProgramOption(_ value: ProgramScalar, named name: String) throws {
+        guard let option = options[name], let stored = ProgramOptionValue(value) else {
+            throw ProgramRuntimeError.invalidOption(name)
+        }
+        optionValues[name] = try ProgramOptionsSchema.validated(stored, for: option)
+        computed.removeAll(keepingCapacity: true)
+    }
+
+    private mutating func displayedText(_ scalar: ProgramScalar, depth: Int) throws -> ProgramTextValue {
         switch scalar {
         case .string(let text): return ProgramTextValue(text: text)
         case .formattedString(let text): return text
@@ -606,6 +695,13 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         case .numeric(let number):
             return try ProgramNumberFormat().string(from: number, dimension: number.dimension,
                 locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
+        case .localCase(let owner, let name):
+            guard let option = options[owner], case .picker(let choices) = option.control,
+                  let choice = choices.first(where: { $0.value == .localCase(option: owner, name: name) }),
+                  let text = try evaluate(choice.title, depth: depth + 1).scalar.text else {
+                throw ProgramRuntimeError.invalidOption(owner)
+            }
+            return text
         case .missing: return ProgramTextValue(text: "–")
         case .date: throw ProgramRuntimeError.invalidExpression
         }
@@ -627,6 +723,10 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         case .boolean(let value): return Value(scalar: .boolean(value))
         case .number(let value): return Value(scalar: .number(value))
         case .quantity(let value): return Value(scalar: .numeric(value))
+        case .option(let name):
+            guard let value = optionValues[name] else { throw ProgramRuntimeError.invalidOption(name) }
+            return Value(scalar: value.scalar)
+        case .localCase(let option, let name): return Value(scalar: .localCase(option: option, name: name))
         case .appearanceDark: return Value(scalar: .boolean(dark))
         case .timeNow:
             guard let dateInput, dateInput.instant.timeIntervalSince1970.isFinite else { throw ProgramRuntimeError.invalidDateInput }
@@ -723,7 +823,7 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
             var text = "", length = 0, ranges: [Range<Int>] = [], precision: ProgramClockPrecision?
             for part in parts {
                 let value = try evaluate(part, depth: depth + 1)
-                try append(displayedText(value.scalar), to: &text, ranges: &ranges, length: &length)
+                try append(displayedText(value.scalar, depth: depth + 1), to: &text, ranges: &ranges, length: &length)
                 precision = .combined(precision, value.precision)
                 if value.currentDate { precision = .combined(precision, .second) }
             }
@@ -736,7 +836,7 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
             // executable, and neither its order nor an omitted key can change the source's dependencies.
             for expression in expressions {
                 let value = try evaluate(expression, depth: depth + 1)
-                let text = try displayedText(value.scalar)
+                let text = try displayedText(value.scalar, depth: depth + 1)
                 guard text.text.utf16.count <= ProgramLimits.maximumTextLength - valueLength else {
                     throw ProgramRuntimeError.invalidExpression
                 }

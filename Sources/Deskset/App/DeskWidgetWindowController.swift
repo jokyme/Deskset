@@ -42,6 +42,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private var lastIssuedClickSerial: UInt64 = 0
     private var lastConsumedClickSerial: UInt64 = 0
     private var menuSession: DeskProgramMenuSession?
+    private(set) var optionsSnapshot: ProgramOptionsSnapshot?
+    private(set) var optionsSession: DeskProgramOptionsSession?
+    private let optionDefaults: ProgramOptionsInput?
+    private let optionsWereRestored: Bool
     private struct DestinationKey: Equatable {
         let colorSpace: CGColorSpace?
         let scale: CGFloat
@@ -75,6 +79,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         self.dateLocale = dateLocale
         self.loadedLanguages = initialLanguages
         self.displayName = localization.name
+        let liveOptions = app.deskOptionDrafts[instance.id].flatMap { $0.sourceID == source.id ? $0.values : nil }
+        let restoredOptions = try? DeskProgramOptionStore.restore(instance.optionValues, for: program, live: liveOptions)
+        self.optionDefaults = restoredOptions?.defaults
+        self.optionsWereRestored = restoredOptions?.restoredNames.isEmpty == false
         let currentSession = UUID()
         self.sessionID = currentSession
 
@@ -90,7 +98,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         panel.contentView = view
 
         let hostOwner = DeskWidgetHostOwner(program: program, executor: executor, provider: content,
-                                            prepared: prepared, clock: clock, source: source.entry, session: currentSession)
+                                            prepared: prepared, clock: clock, source: source.entry, session: currentSession,
+                                            options: restoredOptions?.input)
         self.owner = hostOwner
 
         super.init()
@@ -138,6 +147,11 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                                 DispatchQueue.main.async { [weak self] in
                                     self?.handleUnavailable(errorDesc, session: currentSession, epoch: epoch,
                                                             invalidation: invalidation)
+                                }
+                            }, onOptions: { snapshot in
+                                DispatchQueue.main.async { [weak self] in
+                                    guard let self, self.sessionID == currentSession, !self.isClosing, !self.isClosed else { return }
+                                    self.receiveOptions(snapshot)
                                 }
                             })
         }
@@ -206,6 +220,77 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                           level: .warning, source: entry)
             }
         }
+    }
+
+    private func receiveOptions(_ snapshot: ProgramOptionsSnapshot) {
+        guard snapshot.revision >= (optionsSnapshot?.revision ?? 0) else { return }
+        optionsSnapshot = snapshot
+        app.deskOptionDrafts[instance.id] = .init(sourceID: source.id, values: snapshot.values)
+        optionsSession?.receive(snapshot)
+        // Actions outside an open panel have no later panel-close event. Save accepted changes immediately;
+        // a failed write keeps the live values and opens the same panel with a visible retry path.
+        if snapshot.revision > 0, optionsSession == nil {
+            do { try saveOptions(snapshot.values) }
+            catch { showOptions(); optionsSession?.panel.setFeedback(StudioText[.deskOptionsSaveFailed]) }
+        }
+    }
+
+    private func saveOptions(_ input: ProgramOptionsInput) throws {
+        let records = try DeskProgramOptionStore.encode(input)
+        try app.state.saveDeskOptions(instance.id, sourceID: source.id, values: records)
+    }
+
+    func showOptions() {
+        precondition(Thread.isMainThread)
+        guard !isClosing, !isClosed, !program.options.isEmpty, let defaults = optionDefaults else { return }
+        if let optionsSession { optionsSession.panel.present(relativeTo: window.frame); return }
+        guard let snapshot = optionsSnapshot else {
+            let owner = owner, session = sessionID
+            executor.async { [weak self, owner] in
+                guard let snapshot = try? owner.optionsSnapshot() else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.sessionID == session, !self.isClosing, !self.isClosed else { return }
+                    self.optionsSnapshot = snapshot
+                    self.showOptions()
+                }
+            }
+            return
+        }
+        let session = sessionID
+        let options = DeskProgramOptionsSession(snapshot: snapshot, defaults: defaults, isPreview: false,
+            presentsWindows: app.presentsWindows, update: { [weak self] input, revision, completion in
+                guard let self, self.sessionID == session, !self.isClosing, !self.isClosed else {
+                    completion(.failure(DeskProgramHost.Failure.optionsCancelled)); return
+                }
+                let owner = self.owner
+                self.executor.async { [owner] in
+                    owner.updateOptions(input, expectedRevision: revision) { result in
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.sessionID == session, !self.isClosing, !self.isClosed else {
+                                completion(.failure(DeskProgramHost.Failure.optionsCancelled)); return
+                            }
+                            if case .success(let snapshot) = result { self.receiveOptions(snapshot) }
+                            completion(result)
+                        }
+                    }
+                }
+            }, save: { [weak self] input in
+                guard let self, self.sessionID == session, !self.isClosing, !self.isClosed else {
+                    throw DeskProgramHost.Failure.optionsCancelled
+                }
+                try self.saveOptions(input)
+            }, moreStyles: { [weak self] in
+                guard let self, self.sessionID == session, !self.isClosing else { return }
+                self.app.showCodeFile(self.directory.appendingPathComponent(URL(fileURLWithPath: self.source.entry).lastPathComponent), line: nil)
+            })
+        options.onClosed = { [weak self, weak options] in
+            guard let self, self.optionsSession === options else { return }
+            self.optionsSession = nil
+        }
+        optionsSession = options
+        options.panel.displayTitle = displayName
+        if optionsWereRestored { options.panel.setFeedback(StudioText[.deskOptionsRecovered]) }
+        options.panel.present(relativeTo: window.frame)
     }
 
     /// Contract: Real window facts, no forced visible or synthetic profile, incrementing sequence.
@@ -644,6 +729,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             return
         }
         isClosing = true
+        optionsSession?.close()
+        optionsSession = nil
         sessionID = UUID() // invalidate any pending in-flight didPresent callbacks
         latestPresented = nil
         view.clearAccessibility()
@@ -655,8 +742,19 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
         let hostOwner = owner
         executor.async { [hostOwner] in
+            let finalOptions = try? hostOwner.optionsSnapshot()
             hostOwner.close {
                 DispatchQueue.main.async { [self] in
+                    if let finalOptions, !finalOptions.values.values.isEmpty {
+                        self.app.deskOptionDrafts[self.instance.id] = .init(sourceID: self.source.id, values: finalOptions.values)
+                        do { try self.saveOptions(finalOptions.values) }
+                        catch {
+                            Log.write(StudioText[.deskOptionsClosingSaveFailed], level: .warning, source: self.source.entry)
+                            if !self.app.isTerminating {
+                                self.app.alert(StudioText[.sectionOptions], StudioText[.deskOptionsClosingSaveFailed], style: .warning)
+                            }
+                        }
+                    }
                     self.isClosed = true
                     CATransaction.begin()
                     CATransaction.setDisableActions(true)
@@ -690,6 +788,7 @@ final class DeskWidgetHostOwner {
     let clock: SkinClock
     let source: String
     let session: UUID
+    private let initialOptions: ProgramOptionsInput?
     var prepared: DeskProgramResources.Prepared?
     private(set) var host: DeskProgramHost?
     private(set) var isClosed = false
@@ -699,7 +798,8 @@ final class DeskWidgetHostOwner {
     private var secondaryPressEpoch: UInt64?
 
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider,
-         prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String, session: UUID) {
+         prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String, session: UUID,
+         options: ProgramOptionsInput? = nil) {
         self.program = program
         self.executor = executor
         self.provider = provider
@@ -707,11 +807,13 @@ final class DeskWidgetHostOwner {
         self.clock = clock
         self.source = source
         self.session = session
+        self.initialOptions = options
     }
 
     func start(input: DeskProgramHost.Input, facts: SkinWindowFacts, supportsSystemGlass: Bool = false,
                onDelivery: @escaping (SkinBitmapRequest) -> Void,
-               onUnavailable: @escaping (String, UInt64, SkinBitmapInvalidation?) -> Void) {
+               onUnavailable: @escaping (String, UInt64, SkinBitmapInvalidation?) -> Void,
+               onOptions: @escaping (ProgramOptionsSnapshot) -> Void = { _ in }) {
         precondition(executor.isCurrent)
         guard !isClosed else {
             prepared?.removeCopies()
@@ -722,7 +824,7 @@ final class DeskWidgetHostOwner {
         do {
             let readyHost = try DeskProgramHost(program: program, executor: executor, provider: provider,
                                                 input: input, prepared: prepared, clock: clock,
-                                                source: source)
+                                                source: source, options: initialOptions)
             guard !isClosed else {
                 readyHost.close()
                 return
@@ -739,6 +841,7 @@ final class DeskWidgetHostOwner {
                 }
             }
             self.host = readyHost
+            readyHost.didChangeOptions = onOptions
             readyHost.take(facts, input: input)
             readyHost.start()
             readyHost.drawFirstFrame()
@@ -747,6 +850,19 @@ final class DeskWidgetHostOwner {
             prepared = nil
             onUnavailable(String(describing: error), currentEpoch, nil)
         }
+    }
+
+    func optionsSnapshot() throws -> ProgramOptionsSnapshot {
+        precondition(executor.isCurrent)
+        guard !isClosed, let host else { throw DeskProgramHost.Failure.optionsCancelled }
+        return try host.optionsSnapshot()
+    }
+
+    func updateOptions(_ input: ProgramOptionsInput, expectedRevision: UInt64,
+                       completion: @escaping (Result<ProgramOptionsSnapshot, Error>) -> Void) {
+        precondition(executor.isCurrent)
+        guard !isClosed, let host else { completion(.failure(DeskProgramHost.Failure.optionsCancelled)); return }
+        host.updateOptions(input, expectedRevision: expectedRevision, completion: completion)
     }
 
     func finishBitmapRequest(_ request: SkinBitmapRequest) {
@@ -1227,16 +1343,23 @@ final class DeskWidgetView: NSView {
         let removeItem = NSMenuItem(title: StudioText[.removeWidgetFromDesktop],
                                     action: #selector(removeWidgetFromDesktop(_:)), keyEquivalent: "")
         removeItem.target = self
+        var nativeItems: [NSMenuItem] = []
+        if controller?.program.options.isEmpty == false {
+            let options = NSMenuItem(title: StudioText[.deskOptions], action: #selector(showOptions(_:)), keyEquivalent: "")
+            options.target = self
+            nativeItems.append(options)
+        }
+        nativeItems.append(removeItem)
         if !event.modifierFlags.contains(.option), let controller, let presented = pointerPresentation() {
             let local = convert(event.locationInWindow, from: nil)
             let world = SkinPoint(x: local.x + presented.origin.x, y: local.y + presented.origin.y)
             if !DeskProgramMenuSession.owners(root: controller.program.root, scene: presented.scene, at: world).isEmpty {
-                controller.showProgramMenu(at: local, nativeItems: [removeItem])
+                controller.showProgramMenu(at: local, nativeItems: nativeItems)
                 return
             }
         }
         menu.autoenablesItems = false
-        menu.addItem(removeItem)
+        for item in nativeItems { menu.addItem(item) }
         if let contextMenuPresenterForTesting { contextMenuPresenterForTesting(menu, event) }
         else { NSMenu.popUpContextMenu(menu, with: event, for: self) }
     }
@@ -1244,6 +1367,8 @@ final class DeskWidgetView: NSView {
     @objc private func removeWidgetFromDesktop(_ sender: Any?) {
         controller?.deactivateAndClose()
     }
+
+    @objc private func showOptions(_ sender: Any?) { controller?.showOptions() }
 }
 
 /// One accepted labelled element. Held children cannot adopt a newer scene's identity or generation.

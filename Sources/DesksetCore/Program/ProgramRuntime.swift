@@ -11,6 +11,7 @@ public enum ProgramRuntimeError: Error, Equatable {
     case ambiguousClickHandler(ElementID), unhandledClickEffects, missingActionString
     case invalidDateInput
     case invalidColorInput, missingColorInput(ProgramPaletteColor)
+    case invalidOption(String), optionsRevisionOverflow
 }
 
 /// The executable part of the shared runtime. It owns a program value, session variables and scene generations,
@@ -22,6 +23,9 @@ public struct ProgramRuntime: Sendable {
     public var displayName: String { program.displayName(language: language) }
     public private(set) var generation: UInt64 = 0
     public private(set) var clockPrecision: ProgramClockPrecision?
+    public private(set) var optionValues: ProgramOptionsInput
+    public private(set) var optionsRevision: UInt64 = 0
+    private let optionSchema: ProgramOptionsSchema
     private var variables: [ProgramScalar?]?
     private struct ClickHandler: Sendable {
         let actions: [MouseEventKind: [ProgramAction]]
@@ -38,13 +42,16 @@ public struct ProgramRuntime: Sendable {
     private var visibleMenuOwners: Set<ElementID> = []
     private var currentHitMap = SkinHitMap()
 
-    public init(program: WidgetProgram, language: String? = nil) throws {
+    public init(program: WidgetProgram, language: String? = nil, options: ProgramOptionsInput? = nil) throws {
         if case .preset(_, let size) = program.size {
             guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
                 throw ProgramRuntimeError.invalidGeometry(program.root.id)
             }
         }
-        var expressions = try ProgramExpressionValidation(declarations: program.declarations, translations: program.translations)
+        let optionSchema = try ProgramOptionsSchema(structure: program.options, translations: program.translations)
+        var expressions = try ProgramExpressionValidation(declarations: program.declarations, translations: program.translations,
+                                                           options: optionSchema.definitions)
+        try optionSchema.validateExpressions(using: &expressions)
         if let key = program.nameKey {
             guard program.translations.source[key]?.allSatisfy({
                 if case .text = $0 { return true }; return false
@@ -55,7 +62,7 @@ public struct ProgramRuntime: Sendable {
         var actionCount = program.onLoad.count
         var clickHandlers: [ElementID: ClickHandler] = [:]
         var menus: [ElementID: MenuTemplate] = [:]
-        var pending = [(program.root, 1, false)], count = 0, contentCount = 0
+        var pending = [(program.root, 1, false)], count = optionSchema.nodeCount, contentCount = 0
         var identities = Set<ElementID>()
         func validateMenu(_ items: [ProgramMenuNode], depth: Int) throws {
             guard items.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
@@ -292,8 +299,40 @@ public struct ProgramRuntime: Sendable {
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
         self.program = program
         self.language = language
+        self.optionSchema = optionSchema
+        self.optionValues = try options.map { try optionSchema.validate($0) } ?? optionSchema.defaults
         self.clickHandlers = clickHandlers
         self.menus = menus
+    }
+
+    /// A read-only panel snapshot. Metadata never initializes variables, projects a scene or arms a clock.
+    public func resolveOptions(dateInput: ProgramDateInput? = nil) throws -> ProgramOptionsSnapshot {
+        try optionSchema.resolve(optionValues, revision: optionsRevision, language: language, dateInput: dateInput)
+    }
+
+    /// Replace the entire option input in the same transaction as layout, retaining session variables and onLoad state.
+    /// The independent revision permits ordinary clock projections while rejecting an outdated panel write.
+    public mutating func updateOptions(_ input: ProgramOptionsInput, expectedRevision: UInt64,
+                                       environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
+                                       dateInput: ProgramDateInput? = nil, colorInput: ProgramColorInput? = nil,
+                                       systemInput: ProgramSystemInput? = nil,
+                                       measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
+                                       measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene? {
+        guard expectedRevision == optionsRevision else { return nil }
+        var candidate = self
+        try candidate.acceptOptionValues(optionSchema.validate(input))
+        let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput,
+            colorInput: colorInput, systemInput: systemInput, measureIcon: measureIcon, measure: measure)
+        self = candidate
+        return scene
+    }
+
+    private mutating func acceptOptionValues(_ input: ProgramOptionsInput) throws {
+        guard input != optionValues else { return }
+        let next = optionsRevision.addingReportingOverflow(1)
+        guard !next.overflow else { throw ProgramRuntimeError.optionsRevisionOverflow }
+        optionValues = input
+        optionsRevision = next.partialValue
     }
 
     /// Properties needed for normal projection (or first initialization if variables == nil).
@@ -392,7 +431,8 @@ public struct ProgramRuntime: Sendable {
         if let dateInput, !dateInput.instant.timeIntervalSince1970.isFinite { throw ProgramRuntimeError.invalidDateInput }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
                                                      variables: variables, dateInput: dateInput, systemInput: systemInput,
-                                                     translations: program.translations, language: language)
+                                                     translations: program.translations, language: language,
+                                                     options: optionSchema.definitions, optionValues: optionValues.values)
         func resolve(_ nodes: [ProgramMenuNode], path: [Int]) throws -> [ProgramMenuSnapshot.Node] {
             var result: [ProgramMenuSnapshot.Node] = []
             for (index, node) in nodes.enumerated() {
@@ -584,7 +624,7 @@ public struct ProgramRuntime: Sendable {
                 active.append(cond)
                 active.append(thenExpr)
                 active.append(otherwiseExpr)
-            case .string, .number, .quantity, .boolean, .timeNow, .appearanceDark:
+            case .string, .number, .quantity, .boolean, .timeNow, .appearanceDark, .option, .localCase:
                 break
             }
         }
@@ -617,7 +657,8 @@ public struct ProgramRuntime: Sendable {
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
                                                      variables: variables, dateInput: dateInput, systemInput: systemInput,
-                                                     translations: program.translations, language: language)
+                                                     translations: program.translations, language: language,
+                                                     options: optionSchema.definitions, optionValues: optionValues.values)
         if variables == nil {
             try evaluation.initialize()
             // Root startup is part of the first successful scene transaction. These local-only assignments
@@ -817,13 +858,15 @@ public struct ProgramRuntime: Sendable {
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
                                                       variables: variables, dateInput: dateInput, systemInput: systemInput,
-                                                      translations: program.translations, language: language)
+                                                      translations: program.translations, language: language,
+                                                      options: optionSchema.definitions, optionValues: optionValues.values)
         if let menuSelection, try !isSelected(menuSelection, evaluation: &evaluation) { return nil }
         var effects: [ProgramEffect] = []
         for action in actions {
             if let effect = try ActionExecutor.perform(action, on: &evaluation) { effects.append(effect) }
         }
         candidate.variables = evaluation.variables
+        try candidate.acceptOptionValues(ProgramOptionsInput(values: evaluation.optionValues))
         let scene = try candidate.project(environment: environment, images: images, dateInput: dateInput, colorInput: colorInput,
                                           systemInput: systemInput, measureIcon: measureIcon, measure: measure)
         self = candidate
