@@ -26,6 +26,13 @@ public struct ProgramRuntime: Sendable {
         let isContainer: Bool
     }
     private let clickHandlers: [ElementID: ClickHandler]
+    private struct MenuTemplate: Sendable {
+        let items: [ProgramMenuNode]
+        let radius: ProgramCornerRadius?
+    }
+    private let menus: [ElementID: MenuTemplate]
+    /// Unlike pointer hits, root menu fallback must survive a zero-area root with visible overflowing children.
+    private var visibleMenuOwners: Set<ElementID> = []
     private var currentHitMap = SkinHitMap()
 
     public init(program: WidgetProgram) throws {
@@ -39,8 +46,43 @@ public struct ProgramRuntime: Sendable {
         for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
         var actionCount = program.onLoad.count
         var clickHandlers: [ElementID: ClickHandler] = [:]
+        var menus: [ElementID: MenuTemplate] = [:]
         var pending = [(program.root, 1, false)], count = 0, contentCount = 0
         var identities = Set<ElementID>()
+        func validateMenu(_ items: [ProgramMenuNode], depth: Int) throws {
+            guard items.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
+            var menuPending = items.reversed().map { ($0, depth) }
+            while let (item, depth) = menuPending.popLast() {
+                count += 1
+                guard count <= ProgramLimits.maximumElements else { throw ProgramRuntimeError.elementLimit }
+                guard depth <= ProgramLimits.maximumDepth else { throw ProgramRuntimeError.depthLimit }
+                let bodies: [[ProgramMenuNode]]
+                switch item {
+                case .item(let item):
+                    try expressions.validateText(item.title)
+                    try expressions.validateCondition(item.checked)
+                    try expressions.validateCondition(item.enabled)
+                    guard item.actions.count <= ProgramLimits.maximumExpressions - actionCount else { throw ProgramRuntimeError.expressionLimit }
+                    actionCount += item.actions.count
+                    for action in item.actions { try expressions.validateAction(action) }
+                    bodies = []
+                case .submenu(let title, let items):
+                    try expressions.validateText(title)
+                    bodies = [items]
+                case .divider: bodies = []
+                case .conditional(let conditional):
+                    guard !conditional.branches.isEmpty else { throw ProgramRuntimeError.invalidExpression }
+                    for branch in conditional.branches { try expressions.validateCondition(branch.condition) }
+                    bodies = [conditional.otherwise] + conditional.branches.reversed().map(\.body)
+                }
+                for body in bodies {
+                    guard body.count <= ProgramLimits.maximumElements - count - pending.count - menuPending.count else {
+                        throw ProgramRuntimeError.elementLimit
+                    }
+                    menuPending.append(contentsOf: body.reversed().map { ($0, depth + 1) })
+                }
+            }
+        }
         while let (node, depth, mayPosition) = pending.popLast() {
             count += 1
             guard count <= ProgramLimits.maximumElements else { throw ProgramRuntimeError.elementLimit }
@@ -55,7 +97,7 @@ public struct ProgramRuntime: Sendable {
                       node.padding == .zero, !node.hidden, node.hiddenIf == nil,
                       node.stroke == nil, node.cornerRadius == nil, node.background == nil,
                       node.onClick == nil, node.onClickActions == nil, node.onRightClickActions == nil,
-                      node.position == nil, node.voiceOver == nil, node.tooltip == nil else {
+                      node.position == nil, node.voiceOver == nil, node.tooltip == nil, node.menu == nil else {
                     throw ProgramRuntimeError.invalidGeometry(node.id)
                 }
                 for branch in conditional.branches { try expressions.validateCondition(branch.condition) }
@@ -138,6 +180,14 @@ public struct ProgramRuntime: Sendable {
                 try expressions.validateText(tooltip.text)
                 if let title = tooltip.title { try expressions.validateText(title) }
                 // A tooltip gives an otherwise empty real container meaningful hover content, even if empty.
+                switch node.content {
+                case .row, .column, .freeform: contentCount += 1
+                default: break
+                }
+            }
+            if let items = node.menu {
+                try validateMenu(items, depth: depth + 1)
+                menus[node.id] = MenuTemplate(items: items, radius: node.cornerRadius)
                 switch node.content {
                 case .row, .column, .freeform: contentCount += 1
                 default: break
@@ -234,6 +284,7 @@ public struct ProgramRuntime: Sendable {
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
         self.program = program
         self.clickHandlers = clickHandlers
+        self.menus = menus
     }
 
     /// Properties needed for normal projection (or first initialization if variables == nil).
@@ -293,6 +344,124 @@ public struct ProgramRuntime: Sendable {
         guard let actions = primaryContainerActions(id) else { return [] }
         var activeExpressions = actions.map(\.expression)
         return collectProperties(active: &activeExpressions, includeLayoutText: true)
+    }
+
+    /// Committed membership only: no expression evaluation. Hosts retire an opening when an owner disappears,
+    /// including a zero-area root that supplies the widget's fallback menu.
+    public func isMenuOwnerVisible(_ id: ElementID) -> Bool {
+        variables != nil && visibleMenuOwners.contains(id)
+    }
+
+    /// Only this owner's menu display bindings, conservatively across possible arms. Closed menus never add
+    /// subscriptions to the normal projection, and action arguments are sampled only when an item is selected.
+    public func neededSystemProperties(openingMenu id: ElementID) -> Set<ProgramSystemProperty> {
+        guard variables != nil, visibleMenuOwners.contains(id), let menu = menus[id] else { return [] }
+        var active: [ProgramExpression] = [], pending = menu.items
+        while let node = pending.popLast() {
+            switch node {
+            case .item(let item): active.append(contentsOf: [item.title, item.checked, item.enabled])
+            case .submenu(let title, let items): active.append(title); pending.append(contentsOf: items)
+            case .divider: break
+            case .conditional(let conditional):
+                active.append(contentsOf: conditional.branches.map(\.condition))
+                pending.append(contentsOf: conditional.otherwise)
+                for branch in conditional.branches { pending.append(contentsOf: branch.body) }
+            }
+        }
+        return collectProperties(active: &active, includeLayoutText: false)
+    }
+
+    /// Opening reads initialized slots without changing variables, generation, the hit map or display clocks.
+    /// The host owns the lifetime of this immutable opening and supplies current inputs again upon activation.
+    public func resolveMenu(_ id: ElementID, expectedGeneration: UInt64, environment: EnvironmentStamp,
+                            dateInput: ProgramDateInput? = nil, systemInput: ProgramSystemInput? = nil) throws -> ProgramMenuSnapshot? {
+        guard variables != nil, expectedGeneration == generation, visibleMenuOwners.contains(id), let menu = menus[id] else { return nil }
+        let appearance = environment.appearance.value
+        guard environment.scale.isFinite, environment.scale > 0,
+              [appearance.labelColor, appearance.secondaryLabelColor, appearance.tertiaryLabelColor,
+               appearance.accentColor, appearance.separatorColor].allSatisfy(Self.valid) else { throw ProgramRuntimeError.invalidEnvironment }
+        if let dateInput, !dateInput.instant.timeIntervalSince1970.isFinite { throw ProgramRuntimeError.invalidDateInput }
+        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
+                                                     variables: variables, dateInput: dateInput, systemInput: systemInput)
+        func resolve(_ nodes: [ProgramMenuNode], path: [Int]) throws -> [ProgramMenuSnapshot.Node] {
+            var result: [ProgramMenuSnapshot.Node] = []
+            for (index, node) in nodes.enumerated() {
+                let path = path + [index]
+                switch node {
+                case .item(let item):
+                    let title = try evaluation.text(item.title, displayed: false).text
+                    let checked = try evaluation.condition(item.checked, displayed: false)
+                    let enabled = try evaluation.condition(item.enabled, displayed: false)
+                    result.append(.item(id: ProgramMenuItemID(owner: id, path: path), title: title, checked: checked, enabled: enabled))
+                case .submenu(let title, let items):
+                    let title = try evaluation.text(title, displayed: false).text
+                    result.append(.submenu(title: title, items: try resolve(items, path: path)))
+                case .divider: result.append(.divider)
+                case .conditional(let conditional):
+                    var selected = conditional.branches.count
+                    for (index, branch) in conditional.branches.enumerated() {
+                        if try evaluation.condition(branch.condition, displayed: false) { selected = index; break }
+                    }
+                    let body = selected == conditional.branches.count ? conditional.otherwise : conditional.branches[selected].body
+                    result.append(contentsOf: try resolve(body, path: path + [selected]))
+                }
+            }
+            return result
+        }
+        return ProgramMenuSnapshot(owner: id, sourceGeneration: generation, items: try resolve(menu.items, path: []))
+    }
+
+    /// Sampling for one command includes only its path's branch guards, its enabled value, its actions, and the
+    /// normal resulting projection. Unrelated menu titles, checked values and other commands are not activated.
+    public func neededSystemProperties(activatingMenuItem id: ProgramMenuItemID) -> Set<ProgramSystemProperty> {
+        guard let selection = menuSelection(id) else { return [] }
+        var active = selection.item.actions.map(\.expression) + [selection.item.enabled]
+        for branch in selection.branches {
+            active.append(contentsOf: branch.conditional.branches.prefix(branch.index + 1).map(\.condition))
+        }
+        return collectProperties(active: &active, includeLayoutText: true)
+    }
+
+    private struct MenuSelection {
+        let item: ProgramMenuItem
+        let branches: [(conditional: ProgramMenuConditional, index: Int)]
+    }
+
+    private func menuSelection(_ id: ProgramMenuItemID) -> MenuSelection? {
+        guard variables != nil, visibleMenuOwners.contains(id.owner), let menu = menus[id.owner] else { return nil }
+        var nodes = menu.items, offset = 0
+        var branches: [(conditional: ProgramMenuConditional, index: Int)] = []
+        while offset < id.path.count {
+            let index = id.path[offset]
+            guard nodes.indices.contains(index) else { return nil }
+            offset += 1
+            switch nodes[index] {
+            case .item(let item):
+                guard offset == id.path.count else { return nil }
+                return MenuSelection(item: item, branches: branches)
+            case .submenu(_, let items): nodes = items
+            case .divider: return nil
+            case .conditional(let conditional):
+                guard offset < id.path.count else { return nil }
+                let branch = id.path[offset]
+                guard branch >= 0, branch <= conditional.branches.count else { return nil }
+                offset += 1
+                branches.append((conditional, branch))
+                nodes = branch == conditional.branches.count ? conditional.otherwise : conditional.branches[branch].body
+            }
+        }
+        return nil
+    }
+
+    private func isSelected(_ selection: MenuSelection, evaluation: inout ProgramExpressionEvaluation) throws -> Bool {
+        for branch in selection.branches {
+            for earlier in branch.conditional.branches.prefix(branch.index) {
+                if try evaluation.condition(earlier.condition, displayed: false) { return false }
+            }
+            if branch.index < branch.conditional.branches.count,
+               try !evaluation.condition(branch.conditional.branches[branch.index].condition, displayed: false) { return false }
+        }
+        return try evaluation.condition(selection.item.enabled, displayed: false)
     }
 
     private func primaryContainerActions(_ id: ElementID) -> [ProgramAction]? {
@@ -541,8 +710,9 @@ public struct ProgramRuntime: Sendable {
         // Desk hits the box, including its padding/rounded corners, independent of painted alpha or curve ink.
         for element in elements.reversed() where element.visibility == .visible {
             let handler = clickHandlers[element.id], tooltip = toolTips[element.id]
-            guard handler != nil || tooltip != nil, element.frame.width > 0, element.frame.height > 0 else { continue }
-            let radius = handler?.radius ?? tooltip?.radius
+            let menu = menus[element.id]
+            guard handler != nil || tooltip != nil || menu != nil, element.frame.width > 0, element.frame.height > 0 else { continue }
+            let radius = handler?.radius ?? tooltip?.radius ?? menu?.radius
             hitMap.entries.append(SkinHitMap.Entry(name: element.id.name, frame: element.frame,
                                                    shape: Self.clickShape(element.frame, radius: radius.map {
                                                        if case .points(let radius) = $0 { return .points(radius * transform.a) }
@@ -550,7 +720,8 @@ public struct ProgramRuntime: Sendable {
                                                    }),
                                                    container: nil, glass: nil, isButton: false,
                                                    actions: handler?.actions.mapValues { $0.isEmpty ? .caught : .runs } ?? [:],
-                                                   cursor: true, cursorName: "", toolTip: tooltip?.info, elementID: element.id))
+                                                   cursor: true, cursorName: "", toolTip: tooltip?.info, elementID: element.id,
+                                                   hasMenu: menu != nil))
         }
         let scene = WidgetScene(generation: next.partialValue, size: sceneSize, background: [],
                                 backgroundImageDependencies: [], glass: [], elements: elements,
@@ -559,6 +730,7 @@ public struct ProgramRuntime: Sendable {
         variables = evaluation.variables
         clockPrecision = evaluation.clockPrecision
         currentHitMap = hitMap
+        visibleMenuOwners = Set(elements.filter { $0.visibility == .visible && menus[$0.id] != nil }.map(\.id))
         return scene
     }
 
@@ -611,15 +783,30 @@ public struct ProgramRuntime: Sendable {
                                   colorInput: colorInput, systemInput: systemInput, measureIcon: measureIcon, measure: measure)
     }
 
-    private mutating func performActions(_ actions: [ProgramAction], environment: EnvironmentStamp,
+    /// A menu selection is qualified against the current owner, current conditional branch and enabled value.
+    /// The native opening's session/epoch and one-shot token are the host's responsibility, not scene generation.
+    public mutating func activateMenuItemWithEffects(_ id: ProgramMenuItemID, expectedGeneration: UInt64,
+                                                    environment: EnvironmentStamp,
+                                                    images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
+                                                    colorInput: ProgramColorInput? = nil, systemInput: ProgramSystemInput? = nil,
+                                                    measureIcon: ((IconRequest) throws -> SkinSize?)? = nil,
+                                                    measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult? {
+        guard expectedGeneration == generation, let selection = menuSelection(id) else { return nil }
+        return try performActions(selection.item.actions, menuSelection: selection, environment: environment,
+            images: images, dateInput: dateInput, colorInput: colorInput, systemInput: systemInput,
+            measureIcon: measureIcon, measure: measure)
+    }
+
+    private mutating func performActions(_ actions: [ProgramAction], menuSelection: MenuSelection? = nil, environment: EnvironmentStamp,
                                          images: [String: ProgramImageResource], dateInput: ProgramDateInput?,
                                          colorInput: ProgramColorInput?, systemInput: ProgramSystemInput?,
                                          measureIcon: ((IconRequest) throws -> SkinSize?)?,
-                                         measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult {
+                                         measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult? {
         var candidate = self
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
                                                       variables: variables, dateInput: dateInput, systemInput: systemInput)
+        if let menuSelection, try !isSelected(menuSelection, evaluation: &evaluation) { return nil }
         var effects: [ProgramEffect] = []
         for action in actions {
             if let effect = try ActionExecutor.perform(action, on: &evaluation) { effects.append(effect) }

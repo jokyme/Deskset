@@ -192,6 +192,70 @@ public struct ProgramTooltip: Equatable, Sendable {
     }
 }
 
+/// A menu command. Checked is presentation only; selecting an item runs only its explicit actions.
+public struct ProgramMenuItem: Equatable, Sendable {
+    public let title: ProgramExpression
+    public let checked: ProgramExpression
+    public let enabled: ProgramExpression
+    public let actions: [ProgramAction]
+
+    public init(title: ProgramExpression, checked: ProgramExpression = .boolean(false),
+                enabled: ProgramExpression = .boolean(true), actions: [ProgramAction] = []) {
+        self.title = title; self.checked = checked; self.enabled = enabled; self.actions = actions
+    }
+}
+
+public struct ProgramMenuConditionalBranch: Equatable, Sendable {
+    public let condition: ProgramExpression
+    public let body: [ProgramMenuNode]
+
+    public init(condition: ProgramExpression, body: [ProgramMenuNode]) {
+        self.condition = condition; self.body = body
+    }
+}
+
+public struct ProgramMenuConditional: Equatable, Sendable {
+    public let branches: [ProgramMenuConditionalBranch]
+    public let otherwise: [ProgramMenuNode]
+
+    public init(branches: [ProgramMenuConditionalBranch], otherwise: [ProgramMenuNode] = []) {
+        self.branches = branches; self.otherwise = otherwise
+    }
+}
+
+/// Non-layout menu templates. Only the selected conditional body exists in an opened menu.
+public indirect enum ProgramMenuNode: Equatable, Sendable {
+    case item(ProgramMenuItem)
+    case submenu(title: ProgramExpression, items: [ProgramMenuNode])
+    case divider
+    case conditional(ProgramMenuConditional)
+}
+
+/// A command's source path within one compiled owner's menu, independent of titles or selected row positions.
+/// A conditional contributes its node index, then its branch index (otherwise = branches.count), then body indices.
+public struct ProgramMenuItemID: Equatable, Hashable, Sendable {
+    public let owner: ElementID
+    public let path: [Int]
+
+    public init(owner: ElementID, path: [Int]) { self.owner = owner; self.path = path }
+}
+
+/// An immutable menu opening. It carries no executable expressions or actions across to the native presenter.
+public struct ProgramMenuSnapshot: Equatable, Sendable {
+    public indirect enum Node: Equatable, Sendable {
+        case item(id: ProgramMenuItemID, title: String, checked: Bool, enabled: Bool)
+        case submenu(title: String, items: [Node])
+        case divider
+    }
+    public let owner: ElementID
+    public let sourceGeneration: UInt64
+    public let items: [Node]
+
+    public init(owner: ElementID, sourceGeneration: UInt64, items: [Node]) {
+        self.owner = owner; self.sourceGeneration = sourceGeneration; self.items = items
+    }
+}
+
 /// A box in points, or a transparent conditional child-list item. Child order is drawing order; identity is
 /// assigned by the producer, never by a syntax version or the currently selected branch.
 public struct ProgramElement: Equatable, Sendable {
@@ -249,6 +313,8 @@ public struct ProgramElement: Equatable, Sendable {
     public let hiddenIf: ProgramExpression?
     /// Local display strings resolved only while effectively visible; they never participate in measurement.
     public let tooltip: ProgramTooltip?
+    /// A local menu template, resolved on demand rather than during layout or the display clock.
+    public let menu: [ProgramMenuNode]?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
@@ -257,7 +323,7 @@ public struct ProgramElement: Equatable, Sendable {
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
                 onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil,
                 background: ProgramBackground? = nil, voiceOver: ProgramExpression? = nil,
-                hiddenIf: ProgramExpression? = nil, tooltip: ProgramTooltip? = nil) {
+                hiddenIf: ProgramExpression? = nil, tooltip: ProgramTooltip? = nil, menu: [ProgramMenuNode]? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -279,6 +345,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.voiceOver = voiceOver
         self.hiddenIf = hiddenIf
         self.tooltip = tooltip
+        self.menu = menu
     }
 }
 

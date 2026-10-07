@@ -167,10 +167,12 @@ public struct SkinHitMap: Equatable, Sendable {
         public let cursorName: String
         /// The tooltip with `%1`, `%2`… as they were (nil: none shown).
         public let toolTip: ToolTipInfo?
+        /// A shared-program menu is available on this box. This does not consume any pointer action.
+        public let hasMenu: Bool
 
         public init(name: String, frame: SkinRect, shape: MouseShape, container: MouseShape?, glass: GlassRegion?,
                     isButton: Bool, actions: [MouseEventKind: Action], cursor: Bool, cursorName: String,
-                    toolTip: ToolTipInfo?, elementID: ElementID? = nil) {
+                    toolTip: ToolTipInfo?, elementID: ElementID? = nil, hasMenu: Bool = false) {
             self.name = name
             self.elementID = elementID
             self.frame = frame
@@ -182,6 +184,7 @@ public struct SkinHitMap: Equatable, Sendable {
             self.cursor = cursor
             self.cursorName = cursorName
             self.toolTip = toolTip
+            self.hasMenu = hasMenu
         }
 
         public func action(_ kind: MouseEventKind) -> Action { actions[kind] ?? .absent }
@@ -190,7 +193,7 @@ public struct SkinHitMap: Equatable, Sendable {
             a === b || (a.name == b.name && a.frame == b.frame && a.shape == b.shape && a.container == b.container
                         && a.glass == b.glass && a.isButton == b.isButton && a.actions == b.actions
                         && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip
-                        && a.elementID == b.elementID)
+                        && a.elementID == b.elementID && a.hasMenu == b.hasMenu)
         }
     }
 

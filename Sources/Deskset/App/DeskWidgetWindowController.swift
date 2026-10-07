@@ -36,6 +36,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private let actionServices: DeskProgramActionServices
     private var lastIssuedClickSerial: UInt64 = 0
     private var lastConsumedClickSerial: UInt64 = 0
+    private var menuSession: DeskProgramMenuSession?
     private struct DestinationKey: Equatable {
         let colorSpace: CGColorSpace?
         let scale: CGFloat
@@ -85,6 +86,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             pointerLocation: { [weak view] in view?.pointerLocation() ?? .zero },
             presentsWindows: app.presentsWindows,
             targetAt: { [weak self] in self?.tooltipTarget(at: $0) })
+        view.programMenus = DeskProgramMenus(view: view, presentsWindows: app.presentsWindows)
         panel.delegate = self
 
         let appearance = panel.effectiveAppearance
@@ -186,8 +188,13 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             destinationEpoch &+= 1
             view.clearAccessibility()
             view.programTooltips?.cancel()
+            view.programMenus?.cancel()
         }
-        if !takesPointer { view.programTooltips?.cancel() }
+        if !takesPointer {
+            view.programTooltips?.cancel()
+        }
+        if window.ignoresMouseEvents || window.isMiniaturized || view.isHiddenOrHasHiddenAncestor ||
+            (app.presentsWindows && !isOrderedIn) { view.programMenus?.cancel() }
 
         return SkinWindowFacts(
             frame: window.frame,
@@ -211,8 +218,9 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         let scale = window.backingScaleFactor
         guard let currentInput = try? DeskWidgetWindowController.makeInput(for: appearance, scale: scale) else { return }
         let hostOwner = owner
+        let menuAllowed = !window.ignoresMouseEvents && !window.isMiniaturized && !view.isHiddenOrHasHiddenAncestor
         executor.async { [hostOwner] in
-            hostOwner.take(facts, input: currentInput)
+            hostOwner.take(facts, input: currentInput, menuAllowed: menuAllowed)
             // Clock and zone inputs can change while the captured appearance/locale input stays equal.
             // Reuse wake's cache invalidation and visible-owner projection to replace the clock boundary.
             if refreshTime { hostOwner.wake() }
@@ -291,6 +299,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             latestPresented = nil
             view.clearAccessibility()
             view.programTooltips?.cancel()
+            view.programMenus?.cancel()
             invalidation.finishOnMain(accepted: true)
         }
     }
@@ -299,6 +308,9 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         latestPresented = presented
         lastPresentedGeneration = presented.scene.generation
         lastAcceptedEpoch = epoch
+        if let menuSession, !menuSession.owners.allSatisfy({ id in
+            presented.scene.elements.contains { $0.id == id && $0.visibility == .visible }
+        }) { view.programMenus?.cancel() }
         lastUnavailableMessage = nil
         lastActionFailure = nil
         view.toolTip = nil
@@ -318,6 +330,49 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         }
         view.refreshAccessibility()
         view.programTooltips?.refresh()
+    }
+
+    /// Main starts the request; the owner resolves expressions asynchronously without blocking the event loop.
+    func showProgramMenu(at point: NSPoint, nativeItems: [NSMenuItem]) {
+        guard !isClosing, !isClosed, lastAcceptedEpoch == destinationEpoch,
+              let presented = latestPresented, let menus = view.programMenus else { return }
+        let id = UUID(), session = sessionID, epoch = lastAcceptedEpoch, hostOwner = owner
+        view.programTooltips?.mouseDown()
+        guard let request = menus.begin(at: point, onCancel: { [weak self] _ in
+            guard let self else { return }
+            if self.menuSession?.id == id { self.menuSession = nil }
+            self.executor.async { [hostOwner] in hostOwner.cancelMenu(id) }
+        }) else { return }
+        executor.async { [hostOwner] in
+            hostOwner.openMenu(at: SkinPoint(x: point.x, y: point.y), expectedGeneration: presented.scene.generation,
+                epoch: epoch, menuID: id) { resolved, failure in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.isClosing, !self.isClosed, self.sessionID == session,
+                          self.destinationEpoch == epoch, self.lastAcceptedEpoch == epoch,
+                          menus.currentRequest == request else { return }
+                    self.menuSession = resolved
+                    if let failure {
+                        let message = self.localizedUnavailableDescription(failure)
+                        self.lastActionFailure = message
+                        self.view.toolTip = message
+                        self.view.setAccessibilityLabel(message)
+                        Log.write(message, level: .warning, source: self.source.entry)
+                    }
+                    menus.present(resolved?.items ?? [], for: request, nativeItems: nativeItems) { [weak self] item in
+                        guard let self, self.menuSession?.id == id, self.sessionID == session,
+                              self.destinationEpoch == epoch, let token = self.issueClickToken() else { return }
+                        self.menuSession = nil
+                        self.executor.async { [hostOwner] in
+                            hostOwner.activateMenuItem(item, menuID: id, token: token) { returned, effects in
+                                DispatchQueue.main.async { [weak self] in
+                                    self?.handleEffects(effects, token: returned, issuedToken: token)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Only the accepted picture owns hover content. Its viewport origin is applied exactly once.
@@ -371,6 +426,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         latestPresented = nil
         view.clearAccessibility()
         view.programTooltips?.cancel()
+        view.programMenus?.cancel()
         let localizedMessage = localizedUnavailableDescription(errorDesc)
         let changed = lastUnavailableMessage != localizedMessage
         lastUnavailableMessage = localizedMessage
@@ -496,6 +552,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
     func windowDidMove(_ notification: Notification) {
         view.programTooltips?.cancel()
+        view.programMenus?.cancel()
     }
 
     func windowDidChangeScreenProfile(_ notification: Notification) {
@@ -549,6 +606,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         latestPresented = nil
         view.clearAccessibility()
         view.programTooltips?.close()
+        view.programMenus?.close()
 
         for (center, token) in observers { center.removeObserver(token) }
         observers.removeAll()
@@ -658,7 +716,7 @@ final class DeskWidgetHostOwner {
         }
     }
 
-    func take(_ facts: SkinWindowFacts, input: DeskProgramHost.Input) {
+    func take(_ facts: SkinWindowFacts, input: DeskProgramHost.Input, menuAllowed: Bool? = nil) {
         precondition(executor.isCurrent)
         guard !isClosed else { return }
         if currentEpoch != facts.panelGeneration {
@@ -668,7 +726,7 @@ final class DeskWidgetHostOwner {
             secondaryPressEpoch = nil
         }
         currentEpoch = facts.panelGeneration
-        host?.take(facts, input: input)
+        host?.take(facts, input: input, menuAllowed: menuAllowed)
         host?.drawFirstFrame()
     }
 
@@ -733,6 +791,34 @@ final class DeskWidgetHostOwner {
         }
     }
 
+    func openMenu(at point: SkinPoint, expectedGeneration: UInt64, epoch: UInt64, menuID: UUID,
+                  completion: (DeskProgramMenuSession?, String?) -> Void) {
+        precondition(executor.isCurrent)
+        guard !isClosed, epoch == currentEpoch, let host else { completion(nil, nil); return }
+        cancelPress(.leftUp); cancelPress(.rightUp)
+        do { completion(try host.openMenu(at: point, expectedGeneration: expectedGeneration, id: menuID), nil) }
+        catch { completion(nil, String(describing: error)) }
+    }
+
+    func cancelMenu(_ id: UUID) {
+        precondition(executor.isCurrent)
+        host?.cancelMenu(id)
+    }
+
+    func activateMenuItem(_ item: ProgramMenuItemID, menuID: UUID, token: DeskWidgetClickToken,
+                          onEffects: @escaping (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
+        precondition(executor.isCurrent)
+        guard !isClosed, token.session == session, token.epoch == currentEpoch, let host else { return }
+        let consume: ([ProgramEffect]) -> Void = { [weak self] effects in
+            guard let self, !self.isClosed, self.session == token.session,
+                  self.currentEpoch == token.epoch, !effects.isEmpty else { return }
+            precondition(self.executor.isCurrent)
+            onEffects(token, effects)
+        }
+        if let effects = host.activateMenuItem(item, menuID: menuID, expectedGeneration: token.sourceGeneration,
+                                               completion: consume) { consume(effects) }
+    }
+
     private func release(at point: SkinPoint, token: DeskWidgetClickToken, event: MouseEventKind,
                          onEffects: @escaping (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
         precondition(executor.isCurrent)
@@ -793,6 +879,7 @@ final class DeskWidgetHostOwner {
 final class DeskWidgetView: NSView {
     weak var controller: DeskWidgetWindowController?
     fileprivate(set) var programTooltips: DeskProgramTooltips?
+    fileprivate(set) var programMenus: DeskProgramMenus?
     private var hoverTrackingArea: NSTrackingArea?
     private(set) var accessibilityParts: [DeskWidgetAccessibilityElement] = []
     private var dragStart: NSPoint?
@@ -918,6 +1005,7 @@ final class DeskWidgetView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         programTooltips?.mouseDown()
+        programMenus?.cancel()
         guard let controller, !controller.isClosing, !controller.isClosed else { return }
         if let previous = primaryGesture { cancelPointer(previous.event) }
         primaryGesture = nil
@@ -951,6 +1039,7 @@ final class DeskWidgetView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         programTooltips?.mouseDown()
+        programMenus?.cancel()
         if primaryGesture?.event == .rightUp {
             primaryGesture = nil
             cancelPointer(.rightUp)
@@ -1011,11 +1100,13 @@ final class DeskWidgetView: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         programTooltips?.mouseDown()
+        programMenus?.cancel()
         secondaryGesture = beginSecondaryPress(with: event)
     }
 
     override func rightMouseDragged(with event: NSEvent) {
         programTooltips?.mouseDown()
+        programMenus?.cancel()
         secondaryGesture = nil
         cancelPointer(.rightUp)
     }
@@ -1089,10 +1180,20 @@ final class DeskWidgetView: NSView {
 
     private func showContextMenu(with event: NSEvent) {
         guard acceptsPointerMenu() else { return }
+        programMenus?.cancel()
         let menu = NSMenu(title: "Desk Widget")
         let removeItem = NSMenuItem(title: StudioText[.removeWidgetFromDesktop],
                                     action: #selector(removeWidgetFromDesktop(_:)), keyEquivalent: "")
         removeItem.target = self
+        if !event.modifierFlags.contains(.option), let controller, let presented = pointerPresentation() {
+            let local = convert(event.locationInWindow, from: nil)
+            let world = SkinPoint(x: local.x + presented.origin.x, y: local.y + presented.origin.y)
+            if !DeskProgramMenuSession.owners(root: controller.program.root, scene: presented.scene, at: world).isEmpty {
+                controller.showProgramMenu(at: local, nativeItems: [removeItem])
+                return
+            }
+        }
+        menu.autoenablesItems = false
         menu.addItem(removeItem)
         if let contextMenuPresenterForTesting { contextMenuPresenterForTesting(menu, event) }
         else { NSMenu.popUpContextMenu(menu, with: event, for: self) }

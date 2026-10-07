@@ -9,6 +9,7 @@ struct StaticProgramCompiler {
     private var onLoad: [ProgramAssignment] = []
     private var clickActionCount = 0
     private var widgetSize = ProgramWidgetSize.fit
+    private var seenElements = Set<NodeID>()
     private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
@@ -89,6 +90,9 @@ struct StaticProgramCompiler {
             let align = try defaultChoice(component: "Column", parameter: "align", at: widget.node)
             root = ProgramElement(id: ElementID(name: "widget", index: index),
                                   content: .column(spacing: spacing, align: try horizontal(align, at: widget.node), children: children))
+        }
+        guard seenElements == Set(checked.elements.keys) else {
+            throw issue(.invalidCheckedModel, widget.node, "Checked elements do not match the supported view and menu calls")
         }
         let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
@@ -175,6 +179,9 @@ struct StaticProgramCompiler {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
+        guard seenElements.insert(checked.tree.id(of: node)).inserted else {
+            throw issue(.invalidCheckedModel, node, "An element cannot be compiled twice")
+        }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let image = facts.component == "Image"
         let icon = facts.component == "Icon"
@@ -193,7 +200,7 @@ struct StaticProgramCompiler {
             allowedModifiers.insert("iconColors")
             allowedModifiers.remove("digits")
         }
-        if !spacer { allowedModifiers.formUnion(["position", "tooltip"]) }
+        if !spacer { allowedModifiers.formUnion(["position", "tooltip", "menu"]) }
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
@@ -256,6 +263,10 @@ struct StaticProgramCompiler {
                 else { onClickActions = actions }
                 continue
             }
+            if modifierName == "menu" {
+                guard !spacer else { throw issue(.unsupported, modifier.node, "Spacer menus are not supported") }
+                continue // The menu's complete checked contract and body are validated below.
+            }
             guard allowedModifiers.contains(modifier.name.token.text), modifier.block == nil else {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
@@ -305,6 +316,7 @@ struct StaticProgramCompiler {
         let radius = try uniformRadius(facts, call: call)
         let label = try voiceOver(facts, call: call)
         let tip = try tooltip(facts, call: call)
+        let menuItems = try menu(facts, call: call, depth: depth)
         if image, let radius, radius != .points(0) {
             throw issue(.unsupported, node, "Nonzero Image rounding requires picture clipping, which is not implemented")
         }
@@ -552,7 +564,7 @@ struct StaticProgramCompiler {
                               idealSize: solidShape || rangedMeter ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position, background: background,
-                              voiceOver: label, hiddenIf: visibility.condition, tooltip: tip)
+                              voiceOver: label, hiddenIf: visibility.condition, tooltip: tip, menu: menuItems)
     }
 
     private func iconColors(_ facts: ElementFacts, call: CallStmtSyntax) throws -> IconColors {
@@ -699,6 +711,132 @@ struct StaticProgramCompiler {
             values.append(try expressions.text(value))
         }
         return ProgramTooltip(text: values[0], title: values.count == 2 ? values[1] : nil)
+    }
+
+    private mutating func menu(_ facts: ElementFacts, call: CallStmtSyntax, depth: Int) throws -> [ProgramMenuNode]? {
+        let modifiers = call.modifiers.filter { $0.name.token.text == "menu" }
+        guard !facts.inherits.contains("menu") else {
+            throw issue(.invalidCheckedModel, call.node, "Menus cannot inherit")
+        }
+        if modifiers.isEmpty { return nil }
+        guard modifiers.count == 1, let modifier = modifiers.first,
+              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("menu")),
+              let spec = catalog.modifier(named: "menu"), spec.appliesTo.contains(facts.kind),
+              spec.context == .view, spec.boxLayer == .none, spec.facets.isEmpty, spec.fixedValues.isEmpty,
+              !spec.softFacets, !spec.inheritable, !spec.allowedInStyle, !spec.allowedInState, !spec.acceptsCondition,
+              spec.repeatable == .no, spec.event == nil, spec.timing == nil,
+              spec.block == .menuItems(required: true), spec.signatures.count == 1,
+              spec.signatures[0].params.isEmpty, spec.signatures[0].result == nil,
+              (modifier.arguments?.arguments ?? []).isEmpty, let block = modifier.block else {
+            throw issue(.invalidCheckedModel, call.node, "Unsupported checked menu modifier contract")
+        }
+        return try block.items.map { try menuStatement($0, parent: checked.tree.id(of: call.node), depth: depth + 1) }
+    }
+
+    /// Menu structure is not view geometry. All paths, including inactive branches, share the program limits.
+    private mutating func menuStatement(_ node: PositionedNode, parent: NodeID, depth: Int) throws -> ProgramMenuNode {
+        if node.kind == .ifStmt {
+            _ = try reserveIndex(at: node, depth: depth)
+            var branches: [ProgramMenuConditionalBranch] = [], otherwise: [ProgramMenuNode] = []
+            var current: PositionedNode? = node
+            while let statement = current {
+                guard let syntax = IfStmtSyntax(statement), syntax.modifiers.isEmpty,
+                      checked.elements[checked.tree.id(of: statement)] == nil else {
+                    throw issue(.invalidCheckedModel, statement, "A menu if has no element facets or attached modifiers")
+                }
+                let condition = try expressions.condition(syntax.condition.node)
+                let body = try syntax.block.items.map { try menuStatement($0, parent: parent, depth: depth + 1) }
+                branches.append(ProgramMenuConditionalBranch(condition: condition, body: body))
+                current = nil
+                if let clause = syntax.elseClause {
+                    switch clause.body.kind {
+                    case .ifStmt: current = clause.body
+                    case .block:
+                        guard let block = BlockSyntax(clause.body) else {
+                            throw issue(.invalidCheckedModel, clause.body, "Missing checked menu else block")
+                        }
+                        otherwise = try block.items.map { try menuStatement($0, parent: parent, depth: depth + 1) }
+                    default: throw issue(.invalidCheckedModel, clause.body, "Expected a menu else block or else if")
+                    }
+                }
+            }
+            return .conditional(ProgramMenuConditional(branches: branches, otherwise: otherwise))
+        }
+        guard node.kind == .callStmt else {
+            throw issue(.unsupported, node, "Only Item, Divider, Menu and menu-level if statements are implemented")
+        }
+        guard let call = CallStmtSyntax(node), call.callee.path.count == 1,
+              let facts = checked.elements[checked.tree.id(of: node)], facts.component == call.callee.path[0],
+              let spec = catalog.component(named: facts.component), spec.kind == facts.kind,
+              facts.parent == parent, facts.facets.isEmpty, facts.inherits.isEmpty, facts.name == nil,
+              !facts.isRoot, facts.dropped.isEmpty, seenElements.insert(checked.tree.id(of: node)).inserted else {
+            throw issue(.invalidCheckedModel, node, "Expected a checked menu call with its real source parent")
+        }
+        _ = try reserveIndex(at: node, depth: depth)
+        let arguments = call.arguments?.arguments ?? []
+        switch facts.component {
+        case "Divider":
+            guard spec.kind == .divider, spec.block == .none, spec.backing == .content,
+                  spec.signatures.count == 1, spec.signatures[0].params.isEmpty,
+                  spec.signatures[0].result == nil, arguments.isEmpty, call.block == nil, call.modifiers.isEmpty else {
+                throw issue(.unsupported, node, "A menu Divider requires the checked separator contract")
+            }
+            return .divider
+        case "Item", "Menu":
+            let item = facts.component == "Item"
+            guard spec.kind == (item ? .item : .menu), spec.group == .menuEntries, spec.backing == .content,
+                  spec.allowedParents == .of(.menu), spec.defaults.isEmpty,
+                  spec.block == (item ? .none : .menuItems(required: true)),
+                  spec.signatures.count == 1, spec.signatures[0].result == nil,
+                  spec.signatures[0].params.count == (item ? 3 : 1),
+                  arguments.filter({ $0.label == nil }).count == 1,
+                  arguments.count <= (item ? 3 : 1),
+                  arguments.filter({ $0.label != nil }).allSatisfy({ item && ["checked", "enabled"].contains($0.label!.name) }),
+                  arguments.filter({ $0.label?.name == "checked" }).count <= 1,
+                  arguments.filter({ $0.label?.name == "enabled" }).count <= 1,
+                  let title = arguments.first(where: { $0.label == nil }) else {
+                throw issue(.unsupported, node, "Unsupported checked Item or Menu contract")
+            }
+            let params = spec.signatures[0].params
+            for (index, parameter) in params.enumerated() {
+                let name = index == 0 ? "title" : index == 1 ? "checked" : "enabled"
+                guard parameter.name == name, parameter.label == (index == 0 ? nil : name),
+                      parameter.type == (index == 0 ? .string : .bool),
+                      parameter.role == (index == 0 ? .display : .plain), parameter.source == .any,
+                      parameter.translatable == (index == 0), parameter.required == (index == 0),
+                      !parameter.variadic, parameter.facets.isEmpty, parameter.specificity == 0,
+                      parameter.sameAs == nil, parameter.range == nil, !parameter.wholeNumber, parameter.unit == nil,
+                      index != 0 || parameter.defaultValue == nil else {
+                    throw issue(.unsupported, node, "Unsupported checked menu display or Bool parameter contract")
+                }
+            }
+            let text = try expressions.text(title.value.node)
+            if !item {
+                guard call.modifiers.isEmpty, let block = call.block else {
+                    throw issue(.unsupported, node, "Submenus require a menu body and no view modifiers")
+                }
+                let items = try block.items.map { try menuStatement($0, parent: checked.tree.id(of: node), depth: depth + 1) }
+                return .submenu(title: text, items: items)
+            }
+            guard call.block == nil, call.modifiers.count <= 1,
+                  call.modifiers.allSatisfy({ $0.name.token.text == "onClick" }) else {
+                throw issue(.unsupported, node, "Menu Items support only their onClick action block")
+            }
+            var values: [ProgramExpression] = []
+            for parameter in params.dropFirst() {
+                guard case .source(let source)? = parameter.defaultValue,
+                      case .boolean(let value) = try fixed(source, at: node) else {
+                    throw issue(.unsupported, node, "Menu states require checked Bool catalog defaults")
+                }
+                if let argument = arguments.first(where: { $0.label?.name == parameter.name }) {
+                    values.append(try expressions.condition(argument.value.node))
+                } else { values.append(.boolean(value)) }
+            }
+            let actions = try call.modifiers.first.map { try clickActions($0, kind: .item) } ?? []
+            return .item(ProgramMenuItem(title: text, checked: values[0], enabled: values[1], actions: actions))
+        default:
+            throw issue(.unsupported, node, "Only Item, Divider, Menu and menu-level if statements are implemented")
+        }
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {

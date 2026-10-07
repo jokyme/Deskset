@@ -62,6 +62,9 @@ public extension Desk {
     /// Own voiceOver labels on supported views use those same checked display expressions and do not inherit.
     /// Ordinary tooltip text and optional bold titles use those display expressions without inheritance. Explicit
     /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state/style sources remain unsupported.
+    /// Ordinary menus lower Item/Divider/nested Menu and menu-level if/else-if/else, with supported display titles,
+    /// Bool checked/enabled values and Item onClick assignments/copy/open. Menu entries have no view geometry or source element refs.
+    /// Menu-level for, persistent options and saved values, other menu actions and view modifiers remain unsupported.
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
     /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
     /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.

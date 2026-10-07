@@ -8,6 +8,11 @@ import DesksetDraw
 final class DeskProgramPreviewController: NSViewController, TickTarget {
     typealias IconPreparation = ([DeskIconResources.Demand], @escaping (Result<DeskIconResources.Batch, Error>) -> Void) -> DeskIconResources.Ticket
 
+    private enum Activation {
+        case point(SkinPoint, UInt64, MouseEventKind)
+        case menuItem(ProgramMenuItemID, UInt64)
+    }
+
     /// Retries evaluate the original transaction, never a partly assigned runtime or a later clock sample.
     private final class Projection {
         let base: ProgramRuntime
@@ -18,7 +23,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let images: [String: ProgramImageResource]
         let context: DrawContext
         let fontGeneration: Int
-        let click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)?
+        let activation: Activation?
         var preparationID: UUID?
         var ticket: DeskIconResources.Ticket?
         var deferredRefresh = false
@@ -26,9 +31,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         init(base: ProgramRuntime, snapshot: DeskSnapshot,
              input: (stamp: EnvironmentStamp, colors: ProgramColorInput), date: ProgramDateInput,
              systemInput: ProgramSystemInput?, images: [String: ProgramImageResource], context: DrawContext,
-             click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)?) {
+             activation: Activation?) {
             self.base = base; self.snapshot = snapshot; self.input = input; self.date = date
-            self.systemInput = systemInput; self.images = images; self.context = context; self.click = click
+            self.systemInput = systemInput; self.images = images; self.context = context; self.activation = activation
             fontGeneration = context.icons.fontGeneration
         }
     }
@@ -65,6 +70,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private var projecting = false
     private var primaryPress: (snapshot: DeskSnapshot, element: ElementID)?
     private var secondaryPress: (snapshot: DeskSnapshot, element: ElementID)?
+    private var menuSession: DeskProgramMenuSession?
     private var inspectionPress: (snapshot: DeskSnapshot, element: ElementID?)?
     private var elementRefs: [ElementID: ElementRef] = [:]
     private(set) var isInspecting = false
@@ -107,6 +113,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
          system: SystemDataSource = SystemMonitor.shared,
          prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
          presentsTooltips: Bool = true,
+         presentsMenus: Bool = true,
          accepts: @escaping (DeskSnapshot) -> Bool) {
         self.clock = clock
         self.executor = executor
@@ -121,6 +128,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             pointerLocation: { [weak canvas] in canvas?.pointerLocation() ?? .zero },
             presentsWindows: presentsTooltips,
             targetAt: { [weak self] in self?.tooltipTarget(at: $0) })
+        canvas.programMenus = DeskProgramMenus(view: canvas, presentsWindows: presentsMenus)
         canvas.beforeDrawing = { [weak self] in self?.prepareToDraw() ?? false }
         canvas.onEnvironmentChange = { [weak self] in self?.refreshEnvironment() }
         canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
@@ -129,6 +137,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onPrimaryDrag = { [weak self] in self?.inspectionPress = nil }
         canvas.onSecondaryPress = { [weak self] point in self?.beginSecondaryPress(at: point) }
         canvas.onSecondaryRelease = { [weak self] point in self?.endSecondaryPress(at: point) }
+        canvas.onMenu = { [weak self] point, option in self?.showMenu(at: point, option: option) ?? false }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -142,6 +151,53 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard visible, state == .ready, let snapshot, accepts?(snapshot) == true, let scene else { return nil }
         return DeskProgramTooltips.target(in: scene.hitMap, at: SkinPoint(x: point.x, y: point.y),
             revision: .init(session: tooltipSession, epoch: 0, generation: scene.generation))
+    }
+
+    private func cancelMenu() {
+        canvas.programMenus?.cancel()
+        menuSession = nil
+    }
+
+    /// Preview uses the same resolved items, while selected effects remain in its local action record.
+    private func showMenu(at point: SkinPoint, option: Bool) -> Bool {
+        if option || isInspecting { cancelMenu(); return true }
+        guard visible, prepareToDraw(), pending == nil, let snapshot, let runtime, let scene else { return false }
+        guard scene.hitMap.entry(at: point.x, point.y, handling: .rightUp, images: nil) == nil else { return false }
+        let owners = DeskProgramMenuSession.owners(root: runtime.program.root, scene: scene, at: point)
+        guard !owners.isEmpty, let menus = canvas.programMenus else { return false }
+        let id = UUID()
+        primaryPress = nil; secondaryPress = nil
+        canvas.programTooltips?.mouseDown()
+        guard let request = menus.begin(at: NSPoint(x: point.x, y: point.y), onCancel: { [weak self] _ in
+            if self?.menuSession?.id == id { self?.menuSession = nil }
+        }) else { return true }
+        do {
+            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
+            let needed = owners.reduce(into: Set<ProgramSystemProperty>()) {
+                $0.formUnion(runtime.neededSystemProperties(openingMenu: $1))
+            }
+            let systemInput = sampler.sample(from: system, for: needed, at: date.instant.timeIntervalSince1970)
+            var snapshots: [ProgramMenuSnapshot] = []
+            for owner in owners {
+                guard let menu = try runtime.resolveMenu(owner, expectedGeneration: scene.generation,
+                    environment: scene.environment, dateInput: date, systemInput: systemInput) else { cancelMenu(); return true }
+                snapshots.append(menu)
+            }
+            guard accepts?(snapshot) == true, self.snapshot?.tree.version == snapshot.tree.version,
+                  menus.currentRequest == request, visible else { menus.cancel(); return true }
+            menuSession = DeskProgramMenuSession(id: id, snapshots: snapshots)
+            menus.present(menuSession?.items ?? [], for: request) { [weak self] item in
+                guard let self, self.visible, self.prepareToDraw(), self.pending == nil,
+                      let session = self.menuSession, session.id == id, session.allows(item),
+                      let runtime = self.runtime, session.isAvailable(in: runtime), let scene = self.scene else { return }
+                self.menuSession = nil
+                self.project(activation: .menuItem(item, scene.generation))
+            }
+        } catch {
+            menus.cancel()
+            status.stringValue = previewMessage(for: error)
+        }
+        return true
     }
 
     static func currentDateLocale() -> Locale {
@@ -158,9 +214,10 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard state != .closed, visible != value else { return }
         visible = value
         if value { updateForTick() } else {
+            cancelMenu()
             canvas.programTooltips?.cancel()
             primaryPress = nil; secondaryPress = nil; canvas.clearPointerGestures(); tickScheduler.cancel()
-            if pending?.click != nil { cancelProjection() }
+            if pending?.activation != nil { cancelProjection() }
         }
     }
 
@@ -312,6 +369,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     func show(_ candidate: DeskSnapshot, readError: String?) {
         precondition(Thread.isMainThread)
         guard state != .closed else { return }
+        cancelMenu()
         cancelProjection()
         primaryPress = nil
         secondaryPress = nil
@@ -359,12 +417,12 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         return (stamp, values.colors)
     }
 
-    private func project(click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)? = nil,
+    private func project(activation: Activation? = nil,
                          captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
               let runtime else { return }
         if let pending {
-            if click == nil { pending.deferredRefresh = true; armClock(after: clock.now()) }
+            if activation == nil { pending.deferredRefresh = true; armClock(after: clock.now()) }
             return
         }
         let context = canvas.context ?? DrawContext(fonts: AppFontResolver(), icons: AppIconRasterizer(resources: iconResources))
@@ -378,10 +436,15 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             case .ready(let values): images = values
             }
             let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
-            let needed = runtime.neededSystemProperties(clickAt: click?.point, event: click?.event ?? .leftUp)
+            let needed: Set<ProgramSystemProperty>
+            switch activation {
+            case .point(let point, _, let event): needed = runtime.neededSystemProperties(clickAt: point, event: event)
+            case .menuItem(let id, _): needed = runtime.neededSystemProperties(activatingMenuItem: id)
+            case nil: needed = runtime.neededSystemProperties()
+            }
             let systemInput = sampler.sample(from: system, for: needed, at: date.instant.timeIntervalSince1970)
             let projection = Projection(base: runtime, snapshot: snapshot, input: input, date: date,
-                systemInput: systemInput, images: images, context: context, click: click)
+                systemInput: systemInput, images: images, context: context, activation: activation)
             _ = attempt(projection, schedulingAfter: date.instant)
         } catch { clear(.unavailable(previewMessage(for: error)), keepingProgram: true) }
     }
@@ -428,11 +491,21 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             var candidate = projection.base
             let next: WidgetScene
             var effects: [ProgramEffect] = []
-            if let click = projection.click {
-                guard let clicked = try candidate.clickWithEffects(at: click.point, expectedGeneration: click.generation,
-                    event: click.event, environment: stamp, images: projection.images, dateInput: projection.date,
-                    colorInput: input.colors, systemInput: projection.systemInput,
-                    measureIcon: measureIcon, measure: measure) else {
+            if let activation = projection.activation {
+                let result: ProgramClickResult?
+                switch activation {
+                case .point(let point, let generation, let event):
+                    result = try candidate.clickWithEffects(at: point, expectedGeneration: generation,
+                        event: event, environment: stamp, images: projection.images, dateInput: projection.date,
+                        colorInput: input.colors, systemInput: projection.systemInput,
+                        measureIcon: measureIcon, measure: measure)
+                case .menuItem(let id, let generation):
+                    result = try candidate.activateMenuItemWithEffects(id, expectedGeneration: generation,
+                        environment: stamp, images: projection.images, dateInput: projection.date,
+                        colorInput: input.colors, systemInput: projection.systemInput,
+                        measureIcon: measureIcon, measure: measure)
+                }
+                guard let clicked = result else {
                     cancelProjection(); armClock(after: instant); return false
                 }
                 next = clicked.scene; effects = clicked.effects
@@ -463,6 +536,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             iconResources.commitProjection()
             pending = nil
             self.runtime = candidate
+            if let menuSession, !menuSession.isAvailable(in: candidate) { cancelMenu() }
             lastColors = input.colors
             scene = next; canvas.scene = next
             // Retire only gestures whose target disappeared from the committed scene. Clock redraws of
@@ -677,6 +751,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func beginPress(at point: SkinPoint, event: MouseEventKind) {
+        cancelMenu()
         if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
         if isInspecting {
             inspectionPress = nil
@@ -715,13 +790,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), pending == nil, let scene,
               scene.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID == press.element else { return }
         // A legal boundary tick changes the scene, not this checked source session or pressed element identity.
-        project(click: (point, scene.generation, event))
+        project(activation: .point(point, scene.generation, event))
     }
 
     /// Inspector selection is independent of the runtime's action-only hit map. Closing the inspector restores
     /// the original interactive preview; a held gesture never crosses between those two modes.
     func setInspecting(_ enabled: Bool) {
         guard state != .closed, isInspecting != enabled else { return }
+        cancelMenu()
         cancelProjection()
         isInspecting = enabled
         inspectionPress = nil
@@ -764,6 +840,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func clear(_ next: State, keepingProgram: Bool = false) {
+        cancelMenu()
         canvas.programTooltips?.cancel()
         tooltipSession = UUID()
         cancelProjection()
@@ -897,11 +974,13 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private func refreshTooltipViewport() {
         // A projection changes frame and bounds in steps, then refreshes once with the accepted geometry.
         guard !projecting else { return }
+        cancelMenu()
         canvas.programTooltips?.refresh()
     }
 
     func setZoom(_ value: CGFloat) {
         guard state == .ready, value.isFinite, scene != nil else { return }
+        cancelMenu()
         let zoom = min(max(value, scrollView.minMagnification), scrollView.maxMagnification)
         scrollView.setMagnification(zoom, centeredAt: NSPoint(x: canvas.bounds.midX, y: canvas.bounds.midY))
         canvas.programTooltips?.refresh()
@@ -912,6 +991,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         actionRecordsExpanded = false
         clear(.closed)
         canvas.programTooltips?.close()
+        canvas.programMenus?.close()
         for observer in tooltipObservers { NotificationCenter.default.removeObserver(observer) }
         tooltipObservers.removeAll()
         accepts = nil
@@ -930,6 +1010,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onPrimaryDrag = nil
         canvas.onSecondaryPress = nil
         canvas.onSecondaryRelease = nil
+        canvas.onMenu = nil
     }
 }
 
@@ -937,6 +1018,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 /// transform; this view does not flip the base CTM or ask the compatibility renderer for a Skin.
 final class DeskProgramPreviewCanvas: NSView {
     fileprivate(set) var programTooltips: DeskProgramTooltips?
+    fileprivate(set) var programMenus: DeskProgramMenus?
     private var hoverTrackingArea: NSTrackingArea?
     var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
     fileprivate let selectionOverlay = DeskProgramSelectionOverlay(frame: .zero)
@@ -950,6 +1032,7 @@ final class DeskProgramPreviewCanvas: NSView {
     fileprivate var onPrimaryDrag: (() -> Void)?
     fileprivate var onSecondaryPress: ((SkinPoint) -> Void)?
     fileprivate var onSecondaryRelease: ((SkinPoint?) -> Void)?
+    fileprivate var onMenu: ((SkinPoint, Bool) -> Bool)?
     private var primaryEvent: MouseEventKind?
     private var secondaryPressed = false
     override var isFlipped: Bool { true }
@@ -981,6 +1064,7 @@ final class DeskProgramPreviewCanvas: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         programTooltips?.cancel()
+        programMenus?.cancel()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -992,6 +1076,7 @@ final class DeskProgramPreviewCanvas: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if event.modifierFlags.contains(.control) {
             onSecondaryRelease?(nil)
+            if onMenu?(SkinPoint(x: point.x, y: point.y), event.modifierFlags.contains(.option)) == true { return }
             guard !event.modifierFlags.contains(.option) else { return }
             primaryEvent = .rightUp
             onSecondaryPress?(SkinPoint(x: point.x, y: point.y))
@@ -1020,9 +1105,10 @@ final class DeskProgramPreviewCanvas: NSView {
         programTooltips?.mouseDown()
         secondaryPressed = false
         onSecondaryRelease?(nil)
+        let point = convert(event.locationInWindow, from: nil)
+        if onMenu?(SkinPoint(x: point.x, y: point.y), event.modifierFlags.contains(.option)) == true { return }
         guard !event.modifierFlags.contains(.option) else { return }
         secondaryPressed = true
-        let point = convert(event.locationInWindow, from: nil)
         onSecondaryPress?(SkinPoint(x: point.x, y: point.y))
     }
 

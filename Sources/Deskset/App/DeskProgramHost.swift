@@ -158,6 +158,7 @@ final class DeskProgramHost {
     private enum Activation {
         case point(SkinPoint, MouseEventKind)
         case container(ElementID)
+        case menuItem(ProgramMenuItemID)
     }
 
     private final class Owner: TickTarget {
@@ -205,13 +206,19 @@ final class DeskProgramHost {
         var started = false
         var visible = false
         var pointerEligible = false
+        var menuEligible = false
         var destinationReady = false
         var destination: SkinWindowFacts?
         var projecting = false
         private var pending: Projection?
         var isPreparingIcons: Bool { pending != nil }
+        var isPreparingMenuAction: Bool {
+            if let activation = pending?.activation, case .menuItem = activation { return true }
+            return false
+        }
         var primaryPress: ElementID?
         var secondaryPress: ElementID?
+        var menuSession: DeskProgramMenuSession?
         var didPresent: ((Presented) -> Void)?
         var didBecomeUnavailable: ((String) -> Void)?
         var isClosed: Bool { state == .closed }
@@ -274,6 +281,7 @@ final class DeskProgramHost {
                 switch activation {
                 case .point(let point, let event): needed = runtime.neededSystemProperties(clickAt: point, event: event)
                 case .container(let id): needed = runtime.neededSystemProperties(activatingContainer: id)
+                case .menuItem(let id): needed = runtime.neededSystemProperties(activatingMenuItem: id)
                 case nil: needed = runtime.neededSystemProperties()
                 }
                 let now = date.instant.timeIntervalSince1970
@@ -328,6 +336,10 @@ final class DeskProgramHost {
                         value = try candidate.activateContainerWithEffects(id, expectedGeneration: projection.base.generation,
                             environment: input.environment, images: projection.images, dateInput: projection.date,
                             colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure)
+                    case .menuItem(let id):
+                        value = try candidate.activateMenuItemWithEffects(id, expectedGeneration: projection.base.generation,
+                            environment: input.environment, images: projection.images, dateInput: projection.date,
+                            colorInput: input.colors, systemInput: projection.systemInput, measureIcon: measureIcon, measure: measure)
                     }
                     guard let value else {
                         cancelProjection(); arm(after: instant); return .failed
@@ -356,6 +368,7 @@ final class DeskProgramHost {
                 context.iconResources.commitProjection()
                 pending = nil
                 runtime = candidate
+                if let menuSession, !menuSession.isAvailable(in: candidate) { self.menuSession = nil }
                 scene = next; viewport = extent; cycle = projection.cycle; state = .ready
                 // A successful hidden projection retires its gesture, even if the same target appears again
                 // before release. Continuously available targets retain presses across ordinary clock ticks.
@@ -465,6 +478,7 @@ final class DeskProgramHost {
 
         func fail(_ error: Error) {
             guard !isClosed else { return }
+            menuSession = nil
             cancelProjection()
             let message = String(describing: error)
             let changed = state != .unavailable(message)
@@ -478,6 +492,7 @@ final class DeskProgramHost {
         func close() {
             precondition(executor.isCurrent)
             guard !isClosed else { return }
+            menuSession = nil
             cancelProjection()
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
             state = .closed
@@ -538,7 +553,7 @@ final class DeskProgramHost {
         owner.project()
     }
 
-    func take(_ facts: SkinWindowFacts, input: Input) {
+    func take(_ facts: SkinWindowFacts, input: Input, menuAllowed: Bool? = nil) {
         let owner = current
         guard !owner.isClosed else { return }
         let changed = owner.input != input
@@ -549,12 +564,18 @@ final class DeskProgramHost {
             $0.scale != facts.scale || $0.appearance != facts.appearance
         } ?? true
         let eligible = facts.isOrderedIn && !facts.settings.hidden && facts.isVisible && facts.takesPointer
-        let cancelled = owner.isPreparingIcons && (changed || destinationChanged || (owner.pointerEligible && !eligible))
+        // A tracking menu can cover its parent. Its existing selection remains eligible through occlusion,
+        // while Main still revokes it for hidden, minimized, removed, or click-through windows.
+        let menuEligible = facts.isOrderedIn && !facts.settings.hidden && (menuAllowed ?? eligible)
+        if changed || destinationChanged || !menuEligible { owner.menuSession = nil }
+        let lostEligibility = owner.isPreparingMenuAction ? !menuEligible : (owner.pointerEligible && !eligible)
+        let cancelled = owner.isPreparingIcons && (changed || destinationChanged || lostEligibility)
         if cancelled { owner.cancelProjection() }
         owner.destination = facts
         owner.input = input
         owner.visible = facts.isOrderedIn && !facts.settings.hidden
         owner.pointerEligible = owner.visible && facts.isVisible && facts.takesPointer
+        owner.menuEligible = menuEligible
         if !owner.pointerEligible { owner.primaryPress = nil; owner.secondaryPress = nil }
         owner.destinationReady = false
         owner.frames.take(facts)
@@ -645,6 +666,53 @@ final class DeskProgramHost {
             $0.elementID == id && $0.frame.width > 0 && $0.frame.height > 0 && $0.action(.leftUp) != .absent
         }) else { return nil }
         return owner.project(activation: .container(id), completion: completion)
+    }
+
+    /// Resolve on demand against the accepted picture; opening neither projects nor runs actions.
+    func openMenu(at point: SkinPoint, expectedGeneration: UInt64, id: UUID) throws -> DeskProgramMenuSession? {
+        let owner = current
+        owner.menuSession = nil
+        owner.primaryPress = nil; owner.secondaryPress = nil
+        guard !owner.isClosed, !owner.isPreparingIcons, owner.pointerEligible,
+              point.x.isFinite, point.y.isFinite, let value = owner.presented,
+              value.scene.generation == expectedGeneration, owner.scene?.generation == expectedGeneration else { return nil }
+        let world = SkinPoint(x: point.x + value.origin.x, y: point.y + value.origin.y)
+        let owners = DeskProgramMenuSession.owners(root: owner.runtime.program.root, scene: value.scene, at: world)
+        guard !owners.isEmpty else { return nil }
+        let date = ProgramDateInput(instant: owner.clock.now(), timeZone: owner.clock.timeZone(), locale: owner.input.locale)
+        let needed = owners.reduce(into: Set<ProgramSystemProperty>()) {
+            $0.formUnion(owner.runtime.neededSystemProperties(openingMenu: $1))
+        }
+        let system = owner.sampler.sample(from: owner.system, for: needed, at: date.instant.timeIntervalSince1970)
+        var snapshots: [ProgramMenuSnapshot] = []
+        for element in owners {
+            guard let snapshot = try owner.runtime.resolveMenu(element, expectedGeneration: expectedGeneration,
+                environment: owner.input.environment, dateInput: date, systemInput: system) else { return nil }
+            snapshots.append(snapshot)
+        }
+        let session = DeskProgramMenuSession(id: id, snapshots: snapshots)
+        owner.menuSession = session
+        return session
+    }
+
+    func cancelMenu(_ id: UUID) {
+        let owner = current
+        if owner.menuSession?.id == id { owner.menuSession = nil }
+    }
+
+    /// Consume the opening identity first, then freeze the current selection transaction for resource retries.
+    @discardableResult
+    func activateMenuItem(_ item: ProgramMenuItemID, menuID: UUID, expectedGeneration: UInt64,
+                          completion: (([ProgramEffect]) -> Void)? = nil) -> [ProgramEffect]? {
+        let owner = current
+        guard let session = owner.menuSession, session.id == menuID else { return nil }
+        owner.menuSession = nil
+        guard session.allows(item), session.isAvailable(in: owner.runtime), !owner.isPreparingIcons,
+              owner.menuEligible, expectedGeneration >= session.sourceGeneration,
+              expectedGeneration <= owner.runtime.generation else { return nil }
+        // The native menu can occlude the parent while clocks advance its runtime. Its originally accepted
+        // identity remains valid; selection evaluates current guards and state, even before a new bitmap ACK.
+        return owner.project(activation: .menuItem(item), completion: completion)
     }
 
     /// Completes synchronously on the executor. Main may then tear down its provider/window; the executor is shared.
