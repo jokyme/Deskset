@@ -203,6 +203,24 @@ extension Checker {
         }
         var resolvingConstants = Set<NodeID>()
         let poisonedInitializers = declOrder.filter(\.poisoned).map { range(DeclarationSyntax(unchecked: $0.node).initializer.node) }
+        // Deferred relations have finished reporting. This final pass only reads diagnostics, so index their
+        // nonempty error spans once rather than scanning every error for each constant; keep diagnostic order.
+        let sortedErrors = diagnostics.filter { $0.severity == .error && !$0.range.isEmpty }.map(\.range)
+            .sorted { $0.lowerBound < $1.lowerBound }
+        var errorRanges: [Range<Int>] = []
+        for error in sortedErrors {
+            if let last = errorRanges.last, error.lowerBound <= last.upperBound {
+                errorRanges[errorRanges.count - 1] = last.lowerBound..<max(last.upperBound, error.upperBound)
+            } else { errorRanges.append(error) }
+        }
+        func hasConstantError(in range: Range<Int>) -> Bool {
+            var low = 0, high = errorRanges.count
+            while low < high {
+                let mid = (low + high) / 2
+                if errorRanges[mid].upperBound <= range.lowerBound { low = mid + 1 } else { high = mid }
+            }
+            return low < errorRanges.count && errorRanges[low].overlaps(range)
+        }
         func constant(_ key: NodeID) -> Double? {
             if let found = canonicalNumericValues[key] { return found }
             guard let value = values[key], value.isConstant, let node = numericNodes[key],
@@ -210,7 +228,7 @@ extension Checker {
             defer { resolvingConstants.remove(key) }
             let textRange = node.textRange
             guard !poisonedInitializers.contains(where: { $0.overlaps(textRange) }),
-                  !diagnostics.contains(where: { $0.severity == .error && $0.range.overlaps(textRange) }) else { return nil }
+                  !hasConstantError(in: textRange) else { return nil }
             var result: Double?
             if node.kind == .numberLiteral {
                 result = value.literalValue ?? value.plainLiteral

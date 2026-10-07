@@ -423,8 +423,13 @@ func runDeskCheckerFuzzTests(_ t: TestRunner) {
         ]
         for (name, text) in cases {
             let start = ProcessInfo.processInfo.systemUptime
-            let checked = Desk.check(Desk.parse(text, fileName: "P.desk"))
-            let elapsed = ProcessInfo.processInfo.systemUptime - start
+            let tree = Desk.parse(text, fileName: "P.desk")
+            let parsed = ProcessInfo.processInfo.systemUptime
+            let checked = Desk.check(tree)
+            let finished = ProcessInfo.processInfo.systemUptime
+            let elapsed = finished - start
+            print(String(format: "    checker pathological %@: parse %.6f s, check %.6f s, total %.6f s; diagnostics %d",
+                         name, parsed - start, finished - parsed, elapsed, checked.diagnostics.count))
             t.check(elapsed < 10, "\(name): check took \(elapsed) s")
             t.check(!checked.diagnostics.isEmpty || name == "nested fors", "\(name): diagnostics")
         }
@@ -458,6 +463,52 @@ private func runDeskNumericMetadataTests(_ t: TestRunner) {
         t.equal(checked.declarationTypes.values.first?.type, type)
         t.equal(checked.declarationTypes.values.first?.displayBase, base)
         t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+    }
+    t.suite("Desk: checker — constant error ranges preserve exact isolation") {
+        let tree = Desk.parse(#"info { name: "T" }"# + "\n" +
+            #"widget { Column { Text("A").font(13); Text("B").font(17); Text("C").font(19) } }"#, fileName: "ConstantRanges.desk")
+        let nodes = DeskNodeTable(tree: tree).entries.filter { $0.kind == .numberLiteral }.map(\.positioned)
+        t.equal(nodes.count, 3)
+        guard let first = nodes.first, let last = nodes.last else { return }
+        let r = first.textRange
+        let spans: [(String, [Range<Int>])] = [
+            ("none", []),
+            ("empty", [r.lowerBound..<r.lowerBound, (r.lowerBound + 1)..<(r.lowerBound + 1), r.upperBound..<r.upperBound]),
+            ("touching outside", [(r.lowerBound - 1)..<r.lowerBound, r.upperBound..<(r.upperBound + 1)]),
+            ("exact", [r]),
+            ("adjacent inside", [r.lowerBound..<(r.lowerBound + 1), (r.lowerBound + 1)..<r.upperBound]),
+            ("nested", [(r.lowerBound - 1)..<(r.upperBound + 1), r]),
+            ("overlapping", [(r.lowerBound + 1)..<(r.upperBound + 1), (r.lowerBound - 1)..<(r.lowerBound + 1), r]),
+            ("unsorted duplicates", [last.textRange, r, last.textRange, (r.lowerBound + 1)..<(r.lowerBound + 1)]),
+        ]
+        for (label, ranges) in spans {
+            let checker = Checker(tree: tree, context: CheckContext())
+            checker.checkStructure()
+            let errors = ranges.map { Diagnostic(id: .outOfRange, severity: .error, file: tree.file, range: $0) }
+            let original = errors + [Diagnostic(id: .fractionOver1, severity: .warning, file: tree.file, range: r),
+                                     Diagnostic(id: .quotedOwnName, severity: .info, file: tree.file, range: last.textRange)]
+            checker.diagnostics = original
+            checker.completeNumericMetadata()
+            t.equal(checker.diagnostics, original, "\(label): order and diagnostic payloads are untouched")
+            for node in nodes {
+                let key = tree.id(of: node)
+                let blocked = errors.contains { $0.range.overlaps(node.textRange) }
+                let expected = blocked ? nil : NumberLiteralSyntax(unchecked: node).value
+                t.equal(checker.canonicalNumericValues[key], expected, "\(label): exact previous overlap semantics")
+                t.equal(checker.types[key]?.type, .length, "\(label): constant isolation does not drop type facts")
+            }
+            t.check(checker.numericCoercions.isEmpty)
+        }
+    }
+    t.suite("Desk: checker — unrelated name errors and numeric warnings keep canonical values") {
+        let source = #"info { name: "T" }"# + "\n" + #"widget { Column { "# +
+            String(repeating: #"Text("{cpu.usage}").font(13).opacity(60).name(x); "#, count: 40) + "} }"
+        let checked = deskCheck(source)
+        t.equal(checked.diagnostics(.error).map(\.id), Array(repeating: .duplicateElementName, count: 39))
+        t.equal(checked.diagnostics(.warning).map(\.id), Array(repeating: .fractionOver1, count: 40))
+        t.equal(checked.canonicalNumericValues.count, 80)
+        facts(checked, "13", .length, canonical: 13, kind: .numberLiteral)
+        facts(checked, "60", .plainNumber, canonical: 60, kind: .numberLiteral)
     }
     t.suite("Desk: checker — settled numeric metadata") {
         let add = deskCheck("widget { computed b = 1KB + 1KiB; Text(\"{b}\") }")
