@@ -35,7 +35,8 @@ enum DeskProgramPreviewSelfTests {
         let file = root.appendingPathComponent("Preview." + ext)
         try Data(text.utf8).write(to: file)
         let controller = try CodeFileWindowController(file: file, app: app, deskCheckQueue: queue,
-                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale, previewColors: colors,
+                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale,
+                                                       previewPreferredLanguages: { ["en"] }, previewColors: colors,
                                                        previewSystem: system)
         controller.window?.appearance = NSAppearance(named: .aqua)
         controller.codeView.idleCommitDelay = 600
@@ -2955,7 +2956,7 @@ enum DeskProgramPreviewSelfTests {
             selectedLocale = Locale(identifier: "zh_Hans_CN")
             executor.setWallClock(Date(timeIntervalSince1970: 1_790_672_710.5))
             p.refreshDateInput()
-            t.equal(clockTexts(p), ["星期一"], "frozen date survives a wall-day change while its locale can change")
+            t.equal(clockTexts(p), ["Monday"], "frozen date survives the region change; an untranslated widget keeps source English")
             t.check(!checking.publish(old))
             replace(second, in: f); t.check(settled(f)); t.equal(executor.pendingCount, 1)
             f.editor.discardUncommittedChanges()

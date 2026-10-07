@@ -17,6 +17,8 @@ public indirect enum ProgramExpression: Equatable, Sendable {
     case formatDate(ProgramExpression, ProgramDateFormat)
     case formatNumber(ProgramExpression, ProgramNumberFormat)
     case concatenate([ProgramExpression])
+    /// Values retain source order and formatting; the selected pattern only reorders their displayed results.
+    case localized(key: String, values: [ProgramExpression])
     case not(ProgramExpression)
     case negate(ProgramExpression)
     case add(ProgramExpression, ProgramExpression), subtract(ProgramExpression, ProgramExpression)
@@ -157,13 +159,17 @@ private enum ProgramArithmetic {
 struct ProgramExpressionValidation {
     private struct Info { let type: ProgramScalarType; let height: Int }
     private let declarations: [ProgramDeclaration]
+    private let translationPlaceholders: [String: Int]
     private var info: [Info?]
     private var visiting: Set<Int> = []
     private var count = 0
 
-    init(declarations: [ProgramDeclaration]) throws {
+    init(declarations: [ProgramDeclaration], translations: ProgramTranslations = ProgramTranslations()) throws {
         guard declarations.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
         self.declarations = declarations
+        let table = try translations.validated()
+        translationPlaceholders = table.placeholders
+        count = table.cost
         info = Array(repeating: nil, count: declarations.count)
         var names = Set<String>()
         for (index, declaration) in declarations.enumerated() {
@@ -297,6 +303,10 @@ struct ProgramExpressionValidation {
             case .concatenate(let parts):
                 guard parts.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
                 pending.append(contentsOf: parts.reversed().map { ($0, depth + 1) })
+            case .localized(let key, let values):
+                guard translationPlaceholders[key] == values.count else { throw ProgramRuntimeError.invalidExpression }
+                guard values.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
+                pending.append(contentsOf: values.reversed().map { ($0, depth + 1) })
             case .boolean, .appearanceDark, .timeNow, .systemProperty: break
             }
         }
@@ -346,7 +356,7 @@ struct ProgramExpressionValidation {
             let value = try expressionInfo(child, depth: depth + 1)
             guard value.type.dimension != nil else { throw ProgramRuntimeError.invalidExpression }
             result = Info(type: value.type, height: value.height + 1)
-        case .concatenate(let parts):
+        case .concatenate(let parts), .localized(_, let parts):
             var height = 1
             for part in parts {
                 let value = try expressionInfo(part, depth: depth + 1)
@@ -414,16 +424,21 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
     let dark: Bool
     let dateInput: ProgramDateInput?
     let systemInput: ProgramSystemInput?
+    let translations: ProgramTranslations
+    let language: String?
     var variables: [ProgramScalar?]
     private var computed: [Int: Value] = [:]
     private(set) var clockPrecision: ProgramClockPrecision?
 
     init(declarations: [ProgramDeclaration], dark: Bool, variables: [ProgramScalar?]?, dateInput: ProgramDateInput? = nil,
-         systemInput: ProgramSystemInput? = nil) {
+         systemInput: ProgramSystemInput? = nil, translations: ProgramTranslations = ProgramTranslations(),
+         language: String? = nil) {
         self.declarations = declarations
         self.dark = dark
         self.dateInput = dateInput
         self.systemInput = systemInput
+        self.translations = translations
+        self.language = language
         self.variables = variables ?? Array(repeating: nil, count: declarations.count)
     }
 
@@ -581,6 +596,30 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
         computed.removeAll(keepingCapacity: true)
     }
 
+    private func displayedText(_ scalar: ProgramScalar) throws -> ProgramTextValue {
+        switch scalar {
+        case .string(let text): return ProgramTextValue(text: text)
+        case .formattedString(let text): return text
+        case .boolean(let value):
+            let chinese = dateInput?.locale.languageCode == "zh"
+            return ProgramTextValue(text: chinese ? (value ? "是" : "否") : (value ? "Yes" : "No"))
+        case .numeric(let number):
+            return try ProgramNumberFormat().string(from: number, dimension: number.dimension,
+                locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
+        case .missing: return ProgramTextValue(text: "–")
+        case .date: throw ProgramRuntimeError.invalidExpression
+        }
+    }
+
+    private func append(_ addition: ProgramTextValue, to text: inout String,
+                        ranges: inout [Range<Int>], length: inout Int) throws {
+        let count = addition.text.utf16.count
+        guard count <= ProgramLimits.maximumTextLength - length else { throw ProgramRuntimeError.invalidExpression }
+        ranges += addition.numberRanges.map { ($0.lowerBound + length)..<($0.upperBound + length) }
+        length += count
+        text += addition.text
+    }
+
     private mutating func evaluate(_ expression: ProgramExpression, depth: Int) throws -> Value {
         guard depth <= ProgramLimits.maximumExpressionDepth else { throw ProgramRuntimeError.expressionDepth }
         switch expression {
@@ -684,24 +723,38 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
             var text = "", length = 0, ranges: [Range<Int>] = [], precision: ProgramClockPrecision?
             for part in parts {
                 let value = try evaluate(part, depth: depth + 1)
-                let addition: ProgramTextValue
-                switch value.scalar {
-                case .string(let string): addition = ProgramTextValue(text: string)
-                case .formattedString(let string): addition = string
-                case .boolean(let boolean):
-                    let chinese = dateInput?.locale.languageCode == "zh"
-                    addition = ProgramTextValue(text: chinese ? (boolean ? "是" : "否") : (boolean ? "Yes" : "No"))
-                case .numeric(let number):
-                    addition = try ProgramNumberFormat().string(from: number, dimension: number.dimension, locale: dateInput?.locale ?? Locale(identifier: "en_US_POSIX"))
-                case .missing: addition = ProgramTextValue(text: "–")
-                case .date: throw ProgramRuntimeError.invalidExpression
-                }
-                let count = addition.text.utf16.count
-                guard count <= ProgramLimits.maximumTextLength - length else { throw ProgramRuntimeError.invalidExpression }
-                ranges += addition.numberRanges.map { ($0.lowerBound + length)..<($0.upperBound + length) }
-                length += count; text += addition.text
+                try append(displayedText(value.scalar), to: &text, ranges: &ranges, length: &length)
                 precision = .combined(precision, value.precision)
                 if value.currentDate { precision = .combined(precision, .second) }
+            }
+            return Value(scalar: .formattedString(ProgramTextValue(text: text, numberRanges: ranges)), precision: precision)
+        case .localized(let key, let expressions):
+            guard let pattern = translations.pattern(for: key, language: language),
+                  expressions.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.invalidExpression }
+            var values: [ProgramTextValue] = [], valueLength = 0, precision: ProgramClockPrecision?
+            // Resolve each source occurrence once before arranging the translated text. A translation is never
+            // executable, and neither its order nor an omitted key can change the source's dependencies.
+            for expression in expressions {
+                let value = try evaluate(expression, depth: depth + 1)
+                let text = try displayedText(value.scalar)
+                guard text.text.utf16.count <= ProgramLimits.maximumTextLength - valueLength else {
+                    throw ProgramRuntimeError.invalidExpression
+                }
+                valueLength += text.text.utf16.count
+                values.append(text)
+                precision = .combined(precision, value.precision)
+                if value.currentDate { precision = .combined(precision, .second) }
+            }
+            var text = "", length = 0, ranges: [Range<Int>] = []
+            for part in pattern {
+                let addition: ProgramTextValue
+                switch part {
+                case .text(let text): addition = ProgramTextValue(text: text)
+                case .placeholder(let index):
+                    guard values.indices.contains(index) else { throw ProgramRuntimeError.invalidExpression }
+                    addition = values[index]
+                }
+                try append(addition, to: &text, ranges: &ranges, length: &length)
             }
             return Value(scalar: .formattedString(ProgramTextValue(text: text, numberRanges: ranges)), precision: precision)
         case .declaration(let index):

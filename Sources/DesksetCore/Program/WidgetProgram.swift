@@ -6,14 +6,33 @@ public struct WidgetProgram: Equatable, Sendable {
     public let declarations: [ProgramDeclaration]
     public let onLoad: [ProgramAssignment]
     public let size: ProgramWidgetSize
+    public let translations: ProgramTranslations
+    public let nameKey: String?
 
     public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = [],
-                onLoad: [ProgramAssignment] = [], size: ProgramWidgetSize = .fit) {
+                onLoad: [ProgramAssignment] = [], size: ProgramWidgetSize = .fit,
+                translations: ProgramTranslations = ProgramTranslations(), nameKey: String? = nil) {
         self.name = name
         self.root = root
         self.declarations = declarations
         self.onLoad = onLoad
         self.size = size
+        self.translations = translations
+        self.nameKey = nameKey
+    }
+
+    /// Metadata can be displayed on Main from the immutable program, without accessing its runtime owner.
+    public func displayName(language: String?) -> String {
+        guard let key = nameKey, let pattern = translations.pattern(for: key, language: language),
+              pattern.count <= ProgramLimits.maximumExpressions else { return name }
+        var result = "", length = 0
+        for part in pattern {
+            guard case .text(let text) = part,
+                  text.utf16.count <= ProgramLimits.maximumTextLength - length else { return name }
+            length += text.utf16.count
+            result += text
+        }
+        return result
     }
 }
 
@@ -477,7 +496,8 @@ public struct ProgramText: Equatable, Sendable {
 
 /// Current shared-program bounds use the language's default element, block and text budgets. The element and
 /// depth limits also count transparent conditional items and every possible arm. A producer may enforce a smaller
-/// budget; the runtime always guards direct programs too.
+/// budget; the runtime always guards direct programs too. Translation table entries and pattern parts count
+/// toward maximumExpressions once, in addition to executable expressions that read them.
 public enum ProgramLimits {
     public static let maximumElements = 5_000
     public static let maximumDepth = 64

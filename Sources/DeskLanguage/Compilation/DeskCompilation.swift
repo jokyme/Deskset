@@ -65,6 +65,8 @@ public extension Desk {
     /// Ordinary menus lower Item/Divider/nested Menu and menu-level if/else-if/else, with supported display titles,
     /// Bool checked/enabled values and Item onClick assignments/copy/open. Menu entries have no view geometry or source element refs.
     /// Menu-level for, persistent options and saved values, other menu actions and view modifiers remain unsupported.
+    /// Checked translations localize display literals and reorder their original formatted placeholders. Package
+    /// translations are shared; a widget's own entry wins. Stored literals, copy/open and resource names retain their source values.
     /// Icons use checked String/SymbolName expressions without display conversion, dynamic inherited font sizes,
     /// complete supported font families/designs and weights, alignment and the three static IconColors modes.
     /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.
@@ -78,15 +80,17 @@ public extension Desk {
     /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
-    static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
-        let needed = StackGuard.bytesNeeded(toWalk: checked.tree)
+    static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current, package: CheckedFile? = nil) -> DeskCompilationResult {
+        let needed = max(StackGuard.bytesNeeded(toWalk: checked.tree), package.map { StackGuard.bytesNeeded(toWalk: $0.tree) } ?? 0)
+        let diagnostics = checked.diagnostics + (package?.tree.file == checked.tree.file ? [] : package?.diagnostics ?? [])
         return StackGuard.run(needing: needed) {
             let errors = checked.diagnostics.filter { $0.severity == .error }
-            guard errors.allSatisfy({ $0.id == .fileNotFound }) else {
-                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [], imageSources: [])
+            guard errors.allSatisfy({ $0.id == .fileNotFound }),
+                  package?.diagnostics.contains(where: { $0.severity == .error }) != true else {
+                return DeskCompilationResult(program: nil, diagnostics: diagnostics, issues: [], imageSources: [])
             }
             do {
-                var compiler = StaticProgramCompiler(checked: checked, catalog: catalog)
+                var compiler = try StaticProgramCompiler(checked: checked, catalog: catalog, package: package)
                 let program = try compiler.compile()
                 var pending = [program.root], images = Set<String>()
                 while let node = pending.popLast() {
@@ -99,13 +103,13 @@ public extension Desk {
                     default: break
                     }
                 }
-                return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: checked.diagnostics,
+                return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: diagnostics,
                                              issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes),
                                              elementRefs: compiler.elementRefs)
             } catch let issue as DeskCompilationIssue {
-                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue], imageSources: [])
+                return DeskCompilationResult(program: nil, diagnostics: diagnostics, issues: [issue], imageSources: [])
             } catch {
-                return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics,
+                return DeskCompilationResult(program: nil, diagnostics: diagnostics,
                                              issues: [DeskCompilationIssue(kind: .invalidProgram, file: checked.tree.file,
                                                                            range: checked.tree.rootNode.textRange,
                                                                            message: "Invalid shared program: \(error)")], imageSources: [])

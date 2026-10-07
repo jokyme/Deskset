@@ -5,14 +5,26 @@ import DesksetCore
 struct ProgramExpressionCompiler {
     let checked: CheckedFile
     let catalog: DeskCatalog
+    private var translationCompiler: ProgramTranslationCompiler?
     private var slots: [NodeID: Int] = [:]
     private var initializers: [NodeID: PositionedNode] = [:]
     private var assignmentTypes: [Int: DeskType] = [:]
     private var count = 0
 
-    init(checked: CheckedFile, catalog: DeskCatalog) {
+    init(checked: CheckedFile, catalog: DeskCatalog, translations: ProgramTranslationCompiler? = nil) {
         self.checked = checked
         self.catalog = catalog
+        translationCompiler = translations
+    }
+
+    var translations: ProgramTranslations { translationCompiler?.translations ?? ProgramTranslations() }
+
+    mutating func nameKey(_ node: PositionedNode) throws -> String? {
+        guard checked.types[checked.tree.id(of: node)]?.type == .string,
+              let string = StringLiteralSyntax(node), string.literalValue != nil else {
+            throw issue(.invalidCheckedModel, node, "Widget name requires its checked literal String")
+        }
+        return try translationCompiler?.key(for: string, allowed: true)
     }
 
     mutating func declarations(_ declarations: [DeclarationSyntax]) throws -> [ProgramDeclaration] {
@@ -135,11 +147,11 @@ struct ProgramExpressionCompiler {
         guard type == .string || type == .bool || type == .date || numberDimension(type) != nil else {
             throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle display values")
         }
-        return try text(node)
+        return try displayed(node, depth: 1, translateLiterals: false)
     }
 
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
-        try displayed(node, depth: 1)
+        try displayed(node, depth: 1, translateLiterals: true)
     }
 
     /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
@@ -162,12 +174,12 @@ struct ProgramExpressionCompiler {
         return result
     }
 
-    private mutating func displayed(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
+    private mutating func displayed(_ node: PositionedNode, depth: Int, translateLiterals: Bool) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
         guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil else {
             throw issue(.unsupported, node, "Text requires String, Bool, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
         }
-        let value = try lower(node, depth: depth)
+        let value = try lower(node, depth: depth, translateLiterals: translateLiterals)
         if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
         if type == .bool { return .concatenate([value]) }
         return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
@@ -198,7 +210,8 @@ struct ProgramExpressionCompiler {
         return try lower(node, depth: 1)
     }
 
-    private mutating func lower(_ node: PositionedNode, depth: Int, displayConditionals: Bool = true) throws -> ProgramExpression {
+    private mutating func lower(_ node: PositionedNode, depth: Int, displayConditionals: Bool = true,
+                                translateLiterals: Bool = false) throws -> ProgramExpression {
         count += 1
         guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
             throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
@@ -229,7 +242,7 @@ struct ProgramExpressionCompiler {
         // Validate the original supported subtree before folding the checker's actual constant. A constant
         // conditional must not hide an unsupported branch, and no variable initializer is inferred here.
         let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth,
-                                 displayConditionals: displayConditionals)
+                                 displayConditionals: displayConditionals, translateLiterals: translateLiterals)
         if let canonical = checked.canonicalNumericValues[identity] {
             guard let dimension = numberDimension(type), canonical.isFinite else {
                 throw issue(.invalidCheckedModel, node, "Invalid checked canonical numeric constant")
@@ -245,15 +258,16 @@ struct ProgramExpressionCompiler {
     }
 
     private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int,
-                                     displayConditionals: Bool) throws -> ProgramExpression {
+                                     displayConditionals: Bool, translateLiterals: Bool) throws -> ProgramExpression {
         if let value = StringLiteralSyntax(node) {
+            let key = try translationCompiler?.key(for: value, allowed: translateLiterals)
             if let text = value.literalValue {
                 guard text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
                     throw issue(.resourceLimit, node, "Shared program text limit exceeded")
                 }
-                return .string(text)
+                return key.map { .localized(key: $0, values: []) } ?? .string(text)
             }
-            var parts: [ProgramExpression] = []
+            var parts: [ProgramExpression] = [], values: [ProgramExpression] = []
             for segment in value.segments {
                 switch segment {
                 case .text(_, let cooked): parts.append(.string(cooked))
@@ -262,7 +276,22 @@ struct ProgramExpressionCompiler {
                     let expression = try lower(interpolation.value.node, depth: depth + 1)
                     let type = checked.types[checked.tree.id(of: interpolation.value.node)]?.type
                     if let type, numberDimension(type) != nil {
-                        parts.append(.formatNumber(expression, try numberFormat(at: interpolation.value.node, type: type, options: interpolation.formatOptions)))
+                        let format = try numberFormat(at: interpolation.value.node, type: type, options: interpolation.formatOptions)
+                        var formatted = ProgramExpression.formatNumber(expression, format)
+                        if let missing = interpolation.formatOptions.first(where: { $0.label.name == "missing" }),
+                           let literal = StringLiteralSyntax(missing.value.node) {
+                            // Authored fallback words share the outer display's translation context; automatic
+                            // missing marks remain the formatter's own text. Both branches use the captured inputs.
+                            if try translationCompiler?.key(for: literal, allowed: translateLiterals) != nil {
+                                let fallback = try lower(missing.value.node, depth: depth + 1, translateLiterals: translateLiterals)
+                                count += 2
+                                guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                                    throw issue(.resourceLimit, missing.node, "Shared program expression limit exceeded")
+                                }
+                                formatted = .conditional(.isMissing(expression), then: fallback, otherwise: formatted)
+                            }
+                        }
+                        parts.append(formatted); values.append(formatted)
                     } else if type == .date {
                         guard interpolation.formatOptions.count <= 1 else {
                             throw issue(.unsupported, interpolation.node, "Only the Date format option is implemented")
@@ -276,16 +305,17 @@ struct ProgramExpressionCompiler {
                             }
                             format = try dateFormat(option.value.node)
                         } else { format = try defaultDateFormat(at: interpolation.value.node) }
-                        parts.append(.formatDate(expression, format))
+                        let formatted = ProgramExpression.formatDate(expression, format)
+                        parts.append(formatted); values.append(formatted)
                     } else {
                         guard interpolation.formatOptions.isEmpty, type == .string || type == .bool else {
                             throw issue(.unsupported, interpolation.node, "Only unformatted String/Bool and formatted Date interpolation are implemented")
                         }
-                        parts.append(expression)
+                        parts.append(expression); values.append(expression)
                     }
                 }
             }
-            return .concatenate(parts)
+            return key.map { .localized(key: $0, values: values) } ?? .concatenate(parts)
         }
         if let value = BoolLiteralSyntax(node) { return .boolean(value.value) }
         if let literal = NumberLiteralSyntax(node) {
@@ -322,7 +352,8 @@ struct ProgramExpressionCompiler {
             return try quantity(canonical, dimension: dimension, at: node)
         }
         if let value = ParenExprSyntax(node) {
-            return try lower(value.value.node, depth: depth + 1, displayConditionals: displayConditionals)
+            return try lower(value.value.node, depth: depth + 1, displayConditionals: displayConditionals,
+                             translateLiterals: translateLiterals)
         }
         if IdentifierExprSyntax(node) != nil {
             guard case .declaration(let identity)? = checked.symbols[checked.tree.id(of: node)], let slot = slots[identity] else {
@@ -386,8 +417,10 @@ struct ProgramExpressionCompiler {
                       spec.signatures[0].params[0].defaultValue == nil else {
                     throw issue(.unsupported, node, "Unsupported checked ifMissing member contract")
                 }
-                return .ifMissing(try lower(member.base.node, depth: depth + 1, displayConditionals: displayConditionals),
-                                  try lower(arguments[0].value.node, depth: depth + 1, displayConditionals: displayConditionals))
+                return .ifMissing(try lower(member.base.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                           translateLiterals: translateLiterals),
+                                  try lower(arguments[0].value.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                            translateLiterals: translateLiterals))
             }
             guard member.name.token.name == "in", type == .date,
                   checked.types[checked.tree.id(of: member.base.node)]?.type == .date,
@@ -446,12 +479,14 @@ struct ProgramExpressionCompiler {
                 // The checker marks display-position conditionals String: each selected branch is displayed
                 // independently, including a direct data member's catalog default. Numeric conditionals stay numeric.
                 return .conditional(try lower(value.condition.node, depth: depth + 1),
-                                    then: try displayed(value.then.node, depth: depth + 1),
-                                    otherwise: try displayed(value.otherwise.node, depth: depth + 1))
+                                    then: try displayed(value.then.node, depth: depth + 1, translateLiterals: translateLiterals),
+                                    otherwise: try displayed(value.otherwise.node, depth: depth + 1, translateLiterals: translateLiterals))
             }
             return .conditional(try lower(value.condition.node, depth: depth + 1),
-                                then: try lower(value.then.node, depth: depth + 1, displayConditionals: displayConditionals),
-                                otherwise: try lower(value.otherwise.node, depth: depth + 1, displayConditionals: displayConditionals))
+                                then: try lower(value.then.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                                translateLiterals: translateLiterals),
+                                otherwise: try lower(value.otherwise.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                                     translateLiterals: translateLiterals))
         }
         throw issue(.unsupported, node, "Unsupported scalar expression: \(node.kind.rawValue)")
     }

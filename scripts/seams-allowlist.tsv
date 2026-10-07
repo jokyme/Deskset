@@ -49,7 +49,8 @@ background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	8	FIFO p
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag and accepted-scene hover pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	3	window session and opened menu identifiers reject obsolete replies and repeated selections; not a program input
-zone.Locale.current	Sources/Deskset/App/DeskWidgetWindowController.swift	1	host input projection preserves system locale for date and time formatting; tests inject explicit locale; not a skin input
+zone.Locale.current	Sources/Deskset/App/DeskWidgetWindowController.swift	2	Main captures preferred languages at widget load and the region/calendar for each input; providers are injected, and a language change reloads the session
+zone.inferredCurrent	Sources/Deskset/App/DeskWidgetWindowController.swift	1	Main input adapter default regional locale; production passes its captured locale and tests supply explicit values
 
 background.mainHop	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -61,6 +62,7 @@ background.mainHop	Sources/Deskset/App/CodeFileWindowController.swift	1	completi
 background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
 event.KVO	Sources/Deskset/App/CodeFileWindowController.swift	1	window-owned inspector visibility switches preview selection mode; observer released on close, not a skin input
 random.UUID	Sources/Deskset/App/CodeFileWindowController.swift	2	default unique source and instance identifiers for standalone widget installation; not a skin input
+zone.Locale.current	Sources/Deskset/App/CodeFileWindowController.swift	1	default preferred-language provider forwarded to the preview session; tests inject languages independently of regional formatting
 
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
@@ -215,6 +217,7 @@ wait.runLoop	Sources/Deskset/AppController.swift	1	bounded termination run loop 
 wall.Date()	Sources/Deskset/AppController.swift	2	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
 wall.sinceNow	Sources/Deskset/AppController.swift	1	termination deadline budget calculation; not a skin input
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
+zone.Locale.current	Sources/Deskset/AppController.swift	4	default language and regional locale providers forwarded through installed-widget activation and reload; captured only on Main and injectable in verification
 
 effect.fileWrite	Sources/Deskset/AppState.swift	4	app files (state, log, caches); not a skin effect
 timer.asyncAfter	Sources/Deskset/AppState.swift	1	state.json saving and ordering; not a skin input
@@ -716,7 +719,7 @@ background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel 
 wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt
 
 event.notification	Sources/Deskset/App/CodeFileWindowController.swift	4	App-owned document preview system palette/date/wake/power notifications; weak owner, main publication, removed at deinit; no skin action or data read
-zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
+zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	2	default Main providers capture widget preferred languages and regional locale; translation selection is frozen per loaded session and formatting input per projection
 effect.pasteboard	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live copy adapter behind an injected closure; preview records typed effects and tests replace the clipboard operation
 effect.workspace	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live open adapter behind injected target resolver/opener closures; preview records typed effects and tests never launch applications
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale

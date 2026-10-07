@@ -145,6 +145,11 @@ final class DeskProgramHost {
         let environment: EnvironmentStamp
         let colors: ProgramColorInput
         let locale: Locale
+        let language: String?
+
+        init(environment: EnvironmentStamp, colors: ProgramColorInput, locale: Locale, language: String? = nil) {
+            self.environment = environment; self.colors = colors; self.locale = locale; self.language = language
+        }
     }
 
     /// The exact scene and viewport accepted by the provider, after Main's ACK when delivery is asynchronous.
@@ -232,7 +237,7 @@ final class DeskProgramHost {
         init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider?, input: Input,
              prepared: DeskProgramResources.Prepared?, clock: SkinClock, system: SystemDataSource, source: String,
              prepareIcons: @escaping IconPreparation) throws {
-            runtime = try ProgramRuntime(program: program)
+            runtime = try ProgramRuntime(program: program, language: input.language)
             self.executor = executor; self.provider = provider; self.input = input
             self.prepared = prepared; self.clock = clock; self.system = system; self.source = source
             self.prepareIcons = prepareIcons
@@ -556,6 +561,12 @@ final class DeskProgramHost {
     func take(_ facts: SkinWindowFacts, input: Input, menuAllowed: Bool? = nil) {
         let owner = current
         guard !owner.isClosed else { return }
+        // The language belongs to this loaded runtime. A language change must replace the host and its session,
+        // so an old picture or action cannot be admitted into the newly loaded widget.
+        guard owner.input.language == input.language else {
+            owner.destinationReady = false
+            owner.fail(ProgramRuntimeError.invalidEnvironment); return
+        }
         let changed = owner.input != input
         let wasVisible = owner.visible
         let hadDestination = owner.destinationReady

@@ -14,6 +14,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     let program: WidgetProgram
     unowned let app: AppController
     let executor: SkinExecutor
+    private let preferredLanguages: () -> [String]
+    private let dateLocale: () -> Locale
+    private let loadedLanguages: [String]
+    let displayName: String
 
     private(set) var window: SkinPanel
     let view: DeskWidgetView
@@ -25,6 +29,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private(set) var isStarted = false
     private(set) var isClosing = false
     private(set) var isClosed = false
+    private var deactivationRequested = false
     private(set) var sessionID: UUID
     private var factsSequence = 0
     private var lastPresentedGeneration: UInt64 = 0
@@ -54,7 +59,11 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
          app: AppController, executor: SkinExecutor = MainSkinExecutor.shared,
          clock: SkinClock = .live, initialPosition: (x: Double, y: Double)? = nil,
          actionServices: DeskProgramActionServices = .live,
-         tooltipExecutor: SkinExecutor = MainSkinExecutor.shared) {
+         tooltipExecutor: SkinExecutor = MainSkinExecutor.shared,
+         preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
+         dateLocale: @escaping () -> Locale = { Locale.current }) {
+        let initialLanguages = preferredLanguages(), initialLocale = dateLocale()
+        let localization = DeskProgramLocalization(program: program, preferredLanguages: initialLanguages, locale: initialLocale)
         self.source = source
         self.instance = instance
         self.directory = directory
@@ -62,10 +71,15 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         self.app = app
         self.executor = executor
         self.actionServices = actionServices
+        self.preferredLanguages = preferredLanguages
+        self.dateLocale = dateLocale
+        self.loadedLanguages = initialLanguages
+        self.displayName = localization.name
         let currentSession = UUID()
         self.sessionID = currentSession
 
         let panel = SkinWindowController.makePanel()
+        panel.title = localization.name
         self.window = panel
         self.view = DeskWidgetView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         self.content = LayerContentProvider(in: view)
@@ -92,7 +106,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         let appearance = panel.effectiveAppearance
         let scale = panel.backingScaleFactor
         let initialFacts = currentFacts()
-        let initialInput = try? DeskWidgetWindowController.makeInput(for: appearance, scale: scale)
+        let initialInput = try? DeskWidgetWindowController.makeInput(for: appearance, scale: scale,
+            program: program, preferredLanguages: initialLanguages, locale: initialLocale)
 
         // Contract: Host lifecycle and callback setters MUST run solely on the executor owner.
         // Worker async loading avoids Main thread blocking; cancellation and failure safely clean up Prepared.
@@ -146,7 +161,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
                      NSNotification.Name.NSSystemClockDidChange] {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.publishFacts(refreshTime: name != NSLocale.currentLocaleDidChangeNotification)
+                if name == NSLocale.currentLocaleDidChangeNotification { self?.refreshDateInput() }
+                else { self?.publishFacts(refreshTime: true) }
             }
             observers.append((center, token))
         }
@@ -161,11 +177,35 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         observers.append((center, powerToken))
     }
 
-    static func makeInput(for appearance: NSAppearance, scale: CGFloat) throws -> DeskProgramHost.Input {
+    static func makeInput(for appearance: NSAppearance, scale: CGFloat, program: WidgetProgram? = nil,
+                          preferredLanguages: [String] = [], locale: Locale = .current) throws -> DeskProgramHost.Input {
         let values = try MacAppearance.programValues(for: appearance)
         let env = AppSceneEnvironment(scale: Double(scale), appearance: values.appearance,
                                       appearanceName: appearance.name.rawValue).stamp
-        return DeskProgramHost.Input(environment: env, colors: values.colors, locale: Locale.current)
+        let localization = program.map { DeskProgramLocalization(program: $0, preferredLanguages: preferredLanguages, locale: locale) }
+        return DeskProgramHost.Input(environment: env, colors: values.colors, locale: localization?.locale ?? locale,
+                                     language: localization?.language)
+    }
+
+    /// A language change reloads the installed source through the usual admission/resource path. The old session
+    /// closes before the replacement starts; changes to region or calendar alone preserve its session variables.
+    func refreshDateInput() {
+        precondition(Thread.isMainThread)
+        guard !isClosing, !isClosed else { return }
+        guard preferredLanguages() != loadedLanguages else { publishFacts(refreshTime: true); return }
+        let app = app, instanceID = instance.id, sourceID = source.id, entry = source.entry
+        let languages = preferredLanguages, locale = dateLocale
+        close(deactivate: false) { [weak self, weak app] in
+            guard let self, let app, !app.isTerminating, !self.deactivationRequested,
+                  let current = app.state.deskInstance(instanceID), current.sourceID == sourceID,
+                  current.active || !self.isStarted else { return }
+            do {
+                try app.activateDeskWidget(instanceID: instanceID, preferredLanguages: languages, dateLocale: locale)
+            } catch {
+                Log.write(StudioText[.deskWidgetUnavailable] + ": " + String(describing: error),
+                          level: .warning, source: entry)
+            }
+        }
     }
 
     /// Contract: Real window facts, no forced visible or synthetic profile, incrementing sequence.
@@ -216,7 +256,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         let facts = currentFacts()
         let appearance = window.effectiveAppearance
         let scale = window.backingScaleFactor
-        guard let currentInput = try? DeskWidgetWindowController.makeInput(for: appearance, scale: scale) else { return }
+        guard let currentInput = try? DeskWidgetWindowController.makeInput(for: appearance, scale: scale,
+            program: program, preferredLanguages: loadedLanguages, locale: dateLocale()) else { return }
         let hostOwner = owner
         let menuAllowed = !window.ignoresMouseEvents && !window.isMiniaturized && !view.isHiddenOrHasHiddenAncestor
         executor.async { [hostOwner] in
@@ -589,6 +630,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     func close(deactivate: Bool, completion: (() -> Void)? = nil) {
         precondition(Thread.isMainThread)
         if deactivate {
+            deactivationRequested = true
             app.state.updateDeskInstance(instance.id) { $0.active = false }
         }
         if isClosed {
@@ -922,7 +964,7 @@ final class DeskWidgetView: NSView {
               let presented = controller.latestPresented else { clearAccessibility(); return }
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel(controller.program.name)
+        setAccessibilityLabel(controller.displayName)
         let clickable = Set(presented.scene.hitMap.entries.filter { $0.action(.leftUp) != .absent }.compactMap(\.elementID))
         var parts: [DeskWidgetAccessibilityElement] = []
         for element in presented.scene.elements where element.visibility == .visible {

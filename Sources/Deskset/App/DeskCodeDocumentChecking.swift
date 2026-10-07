@@ -129,7 +129,7 @@ final class DeskCodeDocumentChecking {
         resourceRequest = next.partialValue
         imageInput = .ready([:])
         guard candidate.isChecked else { return }
-        let sources = Desk.compile(candidate.checked, catalog: candidate.options.catalog).imageSources
+        let sources = Desk.compile(candidate.checked, catalog: candidate.options.catalog, package: candidate.package).imageSources
         guard !sources.isEmpty else { return }
         imageInput = .pending
         let request = resourceRequest, root = file.deletingLastPathComponent()

@@ -17,6 +17,9 @@ public enum ProgramRuntimeError: Error, Equatable {
 /// not a Skin, host, timer or service. A failed measurement/layout never publishes a partial scene.
 public struct ProgramRuntime: Sendable {
     public let program: WidgetProgram
+    /// The host selects the widget's translation tag at load time. Nil uses source patterns.
+    public let language: String?
+    public var displayName: String { program.displayName(language: language) }
     public private(set) var generation: UInt64 = 0
     public private(set) var clockPrecision: ProgramClockPrecision?
     private var variables: [ProgramScalar?]?
@@ -35,13 +38,18 @@ public struct ProgramRuntime: Sendable {
     private var visibleMenuOwners: Set<ElementID> = []
     private var currentHitMap = SkinHitMap()
 
-    public init(program: WidgetProgram) throws {
+    public init(program: WidgetProgram, language: String? = nil) throws {
         if case .preset(_, let size) = program.size {
             guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
                 throw ProgramRuntimeError.invalidGeometry(program.root.id)
             }
         }
-        var expressions = try ProgramExpressionValidation(declarations: program.declarations)
+        var expressions = try ProgramExpressionValidation(declarations: program.declarations, translations: program.translations)
+        if let key = program.nameKey {
+            guard program.translations.source[key]?.allSatisfy({
+                if case .text = $0 { return true }; return false
+            }) == true else { throw ProgramRuntimeError.invalidExpression }
+        }
         guard program.onLoad.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
         for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
         var actionCount = program.onLoad.count
@@ -283,6 +291,7 @@ public struct ProgramRuntime: Sendable {
         }
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
         self.program = program
+        self.language = language
         self.clickHandlers = clickHandlers
         self.menus = menus
     }
@@ -382,7 +391,8 @@ public struct ProgramRuntime: Sendable {
                appearance.accentColor, appearance.separatorColor].allSatisfy(Self.valid) else { throw ProgramRuntimeError.invalidEnvironment }
         if let dateInput, !dateInput.instant.timeIntervalSince1970.isFinite { throw ProgramRuntimeError.invalidDateInput }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
-                                                     variables: variables, dateInput: dateInput, systemInput: systemInput)
+                                                     variables: variables, dateInput: dateInput, systemInput: systemInput,
+                                                     translations: program.translations, language: language)
         func resolve(_ nodes: [ProgramMenuNode], path: [Int]) throws -> [ProgramMenuSnapshot.Node] {
             var result: [ProgramMenuSnapshot.Node] = []
             for (index, node) in nodes.enumerated() {
@@ -559,7 +569,7 @@ public struct ProgramRuntime: Sendable {
             case .dateIn(let child, _), .formatDate(let child, _), .formatNumber(let child, _),
                  .negate(let child), .not(let child), .isMissing(let child):
                 active.append(child)
-            case .concatenate(let parts):
+            case .concatenate(let parts), .localized(_, let parts):
                 active.append(contentsOf: parts)
             case .and(let left, let right), .or(let left, let right),
                  .equal(let left, let right), .notEqual(let left, let right),
@@ -606,7 +616,8 @@ public struct ProgramRuntime: Sendable {
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark,
-                                                     variables: variables, dateInput: dateInput, systemInput: systemInput)
+                                                     variables: variables, dateInput: dateInput, systemInput: systemInput,
+                                                     translations: program.translations, language: language)
         if variables == nil {
             try evaluation.initialize()
             // Root startup is part of the first successful scene transaction. These local-only assignments
@@ -805,7 +816,8 @@ public struct ProgramRuntime: Sendable {
         var candidate = self
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
-                                                      variables: variables, dateInput: dateInput, systemInput: systemInput)
+                                                      variables: variables, dateInput: dateInput, systemInput: systemInput,
+                                                      translations: program.translations, language: language)
         if let menuSelection, try !isSelected(menuSelection, evaluation: &evaluation) { return nil }
         var effects: [ProgramEffect] = []
         for action in actions {

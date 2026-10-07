@@ -12,10 +12,11 @@ struct StaticProgramCompiler {
     private var seenElements = Set<NodeID>()
     private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
-    init(checked: CheckedFile, catalog: DeskCatalog) {
+    init(checked: CheckedFile, catalog: DeskCatalog, package: CheckedFile? = nil) throws {
         self.checked = checked
         self.catalog = catalog
-        expressions = ProgramExpressionCompiler(checked: checked, catalog: catalog)
+        expressions = ProgramExpressionCompiler(checked: checked, catalog: catalog,
+            translations: try ProgramTranslationCompiler(checked: checked, package: package, catalog: catalog))
     }
 
     private enum Value {
@@ -36,6 +37,7 @@ struct StaticProgramCompiler {
 
     mutating func compile() throws -> WidgetProgram {
         var name = URL(fileURLWithPath: checked.tree.file.path).deletingPathExtension().lastPathComponent
+        var nameKey: String?
         guard let sizeField = catalog.infoFields.first(where: { $0.name == "size" }),
               sizeField.type == .enumeration("SizePreset"), sizeField.source == .literal,
               case .source(let sizeDefault)? = sizeField.defaultValue,
@@ -52,10 +54,13 @@ struct StaticProgramCompiler {
                     guard let field = FieldSyntax(node) else { throw issue(.unsupported, node, "Unsupported info statement") }
                     switch field.label.name {
                     case "name":
-                        guard case .string(let value) = try constant(field.value.node) else {
+                        guard let spec = catalog.infoFields.first(where: { $0.name == "name" }),
+                              spec.type == .string, spec.source == .literal, spec.translatable, spec.inInfo,
+                              case .string(let value) = try constant(field.value.node) else {
                             throw issue(.unsupported, field.value.node, "info.name must be literal text")
                         }
                         name = value
+                        nameKey = try expressions.nameKey(field.value.node)
                     case "size":
                         let value = field.value.node
                         guard case .choice(let choice) = try constant(value),
@@ -72,6 +77,7 @@ struct StaticProgramCompiler {
                     throw issue(.invalidCheckedModel, item, "Expected one widget block")
                 }
                 widget = block.block
+            case .translationsBlock: break // The checked table and every authored pattern were validated at initialization.
             default: throw issue(.unsupported, item, "Unsupported top-level construct: \(item.kind.rawValue)")
             }
         }
@@ -94,7 +100,8 @@ struct StaticProgramCompiler {
         guard seenElements == Set(checked.elements.keys) else {
             throw issue(.invalidCheckedModel, widget.node, "Checked elements do not match the supported view and menu calls")
         }
-        let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize)
+        let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize,
+                                    translations: expressions.translations, nameKey: nameKey)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
         catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
         catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
@@ -503,7 +510,12 @@ struct StaticProgramCompiler {
                 fontSizeExpression: appearance.sizeExpression,
                 hasOwnFont: call.modifiers.contains { $0.name.token.text == "font" }))
         case "Text":
-            guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
+            guard spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+                  let parameter = spec.signatures[0].params.first,
+                  parameter.name == "content", parameter.label == nil, parameter.type == .any,
+                  parameter.role == .display, parameter.source == .any, parameter.translatable,
+                  parameter.required, !parameter.variadic, parameter.defaultValue == nil,
+                  call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1, arguments[0].label == nil else {
                 throw issue(.unsupported, node, "Text requires one String expression")
             }
             let text = try expressions.text(arguments[0].value.node)

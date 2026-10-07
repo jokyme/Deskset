@@ -79,6 +79,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private let clock: SkinClock
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
+    private let preferredLanguages: () -> [String]
+    private var programLanguages: [String]?
+    private var localization: DeskProgramLocalization?
     private let colorSource: (NSAppearance) throws -> MacAppearance.ProgramValues
     private let system: SystemDataSource
     let iconResources = DeskIconResources()
@@ -109,6 +112,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     init(resources: @escaping (DeskSnapshot) -> DeskProgramResources.Input = { _ in .ready([:]) },
          clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
          dateLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+         preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
          colors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
          system: SystemDataSource = SystemMonitor.shared,
          prepareIcons: @escaping IconPreparation = DeskIconResources.prepare,
@@ -118,6 +122,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         self.clock = clock
         self.executor = executor
         self.dateLocale = dateLocale
+        self.preferredLanguages = preferredLanguages
         self.colorSource = colors
         self.system = system
         self.prepareIcons = prepareIcons
@@ -161,7 +166,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     /// Preview uses the same resolved items, while selected effects remain in its local action record.
     private func showMenu(at point: SkinPoint, option: Bool) -> Bool {
         if option || isInspecting { cancelMenu(); return true }
-        guard visible, prepareToDraw(), pending == nil, let snapshot, let runtime, let scene else { return false }
+        guard visible, prepareToDraw(), pending == nil, let snapshot, let runtime, let scene,
+              let localization else { return false }
         guard scene.hitMap.entry(at: point.x, point.y, handling: .rightUp, images: nil) == nil else { return false }
         let owners = DeskProgramMenuSession.owners(root: runtime.program.root, scene: scene, at: point)
         guard !owners.isEmpty, let menus = canvas.programMenus else { return false }
@@ -172,7 +178,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             if self?.menuSession?.id == id { self?.menuSession = nil }
         }) else { return true }
         do {
-            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
+            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: localization.locale)
             let needed = owners.reduce(into: Set<ProgramSystemProperty>()) {
                 $0.formUnion(runtime.neededSystemProperties(openingMenu: $1))
             }
@@ -201,12 +207,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     static func currentDateLocale() -> Locale {
-        // Preserve the Mac's region/calendar preferences while using the Studio's selected display language.
-        var components = Locale.components(fromIdentifier: Locale.current.identifier)
-        components[NSLocale.Key.languageCode.rawValue] = StudioText.language == .chinese ? "zh" : "en"
-        if StudioText.language == .chinese { components[NSLocale.Key.scriptCode.rawValue] = "Hans" }
-        else { components.removeValue(forKey: NSLocale.Key.scriptCode.rawValue) }
-        return Locale(identifier: Locale.identifier(fromComponents: components))
+        // The widget selects its own display language; this input supplies the Mac's region and calendar.
+        Locale.current
     }
 
     func setVisible(_ value: Bool) {
@@ -242,9 +244,15 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         updateForTick()
     }
 
-    /// Date/zone/locale notifications change input, not the checked program or its session variables.
+    /// A system language change reloads the widget. Region, calendar and clock changes keep its session state.
     func refreshDateInput() {
-        guard state != .closed else { return }
+        guard state != .closed, let snapshot, let runtime else { return }
+        let languages = preferredLanguages()
+        guard languages == programLanguages else {
+            show(snapshot, readError: nil)
+            return
+        }
+        localization = DeskProgramLocalization(program: runtime.program, preferredLanguages: languages, locale: dateLocale())
         if visible { updateForTick() }
     }
 
@@ -386,22 +394,28 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         case .failed(let message): clear(.unavailable(message)); return
         case .ready: break
         }
-        let result = Desk.compile(candidate.checked, catalog: candidate.options.catalog)
+        let result = Desk.compile(candidate.checked, catalog: candidate.options.catalog, package: candidate.package)
         guard let program = result.program else {
             if let diagnostic = result.diagnostics.first(where: { $0.severity == .error }) {
                 clear(.unavailable(diagnostic.message(in: candidate.options.messageLanguage)))
             } else if let issue = result.issues.first {
-                let position = candidate.index.position(utf8: issue.range.lowerBound)
-                clear(.unavailable("\(issue.file.path):\(position): \(issue.message)"))
+                if let index = candidate.index(of: issue.file) {
+                    let position = index.position(utf8: issue.range.lowerBound)
+                    clear(.unavailable("\(issue.file.path):\(position): \(issue.message)"))
+                } else { clear(.unavailable("\(issue.file.path): \(issue.message)")) }
             } else { clear(.unavailable(StudioText[.deskPreviewUnavailable])) }
             return
         }
         do {
-            let next = try ProgramRuntime(program: program)
+            let languages = preferredLanguages()
+            let localization = DeskProgramLocalization(program: program, preferredLanguages: languages, locale: dateLocale())
+            let next = try ProgramRuntime(program: program, language: localization.language)
             guard accepts?(candidate) == true else { clear(.checking); return }
             clear(.checking)
             snapshot = candidate
             runtime = next
+            programLanguages = languages
+            self.localization = localization
             elementRefs = result.elementRefs
             resetActionRecords()
             canvas.context = DrawContext(fonts: AppFontResolver(), icons: AppIconRasterizer(resources: iconResources))
@@ -420,7 +434,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private func project(activation: Activation? = nil,
                          captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
-              let runtime else { return }
+              let runtime, let localization else { return }
         if let pending {
             if activation == nil { pending.deferredRefresh = true; armClock(after: clock.now()) }
             return
@@ -435,7 +449,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             case .failed(let message): clear(.unavailable(message)); return
             case .ready(let values): images = values
             }
-            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
+            let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: localization.locale)
             let needed: Set<ProgramSystemProperty>
             switch activation {
             case .point(let point, _, let event): needed = runtime.neededSystemProperties(clickAt: point, event: event)
@@ -858,6 +872,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         if !keepingProgram {
             snapshot = nil
             runtime = nil
+            programLanguages = nil
+            localization = nil
             elementRefs.removeAll()
             resetActionRecords()
         }

@@ -42,6 +42,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil,
          previewClock: SkinClock = .live, previewExecutor: SkinExecutor = MainSkinExecutor.shared,
          previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+         previewPreferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
          previewColors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
          previewSystem: SystemDataSource = SystemMonitor.shared) throws {
         self.file = file.standardizedFileURL
@@ -74,7 +75,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
             deskChecking = checking
             let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
                 checking?.imageResources(for: snapshot) ?? .pending
-            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale, colors: previewColors,
+            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale,
+               preferredLanguages: previewPreferredLanguages, colors: previewColors,
                system: previewSystem) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true

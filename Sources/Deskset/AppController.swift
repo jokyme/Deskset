@@ -1165,7 +1165,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// - If Host construction throws, cleans up exclusive Prepared copies immediately.
     @discardableResult
     func activateDeskWidget(instanceID: UUID,
-                            initialPosition: (x: Double, y: Double)? = nil) throws -> DeskWidgetWindowController {
+                            initialPosition: (x: Double, y: Double)? = nil,
+                            preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
+                            dateLocale: @escaping () -> Locale = { Locale.current }) throws -> DeskWidgetWindowController {
         precondition(Thread.isMainThread)
         if let existing = deskWidgetWindows[instanceID] { return existing }
         guard let instance = state.deskInstance(instanceID) else {
@@ -1174,12 +1176,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let source = state.deskSource(instance.sourceID) else {
             throw DeskWidgetActivationFailure.sourceNotFound
         }
-        return try activateDeskWidget(source: source, instance: instance, initialPosition: initialPosition)
+        return try activateDeskWidget(source: source, instance: instance, initialPosition: initialPosition,
+                                      preferredLanguages: preferredLanguages, dateLocale: dateLocale)
     }
 
     @discardableResult
     func activateDeskWidget(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState,
-                            initialPosition: (x: Double, y: Double)? = nil) throws -> DeskWidgetWindowController {
+                            initialPosition: (x: Double, y: Double)? = nil,
+                            preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
+                            dateLocale: @escaping () -> Locale = { Locale.current }) throws -> DeskWidgetWindowController {
         precondition(Thread.isMainThread)
         guard !isTerminating else { throw DeskWidgetActivationFailure.isTerminating }
         if let existing = deskWidgetWindows[instance.id] { return existing }
@@ -1314,7 +1319,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = try DeskWidgetWindowController(
             source: source, instance: instance, directory: sourceDirectoryURL,
             program: program, prepared: hostPrepared, app: self,
-            executor: skinExecutor(source.entry), clock: .live, initialPosition: initialPosition
+            executor: skinExecutor(source.entry), clock: .live, initialPosition: initialPosition,
+            preferredLanguages: preferredLanguages, dateLocale: dateLocale
         )
         retainedPrepared = true
         return controller
