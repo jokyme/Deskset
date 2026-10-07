@@ -42,7 +42,6 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private(set) var destinationEpoch: UInt64 = 0
     private(set) var lastAcceptedEpoch: UInt64 = 0
     private var closeWaiters: [() -> Void] = []
-    private var deactivatesOnClose = false
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
     init(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState, directory: URL,
@@ -123,7 +122,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
                      NSNotification.Name.NSSystemClockDidChange] {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.publishFacts()
+                self?.publishFacts(refreshTime: name != NSLocale.currentLocaleDidChangeNotification)
             }
             observers.append((center, token))
         }
@@ -180,7 +179,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    func publishFacts() {
+    func publishFacts(refreshTime: Bool = false) {
         precondition(Thread.isMainThread)
         guard !isClosing, !isClosed else { return }
         let facts = currentFacts()
@@ -190,6 +189,9 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         let hostOwner = owner
         executor.async { [hostOwner] in
             hostOwner.take(facts, input: currentInput)
+            // Clock and zone inputs can change while the captured appearance/locale input stays equal.
+            // Reuse wake's cache invalidation and visible-owner projection to replace the clock boundary.
+            if refreshTime { hostOwner.wake() }
         }
     }
 
@@ -414,10 +416,11 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
     /// Contract: Main invalidates -> owner FIFO close -> Main ack -> provider/window teardown.
     /// Repeated close calls wait for the actual ACK. Shared worker is never stopped prematurely.
+    /// Record explicit deactivation before waiting; the ACK only releases the old window's resources.
     func close(deactivate: Bool, completion: (() -> Void)? = nil) {
         precondition(Thread.isMainThread)
         if deactivate {
-            deactivatesOnClose = true
+            app.state.updateDeskInstance(instance.id) { $0.active = false }
         }
         if isClosed {
             completion?()
@@ -445,9 +448,6 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                     self.content.teardown()
                     self.window.orderOut(nil)
                     self.window.close()
-                    if self.deactivatesOnClose {
-                        self.app.state.updateDeskInstance(self.instance.id) { $0.active = false }
-                    }
                     self.app.deskWidgetWindowDidClose(self)
                     let waiters = self.closeWaiters
                     self.closeWaiters.removeAll()

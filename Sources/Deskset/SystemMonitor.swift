@@ -31,13 +31,18 @@ final class SystemMonitor: SystemDataSource {
         var lastSample: TimeInterval = 0
     }
 
+    private struct BatteryState {
+        var version = UUID()
+        var reading: (BatteryStatus?, TimeInterval)?
+    }
+
     private let cpu = Guarded(CPUState())
     /// CPU usage is a difference between two tick samples; samples closer than this reuse the last result.
     static let minimumCPUSampleInterval: TimeInterval = 0.25
 
     private let cachedMemory = Guarded<(MemoryStatus, TimeInterval)?>(nil)
     private let cachedNet = Guarded<(NetSnapshot, TimeInterval)?>(nil)
-    private let cachedBattery = Guarded<(BatteryStatus?, TimeInterval)?>(nil)
+    private let cachedBattery = Guarded(BatteryState())
     private let cachedProcesses = Guarded<(Set<String>, TimeInterval)?>(nil)
     private let cachedAdapters = Guarded<([String: AdapterInfo], TimeInterval)?>(nil)
     private let cachedBest = Guarded<(String?, TimeInterval)?>(nil)
@@ -53,10 +58,12 @@ final class SystemMonitor: SystemDataSource {
     /// the caches at the same time, which the caches' short lifetimes otherwise make rare.
     init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          sensors: SensorService = .shared,
-         readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:)) {
+         readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:),
+         readBattery: @escaping () -> BatteryStatus? = SystemMonitor.readBattery) {
         self.clock = clock
         self.sensors = sensors
         self.readAvailableSpace = readAvailableSpace
+        self.readBattery = readBattery
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
             state.lastSample = clock()
@@ -751,16 +758,26 @@ final class SystemMonitor: SystemDataSource {
 
     // MARK: Battery
 
+    /// The live IOKit reader; self-tests hold an old reading across cache invalidation.
+    private let readBattery: () -> BatteryStatus?
+
     /// Read without the lock (IOKit asks the power management daemon).
     func battery() -> BatteryStatus? {
-        if let c = cachedBattery.current, now() - c.1 < 5 { return c.0 }
-        let result = SystemMonitor.readBattery()
-        cachedBattery.access { $0 = (result, now()) }
+        let before = cachedBattery.current
+        if let c = before.reading, now() - c.1 < 5 { return c.0 }
+        let result = readBattery()
+        cachedBattery.access { state in
+            // A caller keeps its captured result, but a power change must prevent that old result being cached.
+            if state.version == before.version { state.reading = (result, now()) }
+        }
         return result
     }
 
     func invalidateBatteryCache() {
-        cachedBattery.access { $0 = nil }
+        cachedBattery.access { state in
+            state.version = UUID()
+            state.reading = nil
+        }
     }
 
     private static func readBattery() -> BatteryStatus? {

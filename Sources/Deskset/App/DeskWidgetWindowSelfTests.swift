@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import ImageIO
 import DeskLanguage
 import DesksetCore
 import DesksetDraw
@@ -28,10 +29,16 @@ enum DeskWidgetWindowSelfTests {
         var checking: DeskCodeDocumentChecking { controller.deskChecking! }
     }
 
-    private static func fixture(_ t: AppTestRunner, text: String = sampleDeskText, presentsWindows: Bool = false) throws -> Fixture {
+    private static func fixture(_ t: AppTestRunner, text: String = sampleDeskText, presentsWindows: Bool = false,
+                                images: [String: Data] = [:]) throws -> Fixture {
         let root = t.temporaryDirectory("desk-widget-window-test")
         let file = root.appendingPathComponent("Widget.desk")
         try Data(text.utf8).write(to: file)
+        for (path, bytes) in images {
+            let image = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: image.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try bytes.write(to: image)
+        }
         let stateURL = root.appendingPathComponent("state.json")
         let skinsDir = root.appendingPathComponent("Skins")
         let layoutsDir = root.appendingPathComponent("Layouts")
@@ -75,6 +82,7 @@ enum DeskWidgetWindowSelfTests {
         clickActionTests(t)
         accessibilityTests(t)
         pointerEventTests(t)
+        reviewRegressionTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -586,6 +594,7 @@ enum DeskWidgetWindowSelfTests {
 
     private static func actionFixture(_ t: AppTestRunner, recorder: ActionRecorder,
                                       executor: SkinExecutor = MainSkinExecutor.shared,
+                                      clock: SkinClock = .live,
                                       text: String = actionSource,
                                       beforePresentation: ((DeskWidgetWindowController) throws -> Void)? = nil) throws -> DeskWidgetWindowController {
         let f = try fixture(t, text: text)
@@ -601,9 +610,13 @@ enum DeskWidgetWindowSelfTests {
         try f.app.state.registerDeskInstallation(source: source, instance: instance)
         let widget = DeskWidgetWindowController(source: source, instance: instance, directory: directory,
                                                program: program, prepared: nil, app: f.app, executor: executor,
+                                               clock: clock,
                                                actionServices: recorder.services)
         try beforePresentation?(widget)
-        t.check(AppSelfTest.spin(timeout: 10) { widget.isStarted && widget.latestPresented != nil })
+        t.check(AppSelfTest.spin(timeout: 10) {
+            (executor as? VirtualTimeExecutor)?.runUntilIdle()
+            return widget.isStarted && widget.latestPresented != nil
+        })
         let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
                                                              scale: widget.window.backingScaleFactor)
         guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
@@ -617,8 +630,265 @@ enum DeskWidgetWindowSelfTests {
             owner.host?.frames.runLoopTurn(.beforeWaiting)
             DispatchQueue.main.async { delivered = true }
         }
-        t.check(AppSelfTest.spin(timeout: 10) { delivered && widget.latestPresented != nil })
+        t.check(AppSelfTest.spin(timeout: 10) {
+            (executor as? VirtualTimeExecutor)?.runUntilIdle()
+            return delivered && widget.latestPresented != nil
+        })
         return widget
+    }
+
+    private static func reviewRegressionTests(_ t: AppTestRunner) {
+        t.suite("App: Desk review regressions: real images place and restart with exclusive prepared resources") {
+            let png = try reviewImageData()
+            let text = #"widget { Row(spacing: 0) { Image(".photos/asset.png").size(48, 40); Image(".PHOTOS/ASSET.PNG").size(24, 20) } }"#
+            let f = try fixture(t, text: text, images: [".photos/asset.png": png])
+            t.check(waitForCheck(f))
+            t.check(f.checking.snapshot.diagnostics.allSatisfy { $0.severity != .error })
+            var placed: DeskWidgetWindowController?, failure: Error?, completed = false
+            f.controller.placeOnDesktop(sourceID: UUID(), instanceID: UUID()) { result in
+                completed = true
+                switch result {
+                case .success(let widget): placed = widget
+                case .failure(let error): failure = error
+                }
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { completed })
+            t.check(failure == nil, "valid installed pictures must reach activation: \(String(describing: failure))")
+            guard let widget = placed else { return }
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isStarted && widget.latestPresented != nil })
+            t.equal(widget.view.frame.size, NSSize(width: 72, height: 40))
+            t.equal(try Data(contentsOf: widget.directory.appendingPathComponent(".photos/asset.png")), png)
+            guard let prepared = widget.owner.prepared,
+                  let privateImage = prepared.images[".photos/asset.png"] else { throw Failure.fixture }
+            t.equal(prepared.images[".PHOTOS/ASSET.PNG"], privateImage, "case aliases share one safely prepared picture")
+            t.check(!privateImage.path.hasPrefix(widget.directory.path + "/"), "the host draws its own immutable copy")
+            f.controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+            t.check(prepared.unchanged(), "closing the editor cannot discard the desktop host's resources")
+            let instanceID = widget.instance.id
+            widget.close(deactivate: false)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.check(!FileManager.default.fileExists(atPath: privateImage.path))
+            f.app.state.saveNow()
+            let restarted = reviewRestartedApp(f.app)
+            defer { _ = restarted.stopAllForTermination(); restarted.endEngineThread() }
+            restarted.loadActiveDeskWidgets()
+            t.check(restarted.deskRestorationFailures.isEmpty)
+            t.check(AppSelfTest.spin(timeout: 10) { restarted.deskWidgetWindows[instanceID]?.isStarted == true })
+            guard let recovered = restarted.deskWidgetWindows[instanceID],
+                  let nextImage = recovered.owner.prepared?.images[".photos/asset.png"] else { throw Failure.fixture }
+            t.check(recovered.latestPresented != nil)
+            t.check(nextImage.path != privateImage.path, "restart owns a fresh preparation")
+            t.equal(restarted.state.deskInstance(instanceID)?.active, true)
+            t.equal(try Data(contentsOf: URL(fileURLWithPath: nextImage.path)), png)
+        }
+
+        t.suite("App: Desk review regressions: missing and linked images cannot activate or lose restart intent") {
+            let f = try fixture(t), png = try reviewImageData()
+            let outside = f.root.appendingPathComponent("outside.png")
+            try png.write(to: outside)
+            var instanceIDs: [UUID] = []
+            for kind in ["missing", "linked file", "linked ancestor"] {
+                let sourceID = UUID(), instanceID = UUID()
+                let name = sourceID.uuidString.lowercased()
+                let directory = f.root.appendingPathComponent("Widgets").appendingPathComponent(name)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let literal = kind == "linked ancestor" ? "assets/outside.png" : "asset.png"
+                try Data("widget { Image(\"\(literal)\").size(48, 40) }".utf8).write(to: directory.appendingPathComponent("Main.desk"))
+                if kind == "linked file" {
+                    try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent(literal), withDestinationURL: outside)
+                } else if kind == "linked ancestor" {
+                    try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent("assets"), withDestinationURL: f.root)
+                }
+                let source = DeskWidgetSourceState(id: sourceID, entry: name + "/Main.desk")
+                let instance = DeskWidgetInstanceState(id: instanceID, sourceID: sourceID)
+                try f.app.state.registerDeskInstallation(source: source, instance: instance)
+                f.app.state.updateDeskInstance(instanceID) { $0.active = true }
+                do {
+                    _ = try f.app.activateDeskWidget(instanceID: instanceID)
+                    t.check(false, "\(kind) must fail before accepting a desktop presentation")
+                } catch {
+                    t.check(f.app.deskWidgetWindows[instanceID] == nil, "\(kind) creates no host")
+                }
+                t.equal(f.app.state.deskInstance(instanceID)?.active, true)
+                instanceIDs.append(instanceID)
+            }
+            f.app.state.saveNow()
+            let restarted = reviewRestartedApp(f.app)
+            defer { _ = restarted.stopAllForTermination(); restarted.endEngineThread() }
+            restarted.loadActiveDeskWidgets()
+            t.check(restarted.deskWidgetWindows.isEmpty)
+            t.equal(restarted.deskRestorationFailures.count, 3)
+            for id in instanceIDs { t.equal(restarted.state.deskInstance(id)?.active, true) }
+            t.equal(try Data(contentsOf: outside), png, "unsafe paths cannot alter or consume the outside file")
+        }
+
+        t.suite("App: Desk review regressions: primary held press cannot cross an accepted destination epoch") {
+            for workerOwned in [false, true] {
+                let worker = workerOwned ? SkinThreadExecutor(name: "Desk primary epoch regression") : nil
+                let executor: SkinExecutor
+                if let worker { executor = worker } else { executor = MainSkinExecutor.shared }
+                let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: executor)
+                defer {
+                    widget.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+                    worker?.stop()
+                }
+                try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+                reviewDrainOwner(widget, t)
+                let oldEpoch = widget.destinationEpoch, oldGeneration = widget.latestPresented?.scene.generation ?? 0
+                let dark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                widget.window.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
+                _ = widget.currentFacts()
+                let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                      scale: widget.window.backingScaleFactor)
+                guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
+                let facts = SkinWindowFacts(frame: widget.window.frame, isVisible: true, isOrderedIn: true,
+                    scale: widget.window.backingScaleFactor, colorSpace: space, appearance: input.environment.appearance.name,
+                    takesPointer: true, sequence: 200, panelGeneration: widget.destinationEpoch)
+                executor.async { [owner = widget.owner] in
+                    owner.take(facts, input: input)
+                    owner.host?.frames.runLoopTurn(.beforeWaiting)
+                }
+                t.check(AppSelfTest.spin(timeout: 10) {
+                    widget.lastAcceptedEpoch == widget.destinationEpoch && widget.destinationEpoch != oldEpoch
+                        && (widget.latestPresented?.scene.generation ?? 0) > oldGeneration
+                })
+                try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+                reviewDrainOwner(widget, t)
+                t.check(recorder.calls.isEmpty, "a new accepted frame cannot adopt the old primary press")
+                try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+                try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+                reviewDrainOwner(widget, t)
+                t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:done😀"], "a fresh primary gesture still executes once")
+            }
+        }
+
+        t.suite("App: Desk review regressions: Remove persists before held close acknowledgement and termination deadline") {
+            for removeWhileClosing in [false, true] {
+                let worker = SkinThreadExecutor(name: "Desk Remove persistence regression")
+                let widget = try actionFixture(t, recorder: ActionRecorder(), executor: worker)
+                let release = DispatchSemaphore(value: 0), entered = DispatchSemaphore(value: 0)
+                defer {
+                    release.signal()
+                    widget.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+                    worker.stop()
+                }
+                worker.async { entered.signal(); release.wait() }
+                t.check(entered.wait(timeout: .now() + 10) == .success)
+                t.equal(widget.app.state.deskInstance(widget.instance.id)?.active, true)
+                if removeWhileClosing {
+                    widget.close(deactivate: false)
+                    t.equal(widget.app.state.deskInstance(widget.instance.id)?.active, true, "ordinary close preserves active intent")
+                }
+                widget.app.deactivateDeskWidget(instanceID: widget.instance.id)
+                t.check(widget.isClosing && !widget.isClosed, "physical teardown still waits behind owner work")
+                t.equal(widget.app.state.deskInstance(widget.instance.id)?.active, false, "Remove intent is synchronous on Main")
+                let late = widget.app.stopAllForTermination(budget: 0)
+                t.check(late.contains(widget.source.entry))
+                widget.app.state.saveNow()
+                let reloaded = AppState(fileURL: widget.app.state.fileURL)
+                t.equal(reloaded.deskInstance(widget.instance.id)?.active, false, "quit saves Remove even before ACK")
+                t.check(reloaded.activeDeskWidgets.isEmpty, "restart must not revive the removed widget")
+                widget.app.state.updateDeskInstance(widget.instance.id) { $0.active = true }
+                release.signal()
+                t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+                t.equal(widget.app.state.deskInstance(widget.instance.id)?.active, true, "an old close ACK cannot overwrite later Main intent")
+                widget.close(deactivate: true)
+                t.equal(widget.app.state.deskInstance(widget.instance.id)?.active, false, "Remove remains immediate on an already closed object")
+            }
+        }
+
+        t.suite("App: Desk review regressions: clock and timezone notifications refresh immediately and realign the next minute") {
+            guard let utc = TimeZone(secondsFromGMT: 0), let shifted = TimeZone(secondsFromGMT: 7200) else { throw Failure.fixture }
+            let time = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_553_600), timeZone: utc)
+            let widget = try actionFixture(t, recorder: ActionRecorder(), executor: time, clock: time.clock,
+                                          text: #"widget { Text("{time.now, format: "HH:mm"}").size(160, 40) }"#)
+            defer {
+                widget.close(deactivate: false)
+                time.runUntilIdle()
+                t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            }
+            widget.window.orderFront(nil)
+            widget.publishFacts()
+            time.runUntilIdle()
+            widget.owner.host?.frames.runLoopTurn(.beforeWaiting)
+            reviewDrainOwner(widget, t)
+            func awaitPresentation(_ generation: UInt64) throws {
+                let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                      scale: widget.window.backingScaleFactor)
+                guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
+                // The real notification may report an occluded desktop window. Like actionFixture, these
+                // same-destination facts qualify bitmap delivery after the notification's scene assertions.
+                let facts = SkinWindowFacts(frame: widget.window.frame, isVisible: true, isOrderedIn: true,
+                    scale: widget.window.backingScaleFactor, colorSpace: space, appearance: input.environment.appearance.name,
+                    takesPointer: true, sequence: 200, panelGeneration: widget.destinationEpoch)
+                time.async { [owner = widget.owner] in owner.take(facts, input: input) }
+                t.check(AppSelfTest.spin(timeout: 10) {
+                    time.runUntilIdle()
+                    widget.owner.host?.frames.runLoopTurn(.beforeWaiting)
+                    return widget.latestPresented?.scene.generation == generation
+                }, "the current bitmap is accepted by Main after visible facts")
+                t.equal(widget.latestPresented?.scene.generation, generation)
+                t.equal(widget.owner.host?.scene?.generation, generation, "delivery does not add another projection")
+            }
+            for name in [NSNotification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
+                let generation = widget.owner.host?.scene?.generation ?? 0
+                let before = reviewSceneTexts(widget)
+                if name == .NSSystemClockDidChange { time.setWallClock(time.wallClock.addingTimeInterval(7207)) }
+                else { time.timeZone = shifted }
+                NotificationCenter.default.post(name: name, object: nil)
+                time.runUntilIdle()
+                widget.owner.host?.frames.runLoopTurn(.beforeWaiting)
+                reviewDrainOwner(widget, t)
+                t.equal(time.now, 0, "no scheduled clock tick was allowed to run")
+                t.equal(widget.owner.host?.scene?.generation, generation + 1, "the notification causes one projection")
+                t.check(reviewSceneTexts(widget) != before, "the changed clock input reaches the scene immediately")
+                try awaitPresentation(generation + 1)
+            }
+            let generation = widget.owner.host?.scene?.generation ?? 0, before = reviewSceneTexts(widget)
+            time.advance(until: 52.999)
+            t.equal(widget.owner.host?.scene?.generation, generation, "no clock tick occurs before the new minute boundary")
+            t.equal(reviewSceneTexts(widget), before)
+            time.advance(until: 53)
+            t.equal(widget.owner.host?.scene?.generation, generation + 1, "the clock ticks exactly at the realigned minute")
+            t.check(reviewSceneTexts(widget) != before, "the first scheduled tick displays the next minute")
+            try awaitPresentation(generation + 1)
+        }
+    }
+
+    private static func reviewDrainOwner(_ widget: DeskWidgetWindowController, _ t: AppTestRunner) {
+        var drained = false
+        widget.executor.async { DispatchQueue.main.async { drained = true } }
+        t.check(AppSelfTest.spin(timeout: 10) {
+            (widget.executor as? VirtualTimeExecutor)?.runUntilIdle()
+            return drained
+        })
+    }
+
+    private static func reviewSceneTexts(_ widget: DeskWidgetWindowController) -> [String] {
+        widget.owner.host?.scene?.drawingItems.compactMap { if case .text(let value) = $0 { return value.text }; return nil } ?? []
+    }
+
+    private static func reviewRestartedApp(_ app: AppController) -> AppController {
+        let root = app.state.fileURL.deletingLastPathComponent()
+        return AppController(state: AppState(fileURL: app.state.fileURL), skinsDirectory: root.appendingPathComponent("Skins"),
+            layoutsDirectory: root.appendingPathComponent("Layouts"), backupsDirectory: root.appendingPathComponent("Backups"),
+            defaultSkinsSource: nil, settingsDirectory: root.appendingPathComponent("Settings"),
+            widgetsDirectory: root.appendingPathComponent("Widgets"), presentsWindows: false)
+    }
+
+    private static func reviewImageData() throws -> Data {
+        guard let provider = CGDataProvider(data: Data([24, 168, 72, 255, 216, 88, 16, 255]) as CFData),
+              let image = CGImage(width: 2, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 8,
+                  space: SkinFrameProducer.sRGB,
+                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue).union(.byteOrder32Big),
+                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { throw Failure.fixture }
+        let output = NSMutableData()
+        guard let encoder = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else { throw Failure.fixture }
+        CGImageDestinationAddImage(encoder, image, nil)
+        guard CGImageDestinationFinalize(encoder) else { throw Failure.fixture }
+        return output as Data
     }
 
     private static func frozenActionBatch(_ widget: DeskWidgetWindowController) throws -> (DeskWidgetClickToken, [ProgramEffect]) {

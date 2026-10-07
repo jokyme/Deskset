@@ -483,6 +483,7 @@ background.socket	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataS
 mono.bootTime	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 mono.idleTime	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 mono.systemUptime	Sources/Deskset/SystemMonitor.swift	3	system data (SystemDataSource): recorded or faked in verification
+random.UUID	Sources/Deskset/SystemMonitor.swift	2	battery cache invalidation identity only; old in-flight reads cannot refill a new cache, not a skin input
 wait.deadline	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 wall.Date()	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 zone.TimeZone.current	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification

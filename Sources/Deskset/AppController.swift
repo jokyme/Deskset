@@ -1248,12 +1248,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             throw DeskWidgetActivationFailure.invalidPackage
         }
 
-        let package = PackageLoader.load(deskData: data, fileName: fileName, limits: catalog.limits)
+        var package = PackageLoader.load(deskData: data, fileName: fileName, limits: catalog.limits)
         let service = DeskLanguageService(package: package, openFile: fileID,
                                           options: DeskServiceOptions(catalog: catalog))
         let snapshot = service.snapshot
         let compileResult = Desk.compile(snapshot.checked, catalog: catalog)
-        guard let program = compileResult.program else {
+        // Missing assets still publish supported literal demands; they do not publish an executable program.
+        // Supply only safely prepared files, then recheck the same source before final compilation.
+        guard compileResult.issues.isEmpty,
+              compileResult.program != nil || !compileResult.imageSources.isEmpty else {
             throw DeskWidgetActivationFailure.compileFailed
         }
 
@@ -1297,6 +1300,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !retainedPrepared {
                 hostPrepared.removeCopies()
             }
+        }
+
+        guard hostPrepared.failure == nil, hostPrepared.unchanged() else {
+            throw DeskWidgetActivationFailure.invalidPackage
+        }
+        package.files += hostPrepared.files
+        let checked = DeskLanguageService(package: package, openFile: fileID, options: snapshot.options).snapshot
+        guard let program = Desk.compile(checked.checked, catalog: catalog).program else {
+            throw DeskWidgetActivationFailure.compileFailed
         }
 
         let controller = try DeskWidgetWindowController(

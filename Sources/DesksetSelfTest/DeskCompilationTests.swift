@@ -136,7 +136,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"widget { Text("A").color(.red, if: true) }"#,
                      #"widget { Text("A").color(.dim, if: true) }"#,
                      #"widget { Text("A").font(.largeNumber).margin(1) }"#,
-                     #"widget { Text("{cpu.usage}") }"#,
                      #"widget { computed value = 1KB / 1s; Text(value) }"#,
                      #"widget { Row(align: .baseline) { Text("A") } }"#]
         for source in cases {

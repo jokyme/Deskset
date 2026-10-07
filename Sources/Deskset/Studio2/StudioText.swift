@@ -757,7 +757,7 @@ enum StudioText {
         .removeWidgetFromDesktop: ("Remove from Desktop", "从桌面移除"),
         .deskWidgetUnavailable: ("Widget unavailable", "小组件不可用"),
         .deskWidgetInstallationFailed: ("Cannot place on desktop: %@", "无法放到桌面：%@"),
-        .deskWidgetPreparationFailed: ("Cannot prepare widget resources: %@", "无法准备小组件资源：%@"),
+        .deskWidgetPreparationFailed: ("Cannot prepare widget resources.", "无法准备小组件资源。"),
         .deskWidgetInvalidFile: ("Only .desk files can be placed on the desktop.", "只有 .desk 文件可以放到桌面。"),
         .deskActionCopyFailed: ("Cannot copy this text to the clipboard.", "无法将这段文字复制到剪贴板。"),
         .deskActionOpenFailed: ("Cannot open this target: %@", "无法打开此目标：%@"),
