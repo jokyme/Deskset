@@ -144,6 +144,9 @@ enum StudioText {
         case deskActionCopyFailed = "desk.action.copyFailed"
         case deskActionOpenFailed = "desk.action.openFailed"
         case deskActionMissingValue = "desk.action.missingValue"
+        case deskActionRecordsCount = "desk.action.recordsCount"
+        case deskActionRecordsEmpty = "desk.action.recordsEmpty"
+        case deskActionPreviewNotice = "desk.action.previewNotice"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -170,6 +173,7 @@ enum StudioText {
         case previewingNoData = "capsule.previewing.noData"
         case previewingTime = "capsule.previewing.time"
         case wouldOpen = "capsule.wouldOpen"
+        case wouldCopy = "capsule.wouldCopy"
         case wouldOpenWidget = "capsule.wouldOpenWidget"
         case wouldCloseWidget = "capsule.wouldCloseWidget"
         case wouldSaveSetting = "capsule.wouldSaveSetting"
@@ -759,6 +763,10 @@ enum StudioText {
         .deskActionOpenFailed: ("Cannot open this target: %@", "无法打开此目标：%@"),
         .deskActionMissingValue: ("The click action needs an available text value. Check its data or provide a fallback.",
                                   "点击动作需要可用的文字值。请检查数据或提供回退值。"),
+        .deskActionRecordsCount: ("Actions (%d)", "动作（%d）"),
+        .deskActionRecordsEmpty: ("Click the preview to see what it would do.", "点击预览，查看它会执行什么动作。"),
+        .deskActionPreviewNotice: ("Preview only · actions are recorded here; nothing is copied or opened.",
+                                  "只是预览 · 这里仅记录动作，不会复制文字或打开目标。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),
@@ -785,6 +793,7 @@ enum StudioText {
         .previewingNoData: ("no data", "没有数据"),
         .previewingTime: ("the time %@", "时间 %@"),
         .wouldOpen: ("Would open %@", "会打开 %@"),
+        .wouldCopy: ("Would copy %@", "会复制 %@"),
         .wouldOpenWidget: ("Would open another widget", "会打开另一个小组件"),
         .wouldCloseWidget: ("Would close a widget", "会关掉一个小组件"),
         .wouldSaveSetting: ("Would save a setting to its file", "会把一个设置存进文件"),

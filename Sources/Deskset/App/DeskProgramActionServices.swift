@@ -20,7 +20,7 @@ struct DeskProgramActionServices {
             return copy(text) ? nil : StudioText[.deskActionCopyFailed]
         case .open(let target):
             guard let url = resolver.resolve(target, directory: directory), open(url) else {
-                return StudioText.format(.deskActionOpenFailed, target)
+                return String(format: StudioText[.deskActionOpenFailed], target)
             }
             return nil
         }

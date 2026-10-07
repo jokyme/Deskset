@@ -1013,9 +1013,16 @@ enum DeskProgramPreviewSelfTests {
 
     private static func runClickActionPreviewTests(_ t: AppTestRunner) {
         t.suite("App: Desk click actions: editor records ordered requests without executing or replaying them") {
+            let oldLanguage = StudioText.languageOverride
+            StudioText.languageOverride = .english
+            defer { StudioText.languageOverride = oldLanguage }
             let source = #"widget { variable n = 0; computed caption = "{n}"; Text(caption).font(20).size(160, 40).onClick { n = n + 1; copy(caption); open("https://example.com/{n}"); copy("done😀") } }"#
             let f = try fixture(t, source), p = f.preview
             p.setVisible(true)
+            t.equal(p.actionRecordsButton.state, .off, "records start collapsed without taking canvas space")
+            t.equal(p.actionRecordsButton.title, "Actions (0)")
+            t.check(p.actionRecordsScrollView.isHiddenOrHasHiddenAncestor)
+            t.check(!p.actionRecordsClearButton.isEnabled)
             var batches: [[ProgramEffect]] = []
             p.onRecordedEffects = { batches.append($0) }
             try click(at: NSPoint(x: 20, y: 20), in: f)
@@ -1023,6 +1030,15 @@ enum DeskProgramPreviewSelfTests {
             t.equal(p.recordedEffects, expected)
             t.equal(batches, [expected])
             t.equal(clockTexts(p), ["1"])
+            t.equal(p.actionRecordsButton.title, "Actions (3)")
+            t.equal(p.actionRecordsText.string, "", "collapsed recording does not build a hidden text log")
+            p.actionRecordsButton.performClick(nil)
+            t.equal(p.actionRecordsButton.state, .on)
+            t.check(!p.actionRecordsScrollView.isHiddenOrHasHiddenAncestor)
+            t.equal(p.actionRecordsText.string, "1. Would copy 1\n\n2. Would open https://example.com/1\n\n3. Would copy done😀")
+            t.equal(p.actionRecordsText.accessibilityLabel(), "Actions (3)")
+            t.equal(p.actionRecordsNotice.stringValue, StudioText[.deskActionPreviewNotice])
+            t.check(!p.actionRecordsText.isEditable && p.actionRecordsText.isSelectable)
             p.updateForTick(); p.refreshEnvironment()
             t.equal(p.recordedEffects, expected, "projection and environment refresh never replay requests")
             t.equal(batches.count, 1)
@@ -1034,6 +1050,21 @@ enum DeskProgramPreviewSelfTests {
             for _ in 0..<35 { try click(at: NSPoint(x: 20, y: 20), in: f) }
             t.equal(p.recordedEffects.count, 100, "preview uses the existing bounded Studio action-log retention")
             t.equal(p.recordedEffects.last, .copy("done😀"))
+            t.equal(p.actionRecordsButton.title, "Actions (100)")
+            t.equal(p.actionRecordsText.string.components(separatedBy: "\n\n").count, 100)
+            t.check(p.actionRecordsText.string.hasPrefix("1. Would copy done😀\n\n2. Would copy 4\n\n"),
+                    "the visible log starts at the retained oldest effect, in execution order")
+            t.check(p.actionRecordsText.string.hasSuffix("100. Would copy done😀"))
+            let batchesBeforeClear = batches.count
+            p.actionRecordsClearButton.performClick(nil)
+            t.check(p.recordedEffects.isEmpty)
+            t.equal(p.actionRecordsButton.title, "Actions (0)")
+            t.equal(p.actionRecordsText.string, StudioText[.deskActionRecordsEmpty])
+            t.equal(clockTexts(p), ["36"], "clearing the log leaves program variables alone")
+            t.equal(batches.count, batchesBeforeClear)
+            t.check(!p.actionRecordsClearButton.isEnabled)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.recordedEffects, [.copy("37"), .open("https://example.com/37"), .copy("done😀")])
             t.equal(f.editor.text, source)
             t.equal(try Data(contentsOf: f.file), Data(source.utf8))
             t.check(f.app.sortedControllers.isEmpty && f.app.deskWidgetWindows.isEmpty,
@@ -1043,9 +1074,106 @@ enum DeskProgramPreviewSelfTests {
             t.check(settled(f))
             try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
             t.check(p.recordedEffects.isEmpty, "a checked replacement clears the previous session's recording and press")
+            t.equal(p.actionRecordsButton.title, "Actions (0)")
+            t.equal(p.actionRecordsText.string, StudioText[.deskActionRecordsEmpty])
             f.editor.discardUncommittedChanges(); f.controller.window?.close()
             t.equal(p.state, .closed)
             t.check(p.onRecordedEffects == nil)
+            t.equal(p.actionRecordsText.string, "")
+            t.check(p.actionRecordsScrollView.isHiddenOrHasHiddenAncestor)
+            t.check(!p.actionRecordsButton.isEnabled && !p.actionRecordsClearButton.isEnabled)
+            t.check(p.actionRecordsButton.target == nil && p.actionRecordsClearButton.target == nil)
+        }
+
+        t.suite("App: Desk click actions: visible records wrap select scroll and preserve the minimum preview canvas") {
+            let oldLanguage = StudioText.languageOverride
+            StudioText.languageOverride = .english
+            defer { StudioText.languageOverride = oldLanguage }
+            let payload = String(repeating: "中文😀 e\u{301} \"quoted\" \\ \u{E000}\u{E001}\n", count: 120) + "最后一行😀"
+            let literal = payload.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "\n", with: "\\n")
+            let source = "widget { Text(cpu.usage).font(20).size(160, 40).onClick { copy(\"" + literal +
+                "\"); open(\"https://example.com/中文\") } }"
+            guard let zone = TimeZone(secondsFromGMT: 0) else { throw Failure.fixture }
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_000.25), timeZone: zone)
+            let system = PreviewCountingSystem()
+            let f = try fixture(t, source, clock: executor.clock, executor: executor, system: system), p = f.preview
+            p.setVisible(true)
+            var batches = 0
+            p.onRecordedEffects = { _ in batches += 1 }
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            p.actionRecordsButton.performClick(nil)
+            t.equal(p.recordedEffects, [.copy(payload), .open("https://example.com/中文")])
+            t.equal(p.actionRecordsText.string, "1. Would copy " + payload + "\n\n2. Would open https://example.com/中文")
+            t.check(p.actionRecordsScrollView.hasVerticalScroller && !p.actionRecordsScrollView.hasHorizontalScroller)
+            t.check(p.actionRecordsText.isVerticallyResizable && !p.actionRecordsText.isHorizontallyResizable)
+            guard let window = f.controller.window,
+                  let split = window.contentViewController as? NSSplitViewController,
+                  let pane = p.actionRecordsScrollView.superview,
+                  let textContainer = p.actionRecordsText.textContainer,
+                  let textStorage = p.actionRecordsText.textStorage else { throw Failure.fixture }
+            window.setContentSize(NSSize(width: 700, height: 240))
+            window.contentView?.layoutSubtreeIfNeeded()
+            split.splitView.setPosition(split.splitView.bounds.width - 280 - split.splitView.dividerThickness, ofDividerAt: 0)
+            window.contentView?.layoutSubtreeIfNeeded()
+            t.close(p.view.bounds.width, 280, accuracy: 1)
+            t.close(p.view.bounds.height, 240, accuracy: 1)
+            t.check(!p.view.hasAmbiguousLayout && !pane.hasAmbiguousLayout && !p.actionRecordsScrollView.hasAmbiguousLayout)
+            t.check(pane.bounds.height > 0 && pane.bounds.height <= p.view.bounds.height * 0.25 + 1)
+            let layoutHeights = "view(frame/bounds)=\(p.view.frame.height)/\(p.view.bounds.height), " +
+                "toolbar=\(p.view.subviews.compactMap { $0 as? NSStackView }.first?.frame.height ?? -1), " +
+                "status=\(p.view.subviews.compactMap { $0 as? NSTextField }.first?.frame.height ?? -1), " +
+                "footer=\(pane.superview?.frame.height ?? -1), header=\(p.actionRecordsButton.superview?.frame.height ?? -1), " +
+                "pane(frame/bounds)=\(pane.frame.height)/\(pane.bounds.height), notice=\(p.actionRecordsNotice.frame.height), " +
+                "canvas(scroll/clipFrame/clipBounds)=\(p.scrollView.frame.height)/\(p.scrollView.contentView.frame.height)/\(p.scrollView.contentView.bounds.height), " +
+                "records(scroll/clipFrame/clipBounds)=\(p.actionRecordsScrollView.frame.height)/\(p.actionRecordsScrollView.contentView.frame.height)/\(p.actionRecordsScrollView.contentView.bounds.height), " +
+                "zoom=\(p.scrollView.magnification)"
+            t.check(p.scrollView.contentView.bounds.height > pane.bounds.height,
+                    "the minimum-size preview still gives the canvas more height than the record pane; " + layoutHeights)
+            t.check(p.actionRecordsScrollView.contentView.bounds.height > 0)
+            p.actionRecordsText.layoutManager?.ensureLayout(for: textContainer)
+            p.actionRecordsText.sizeToFit()
+            t.check(p.actionRecordsText.bounds.height > p.actionRecordsScrollView.contentView.bounds.height,
+                    "long multiline requests occupy a real scrollable document")
+            let selected = (p.actionRecordsText.string as NSString).range(of: "最后一行😀")
+            t.check(selected.location != NSNotFound)
+            p.actionRecordsText.setSelectedRange(selected)
+            p.actionRecordsText.scrollRangeToVisible(selected)
+            t.equal(p.actionRecordsText.selectedRange(), selected)
+            t.equal((p.actionRecordsText.string as NSString).substring(with: selected), "最后一行😀")
+            t.check(p.actionRecordsScrollView.contentView.bounds.origin.y > 0, "the last Unicode line is inspectable by scrolling")
+            let visibleText = p.actionRecordsText.string
+            let edits = ActionRecordEditingObserver()
+            textStorage.delegate = edits
+            defer { textStorage.delegate = nil }
+            system.cpu = 57
+            executor.advance(by: 2)
+            t.equal(clockTexts(p), ["57"], "ordinary CPU frames still project while the action pane is open")
+            t.equal(p.actionRecordsText.string, visibleText)
+            t.equal(p.actionRecordsText.selectedRange(), selected)
+            t.equal(edits.characterEdits, 0, "CPU timers do not rewrite the action document")
+            t.equal(batches, 1)
+            let expandedCanvasHeight = p.scrollView.contentView.bounds.height
+            for _ in 0..<2 {
+                p.actionRecordsButton.performClick(nil)
+                p.view.layoutSubtreeIfNeeded()
+                t.check(p.actionRecordsScrollView.isHiddenOrHasHiddenAncestor)
+                t.check(p.scrollView.contentView.bounds.height > expandedCanvasHeight)
+                p.actionRecordsButton.performClick(nil)
+                p.view.layoutSubtreeIfNeeded()
+                t.check(!p.actionRecordsScrollView.isHiddenOrHasHiddenAncestor)
+                t.check(pane.bounds.height <= p.view.bounds.height * 0.25 + 1)
+                t.equal(p.actionRecordsText.string, visibleText)
+            }
+            StudioText.languageOverride = .chinese
+            p.refreshDateInput()
+            t.equal(p.actionRecordsButton.title, "动作（2）")
+            t.equal(p.actionRecordsButton.accessibilityLabel(), "动作（2）")
+            t.equal(p.actionRecordsClearButton.title, "清除")
+            t.equal(p.actionRecordsNotice.accessibilityLabel(), StudioText[.deskActionPreviewNotice])
+            t.equal(p.actionRecordsText.string, "1. 会复制 " + payload + "\n\n2. 会打开 https://example.com/中文")
+            t.equal(p.recordedEffects, [.copy(payload), .open("https://example.com/中文")])
+            t.equal(batches, 1, "changing the displayed language does not replay requests")
         }
 
         t.suite("App: Desk click actions: failed editor projection records no external requests") {
@@ -1080,6 +1208,14 @@ enum DeskProgramPreviewSelfTests {
             instant = executor.clock.now()
             p.updateForTick()
             t.equal(clockTexts(p).first, "0", "the delay failure keeps the previous variable value")
+        }
+    }
+
+    private final class ActionRecordEditingObserver: NSObject, NSTextStorageDelegate {
+        var characterEdits = 0
+        func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                         range editedRange: NSRange, changeInLength delta: Int) {
+            if editedMask.contains(.editedCharacters) { characterEdits += 1 }
         }
     }
 

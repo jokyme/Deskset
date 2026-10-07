@@ -17,6 +17,21 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private let status = StudioPageStyle.wrapping("")
     private let fitButton = NSButton(title: StudioText[.zoomToFit], target: nil, action: nil)
     private let actualButton = NSButton(title: StudioText[.actualSizeShort], target: nil, action: nil)
+    let actionRecordsButton = EditorStyle.disclosure("", open: false)
+    let actionRecordsClearButton = NSButton(title: StudioText[.logClear], target: nil, action: nil)
+    let actionRecordsText = NSTextView(frame: .zero)
+    let actionRecordsScrollView = OverlayScrollView(frame: .zero)
+    let actionRecordsNotice = StudioPageStyle.wrapping(StudioText[.deskActionPreviewNotice])
+    private let actionRecordsPane = NSStackView()
+    private let actionRecordsFooter = NSStackView()
+    private var actionRecordsCanvasCap: NSLayoutConstraint?
+    private var actionRecordsExpanded = false
+    private var actionRecordsLanguage: StudioLanguage?
+    private enum ActionRecordsLayout {
+        static let preferredHeight: CGFloat = 160
+        static let maximumHeightFraction: CGFloat = 0.25
+        static let maximumCanvasHeightFraction: CGFloat = 0.75
+    }
     private var snapshot: DeskSnapshot?
     private var runtime: ProgramRuntime?
     private var resources: ((DeskSnapshot) -> DeskProgramResources.Input)?
@@ -138,10 +153,61 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         let toolbar = NSStackView(views: [heading, NSView(), actualButton, fitButton])
         toolbar.orientation = .horizontal
         toolbar.spacing = 8
-        for child in [backdrop, scrollView, toolbar, status] as [NSView] {
+        actionRecordsButton.target = self
+        actionRecordsButton.action = #selector(toggleActionRecords)
+        actionRecordsButton.setButtonType(.pushOnPushOff)
+        actionRecordsClearButton.target = self
+        actionRecordsClearButton.action = #selector(clearActionRecords)
+        actionRecordsClearButton.bezelStyle = .inline
+        actionRecordsClearButton.controlSize = .small
+        actionRecordsClearButton.font = StudioPageStyle.smallFont
+        let recordsHeader = NSStackView(views: [actionRecordsButton, NSView(), actionRecordsClearButton])
+        recordsHeader.orientation = .horizontal
+        recordsHeader.spacing = 8
+        actionRecordsText.isEditable = false
+        actionRecordsText.isSelectable = true
+        actionRecordsText.isRichText = false
+        actionRecordsText.importsGraphics = false
+        actionRecordsText.drawsBackground = false
+        actionRecordsText.font = StudioPageStyle.valueFont
+        actionRecordsText.textColor = .labelColor
+        actionRecordsText.textContainerInset = NSSize(width: 6, height: 8)
+        actionRecordsText.minSize = .zero
+        actionRecordsText.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        actionRecordsText.isVerticallyResizable = true
+        actionRecordsText.isHorizontallyResizable = false
+        actionRecordsText.autoresizingMask = [.width]
+        actionRecordsText.textContainer?.widthTracksTextView = true
+        actionRecordsText.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        actionRecordsScrollView.documentView = actionRecordsText
+        actionRecordsScrollView.borderType = .noBorder
+        actionRecordsScrollView.drawsBackground = false
+        actionRecordsScrollView.hasVerticalScroller = true
+        actionRecordsScrollView.hasHorizontalScroller = false
+        // Keep a stable text width with legacy scrollers, matching the code editor's soft-wrap behavior.
+        actionRecordsScrollView.autohidesScrollers = false
+        actionRecordsPane.orientation = .vertical
+        actionRecordsPane.alignment = .leading
+        actionRecordsPane.spacing = 4
+        actionRecordsPane.addArrangedSubview(actionRecordsNotice)
+        actionRecordsPane.addArrangedSubview(actionRecordsScrollView)
+        actionRecordsFooter.orientation = .vertical
+        actionRecordsFooter.alignment = .leading
+        actionRecordsFooter.spacing = 8
+        // Removing only the arrangement preserves the pane's cross-view constraints while collapsed.
+        actionRecordsFooter.detachesHiddenViews = false
+        actionRecordsFooter.addArrangedSubview(recordsHeader)
+        actionRecordsFooter.addArrangedSubview(actionRecordsPane)
+        let recordsFooter = actionRecordsFooter
+        for child in [backdrop, scrollView, toolbar, status, recordsFooter] as [NSView] {
             child.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(child)
         }
+        let recordsHeight = actionRecordsPane.heightAnchor.constraint(equalToConstant: ActionRecordsLayout.preferredHeight)
+        recordsHeight.priority = .defaultLow
+        // The whole-view cap alone cannot account for the toolbar and wrapped status in a short window.
+        actionRecordsCanvasCap = actionRecordsPane.heightAnchor.constraint(lessThanOrEqualTo: scrollView.heightAnchor,
+            multiplier: ActionRecordsLayout.maximumCanvasHeightFraction)
         NSLayoutConstraint.activate([
             backdrop.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             backdrop.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -156,10 +222,22 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             scrollView.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -8),
             status.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: StudioPageStyle.margin),
             status.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -StudioPageStyle.margin),
-            status.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            status.bottomAnchor.constraint(equalTo: recordsFooter.topAnchor, constant: -8),
+            recordsFooter.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: StudioPageStyle.margin),
+            recordsFooter.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -StudioPageStyle.margin),
+            recordsFooter.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            recordsHeader.widthAnchor.constraint(equalTo: recordsFooter.widthAnchor),
+            actionRecordsPane.widthAnchor.constraint(equalTo: recordsFooter.widthAnchor),
+            actionRecordsPane.topAnchor.constraint(equalTo: recordsHeader.bottomAnchor, constant: 8),
+            actionRecordsNotice.widthAnchor.constraint(equalTo: actionRecordsPane.widthAnchor),
+            actionRecordsScrollView.widthAnchor.constraint(equalTo: actionRecordsPane.widthAnchor),
+            actionRecordsPane.heightAnchor.constraint(lessThanOrEqualTo: container.heightAnchor,
+                multiplier: ActionRecordsLayout.maximumHeightFraction),
+            recordsHeight,
         ])
         view = container
         updateStatus()
+        updateActionRecords()
     }
 
     /// A stale or pending result cannot borrow an earlier picture. The existing checker supplies all four guards.
@@ -191,7 +269,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             guard accepts?(candidate) == true else { clear(.checking); return }
             snapshot = candidate
             runtime = next
-            recordedEffects.removeAll()
+            resetActionRecords()
             canvas.context = DrawContext(fonts: AppFontResolver())
             project()
         } catch { clear(.unavailable(previewMessage(for: error))) }
@@ -295,6 +373,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 if recordedEffects.count > Self.recordedEffectLimit {
                     recordedEffects.removeFirst(recordedEffects.count - Self.recordedEffectLimit)
                 }
+                updateActionRecords()
                 onRecordedEffects?(effects)
             }
         } catch PreviewFailure.extent { clear(.unavailable(StudioText[.deskPreviewTooLarge]), keepingProgram: true) }
@@ -367,7 +446,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         if !keepingProgram {
             snapshot = nil
             runtime = nil
-            recordedEffects.removeAll()
+            resetActionRecords()
         }
         scene = nil
         lastColors = nil
@@ -393,6 +472,79 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         status.setAccessibilityLabel(message)
         actualButton.isEnabled = state == .ready
         fitButton.isEnabled = state == .ready
+        // The existing date/locale refresh path also refreshes the words, once per actual language change.
+        if actionRecordsLanguage != StudioText.language { updateActionRecords() }
+    }
+
+    private func updateActionRecords() {
+        guard isViewLoaded else { return }
+        actionRecordsLanguage = StudioText.language
+        heading.stringValue = StudioText[.previewOnly]
+        fitButton.title = StudioText[.zoomToFit]
+        actualButton.title = StudioText[.actualSizeShort]
+        scrollView.setAccessibilityLabel(StudioText[.previewOnly])
+        let title = StudioText.format(.deskActionRecordsCount, recordedEffects.count)
+        actionRecordsButton.title = title
+        actionRecordsButton.state = actionRecordsExpanded ? .on : .off
+        actionRecordsButton.image = StudioPageStyle.symbol(actionRecordsExpanded ? "chevron.down" : "chevron.right",
+                                                          size: 9, weight: .semibold)
+        actionRecordsButton.setAccessibilityLabel(title)
+        actionRecordsButton.isEnabled = state != .closed
+        actionRecordsClearButton.title = StudioText[.logClear]
+        actionRecordsClearButton.setAccessibilityLabel(StudioText[.logClear])
+        actionRecordsClearButton.isEnabled = state != .closed && !recordedEffects.isEmpty
+        actionRecordsNotice.stringValue = StudioText[.deskActionPreviewNotice]
+        actionRecordsNotice.setAccessibilityLabel(StudioText[.deskActionPreviewNotice])
+        actionRecordsPane.setAccessibilityLabel(StudioText[.previewOnly])
+        actionRecordsScrollView.setAccessibilityLabel(title)
+        actionRecordsText.setAccessibilityLabel(title)
+        let expanded = actionRecordsExpanded && state != .closed
+        // A folded pane stays in the hierarchy for its constraints, but reserves no canvas space.
+        actionRecordsCanvasCap?.isActive = expanded
+        if expanded {
+            if !actionRecordsFooter.arrangedSubviews.contains(actionRecordsPane) {
+                actionRecordsFooter.addArrangedSubview(actionRecordsPane)
+            }
+        } else if actionRecordsFooter.arrangedSubviews.contains(actionRecordsPane) {
+            actionRecordsFooter.removeArrangedSubview(actionRecordsPane)
+        }
+        actionRecordsPane.isHidden = !expanded
+        let text: String
+        if state == .closed || !actionRecordsExpanded { text = "" }
+        else if recordedEffects.isEmpty { text = StudioText[.deskActionRecordsEmpty] }
+        else {
+            text = recordedEffects.enumerated().map { index, effect in
+                let sentence: String
+                switch effect {
+                // These templates already include their separator; preserve every code point in the argument.
+                case .copy(let value): sentence = String(format: StudioText[.wouldCopy], value)
+                case .open(let value): sentence = String(format: StudioText[.wouldOpen], value)
+                }
+                return "\(index + 1). \(sentence)"
+            }.joined(separator: "\n\n")
+        }
+        if actionRecordsText.string != text {
+            actionRecordsText.string = text
+            actionRecordsText.setSelectedRange(NSRange(location: 0, length: 0))
+            actionRecordsText.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        }
+        view.needsLayout = true
+    }
+
+    private func resetActionRecords() {
+        recordedEffects.removeAll()
+        updateActionRecords()
+    }
+
+    @objc func toggleActionRecords() {
+        guard state != .closed else { return }
+        actionRecordsExpanded.toggle()
+        updateActionRecords()
+    }
+
+    @objc func clearActionRecords() {
+        guard state != .closed else { return }
+        resetActionRecords()
     }
 
     @objc func fit() {
@@ -413,10 +565,15 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
 
     func close() {
         precondition(Thread.isMainThread)
+        actionRecordsExpanded = false
         clear(.closed)
         accepts = nil
         resources = nil
         onRecordedEffects = nil
+        actionRecordsButton.target = nil
+        actionRecordsButton.action = nil
+        actionRecordsClearButton.target = nil
+        actionRecordsClearButton.action = nil
         canvas.beforeDrawing = nil
         canvas.onEnvironmentChange = nil
         canvas.onImageFailure = nil
