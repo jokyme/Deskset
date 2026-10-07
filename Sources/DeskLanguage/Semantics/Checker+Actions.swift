@@ -184,7 +184,12 @@ extension Checker {
         } else if let slot = value.open {
             recordUse(slot, expected: targetVal.type, at: range(valueNode), description: LocalizedText("assigned to \(text(target.node))", "赋给 \(text(target.node))"))
         } else {
-            _ = coerce(value, valueNode, to: targetVal.type, what: .code(text(target.node)), valueContext)
+            let fits = coerce(value, valueNode, to: targetVal.type, what: .code(text(target.node)), valueContext)
+            if fits, mute == 0, value.isNumber,
+               targetVal.dimension == .bytes || targetVal.dimension == .bytesPerSecond {
+                // A fixed-base receiver has no open slot, but still supplies open byte-literal bases.
+                deferredNumericUses.append(.assignment(valueNode, targetVal, value, .code(text(target.node)), valueContext))
+            }
         }
         // Options assigned something that is not a constant count as variables (D102).
         if path.count == 2 && path[0] == "options", let option = options[path[1]] {

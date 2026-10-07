@@ -43,6 +43,74 @@ func runDeskCheckerTests(_ t: TestRunner) {
         t.equal(checked.canonicalNumericValues[candidate.value], value, "\(facet): checked Length value")
     }
 
+    t.suite("Desk: checker: Progress plain literal fractions warn with the existing percent fix") {
+        let source = "info { name: \"T\" }\nwidget { Progress(60) }"
+        let checked = deskCheck(source)
+        t.equal(checked.diagnostics.map(\.id.rawValue), ["DK4013"], deskDescribe(checked))
+        guard let diagnostic = checked.diagnostics.first else { t.check(false); return }
+        t.equal(diagnostic.severity, .warning)
+        t.equal(diagnostic.fixIts.first.map { TextEdit.apply($0.edits, to: source) },
+                "info { name: \"T\" }\nwidget { Progress(60%) }")
+        t.check(diagnostic.message(in: .english).contains("60"))
+        t.check(diagnostic.message(in: .simplifiedChinese).contains("60"))
+        for body in ["Progress(0.6)", "Progress(1)", "Progress(60%)", "Progress(60, total: 100)",
+                     "Progress((60))", "Progress(30 + 30)", "Gauge(60)",
+                     "variable value = 60; Progress(value)", "computed value = 60; Progress(value)"] {
+            let value = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(value.diagnostics(.error).isEmpty, "\(body): \(deskDescribe(value))")
+            t.check(!value.diagnostics.contains { $0.id == .fractionOver1 }, body)
+        }
+    }
+
+    t.suite("Desk: checker: Progress total follows the checked value dimension and byte base") {
+        let cases: [(String, String, Int, Double)] = [
+            ("Progress(memory.used, total: 8GB)", "8GB", 1024, 8_589_934_592),
+            ("Gauge(memory.used, total: 8GB)", "8GB", 1024, 8_589_934_592),
+            ("Progress(memory.used, total: 4GB + 4GB)", "4GB", 1024, 4_294_967_296),
+            ("computed full = 8GB; Progress(memory.used, total: full)", "8GB", 1024, 8_589_934_592),
+            ("variable full = 8GB; computed alias = full; Progress(memory.used, total: alias)", "8GB", 1024, 8_589_934_592),
+            ("Progress(disk.used, total: 8GB)", "8GB", 1000, 8_000_000_000),
+            ("Progress(disk.used, total: 8GiB)", "8GiB", 1024, 8_589_934_592),
+            ("Progress(2GB, total: 8GB)", "8GB", 1000, 8_000_000_000),
+        ]
+        for (body, text, base, canonical) in cases {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let nodes = DeskNodeTable(tree: checked.tree).entries.map(\.positioned).filter {
+                $0.kind == .numberLiteral && $0.node.trimmedText == text
+            }
+            t.check(!nodes.isEmpty, body)
+            for node in nodes {
+                let id = checked.tree.id(of: node)
+                t.equal(checked.types[id]?.type, .bytes, body)
+                t.equal(checked.types[id]?.displayBase, base, body)
+                t.equal(checked.canonicalNumericValues[id], canonical, body)
+                t.check(checked.numericCoercions[id] == nil, body)
+            }
+            for declaration in checked.declarationTypes.values {
+                t.equal(declaration.type, .bytes, body); t.equal(declaration.displayBase, base, body)
+            }
+        }
+        for body in ["Progress(cpu.usage, total: 100)", "Progress(cpu.usage, total: 100%)",
+                     "variable full = 100; Progress(battery.level, total: full)"] {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let numbers = DeskNodeTable(tree: checked.tree).entries.map(\.positioned).filter { $0.kind == .numberLiteral }
+            t.equal(numbers.count, 1)
+            for node in numbers {
+                let id = checked.tree.id(of: node)
+                t.equal(checked.types[id]?.type, .percent, body)
+                t.equal(checked.canonicalNumericValues[id], 100, body)
+                t.check(checked.numericCoercions[id] == nil, "same dimension is not percent-as-fraction: \(body)")
+            }
+        }
+        for body in ["Progress(1s, total: 2GB)", "Gauge(1s, total: 2GB)"] {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.equal(checked.diagnostics(.error).map(\.id), [.unitMismatch], deskDescribe(checked))
+        }
+        t.equal(deskIDs(of: "widget { Progress(1s, total: 20) }"), ["DK4011"])
+    }
+
     t.suite("Desk: checker: root facts: single roots publish the final flag independently of inheritance") {
         let cases: [(String, String)] = [
             ("Rectangle().rounded(8)", "Rectangle"),

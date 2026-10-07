@@ -1,17 +1,43 @@
-/// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid shape paints, local images, scalar text bindings and startup/user click actions through the shared executor.
+/// The shared, typed program consumed without an INI file or a live Skin. Proposal-based stacks and Freeform
+/// arrange shapes, images, scalar text and dynamic progress, with startup/user click actions through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
     public let declarations: [ProgramDeclaration]
     public let onLoad: [ProgramAssignment]
+    public let size: ProgramWidgetSize
 
     public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = [],
-                onLoad: [ProgramAssignment] = []) {
+                onLoad: [ProgramAssignment] = [], size: ProgramWidgetSize = .fit) {
         self.name = name
         self.root = root
         self.declarations = declarations
         self.onLoad = onLoad
+        self.size = size
+    }
+}
+
+public enum ProgramSizePreset: String, CaseIterable, Equatable, Sendable { case small, medium, large }
+
+/// Preset dimensions are supplied by the producer's checked catalog, in points.
+public enum ProgramWidgetSize: Equatable, Sendable {
+    case fit
+    case preset(ProgramSizePreset, size: SkinSize)
+}
+
+public enum ProgramDirection: String, CaseIterable, Equatable, Sendable { case right, left, up, down }
+
+/// A dynamic bar. Its range remains separate from the value, and is resolved from the same projection inputs.
+public struct ProgramProgress: Equatable, Sendable {
+    public let value: ProgramExpression
+    public let total: ProgramExpression?
+    public let fills: ProgramDirection
+    public let color: ProgramColor
+    public let track: ProgramColor
+
+    public init(value: ProgramExpression, total: ProgramExpression? = nil, fills: ProgramDirection = .right,
+                color: ProgramColor = .accent, track: ProgramColor = .faint) {
+        self.value = value; self.total = total; self.fills = fills; self.color = color; self.track = track
     }
 }
 
@@ -79,6 +105,9 @@ public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
         case image(ProgramImage)
+        case progress(ProgramProgress)
+        /// Empty layout along the enclosing Row/Column's main axis; elsewhere it takes no space.
+        case spacer(minimum: Double)
         /// An unrounded solid rectangle in its content box. Nonfixed dimensions need an explicit ideal size.
         case rectangle(fill: ProgramColor)
         /// A solid curved shape. Like Rectangle, nonfixed dimensions require the producer's ideal size.

@@ -289,10 +289,11 @@ final class Checker {
     var numericBaseSources: [NodeID: [NodeID]] = [:]
     var numericCoercions: [NodeID: NumericCoercion] = [:]
     var canonicalNumericValues: [NodeID: Double] = [:]
-    // Only numeric +/−/% and assignments whose original inference met an open slot. These retain the
+    // Only numeric comparisons, +/−/% and assignments whose original inference met an open slot. These retain the
     // original values/nodes, so settling can finish the same algebra/coercion without inferring the AST again.
     enum DeferredNumericUse {
         case arithmetic(PositionedToken, PositionedNode, PositionedNode, PositionedNode, Val, Val)
+        case comparison(PositionedNode, PositionedNode, PositionedNode, Val, Val)
         case assignment(PositionedNode, Val, Val, DiagnosticArgument, ExprContext)
     }
     var deferredNumericUses: [DeferredNumericUse] = []

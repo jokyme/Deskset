@@ -1012,6 +1012,150 @@ enum DeskProgramPreviewSelfTests {
         runPointerEventPreviewTests(t)
         runInspectionPreviewTests(t)
         runFreeformPreviewTests(t)
+        runProgressPreviewTests(t)
+        runPresetPreviewTests(t)
+    }
+
+    private static func runProgressPreviewTests(_ t: AppTestRunner) {
+        t.suite("Desk: progress preview: a bar without track ink remains visible and responds to native input") {
+            let source = #"widget { variable amount = 0.25; Progress(amount).size(100, 12).color(.black).track(.clear).name(level).onClick { amount = 0.75; copy("primary") }.onRightClick { amount = 0; copy("secondary") } }"#
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            t.equal(p.state, .ready); t.check(!p.canvas.isHidden)
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let ref = snapshot.elements().first(where: { $0.name == "level" })?.element else { throw Failure.fixture }
+            func pixels(_ width: Double) throws {
+                let items: [DrawItem] = width == 0 ? [] : [.fill(SkinRect(width: width, height: 12), Paint(color: RGBA(r: 0, g: 0, b: 0, a: 255)))]
+                let reference = ReferenceView(items: items, size: NSSize(width: 100, height: 12))
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected), "literal progress width \(width) at \(scale)x")
+                    let painted = try ink(actual)
+                    t.check(width == 0 ? painted == 0 : painted > 0)
+                }
+            }
+            try pixels(25)
+            p.setInspecting(true)
+            try click(at: NSPoint(x: 90, y: 6), in: f)
+            t.equal(p.inspectedElement, ref); t.check(p.recordedEffects.isEmpty)
+            p.setInspecting(false)
+            try click(at: NSPoint(x: 90, y: 6), in: f)
+            t.equal(p.recordedEffects, [.copy("primary")]); try pixels(75)
+            try mouse(.rightMouseDown, at: NSPoint(x: 90, y: 6), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 90, y: 6), in: f)
+            t.equal(p.recordedEffects, [.copy("primary"), .copy("secondary")]); try pixels(0)
+            t.equal(p.state, .ready, "an empty but clickable progress box remains reachable")
+            try click(at: NSPoint(x: 110, y: 6), in: f)
+            t.equal(p.recordedEffects.count, 2)
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: progress preview: live missing data clears the fill and resumes on the next boundary") {
+            let time = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_000.25), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let system = PreviewCountingSystem()
+            let source = #"widget { Progress(cpu.usage).size(100, 12).color(.black).track(.white) }"#
+            let f = try fixture(t, source, clock: time.clock, executor: time, system: system), p = f.preview
+            p.setVisible(true)
+            func pixels(_ width: Double) throws {
+                let reference = ReferenceView(items: [
+                    .fill(SkinRect(width: 100, height: 12), Paint(color: RGBA(r: 255, g: 255, b: 255, a: 255))),
+                    .fill(SkinRect(width: width, height: 12), Paint(color: RGBA(r: 0, g: 0, b: 0, a: 255)))
+                ], size: NSSize(width: 100, height: 12))
+                t.equal(p.state, .ready)
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected), "track and current CPU fill at \(scale)x")
+                }
+            }
+            t.equal(system.cpuCalls, 1); t.equal(time.pendingCount, 1); try pixels(42)
+            system.cpu = 75; time.advance(until: 0.75)
+            t.equal(system.cpuCalls, 2); try pixels(75)
+            system.cpu = .nan; time.advance(by: 1)
+            t.equal(system.cpuCalls, 3); try pixels(0)
+            t.equal(time.pendingCount, 1, "a missing reading does not lose its refresh boundary")
+            p.setVisible(false); t.equal(time.pendingCount, 0)
+            system.cpu = 50; time.advance(by: 5)
+            t.equal(system.cpuCalls, 3)
+            p.setVisible(true); t.equal(system.cpuCalls, 4); try pixels(50)
+            p.close(); t.equal(time.pendingCount, 0)
+            time.advance(by: 3); t.equal(system.cpuCalls, 4)
+        }
+    }
+
+    private static func runPresetPreviewTests(_ t: AppTestRunner) {
+        t.suite("Desk: preset preview: catalog sizes propose the root and Spacer pushes the progress to its padded edge") {
+            for (preset, width, height) in [("small", 170.0, 170.0), ("medium", 356.0, 170.0), ("large", 356.0, 356.0)] {
+                let source = "info { name: \"Preset\", size: .\(preset) }\nwidget { Column(spacing: 0, align: .left) { Rectangle().size(20).fill(.black); Spacer(min: 10); Progress(0.5).height(10).color(.black).track(.white) }.size(22, 18).padding(10) }"
+                let f = try fixture(t, source), p = f.preview
+                t.equal(p.state, .ready); t.equal(p.scene?.size, SkinSize(width: width, height: height))
+                t.equal(p.canvas.bounds, NSRect(x: 0, y: 0, width: width, height: height))
+                t.check(f.controller.deskChecking?.snapshot.checked.diagnostics.contains { $0.id.rawValue == "DK5018" } == true)
+                guard let scene = p.scene else { throw Failure.fixture }
+                t.equal(scene.elements.first?.frame, SkinRect(width: width, height: height), "preset overrides the root's written size")
+                t.equal(scene.elements.first { $0.kind == .bar }?.frame,
+                        SkinRect(x: 10, y: height - 20, width: width - 20, height: 10))
+                let reference = ReferenceView(items: [
+                    .fill(SkinRect(x: 10, y: 10, width: 20, height: 20), Paint(color: RGBA(r: 0, g: 0, b: 0, a: 255))),
+                    .fill(SkinRect(x: 10, y: height - 20, width: width - 20, height: 10), Paint(color: RGBA(r: 255, g: 255, b: 255, a: 255))),
+                    .fill(SkinRect(x: 10, y: height - 20, width: (width - 20) / 2, height: 10), Paint(color: RGBA(r: 0, g: 0, b: 0, a: 255)))
+                ], size: NSSize(width: width, height: height))
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.check(try ink(actual) > 0); t.equal(try bytes(actual), try bytes(expected), "\(preset), \(scale)x")
+                }
+                t.equal(f.editor.text, source)
+            }
+        }
+
+        t.suite("Desk: preset preview: uniformly scaled content keeps selection and native clicks in displayed coordinates") {
+            let source = "info { name: \"Scaled\", size: .small }\nwidget { Column(spacing: 0, align: .left) { Text(\"A\").font(20).color(.black).size(340, 60).name(label).onClick { copy(\"scaled\") }; Progress(0.5).size(340, 280).color(.black).track(.white) } }"
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let ref = snapshot.elements().first(where: { $0.name == "label" })?.element,
+                  let scene = p.scene else { throw Failure.fixture }
+            t.equal(p.state, .ready); t.check(!p.canvas.isHidden)
+            t.equal(scene.size, SkinSize(width: 170, height: 170))
+            t.equal(p.canvas.bounds, NSRect(x: 0, y: 0, width: 170, height: 170))
+            t.equal(scene.elements.first { $0.kind == .string }?.frame, SkinRect(width: 170, height: 30))
+            t.equal(scene.elements.first { $0.kind == .bar }?.frame, SkinRect(x: 0, y: 30, width: 170, height: 140))
+            var style = TextStyle()
+            style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400; style.color = RGBA(r: 0, g: 0, b: 0, a: 255)
+            style.horizontalAlign = .center; style.verticalAlign = .center
+            style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+            let textFrame = SkinRect(width: 340, height: 60)
+            let items: [DrawItem] = [
+                .text(TextDraw(text: "A", style: style, frame: textFrame, contentFrame: textFrame, anchor: SkinPoint())),
+                .fill(SkinRect(x: 0, y: 60, width: 340, height: 280), Paint(color: RGBA(r: 255, g: 255, b: 255, a: 255))),
+                .fill(SkinRect(x: 0, y: 60, width: 170, height: 280), Paint(color: RGBA(r: 0, g: 0, b: 0, a: 255)))
+            ]
+            let transform = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0)
+            let reference = ReferenceView(items: [.transformed(transform, items)], size: NSSize(width: 170, height: 170))
+            let unscaled = ReferenceView(items: items, size: reference.frame.size)
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.equal(try bytes(actual), try bytes(expected), "one uniform content transform at \(scale)x")
+                t.check(try bytes(actual) != bytes(paint(unscaled, scale: scale)), "unscaled or cropped content is not accepted")
+            }
+            p.setZoom(2); _ = p.canvas.scrollToVisible(NSRect(x: 140, y: 5, width: 20, height: 20))
+            p.setInspecting(true)
+            try click(at: NSPoint(x: 150, y: 15), in: f)
+            t.equal(p.inspectedElement, ref); t.check(p.recordedEffects.isEmpty)
+            p.setInspecting(false)
+            try click(at: NSPoint(x: 150, y: 15), in: f)
+            t.equal(p.recordedEffects, [.copy("scaled")])
+            try click(at: NSPoint(x: 300, y: 30), in: f)
+            t.equal(p.recordedEffects, [.copy("scaled")], "raw pre-scale coordinates do not hit the displayed Text")
+            try mouse(.leftMouseDown, at: NSPoint(x: 150, y: 15), in: f)
+            replace(source.replacingOccurrences(of: "Text(\"A\")", with: "Text(\"B\")"), in: f)
+            t.check(settled(f))
+            try mouse(.leftMouseUp, at: NSPoint(x: 150, y: 15), in: f)
+            t.check(p.recordedEffects.isEmpty, "source replacement rejects the held scaled gesture")
+        }
     }
 
     private static func runFreeformPreviewTests(_ t: AppTestRunner) {

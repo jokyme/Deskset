@@ -258,9 +258,330 @@ enum DeskProgramDrawingSelfTests {
         failureTests(t)
         imageOwnerTests(t)
         freeformOwnerTests(t)
+        progressOwnerTests(t)
+        presetOwnerTests(t)
         for worker in [false, true] {
             t.suite("App: Desk bitmap owner: real \(worker ? "worker" : "main") executor retains and releases its complete bundle") {
                 try liveOwner(t, worker: worker)
+            }
+        }
+    }
+
+    private static func drawProgressReference(_ ctx: CGContext, frame: CGRect, ratio: Double?, fills: String,
+                                             includeTrack: Bool = true) {
+        if includeTrack {
+            ctx.setFillColor(RGBA(r: 32, g: 64, b: 96).cgColor)
+            ctx.fill(frame)
+        }
+        guard let ratio, ratio > 0 else { return }
+        var front = frame
+        switch fills {
+        case "right": front.size.width *= ratio
+        case "left": front.size.width *= ratio; front.origin.x = frame.maxX - front.width
+        case "down": front.size.height *= ratio
+        case "up": front.size.height *= ratio; front.origin.y = frame.maxY - front.height
+        default: preconditionFailure("Unexpected fixture direction")
+        }
+        ctx.setFillColor(RGBA(r: 224, g: 80, b: 32).cgColor)
+        ctx.fill(front)
+    }
+
+    private static func progressOwnerTests(_ t: AppTestRunner) {
+        t.suite("App: Desk Progress bitmap: four directions and missing values match independent native pixels") {
+            for scale in [1, 2] {
+                for direction in ["right", "left", "up", "down"] {
+                    for percent in [0.0, 25, 100, nil] as [Double?] {
+                        let value = percent.map { String($0) + ", total: 100" } ?? "cpu.usage"
+                        let source = "widget { Progress(" + value + ", fills: ." + direction
+                            + ").size(48, 12).color(\"#E05020\").track(\"#204060\") }"
+                        let program = try compile(source, t)
+                        let input = try ownerInput(scale: scale), time = try ownerClock()
+                        let view = NSView(), provider = BitmapProvider(view), system = DrawingSystemFixture()
+                        system.cpu = .nan
+                        let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                            input: input, clock: time.clock, system: system)
+                        defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                        host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                        t.equal(host.state, .ready)
+                        t.equal(host.scene?.size, SkinSize(width: 48, height: 12))
+                        t.equal(host.viewport, CGRect(x: 0, y: 0, width: 48, height: 12))
+                        t.equal(provider.content.shown.image?.width, 48 * scale)
+                        t.equal(provider.content.shown.image?.height, 12 * scale)
+                        let ratio = percent.map { $0 / 100 }
+                        let reference = try referenceBitmap(CGSize(width: 48, height: 12), scale: scale) { ctx in
+                            drawProgressReference(ctx, frame: CGRect(x: 0, y: 0, width: 48, height: 12),
+                                                  ratio: ratio, fills: direction)
+                        }
+                        let expected = try bitmapBytes(reference)
+                        t.equal(try presentedBytes(provider), expected,
+                                "\(direction), \(String(describing: percent)) at \(scale)x uses the native track and fill rectangles")
+                        if percent == 25 {
+                            let opposite = direction == "right" ? "left" : direction == "left" ? "right"
+                                : direction == "up" ? "down" : "up"
+                            let wrong = try referenceBitmap(CGSize(width: 48, height: 12), scale: scale) { ctx in
+                                drawProgressReference(ctx, frame: CGRect(x: 0, y: 0, width: 48, height: 12),
+                                                      ratio: ratio, fills: opposite)
+                            }
+                            t.check(try bitmapBytes(wrong) != expected, "the opposite direction cannot pass")
+                        }
+                        if percent != 100 {
+                            let noTrack = try referenceBitmap(CGSize(width: 48, height: 12), scale: scale) { ctx in
+                                drawProgressReference(ctx, frame: CGRect(x: 0, y: 0, width: 48, height: 12),
+                                                      ratio: ratio, fills: direction, includeTrack: false)
+                            }
+                            t.check(try bitmapBytes(noTrack) != expected, "zero and missing values retain a visible track")
+                        }
+                        t.equal(time.background.reports, [])
+                    }
+                }
+            }
+        }
+
+        t.suite("App: Desk Progress bitmap: CPU and memory clocks refresh cached pixels without stale fills") {
+            let source = """
+            widget { Column(spacing: 4, align: .left) {
+                Progress(cpu.usage).size(48, 12).color("#E05020").track("#204060")
+                Progress(memory.used).size(48, 12).color("#E05020").track("#204060")
+            } }
+            """
+            let program = try compile(source, t)
+            for scale in [1, 2] {
+                let input = try ownerInput(scale: scale), time = try ownerClock()
+                // Start within an even two-second memory period; the first boundary refreshes only CPU.
+                time.setWallClock(time.wallClock.addingTimeInterval(-1))
+                let view = NSView(), provider = BitmapProvider(view), system = DrawingSystemFixture()
+                let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                    input: input, clock: time.clock, system: system)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                t.equal(host.state, .ready)
+                t.equal(host.scene?.size, SkinSize(width: 48, height: 28))
+                t.equal(system.cpuCalls, 1); t.equal(system.memCalls, 1)
+                var pictures: [Data] = []
+                func checkPixels(cpu: Double?, memory: Double?) throws {
+                    let reference = try referenceBitmap(CGSize(width: 48, height: 28), scale: scale) { ctx in
+                        drawProgressReference(ctx, frame: CGRect(x: 0, y: 0, width: 48, height: 12),
+                                              ratio: cpu, fills: "right")
+                        drawProgressReference(ctx, frame: CGRect(x: 0, y: 16, width: 48, height: 12),
+                                              ratio: memory, fills: "right")
+                    }
+                    let expected = try bitmapBytes(reference), actual = try presentedBytes(provider)
+                    let phase = "scale=\(scale), cpu=\(String(describing: cpu)), memory=\(String(describing: memory)), "
+                        + "scene=\(String(describing: host.scene?.generation)), presented=\(String(describing: host.presented?.scene.generation))"
+                    t.equal(actual, expected, "CPU has range 100; memory full is the separately sampled total; \(phase)")
+                    var cold = try ProgramRuntime(program: program)
+                    let coldScene = try cold.project(environment: input.environment,
+                        systemInput: ProgramSystemInput(cpuUsage: cpu.map { $0 * 100 },
+                            memoryUsed: memory.map { $0 * system.memoryTotal }, memoryTotal: system.memoryTotal)) { _, _, _ in
+                        throw Failure.bitmap
+                    }
+                    let coldPicture = try referenceBitmap(CGSize(width: coldScene.size.width, height: coldScene.size.height),
+                                                          scale: scale) { ctx in
+                        DesksetDraw.DrawExecutor.draw(coldScene.drawingItems, in: ctx,
+                            context: DrawContext(fonts: AppFontResolver()), cycle: 1,
+                            target: DrawTarget.capture(ctx, glass: .none))
+                    }
+                    let coldBytes = try bitmapBytes(coldPicture)
+                    t.equal(coldBytes, actual,
+                            "warm owner pixels match a separate cold runtime and renderer; \(phase)")
+                    pictures.append(actual)
+                }
+                try checkPixels(cpu: 0.25, memory: 0.5)
+                let firstImage = provider.content.shown.image, firstBytes = pictures[0]
+                let initialGeneration = host.scene?.generation
+                host.take(facts(input), input: input)
+                t.equal(host.scene?.generation, initialGeneration)
+                t.equal(system.cpuCalls, 1); t.equal(system.memCalls, 1)
+
+                system.cpu = 75
+                system.memoryUsed = 12 * 1024 * 1024 * 1024
+                _ = time.advance(by: 1); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(system.cpuCalls, 2); t.equal(system.memCalls, 1, "memory does not sample at the CPU-only second")
+                try checkPixels(cpu: 0.75, memory: 0.5)
+
+                system.cpu = .nan
+                _ = time.advance(by: 1); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(system.cpuCalls, 3); t.equal(system.memCalls, 2)
+                try checkPixels(cpu: nil, memory: 0.75)
+                t.check(pictures[1] != pictures[2], "a missing CPU reading clears the previously filled bar")
+
+                system.cpu = 25
+                _ = time.advance(by: 1); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(system.cpuCalls, 4); t.equal(system.memCalls, 2)
+                try checkPixels(cpu: 0.25, memory: 0.75)
+                t.equal(try bitmapBytes(firstImage), firstBytes, "later cached frames cannot mutate a retained image")
+
+                host.take(facts(input, ordered: false), input: input)
+                let hiddenGeneration = host.scene?.generation, cpuReads = system.cpuCalls, memoryReads = system.memCalls
+                system.cpu = 50; system.memoryUsed = 4 * 1024 * 1024 * 1024
+                _ = time.advance(by: 2); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(host.scene?.generation, hiddenGeneration)
+                t.equal(system.cpuCalls, cpuReads); t.equal(system.memCalls, memoryReads)
+                host.take(facts(input), input: input); host.drawFirstFrame()
+                t.equal(host.presented?.scene.generation, hiddenGeneration,
+                        "a short hide retains its bitmap, so drawFirstFrame does not redraw it")
+                host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(host.presented?.scene.generation, host.scene?.generation,
+                        "the ordinary dirty-frame turn presents the resumed projection")
+                t.equal(system.cpuCalls, cpuReads + 1); t.equal(system.memCalls, memoryReads + 1)
+                try checkPixels(cpu: 0.5, memory: 0.25)
+                t.equal(time.background.reports, [])
+            }
+        }
+    }
+
+    private static func presetOwnerTests(_ t: AppTestRunner) {
+        t.suite("App: Desk preset bitmap: text image and centered stroke share one proportional overflow transform") {
+            let root = t.temporaryDirectory("desk-preset-picture")
+            let picture = try referenceBitmap(CGSize(width: 4, height: 2), scale: 1) { ctx in
+                ctx.setFillColor(RGBA(r: 220, g: 40, b: 20).cgColor)
+                ctx.fill(CGRect(x: 0, y: 0, width: 4, height: 2))
+                ctx.setFillColor(RGBA(r: 20, g: 60, b: 220).cgColor)
+                ctx.fill(CGRect(x: 2, y: 0, width: 2, height: 1))
+            }
+            let output = NSMutableData()
+            guard let encoder = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else { throw Failure.bitmap }
+            CGImageDestinationAddImage(encoder, picture, nil)
+            guard CGImageDestinationFinalize(encoder) else { throw Failure.bitmap }
+            try (output as Data).write(to: root.appendingPathComponent("picture.png"))
+            let source = """
+            info { name: "Preset", size: .small }
+            widget { Freeform {
+                Text("Preset").font(20).color(.accent).size(80, 32).position(x: 12, y: 12).name(label)
+                Image("picture.png").imageMode(.stretch).size(80, 32).position(x: 112, y: 12).name(picture)
+                Rectangle().size(400, 200).stroke("#E05020", width: 4).position(x: -12, y: -9).name(outline)
+            }.size(170) }
+            """
+            for scale in [1, 2] {
+                let prepared = DeskProgramResources.prepare(root: root, literals: ["picture.png"], maximumBytes: 4096, maximumFiles: 1)
+                defer { prepared.removeCopies() }
+                t.equal(prepared.failure, nil)
+                let result = Desk.compile(Desk.check(Desk.parse(source, fileName: "Preset.desk"), context: CheckContext(
+                    resources: PackageResources(package: DeskPackage(files: prepared.files)))))
+                t.check(result.diagnostics.allSatisfy { $0.severity != .error })
+                t.check(result.issues.isEmpty, "\(result.issues)")
+                guard let program = result.program else { throw Failure.compilation }
+                let input = try ownerInput(scale: scale), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+                let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                    input: input, prepared: prepared, clock: time.clock)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                t.equal(host.state, .ready)
+                t.equal(host.scene?.size, SkinSize(width: 170, height: 170))
+                t.equal(host.viewport, CGRect(x: 0, y: 0, width: 170, height: 170))
+                t.equal(host.presented?.origin, SkinPoint())
+                t.equal(provider.content.shown.image?.width, 170 * scale)
+                t.equal(provider.content.shown.image?.height, 170 * scale)
+                // The literal stroke extends from (-14, -11) to (390, 193): 404 x 204 points.
+                let factor = 170.0 / 404
+                guard let scene = host.scene,
+                      let label = scene.elements.first(where: { $0.id.name == "label" }),
+                      let image = scene.elements.first(where: { $0.id.name == "picture" }),
+                      let outline = scene.elements.first(where: { $0.id.name == "outline" }) else { throw Failure.bitmap }
+                t.close(label.frame.x, 26 * factor); t.close(label.frame.y, 23 * factor)
+                t.close(label.frame.width, 80 * factor); t.close(label.frame.height, 32 * factor)
+                t.close(label.anchor.x, 26 * factor); t.close(label.anchor.y, 23 * factor)
+                t.close(image.frame.x, 126 * factor); t.close(image.frame.y, 23 * factor)
+                t.close(outline.frame.x, 2 * factor); t.close(outline.frame.y, 2 * factor)
+                t.close(outline.frame.width, 400 * factor); t.close(outline.frame.height, 200 * factor)
+                func reference(xScale: Double? = nil, yScale: Double? = nil, includeStroke: Bool = true) throws -> Data {
+                    let sx = xScale ?? factor, sy = yScale ?? factor
+                    let image = try referenceBitmap(CGSize(width: 170, height: 170), scale: scale) { ctx in
+                        ctx.translateBy(x: 14 * sx, y: 11 * sy)
+                        ctx.scaleBy(x: sx, y: sy)
+                        let frame = SkinRect(x: 12, y: 12, width: 80, height: 32)
+                        let text = TextDraw(text: "Preset", style: referenceStyle(points: 20,
+                            color: input.environment.appearance.value.accentColor), frame: frame,
+                            contentFrame: frame, anchor: SkinPoint(x: 12, y: 12))
+                        DesksetDraw.DrawExecutor.draw([.text(text)], in: ctx, context: DrawContext(fonts: AppFontResolver()),
+                            cycle: 1, target: DrawTarget.capture(ctx, glass: .none))
+                        ctx.saveGState()
+                        ctx.clip(to: CGRect(x: 112, y: 12, width: 80, height: 32))
+                        ctx.translateBy(x: 112, y: 44); ctx.scaleBy(x: 1, y: -1)
+                        ctx.interpolationQuality = .high
+                        ctx.draw(picture, in: CGRect(x: 0, y: 0, width: 80, height: 32))
+                        ctx.restoreGState()
+                        if includeStroke {
+                            ctx.setStrokeColor(RGBA(r: 224, g: 80, b: 32).cgColor)
+                            ctx.setLineWidth(4); ctx.setLineCap(.butt); ctx.setLineJoin(.miter); ctx.setMiterLimit(10)
+                            ctx.stroke(CGRect(x: -12, y: -9, width: 400, height: 200))
+                        }
+                    }
+                    return try bitmapBytes(image)
+                }
+                let expected = try reference()
+                t.equal(try presentedBytes(provider), expected, "native text, prepared image and the stroke use one transform at \(scale)x")
+                t.check(try reference(xScale: 1, yScale: 1) != expected, "omitting preset scaling cannot pass")
+                t.check(try reference(yScale: 170.0 / 204) != expected, "independent axis fitting must not stretch the content")
+                t.check(try reference(includeStroke: false) != expected, "the outside stroke is visible after fitting")
+                let first = provider.content.shown.image
+                host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(try presentedBytes(provider), expected, "a warm transformed image remains destination-qualified")
+                t.equal(try bitmapBytes(first), expected)
+                let sourceImage = root.appendingPathComponent("picture.png")
+                try Data("not an image".utf8).write(to: sourceImage)
+                defer { try? (output as Data).write(to: sourceImage) }
+                host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+                if case .unavailable = host.state { t.check(true) }
+                else { t.check(false, "a changed transformed image resource must fail preflight") }
+                t.check(host.scene == nil && host.presented == nil && provider.content.shown.image == nil,
+                        "invalidating a resource inside the transformed group clears the old picture and hit scene")
+                t.equal(try bitmapBytes(first), expected, "failed resource validation cannot mutate an already handed bitmap")
+                t.equal(time.background.reports, [])
+            }
+        }
+
+        t.suite("App: Desk preset bitmap: font-driven overflow redraws the warm cache and preserves old images") {
+            let source = """
+            info { size: .small }
+            widget { variable points = 20; Freeform {
+                Text("Preset").font(points).color(.accent).position(x: 20, y: 140).name(label)
+                    .onClick { points = points == 20 ? 80 : 20 }
+            }.size(170) }
+            """
+            let program = try compile(source, t)
+            for scale in [1, 2] {
+                let input = try ownerInput(scale: scale), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+                let host = try DeskProgramHost(program: program, executor: time, provider: provider, input: input, clock: time.clock)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                func checkPixels(points: Double) throws -> Data {
+                    let style = referenceStyle(points: points, color: input.environment.appearance.value.accentColor)
+                    let context = DrawContext(fonts: AppFontResolver())
+                    let natural = context.text.layout("Preset", style: style, wrapWidth: nil, cycle: 1).size
+                    let factor = min(1, min(170 / max(170, 20 + Double(natural.width)),
+                                            170 / max(170, 140 + Double(natural.height))))
+                    let frame = SkinRect(x: 20, y: 140, width: natural.width, height: natural.height)
+                    let text = TextDraw(text: "Preset", style: style, frame: frame, contentFrame: frame, anchor: SkinPoint(x: 20, y: 140))
+                    let reference = try referenceBitmap(CGSize(width: 170, height: 170), scale: scale) { ctx in
+                        ctx.scaleBy(x: factor, y: factor)
+                        DesksetDraw.DrawExecutor.draw([.text(text)], in: ctx, context: context, cycle: 1,
+                            target: DrawTarget.capture(ctx, glass: .none))
+                    }
+                    let expected = try bitmapBytes(reference)
+                    t.equal(host.scene?.size, SkinSize(width: 170, height: 170))
+                    t.equal(host.viewport, CGRect(x: 0, y: 0, width: 170, height: 170))
+                    guard let element = host.scene?.elements.first(where: { $0.id.name == "label" }) else { throw Failure.bitmap }
+                    t.close(element.frame.x, 20 * factor); t.close(element.frame.y, 140 * factor)
+                    t.close(element.frame.width, Double(natural.width) * factor); t.close(element.frame.height, Double(natural.height) * factor)
+                    t.equal(try presentedBytes(provider), expected, "the \(points)-point font is fitted by a single graphics transform")
+                    return expected
+                }
+                func click() throws {
+                    guard let element = host.scene?.elements.first(where: { $0.id.name == "label" }) else { throw Failure.bitmap }
+                    let center = SkinPoint(x: element.frame.x + element.frame.width / 2,
+                                           y: element.frame.y + element.frame.height / 2)
+                    host.primaryPress(at: center); host.primaryRelease(at: center)
+                    host.frames.runLoopTurn(.beforeWaiting)
+                }
+                let first = provider.content.shown.image, small = try checkPixels(points: 20)
+                try click()
+                let large = try checkPixels(points: 80)
+                t.check(large != small, "growing the native font changes the picture even though the preset viewport is unchanged")
+                t.equal(try bitmapBytes(first), small, "redraw cannot overwrite a retained previous image")
+                try click()
+                t.equal(try checkPixels(points: 20), small, "shrinking restores the original bytes with the warm layout and bitmap cache")
+                t.equal(time.background.reports, [])
             }
         }
     }
@@ -973,9 +1294,11 @@ private final class DrawingSystemFixture: SystemDataSource {
     var batteryCharging: Bool = false
     var cpuCalls: Int = 0
     var memCalls: Int = 0
+    var memoryTotal: Double = 16 * 1024 * 1024 * 1024
+    var memoryUsed: Double = 8 * 1024 * 1024 * 1024
     var batteryCalls: Int = 0
     func cpuUsage(processor: Int) -> Double { cpuCalls += 1; return cpu }
-    func memoryStatus() -> MemoryStatus { memCalls += 1; return MemoryStatus(physicalTotal: 16 * 1024 * 1024 * 1024, physicalUsed: 8 * 1024 * 1024 * 1024) }
+    func memoryStatus() -> MemoryStatus { memCalls += 1; return MemoryStatus(physicalTotal: memoryTotal, physicalUsed: memoryUsed) }
     func networkInterfaces() -> [String] { [] }
     func networkCounters(interface: String?) -> NetworkCounters { NetworkCounters() }
     func diskSpace(path: String) -> (total: Double, free: Double)? { nil }

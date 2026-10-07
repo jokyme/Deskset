@@ -81,6 +81,7 @@ enum DeskWidgetWindowSelfTests {
     static func run(_ t: AppTestRunner) {
         clickActionTests(t)
         accessibilityTests(t)
+        presetAccessibilityTests(t)
         pointerEventTests(t)
         reviewRegressionTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
@@ -1257,6 +1258,105 @@ enum DeskWidgetWindowSelfTests {
             t.check(!originalChild.accessibilityPerformPress())
             t.check(!child.accessibilityPerformPress(), "center resolves to the overlay rather than the exposed Text")
             t.check(recorder.calls.isEmpty)
+        }
+    }
+
+    private static func presetAccessibilityTests(_ t: AppTestRunner) {
+        t.suite("App: Desk preset accessibility: transformed Text frames and worker AX actions stay in displayed points") {
+            let worker = SkinThreadExecutor(name: "Desk preset accessibility worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let source = """
+            info { size: .small }
+            widget { variable points = 20; Freeform {
+                Text("Preset").font(points).color(.accent).position(x: 20, y: 140).name(label)
+                    .onClick { points = 80; copy("preset") }
+            }.size(170) }
+            """
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: worker, text: source)
+            created = widget
+            t.equal(widget.view.frame.size, NSSize(width: 170, height: 170))
+            t.equal(widget.view.accessibilityParts.count, 1)
+            func naturalSize(points: Double) -> CGSize {
+                var style = TextStyle()
+                style.fontFace = "System"; style.fontSize = points * 0.75; style.fontWeight = 400
+                style.horizontalAlign = .center; style.verticalAlign = .center
+                style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+                let measured = DrawContext(fonts: AppFontResolver()).text.layout("Preset", style: style, wrapWidth: nil, cycle: 1).size
+                return CGSize(width: measured.width, height: measured.height)
+            }
+            func checkFrame(_ child: DeskWidgetTextAccessibilityElement, points: Double) throws -> (NSRect, Double) {
+                let natural = naturalSize(points: points)
+                let factor = min(1, min(170 / max(170, 20 + Double(natural.width)),
+                                        170 / max(170, 140 + Double(natural.height))))
+                let local = NSRect(x: 20 * factor, y: 140 * factor,
+                                   width: Double(natural.width) * factor, height: Double(natural.height) * factor)
+                guard let presented = widget.latestPresented,
+                      let element = presented.scene.elements.first(where: { $0.id.name == "label" }) else { throw Failure.fixture }
+                t.equal(presented.scene.size, SkinSize(width: 170, height: 170))
+                t.equal(presented.origin, SkinPoint(), "Core already maps overflow into the final preset point coordinates")
+                t.close(element.frame.x, Double(local.minX)); t.close(element.frame.y, Double(local.minY))
+                t.close(element.frame.width, Double(local.width)); t.close(element.frame.height, Double(local.height))
+                t.equal(child.accessibilityLabel(), "Preset", "AX finds the Text within the actual transformed drawing group")
+                t.equal(child.accessibilityRole(), .button)
+                let screen = NSAccessibility.screenRect(fromView: widget.view, rect: local)
+                let actual = child.accessibilityFrame()
+                t.close(actual.minX, screen.minX); t.close(actual.minY, screen.minY)
+                t.close(actual.width, screen.width); t.close(actual.height, screen.height)
+                t.equal(presented.scene.hitMap.entry(at: local.midX, local.midY, handling: .leftUp, images: nil)?.elementID,
+                        child.id, "the displayed AX center hits the same actual action leaf")
+                return (local, factor)
+            }
+            guard let first = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            let (_, originalFactor) = try checkFrame(first, points: 20)
+            t.equal(originalFactor, 1, "the initial native text fits without enlargement")
+            let generation = widget.latestPresented?.scene.generation ?? 0
+            t.check(first.accessibilityPerformPress())
+            t.check(!first.accessibilityPerformPress(), "the same held AX child queues at most one worker transaction")
+            t.check(AppSelfTest.spin(timeout: 10) {
+                recorder.calls.count == 1 && (widget.latestPresented?.scene.generation ?? 0) > generation
+            })
+            t.equal(recorder.calls, ["copy:preset"])
+            t.check(recorder.mainThreads.allSatisfy { $0 }, "a worker projection releases the fake service on Main")
+            t.check(!first.accessibilityPerformPress(), "the old child's source generation remains stale after resizing content")
+            guard let current = widget.view.accessibilityParts.first, let presented = widget.latestPresented else { throw Failure.fixture }
+            let (local, factor) = try checkFrame(current, points: 80)
+            t.check(factor > 0 && factor < 1, "the larger font produces real overflow and a proportional fit")
+            let natural = naturalSize(points: 80)
+            t.check(presented.scene.hitMap.entry(at: 20 + Double(natural.width) / 2, 140 + Double(natural.height) / 2,
+                handling: .leftUp, images: nil) == nil, "using the unfitted center must miss")
+            t.check(presented.scene.hitMap.entry(at: local.midX * factor, local.midY * factor,
+                handling: .leftUp, images: nil) == nil, "applying preset scaling twice must miss")
+            var drained = false
+            widget.executor.async { [owner = widget.owner] in
+                owner.host?.refresh(); owner.host?.frames.runLoopTurn(.beforeWaiting)
+                DispatchQueue.main.async { drained = true }
+            }
+            let currentGeneration = presented.scene.generation
+            t.check(AppSelfTest.spin(timeout: 10) {
+                drained && (widget.latestPresented?.scene.generation ?? 0) > currentGeneration
+            })
+            t.equal(recorder.calls, ["copy:preset"], "a cached redraw cannot replay the last action")
+            t.check(!current.accessibilityPerformPress())
+            guard let afterRedraw = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            _ = try checkFrame(afterRedraw, points: 80)
+            let dark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            guard let alternate = NSAppearance(named: dark ? .aqua : .darkAqua) else { throw Failure.fixture }
+            widget.window.appearance = alternate
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch != afterRedraw.epoch)
+            t.check(!afterRedraw.accessibilityPerformPress(), "a destination change rejects the held transformed AX child")
+            widget.close(deactivate: false)
+            t.check(!afterRedraw.accessibilityPerformPress(), "close does not wait for the worker ACK to invalidate AX")
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.equal(afterRedraw.accessibilityFrame(), .zero)
+            t.equal(recorder.calls, ["copy:preset"])
         }
     }
 

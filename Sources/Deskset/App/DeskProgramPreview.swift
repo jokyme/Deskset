@@ -366,18 +366,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             if scrollView.magnification > scrollView.maxMagnification {
                 scrollView.setMagnification(scrollView.maxMagnification, centeredAt: NSPoint(x: extent.midX, y: extent.midY))
             }
-            let hasContent = next.drawingItems.contains {
-                switch $0 {
-                case .text(let value): return !value.text.isEmpty
-                case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
-                case .image(let image): return image.path != nil && image.contentFrame.width > 0 && image.contentFrame.height > 0
-                case .shape(let shape):
-                    return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains {
-                        $0.fill.isVisible || ($0.stroke.isVisible && $0.strokePlan?.isEmpty == false)
-                    }
-                default: return false
-                }
-            }
+            let hasContent = next.drawingItems.contains(where: Self.hasVisibleContent)
             let interactive = !next.hitMap.entries.isEmpty
             let selectable = isInspecting && next.elements.contains {
                 $0.visibility == .visible && $0.frame.width > 0 && $0.frame.height > 0 && elementRefs[$0.id] != nil
@@ -413,6 +402,23 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private enum PreviewFailure: Error { case extent }
+
+    private static func hasVisibleContent(_ item: DrawItem) -> Bool {
+        switch item {
+        case .text(let value): return !value.text.isEmpty
+        case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
+        case .image(let image): return image.path != nil && image.contentFrame.width > 0 && image.contentFrame.height > 0
+        case .shape(let shape):
+            return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains {
+                $0.fill.isVisible || ($0.stroke.isVisible && $0.strokePlan?.isEmpty == false)
+            }
+        case .bar(let bar):
+            return (bar.color.a > 0 || bar.path != nil) && bar.visibleRects.contains { $0.width > 0 && $0.height > 0 }
+        case .transformed(_, let children), .antialias(_, let children):
+            return children.contains(where: hasVisibleContent)
+        default: return false
+        }
+    }
 
     /// These static programs emit known path geometry, so its captured visual bounds can enclose centered strokes.
     /// This is a preview viewport, not a new layout, clipping rule or generic ink-coverage claim.
@@ -783,19 +789,16 @@ final class DeskProgramPreviewCanvas: NSView {
               let destination = NSGraphicsContext.current?.cgContext else { return }
         // Qualify the actual renderer's drawn-size input before borrowing any destination pixels. A real
         // decoding failure clears the owner, rather than treating a valid header/thumbnail as a successful draw.
-        for item in scene.drawingItems {
-            guard case .image(let image) = item, var path = image.path else { continue }
-            if image.naturalSize != nil {
-                guard ImageRenderer.preparedNaturalImage(image, in: destination) != nil else { onImageFailure?(); return }
-                continue
-            }
-            let fit = image.preserveAspectRatio == 1
+        let imagesReady = DeskProgramImageValidation.validate(scene.drawingItems, in: destination) { image, context in
+            guard var path = image.path else { return true }
+            if image.naturalSize != nil { return ImageRenderer.preparedNaturalImage(image, in: context) != nil }
             if image.decodesAtDrawnSize, !image.tile {
                 path = ImageRenderer.drawnDecodePath(path, options: image.options, drawn: image.contentFrame.cgRect.size,
-                                                    fit: fit, in: destination)
+                                                    fit: image.preserveAspectRatio == 1, in: context)
             }
-            guard PreparedImage(path: path, options: image.options) != nil else { onImageFailure?(); return }
+            return PreparedImage(path: path, options: image.options) != nil
         }
+        guard imagesReady else { onImageFailure?(); return }
         destination.saveGState()
         defer { destination.restoreGState() }
         DesksetDraw.DrawExecutor.draw(scene: scene, in: destination, context: context, cycle: 1,

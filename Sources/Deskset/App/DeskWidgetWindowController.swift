@@ -661,14 +661,27 @@ final class DeskWidgetView: NSView {
         let clickable = Set(presented.scene.hitMap.entries.filter { $0.action(.leftUp) != .absent }.compactMap(\.elementID))
         var parts: [DeskWidgetTextAccessibilityElement] = []
         for element in presented.scene.elements where element.visibility == .visible && clickable.contains(element.id) {
-            // ProgramRuntime stores a Text's sole projected TextDraw directly on the same SceneElement ID.
-            guard element.kind == .string, element.items.count == 1,
-                  case .text(let text) = element.items[0] else { continue }
-            parts.append(DeskWidgetTextAccessibilityElement(id: element.id, text: text.text,
+            // A preset may wrap the sole TextDraw in a uniform presentation transform. The element's frame
+            // already uses the displayed coordinates; only the label comes from the unscaled text recipe.
+            guard element.kind == .string, let text = projectedText(in: element.items) else { continue }
+            parts.append(DeskWidgetTextAccessibilityElement(id: element.id, text: text,
                 session: controller.sessionID, epoch: controller.lastAcceptedEpoch,
                 generation: presented.scene.generation, owner: self))
         }
         replaceAccessibility(parts)
+    }
+
+    private func projectedText(in items: [DrawItem]) -> String? {
+        var current = items
+        for _ in 0...ProgramLimits.maximumDepth {
+            guard current.count == 1, let item = current.first else { return nil }
+            switch item {
+            case .text(let text): return text.text
+            case .transformed(_, let children): current = children
+            default: return nil
+            }
+        }
+        return nil
     }
 
     fileprivate func clearAccessibility() { replaceAccessibility([]) }

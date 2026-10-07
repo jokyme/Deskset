@@ -6,6 +6,7 @@ struct ProgramExpressionCompiler {
     let checked: CheckedFile
     let catalog: DeskCatalog
     private var slots: [NodeID: Int] = [:]
+    private var initializers: [NodeID: PositionedNode] = [:]
     private var assignmentTypes: [Int: DeskType] = [:]
     private var count = 0
 
@@ -19,6 +20,7 @@ struct ProgramExpressionCompiler {
             throw issue(.resourceLimit, checked.tree.rootNode, "Shared program declaration limit exceeded")
         }
         slots = Dictionary(uniqueKeysWithValues: declarations.enumerated().map { (checked.tree.id(of: $0.element.node), $0.offset) })
+        initializers = Dictionary(uniqueKeysWithValues: declarations.map { (checked.tree.id(of: $0.node), $0.initializer.node) })
         assignmentTypes.removeAll(keepingCapacity: true)
         return try declarations.enumerated().map { index, declaration in
             let kind: ProgramDeclaration.Kind
@@ -49,6 +51,60 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, syntax.value.node, "Checked assignment type does not match its declaration")
         }
         return ProgramAssignment(declaration: index, value: try lower(syntax.value.node, depth: 1))
+    }
+
+    /// Keep the operands separate: a missing or nonpositive total produces an empty track at projection time.
+    mutating func progress(value: PositionedNode, total: PositionedNode?) throws -> (value: ProgramExpression, total: ProgramExpression?) {
+        guard let type = checked.types[checked.tree.id(of: value)]?.type,
+              let dimension = numberDimension(type) else {
+            throw issue(.unsupported, value, "Progress requires a checked plain/Percent/Bytes/Duration/Length expression")
+        }
+        let expression = try lower(value, depth: 1)
+        if let total {
+            guard checked.types[checked.tree.id(of: total)]?.type == type else {
+                throw issue(.invalidCheckedModel, total, "Progress total must have the checked value dimension")
+            }
+            return (expression, try lower(total, depth: 1))
+        }
+        if dimension == .plain || dimension == .percent { return (expression, nil) }
+        // A range member is relative to its data owner. Bytes alone never implies memory.total.
+        var visited = Set<NodeID>()
+        try validateMemoryRange(value, visited: &visited, depth: 1)
+        count += 1
+        guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+            throw issue(.resourceLimit, value, "Shared program expression limit exceeded")
+        }
+        return (expression, .systemProperty(.memoryTotal))
+    }
+
+    private func validateMemoryRange(_ node: PositionedNode, visited: inout Set<NodeID>, depth: Int) throws {
+        guard depth <= min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+            throw issue(.resourceLimit, node, "Shared program reference depth exceeded")
+        }
+        let identity = checked.tree.id(of: node)
+        guard let type = checked.types[identity], type.type == .bytes, type.displayBase == 1024,
+              type.range == .member("total"), visited.insert(identity).inserted else {
+            throw issue(.unsupported, node, "Progress needs an explicit total or a proven memory field range")
+        }
+        if let paren = ParenExprSyntax(node) {
+            try validateMemoryRange(paren.value.node, visited: &visited, depth: depth + 1)
+            return
+        }
+        if IdentifierExprSyntax(node) != nil,
+           case .declaration(let declaration)? = checked.symbols[identity],
+           slots[declaration] != nil, let initializer = initializers[declaration] {
+            try validateMemoryRange(initializer, visited: &visited, depth: depth + 1)
+            return
+        }
+        guard MemberExprSyntax(node) != nil,
+              let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: node),
+              property == .memoryUsed || property == .memoryFree,
+              catalog.member(path: property.rawValue)?.range == .member("total"),
+              let namespace = catalog.namespace(named: "memory"), namespace.permission == nil,
+              let total = catalog.member(path: "memory.total"),
+              validateSystemPropertyContract(property: .memoryTotal, member: total) else {
+            throw issue(.unsupported, node, "Progress automatic total requires the checked memory owner/member contract")
+        }
     }
 
     mutating func actionString(_ node: PositionedNode) throws -> ProgramExpression {

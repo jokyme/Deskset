@@ -18,7 +18,20 @@ enum DeskProgramViewport {
                 result = result.union(CGRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height))
             }
         }
-        for item in scene.drawingItems {
+        var pending = scene.drawingItems.map { ($0, ShapeTransform.identity) }
+        while let (item, transform) = pending.popLast() {
+            if case .transformed(let local, let children) = item {
+                let combined = local.then(transform)
+                guard [combined.a, combined.b, combined.c, combined.d, combined.tx, combined.ty].allSatisfy(\.isFinite) else {
+                    throw Failure.extent
+                }
+                pending.append(contentsOf: children.map { ($0, combined) })
+                continue
+            }
+            if case .antialias(_, let children) = item {
+                pending.append(contentsOf: children.map { ($0, transform) })
+                continue
+            }
             guard case .shape(let draw) = item else { continue }
             for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {
                 let b = shape.visualBounds
@@ -27,13 +40,46 @@ enum DeskProgramViewport {
                 guard [x0, y0, x1, y1, x1 - x0, y1 - y0].allSatisfy(\.isFinite), x1 >= x0, y1 >= y0 else {
                     throw Failure.extent
                 }
-                result = result.union(CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0))
+                let corners = [ShapePoint(x0, y0), ShapePoint(x1, y0), ShapePoint(x0, y1), ShapePoint(x1, y1)].map(transform.apply)
+                guard corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite }),
+                      let left = corners.map(\.x).min(), let right = corners.map(\.x).max(),
+                      let top = corners.map(\.y).min(), let bottom = corners.map(\.y).max() else { throw Failure.extent }
+                result = result.union(CGRect(x: left, y: top, width: right - left, height: bottom - top))
             }
         }
         guard [result.minX, result.minY, result.maxX, result.maxY, result.width, result.height].allSatisfy(\.isFinite) else {
             throw Failure.extent
         }
         return result
+    }
+}
+
+/// Both destinations qualify images under the same transforms that the shared renderer will apply.
+enum DeskProgramImageValidation {
+    static func validate(_ items: [DrawItem], in destination: CGContext,
+                         image: (ImageDraw, CGContext) -> Bool) -> Bool {
+        for item in items {
+            switch item {
+            case .image(let value):
+                guard image(value, destination) else { return false }
+            case .transformed(let transform, let children):
+                guard [transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty].allSatisfy(\.isFinite) else { return false }
+                destination.saveGState()
+                destination.concatenate(CGAffineTransform(a: transform.a, b: transform.b, c: transform.c,
+                                                          d: transform.d, tx: transform.tx, ty: transform.ty))
+                let valid = validate(children, in: destination, image: image)
+                destination.restoreGState()
+                guard valid else { return false }
+            case .antialias(let enabled, let children):
+                destination.saveGState()
+                destination.setShouldAntialias(enabled)
+                let valid = validate(children, in: destination, image: image)
+                destination.restoreGState()
+                guard valid else { return false }
+            default: break
+            }
+        }
+        return true
     }
 }
 
@@ -195,12 +241,9 @@ final class DeskProgramHost {
 
         func validate(_ capture: SkinBitmapDrawing.Capture, in ctx: CGContext) -> Bool {
             guard !isClosed, prepared?.unchanged() ?? true else { return false }
-            for item in capture.scene.drawingItems {
-                guard case .image(let image) = item else { continue }
-                // Desk's actual renderer qualifies orientation and drawn-size decoding on this destination.
-                guard DesksetDraw.ImageRenderer.preparedNaturalImage(image, in: ctx) != nil else { return false }
+            return DeskProgramImageValidation.validate(capture.scene.drawingItems, in: ctx) { image, destination in
+                DesksetDraw.ImageRenderer.preparedNaturalImage(image, in: destination) != nil
             }
-            return true
         }
 
         func fail(_ error: Error) {

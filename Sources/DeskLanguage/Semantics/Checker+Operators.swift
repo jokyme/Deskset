@@ -104,7 +104,12 @@ extension Checker {
         }
         if let slot = l.open { recordUse(slot, of: asUse(r), rightNode, description: comparedWith(r)) }
         if let slot = r.open { recordUse(slot, of: asUse(l), leftNode, description: comparedWith(l)) }
-        if hasOpenDimension(l) || hasOpenDimension(r) { return v }
+        if hasOpenDimension(l) || hasOpenDimension(r) {
+            if mute == 0, l.isNumber, r.isNumber {
+                deferredNumericUses.append(.comparison(leftNode, rightNode, node, l, r))
+            }
+            return v
+        }
         if l.isJson || r.isJson { return v }
         if l.type == .record("Size") && r.type == .enumeration("SizePreset") { return v }
         if r.type == .record("Size") && l.type == .enumeration("SizePreset") { return v }

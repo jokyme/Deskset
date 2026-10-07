@@ -8,6 +8,7 @@ struct StaticProgramCompiler {
     private var expressions: ProgramExpressionCompiler
     private var onLoad: [ProgramAssignment] = []
     private var clickActionCount = 0
+    private var widgetSize = ProgramWidgetSize.fit
     private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
@@ -34,6 +35,13 @@ struct StaticProgramCompiler {
 
     mutating func compile() throws -> WidgetProgram {
         var name = URL(fileURLWithPath: checked.tree.file.path).deletingPathExtension().lastPathComponent
+        guard let sizeField = catalog.infoFields.first(where: { $0.name == "size" }),
+              sizeField.type == .enumeration("SizePreset"), sizeField.source == .literal,
+              case .source(let sizeDefault)? = sizeField.defaultValue,
+              case .choice(let defaultSize) = try fixed(sizeDefault, at: checked.tree.rootNode) else {
+            throw issue(.unsupported, checked.tree.rootNode, "Unsupported info.size catalog contract")
+        }
+        widgetSize = try sizePolicy(defaultSize, at: checked.tree.rootNode)
         var widget: BlockSyntax?
         for item in checked.tree.rootNode.childNodes {
             switch item.kind {
@@ -48,9 +56,13 @@ struct StaticProgramCompiler {
                         }
                         name = value
                     case "size":
-                        guard case .choice("fit") = try constant(field.value.node) else {
-                            throw issue(.unsupported, field.value.node, "Preset windows and their proportional overflow scaling are not implemented")
+                        let value = field.value.node
+                        guard case .choice(let choice) = try constant(value),
+                              checked.types[checked.tree.id(of: value)]?.type == .enumeration("SizePreset"),
+                              checked.symbols[checked.tree.id(of: value)] == .enumCase(type: "SizePreset", case: choice) else {
+                            throw issue(.unsupported, value, "info.size requires a checked SizePreset case")
                         }
+                        widgetSize = try sizePolicy(choice, at: value)
                     default: throw issue(.unsupported, node, "Unsupported info field: \(field.label.name)")
                     }
                 }
@@ -78,11 +90,31 @@ struct StaticProgramCompiler {
             root = ProgramElement(id: ElementID(name: "widget", index: index),
                                   content: .column(spacing: spacing, align: try horizontal(align, at: widget.node), children: children))
         }
-        let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad)
+        let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
         catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
         catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
         return program
+    }
+
+    private func sizePolicy(_ choice: String, at node: PositionedNode) throws -> ProgramWidgetSize {
+        guard catalog.enumeration("SizePreset")?.enumCase(named: choice) != nil else {
+            throw issue(.unsupported, node, "Unsupported SizePreset catalog case")
+        }
+        if choice == "fit" { return .fit }
+        guard let preset = ProgramSizePreset(rawValue: choice) else {
+            throw issue(.unsupported, node, "Unsupported widget size preset")
+        }
+        let size: IdealSize
+        switch preset {
+        case .small: size = catalog.limits.smallSize
+        case .medium: size = catalog.limits.mediumSize
+        case .large: size = catalog.limits.largeSize
+        }
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
+            throw issue(.unsupported, node, "Preset sizes require positive finite catalog dimensions")
+        }
+        return .preset(preset, size: SkinSize(width: size.width, height: size.height))
     }
 
     private mutating func reserveIndex(at node: PositionedNode, depth: Int) throws -> Int {
@@ -103,20 +135,36 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image", "Progress", "Spacer"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let image = facts.component == "Image"
-        var allowedModifiers: Set<String> = image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
+        let progress = facts.component == "Progress"
+        let spacer = facts.component == "Spacer"
+        let ignoresRootSize = depth == 1 && widgetSize != .fit
+        let sizeFacets: Set<String> = ["width", "height", "width.min", "width.max", "height.min", "height.max"]
+        var allowedModifiers: Set<String> = spacer ? ["hidden"] : progress ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
-        allowedModifiers.insert("position")
+        if !spacer { allowedModifiers.insert("position") }
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
         for modifier in call.modifiers {
+            let modifierName = modifier.name.token.text
+            if progress && ["color", "track"].contains(modifierName) {
+                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)),
+                      let paint = catalog.modifier(named: modifierName), paint.appliesTo.contains(.progress),
+                      paint.facets == [FacetID(modifierName)],
+                      paint.signatures.contains(where: { signature in
+                          signature.params.count == 1 && signature.params[0].label == nil &&
+                          signature.params[0].type == .color && signature.params[0].facets == [FacetID(modifierName)]
+                      }) else {
+                    throw issue(.unsupported, modifier.node, "Unsupported checked Progress paint contract")
+                }
+            }
             if modifier.name.token.text == "font" {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
                       let font = catalog.modifier(named: "font"), font.inheritable, font.appliesTo.contains(facts.kind),
@@ -143,8 +191,8 @@ struct StaticProgramCompiler {
             if ["onClick", "onRightClick"].contains(modifier.name.token.text) {
                 let primary = modifier.name.token.text == "onClick"
                 guard (primary ? onClick == nil && onClickActions == nil : onRightClickActions == nil),
-                      facts.component == "Text" || solidShape else {
-                    throw issue(.unsupported, modifier.node, "Only Text and basic shape primary/secondary click actions are implemented")
+                      facts.component == "Text" || solidShape || progress else {
+                    throw issue(.unsupported, modifier.node, "Only Text, Progress and basic shape primary/secondary click actions are implemented")
                 }
                 let actions = try clickActions(modifier, kind: facts.kind)
                 if !primary {
@@ -168,28 +216,31 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Separate light/dark colors are not implemented")
             }
         }
-        var allowedFacets: Set<String> = image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
+        var allowedFacets: Set<String> = spacer ? ["hidden"] : progress
+            ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "color", "track", "hidden", "name"]
+            : image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
-        allowedFacets.formUnion(["position.x", "position.y", "position.anchor"])
+        if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor"]) }
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
             }
-            guard candidates.allSatisfy({ $0.condition == nil }) else {
+            guard ignoresRootSize && sizeFacets.contains(facet.rawValue) || candidates.allSatisfy({ $0.condition == nil }) else {
                 throw issue(.unsupported, node, "Conditional facet is not implemented: \(facet.rawValue)")
             }
         }
         let index = try reserveIndex(at: node, depth: depth)
-        // Text styles are inherited only by text and containers; a shape's fill is its own facet/default.
-        let appearance = solidShape || image ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
-        let width = try length(facts, "width", default: spec.sizing.width, at: node)
-        let height = try length(facts, "height", default: spec.sizing.height, at: node)
-        let minWidth = try number(facts, "width.min", default: 0, at: node)
-        let minHeight = try number(facts, "height.min", default: 0, at: node)
-        let maxWidth = try optionalNumber(facts, "width.max", at: node)
-        let maxHeight = try optionalNumber(facts, "height.max", at: node)
+        // Only text and containers inherit text styles. Progress owns both its fill and track colors.
+        let appearance = solidShape || image || progress || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
+        // The checked preset owns the root proposal; retain DK5018 but do not evaluate ignored size facets.
+        let width: ProgramLength = ignoresRootSize ? .fit : try length(facts, "width", default: spec.sizing.width, at: node)
+        let height: ProgramLength = ignoresRootSize ? .fit : try length(facts, "height", default: spec.sizing.height, at: node)
+        let minWidth = ignoresRootSize ? 0 : try number(facts, "width.min", default: 0, at: node)
+        let minHeight = ignoresRootSize ? 0 : try number(facts, "height.min", default: 0, at: node)
+        let maxWidth = ignoresRootSize ? nil : try optionalNumber(facts, "width.max", at: node)
+        let maxHeight = ignoresRootSize ? nil : try optionalNumber(facts, "height.max", at: node)
         let padding = try SkinInsets(left: number(facts, "padding.left", default: 0, at: node),
                                      top: number(facts, "padding.top", default: 0, at: node),
                                      right: number(facts, "padding.right", default: 0, at: node),
@@ -204,6 +255,61 @@ struct StaticProgramCompiler {
         var stroke: ProgramShapeStroke?
         var radius: ProgramCornerRadius?
         switch facts.component {
+        case "Spacer":
+            let arguments = call.arguments?.arguments ?? []
+            guard spec.kind == .spacer, spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+                  let minimum = spec.signatures[0].param(named: "min"), minimum.label == "min", minimum.type == .length,
+                  call.block == nil, arguments.count <= 1, arguments.allSatisfy({ $0.label?.name == "min" }) else {
+                throw issue(.unsupported, node, "Unsupported checked Spacer contract")
+            }
+            let value: Double
+            if let argument = arguments.first {
+                guard checked.types[checked.tree.id(of: argument.value.node)]?.type == .length,
+                      case .number(let n) = try lengthConstant(argument.value.node), n >= 0 else {
+                    throw issue(.unsupported, argument.value.node, "Spacer minimum requires a nonnegative constant Length")
+                }
+                value = n
+            } else { value = try defaultNumber(component: "Spacer", parameter: "min", at: node) }
+            content = .spacer(minimum: value)
+        case "Progress":
+            let arguments = call.arguments?.arguments ?? []
+            guard spec.kind == .progress, spec.signatures.count == 1, spec.signatures[0].params.count == 3,
+                  let valueParameter = spec.signatures[0].param(named: "value"), valueParameter.label == nil,
+                  valueParameter.type == .anyNumber, valueParameter.required,
+                  let totalParameter = spec.signatures[0].param(named: "total"), totalParameter.label == "total",
+                  totalParameter.type == .anyNumber, totalParameter.sameAs == "value", totalParameter.defaultValue == nil,
+                  let fillsParameter = spec.signatures[0].param(named: "fills"), fillsParameter.label == "fills",
+                  fillsParameter.type == .enumeration("Direction"), call.block == nil,
+                  arguments.filter({ $0.label == nil }).count == 1,
+                  arguments.filter({ $0.label?.name == "total" }).count <= 1,
+                  arguments.filter({ $0.label?.name == "fills" }).count <= 1,
+                  arguments.allSatisfy({ $0.label == nil || ["total", "fills"].contains($0.label?.name ?? "") }),
+                  let value = arguments.first(where: { $0.label == nil })?.value.node else {
+                throw issue(.unsupported, node, "Unsupported checked Progress contract")
+            }
+            let operands = try expressions.progress(value: value, total: arguments.first { $0.label?.name == "total" }?.value.node)
+            let direction: String
+            if let fills = arguments.first(where: { $0.label?.name == "fills" })?.value.node {
+                guard case .choice(let choice) = try constant(fills),
+                      checked.types[checked.tree.id(of: fills)]?.type == .enumeration("Direction"),
+                      checked.symbols[checked.tree.id(of: fills)] == .enumCase(type: "Direction", case: choice) else {
+                    throw issue(.unsupported, fills, "Progress fills requires a checked Direction case")
+                }
+                direction = choice
+            } else { direction = try defaultChoice(component: "Progress", parameter: "fills", at: node) }
+            guard catalog.enumeration("Direction")?.enumCase(named: direction) != nil,
+                  let fills = ProgramDirection(rawValue: direction) else {
+                throw issue(.unsupported, node, "Unsupported Progress direction")
+            }
+            func paint(_ key: String) throws -> ProgramColor {
+                if let own = try facet(facts, key, at: node) { return try color(own, at: node) }
+                guard let source = spec.defaults[FacetID(key)] else {
+                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Progress.\(key) default")
+                }
+                return try color(fixed(source, at: node), at: node)
+            }
+            content = .progress(ProgramProgress(value: operands.value, total: operands.total, fills: fills,
+                                                color: try paint("color"), track: try paint("track")))
         case "Rectangle", "Circle", "Ellipse", "Capsule":
             guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
                 throw issue(.unsupported, node, "\(facts.component) takes no arguments or block")
@@ -347,7 +453,7 @@ struct StaticProgramCompiler {
         return ProgramElement(id: id,
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
-                              idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
+                              idealSize: solidShape || progress ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position)
     }

@@ -119,6 +119,38 @@ extension Checker {
         func hasError(_ node: PositionedNode) -> Bool {
             diagnostics.contains { $0.severity == .error && $0.range.overlaps(range(node)) }
         }
+        // A settled assignment supplies the expected dimension that was still open during inference.
+        // Only structural conditional/parenthesis nodes and their already checked numeric values are visited.
+        func conditionalValue(_ node: PositionedNode, target: Val, what: DiagnosticArgument, context: ExprContext) -> Val? {
+            guard !hasError(node), let original = numericValues[id(node)],
+                  var value = resolved(original, at: node) else { return nil }
+            if let paren = ParenExprSyntax(node) {
+                guard let inner = conditionalValue(paren.value.node, target: target, what: what, context: context),
+                      inner.type == target.type else { return nil }
+                value.type = inner.type; value.base = inner.base
+            } else if let ternary = TernaryExprSyntax(node) {
+                let first = conditionalValue(ternary.then.node, target: target, what: what, context: context)
+                let second = conditionalValue(ternary.otherwise.node, target: target, what: what, context: context)
+                guard let first, let second, first.type == target.type, second.type == target.type else { return nil }
+                value.type = target.type; value.base = value.base ?? first.base ?? second.base ?? target.base
+            } else {
+                if value.dimension == .plain, target.dimension == .length, value.plainLiteral == nil {
+                    // Any Plain expression means points at a Length parameter, not at an assignment leaf.
+                    reportTypeMismatch(value, node, expected: target.type, what: what, param: nil, context)
+                    return nil
+                }
+                guard coerce(value, node, to: target.type, what: what, context),
+                      let adopted = resolved(value, at: node) else { return nil }
+                if value.plainLiteral != nil, adopted.type == target.type, let base = target.base {
+                    var based = adopted; based.base = base
+                    recordNumericAdoption(based, node)
+                    return based
+                }
+                return adopted
+            }
+            recordNumericAdoption(value, node)
+            return value
+        }
         for use in deferredNumericUses {
             switch use {
             case .arithmetic(let op, let leftNode, let rightNode, let node, let left, let right):
@@ -130,9 +162,22 @@ extension Checker {
                     types.removeValue(forKey: key)
                     numericCoercions.removeValue(forKey: key)
                 } else { numericValues[key] = value }
+            case .comparison(let leftNode, let rightNode, let node, let left, let right):
+                guard !hasError(node), var l = resolved(left, at: leftNode), var r = resolved(right, at: rightNode) else { continue }
+                adoptPair(&l, leftNode, &r, rightNode, operation: .compare)
+                if let a = l.dimension, let b = r.dimension, a != b, !l.error, !r.error,
+                   !(a == .percent && b == .plain && r.range == .fixed(0...1)),
+                   !(b == .percent && a == .plain && l.range == .fixed(0...1)) {
+                    report(.unitMismatch, range(node), ["op": .text(LocalizedText("compare", "比较")),
+                                                       "a": .type(l.type), "b": .type(r.type)])
+                }
             case .assignment(let node, let target, let original, let what, let context):
                 guard !hasError(node), let target = resolved(target), let value = resolved(original, at: node) else { continue }
-                _ = coerce(value, node, to: target.type, what: what, context)
+                if case .number = target.type, node.kind == .ternaryExpr || node.kind == .parenExpr {
+                    _ = conditionalValue(node, target: target, what: what, context: context)
+                } else {
+                    _ = coerce(value, node, to: target.type, what: what, context)
+                }
             }
         }
     }
@@ -173,6 +218,26 @@ extension Checker {
             guard let base = value.base else { continue }
             var visited = Set<NodeID>()
             supplyBase(key, base, &visited)
+        }
+        // Assignment is another base-supplying use. Resolve its receiver before defaulting open GB to 1000.
+        for use in deferredNumericUses {
+            guard case .assignment(let node, var target, _, _, _) = use,
+                  !diagnostics.contains(where: { $0.severity == .error && $0.range.overlaps(range(node)) }) else { continue }
+            if let slot = target.open, slot < openSlots.count {
+                let open = openSlots[slot]
+                if case .declaration(let decl) = open.owner, decl.poisoned { continue }
+                if open.kind == .dimension, let type = open.settled { target.type = type }
+                if let base = open.settledBase { target.base = base }
+            }
+            guard target.dimension == .bytes || target.dimension == .bytesPerSecond,
+                  let base = target.base, var value = values[id(node)], !value.error,
+                  value.dimension == target.dimension || (value.dimension == .plain && value.plainLiteral != nil) else { continue }
+            if value.base == nil, value.adoptsBase || value.plainLiteral != nil {
+                value.base = base
+                values[id(node)] = value
+            }
+            var visited = Set<NodeID>()
+            supplyBase(id(node), value.base ?? base, &visited)
         }
         var resolvedBases = Set<NodeID>(), resolvingBases = Set<NodeID>()
         func resolveBase(_ key: NodeID) -> Int? {

@@ -31,6 +31,8 @@ func runDeskCompilationTests(_ t: TestRunner) {
     runDeskCompilationReferenceTests(t)
     runDeskPointRadiusCompilationTests(t)
     runDeskFreeformCompilationTests(t)
+    runDeskProgressCompilationTests(t)
+    runDeskSpacerAndPresetCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -127,8 +129,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: compilation: unsupported semantics fail with original source diagnostics") {
-        let cases = [#"info { size: .small }"# + "\n" + #"widget { Text("A") }"#,
-                     #"info { description: "Metadata" }"# + "\n" + #"widget { Text("A") }"#,
+        let cases = [#"info { description: "Metadata" }"# + "\n" + #"widget { Text("A") }"#,
                      #"options { show = Toggle("Show") }"# + "\n" + #"widget { Text("A") }"#,
                      #"style label { .font(13) }"# + "\n" + #"widget { Text("A").style(label) }"#,
                      #"widget { Grid(columns: 2) { Text("A") } }"#,
@@ -326,9 +327,9 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.equal(moved, nestedRuntime.program)
     }
 
-    t.suite("Desk: flex layout: conditional geometry margin presets and invalid bounds remain explicit failures") {
+    t.suite("Desk: flex layout: conditional geometry margin and invalid bounds remain explicit failures") {
         for source in [#"widget { Rectangle().width(.fill, if: true) }"#, #"widget { Rectangle().height(.fill, min: 5).margin(1) }"#,
-                       #"info { size: .small }; widget { Rectangle() }"#, #"widget { Rectangle().height(.fill).rounded(2, topLeft: 0) }"#] {
+                       #"widget { Rectangle().height(.fill).rounded(2, topLeft: 0) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             let result = Desk.compile(checked)
@@ -344,7 +345,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
         let overflow = try compileFixture(t, #"widget { Column { Rectangle().height(.fill, min: 20) }.height(10) }"#)
         var runtime = try ProgramRuntime(program: overflow)
         t.throwsError { _ = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram } }
-        t.equal(runtime.generation, 0, "minimum overflow is not squeezed or partially published; preset scaling is pending")
+        t.equal(runtime.generation, 0, "fit-mode minimum overflow is not squeezed or partially published")
     }
 
     t.suite("Desk: flex precision: fractional checked rows reach exact shared budget guards") {
@@ -1118,4 +1119,370 @@ private func deskCompilationNode(_ checked: CheckedFile, text: String, kind: Syn
     return DeskNodeTable(tree: checked.tree).entries.map(\.positioned).first {
         $0.kind == kind && String(decoding: bytes[$0.textRange], as: UTF8.self) == text
     }
+}
+
+private func compiledBars(_ scene: WidgetScene) -> [BarDraw] {
+    scene.drawingItems.compactMap { if case .bar(let value) = $0 { return value }; return nil }
+}
+
+private func runDeskProgressCompilationTests(_ t: TestRunner) {
+    let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in throw CompilationFixtureError.missingProgram }
+    t.suite("Desk: progress: catalog defaults directions and own colors reach drawing") {
+        let program = try compileFixture(t, "widget { Progress(0.25) }")
+        t.equal(program.root.width, .fill); t.equal(program.root.height, .fixed(6))
+        t.equal(program.root.idealSize, SkinSize(width: 100, height: 6))
+        guard case .progress(let progress) = program.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(progress, ProgramProgress(value: .number(0.25)))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(scene.size, SkinSize(width: 100, height: 6))
+        t.equal(compiledBars(scene).first?.visibleRects, [SkinRect(width: 25, height: 6)])
+        t.equal(compiledBars(scene).first?.color, SkinAppearance.light.accentColor)
+        let cases: [(String, SkinRect)] = [
+            ("right", SkinRect(width: 20, height: 20)), ("left", SkinRect(x: 60, width: 20, height: 20)),
+            ("up", SkinRect(y: 15, width: 80, height: 5)), ("down", SkinRect(width: 80, height: 5)),
+        ]
+        for (direction, expected) in cases {
+            let source = "widget { Column { Progress(25%, fills: .\(direction)).size(80, 20).color(\"#123456\").track(\"#ABCDEF\") }.color(.dim) }"
+            var runtime = try ProgramRuntime(program: compileFixture(t, source))
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(compiledBars(scene).first?.visibleRects, [expected], direction)
+            t.equal(compiledBars(scene).first?.color, RGBA(r: 18, g: 52, b: 86))
+            guard case .fill(let frame, let paint)? = scene.drawingItems.first else { throw CompilationFixtureError.missingProgram }
+            t.equal(frame, SkinRect(width: 80, height: 20)); t.equal(paint.color, RGBA(r: 171, g: 205, b: 239))
+        }
+        let inherited = try compileFixture(t, "widget { Column { Progress(0.5) }.color(.dim) }")
+        guard case .column(_, _, let children) = inherited.root.content,
+              case .progress(let own) = children.first?.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(own.color, .accent); t.equal(own.track, .faint)
+        var catalog = DeskCatalog.current
+        guard let index = catalog.components.firstIndex(where: { $0.name == "Progress" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[index].defaults["color"] = ".dim"
+        catalog.components[index].defaults["track"] = ".separator"
+        catalog.components[index].signatures[0].params[2].defaultValue = .source(".left")
+        catalog.components[index].sizing.height = "8"
+        catalog.components[index].sizing.idealWhenUnspecified = IdealSize(width: 130, height: 8)
+        let changed = Desk.compile(deskCheck("widget { Progress(0.5) }", context: CheckContext(catalog: catalog)), catalog: catalog)
+        guard let altered = changed.program, case .progress(let paint) = altered.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(paint.fills, .left); t.equal(paint.color, .dim); t.equal(paint.track, .separator)
+        var changedRuntime = try ProgramRuntime(program: altered)
+        t.equal(compiledBars(try changedRuntime.project(environment: compileEnvironment(), measure: measure)).first?.visibleRects,
+                [SkinRect(x: 65, width: 65, height: 8)])
+    }
+    t.suite("Desk: progress: CPU memory and battery use each live projection snapshot") {
+        let first = ProgramSystemInput(cpuUsage: 25, memoryUsed: 250, memoryTotal: 1_000, memoryFree: 750, batteryLevel: 40)
+        let second = ProgramSystemInput(cpuUsage: 85, memoryUsed: 500, memoryTotal: 2_000, memoryFree: 1_500, batteryLevel: 65)
+        let cases: [(String, ProgramSystemProperty, Double, Double)] = [
+            ("cpu.usage", .cpuUsage, 25, 85), ("battery.level", .batteryLevel, 40, 65),
+            ("memory.used", .memoryUsed, 25, 25), ("memory.free", .memoryFree, 75, 75),
+            ("memory.usage", .memoryUsage, 25, 25),
+        ]
+        for (expression, property, before, after) in cases {
+            let program = try compileFixture(t, "widget { Progress(\(expression)).size(100, 10) }")
+            guard case .progress(let progress) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(progress.value, .systemProperty(property))
+            let memoryRange = property == .memoryUsed || property == .memoryFree
+            t.equal(progress.total, memoryRange ? .systemProperty(.memoryTotal) : nil)
+            var runtime = try ProgramRuntime(program: program)
+            t.equal(runtime.neededSystemProperties, memoryRange ? Set([property, .memoryTotal]) : Set([property]))
+            let a = try runtime.project(environment: compileEnvironment(), systemInput: first, measure: measure)
+            let b = try runtime.project(environment: compileEnvironment(), systemInput: second, measure: measure)
+            t.equal(compiledBars(a).first?.visibleRects, [SkinRect(width: before, height: 10)], expression)
+            t.equal(compiledBars(b).first?.visibleRects, [SkinRect(width: after, height: 10)], expression)
+            t.equal(b.generation, a.generation + 1)
+            let missing = try runtime.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(), measure: measure)
+            t.equal(missing.drawingItems.count, 1, "missing \(expression) retains its track")
+            t.check(compiledBars(missing).isEmpty)
+        }
+    }
+    t.suite("Desk: progress: checked memory aliases prove the owner while variables stay frozen") {
+        for keyword in ["computed", "variable"] {
+            let source = "widget { \(keyword) amount = (memory.used); computed alias = amount; Progress((alias)).size(100, 10) }"
+            let program = try compileFixture(t, source)
+            guard case .progress(let progress) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(progress.value, .declaration(1)); t.equal(progress.total, .systemProperty(.memoryTotal))
+            var runtime = try ProgramRuntime(program: program)
+            let first = try runtime.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(memoryUsed: 600, memoryTotal: 1_000), measure: measure)
+            let second = try runtime.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(memoryUsed: 200, memoryTotal: 800), measure: measure)
+            t.equal(compiledBars(first).first?.visibleRects, [SkinRect(width: 60, height: 10)])
+            t.equal(compiledBars(second).first?.visibleRects, [SkinRect(width: keyword == "variable" ? 75 : 25, height: 10)])
+            t.equal(runtime.neededSystemProperties, keyword == "variable" ? Set([.memoryTotal]) : Set([.memoryUsed, .memoryTotal]))
+        }
+        let explicitRange = try compileFixture(t, "widget { computed value = memory.used + memory.free; Progress(value, total: memory.total * 2).size(100, 10) }")
+        var runtime = try ProgramRuntime(program: explicitRange)
+        let scene = try runtime.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(memoryUsed: 300, memoryTotal: 1_000, memoryFree: 700), measure: measure)
+        t.equal(compiledBars(scene).first?.visibleRects, [SkinRect(width: 50, height: 10)])
+    }
+    t.suite("Desk: progress: numeric units missing and nonpositive totals keep range semantics") {
+        for expression in ["0.25", "25%", "2GB, total: 8GB", "250ms, total: 1s", "5pt, total: 20pt", "(2 + 3), total: 20"] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, "widget { Progress(\(expression)).size(80, 12) }"))
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(compiledBars(scene).first?.visibleRects, [SkinRect(width: 20, height: 12)], expression)
+        }
+        for expression in ["1 / 0", "1, total: 1 / 0", "1, total: 0", "-5, total: -10", "-1, total: 2"] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, "widget { Progress(\(expression)).size(80, 12) }"))
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(scene.drawingItems.count, 1, expression); t.check(compiledBars(scene).isEmpty, expression)
+            t.equal(runtime.generation, 1)
+        }
+        var clamped = try ProgramRuntime(program: compileFixture(t, "widget { Progress(200%, total: 100%).size(80, 12) }"))
+        t.equal(compiledBars(try clamped.project(environment: compileEnvironment(), measure: measure)).first?.visibleRects,
+                [SkinRect(width: 80, height: 12)])
+        let byteSource = "widget { Progress(memory.used, total: 8GB).size(80, 12) }"
+        let byteChecked = deskCheck(byteSource)
+        guard let byteLiteral = deskCompilationNode(byteChecked, text: "8GB", kind: .numberLiteral) else { throw CompilationFixtureError.missingProgram }
+        let byteID = byteChecked.tree.id(of: byteLiteral)
+        t.equal(byteChecked.types[byteID]?.displayBase, 1024)
+        t.equal(byteChecked.canonicalNumericValues[byteID], 8_589_934_592)
+        var bytes = try ProgramRuntime(program: compileFixture(t, byteSource))
+        t.equal(compiledBars(try bytes.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(memoryUsed: 2_147_483_648), measure: measure)).first?.visibleRects,
+                [SkinRect(width: 20, height: 12)], "the explicit byte total adopts memory's checked 1024 display base")
+        for total in ["100", "100%"] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, "widget { Progress(cpu.usage, total: \(total)).size(80, 12) }"))
+            t.equal(compiledBars(try runtime.project(environment: compileEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 25), measure: measure)).first?.visibleRects,
+                    [SkinRect(width: 20, height: 12)], "the explicit total shares the value's checked Percent dimension")
+        }
+        let checked = deskCheck("widget { Progress(60) }")
+        let compiled = Desk.compile(checked)
+        t.check(compiled.program != nil && compiled.issues.isEmpty)
+        t.check(compiled.diagnostics.contains { $0.id == .fractionOver1 && $0.severity == .warning })
+        t.equal(compiled.diagnostics, checked.diagnostics)
+    }
+    t.suite("Desk: progress: reassigned byte totals retain the checked owner base") {
+        let input = ProgramSystemInput(memoryUsed: 2_147_483_648)
+        for expression in ["system.dark ? 4GB : 8GB", "4GB", "4GiB"] {
+            let source = """
+                widget {
+                    variable full = 8GB
+                    Progress(memory.used, total: full).size(80, 12)
+                        .onClick { full = \(expression) }
+                }
+                """
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, "\(expression): \(deskDescribe(checked))")
+            t.equal(result.diagnostics, checked.diagnostics); t.check(result.issues.isEmpty, "\(result.issues)")
+            t.equal(checked.declarationTypes.values.first?.type, .bytes)
+            t.equal(checked.declarationTypes.values.first?.displayBase, 1024, "the memory value fixes full's byte base")
+            let spelling = expression == "4GiB" ? "4GiB" : "4GB"
+            guard let literal = deskCompilationNode(checked, text: spelling, kind: .numberLiteral),
+                  let program = result.program else { throw CompilationFixtureError.missingProgram }
+            let literalID = checked.tree.id(of: literal)
+            t.equal(checked.types[literalID]?.type, .bytes)
+            t.equal(checked.types[literalID]?.displayBase, 1024, expression)
+            t.equal(checked.canonicalNumericValues[literalID], 4_294_967_296, expression)
+            t.check(checked.numericCoercions[literalID] == nil, "byte adoption is not a percent conversion")
+            t.equal(DeskCatalog.current.unit(spelling: spelling == "4GB" ? "GB" : "GiB")?.adoptsBase, spelling == "4GB",
+                    "GB adopts its checked owner base; GiB has a fixed 1024 factor")
+            t.equal(program.declarations.first?.initial, .quantity(ProgramNumber(8_589_934_592, dimension: .bytes, displayBase: 1024)))
+            var runtime = try ProgramRuntime(program: program)
+            let first = try runtime.project(environment: compileEnvironment(.light), systemInput: input, measure: measure)
+            t.equal(compiledBars(first).first?.visibleRects, [SkinRect(width: 20, height: 12)], expression)
+            guard let changed = try runtime.click(at: SkinPoint(x: 40, y: 6), expectedGeneration: first.generation,
+                environment: compileEnvironment(.dark), systemInput: input, measure: measure) else { throw CompilationFixtureError.missingProgram }
+            t.equal(compiledBars(changed).first?.visibleRects, [SkinRect(width: 40, height: 12)], expression)
+            t.equal(changed.generation, first.generation + 1)
+            if expression.hasPrefix("system.dark") {
+                guard let restored = try runtime.click(at: SkinPoint(x: 40, y: 6), expectedGeneration: changed.generation,
+                    environment: compileEnvironment(.light), systemInput: input, measure: measure) else { throw CompilationFixtureError.missingProgram }
+                t.equal(compiledBars(restored).first?.visibleRects, [SkinRect(width: 20, height: 12)], "the other GB branch keeps the same base")
+            }
+        }
+    }
+    t.suite("Desk: progress: primary and secondary actions update computed ratios transactionally") {
+        let source = """
+            widget {
+                variable value = 0.25
+                computed shown = value * 2
+                computed full = 2
+                Progress(shown, total: full).size(80, 12)
+                    .onClick { value = value + 0.25 }
+                    .onRightClick { value = 0 }
+            }
+            """
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        let first = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(compiledBars(first).first?.visibleRects, [SkinRect(width: 20, height: 12)])
+        guard let second = try runtime.click(at: SkinPoint(x: 40, y: 6), expectedGeneration: first.generation,
+                                             environment: compileEnvironment(), measure: measure) else { throw CompilationFixtureError.missingProgram }
+        t.equal(compiledBars(second).first?.visibleRects, [SkinRect(width: 40, height: 12)])
+        t.check(try runtime.click(at: SkinPoint(x: 40, y: 6), expectedGeneration: first.generation,
+                                 environment: compileEnvironment(), measure: measure) == nil)
+        guard let cleared = try runtime.clickWithEffects(at: SkinPoint(x: 40, y: 6), expectedGeneration: second.generation,
+            event: .rightUp, environment: compileEnvironment(), measure: measure) else { throw CompilationFixtureError.missingProgram }
+        t.check(cleared.effects.isEmpty); t.check(compiledBars(cleared.scene).isEmpty)
+        t.equal(cleared.scene.drawingItems.count, 1); t.equal(cleared.scene.generation, second.generation + 1)
+        t.equal(cleared.scene.elements.map(\.id), first.elements.map(\.id))
+    }
+    t.suite("Desk: progress: dynamic duration visibility owns the clock request") {
+        let source = "widget { variable start = time.now; Progress(time.now - start, total: 10s).size(100, 10) }"
+        let first = ProgramDateInput(instant: Date(timeIntervalSince1970: 1_700_000_000), timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_US"))
+        let next = ProgramDateInput(instant: first.instant.addingTimeInterval(5), timeZone: first.timeZone, locale: first.locale)
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        t.check(compiledBars(try runtime.project(environment: compileEnvironment(), dateInput: first, measure: measure)).isEmpty)
+        let scene = try runtime.project(environment: compileEnvironment(), dateInput: next, measure: measure)
+        t.equal(compiledBars(scene).first?.visibleRects, [SkinRect(width: 50, height: 10)])
+        t.equal(runtime.clockPrecision, .second)
+        var hidden = try ProgramRuntime(program: compileFixture(t, source.replacingOccurrences(of: ".size(100, 10)", with: ".size(100, 10).hidden()")))
+        let hiddenScene = try hidden.project(environment: compileEnvironment(), dateInput: first, measure: measure)
+        t.equal(hiddenScene.size, scene.size); t.check(hiddenScene.drawingItems.isEmpty)
+        t.equal(hidden.clockPrecision, nil)
+    }
+    t.suite("Desk: progress: unsupported ranges dimensions and forged receipts reject fully") {
+        for source in ["Progress(2GB)", "Progress(memory.total)", "Progress(true)", "Progress(time.now)",
+                       "Progress(2s, total: 2GB)", "Progress(0.5).track(.color(light: .black, dark: .white))"] {
+            let checked = deskCheck("widget { \(source) }"), result = Desk.compile(checked)
+            t.check(result.program == nil, source)
+            t.check(!result.issues.isEmpty || !checked.diagnostics(.error).isEmpty, source)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+        let checked = deskCheck("widget { computed amount = memory.used; Progress(amount, fills: .left) }")
+        guard let direction = deskCompilationNode(checked, text: ".left", kind: .implicitMemberExpr) else { throw CompilationFixtureError.missingProgram }
+        var symbols = checked.symbols
+        symbols[checked.tree.id(of: direction)] = .enumCase(type: "HAlign", case: "left")
+        for invalid in [compilationReplacingFacts(checked, symbols: symbols), compilationReplacingFacts(checked, dataUses: [])] {
+            let result = Desk.compile(invalid)
+            t.check(result.program == nil && !result.issues.isEmpty)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+        for full in [false, true] {
+            var catalog = DeskCatalog.current
+            let path = full ? "memory.total" : "memory.used"
+            guard let namespace = catalog.namespaces.firstIndex(where: { $0.name == "memory" }),
+                  let member = catalog.namespaces[namespace].members.firstIndex(where: { $0.name == (full ? "total" : "used") }) else {
+                throw CompilationFixtureError.missingProgram
+            }
+            if full { catalog.namespaces[namespace].members[member].type = .duration }
+            else { catalog.namespaces[namespace].members[member].range = .member("free") }
+            let result = Desk.compile(checked, catalog: catalog)
+            t.check(result.program == nil && result.issues.first?.kind == .unsupported, "unproven \(path) contract")
+        }
+        var catalog = DeskCatalog.current
+        guard let index = catalog.components.firstIndex(where: { $0.name == "Progress" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[index].signatures[0].params[0].type = .string
+        t.check(Desk.compile(checked, catalog: catalog).program == nil)
+    }
+}
+
+private func runDeskSpacerAndPresetCompilationTests(_ t: TestRunner) {
+    let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in throw CompilationFixtureError.missingProgram }
+    t.suite("Desk: spacer: checked minimum flexes on its parent axis and hidden reserves space") {
+        for (stack, alignment) in [("Row", "top"), ("Column", "left")] {
+            let source = "widget { \(stack)(spacing: 0, align: .\(alignment)) { Rectangle().size(10); Spacer(min: 12pt).hidden(); Rectangle().size(10) }.size(100) }"
+            let program = try compileFixture(t, source)
+            let children: [ProgramElement]
+            switch program.root.content {
+            case .column(_, _, let value), .row(_, _, let value): children = value
+            default: throw CompilationFixtureError.missingProgram
+            }
+            t.equal(children[1].content, .spacer(minimum: 12)); t.check(children[1].hidden)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(scene.elements[2].visibility, .hiddenKeepsSpace)
+            t.equal(scene.elements[2].frame, stack == "Row" ? SkinRect(x: 10, width: 80) : SkinRect(y: 10, height: 80))
+            t.equal(scene.elements[3].frame, stack == "Row" ? SkinRect(x: 90, width: 10, height: 10) : SkinRect(y: 90, width: 10, height: 10))
+        }
+        var minimum = try ProgramRuntime(program: compileFixture(t, "widget { Row(spacing: 0) { Spacer(min: 12) } }"))
+        t.equal(try minimum.project(environment: compileEnvironment(), measure: measure).size, SkinSize(width: 12))
+        var defaults = try ProgramRuntime(program: compileFixture(t, "widget { Row(spacing: 0) { Spacer() } }"))
+        t.equal(try defaults.project(environment: compileEnvironment(), measure: measure).size, SkinSize())
+        let checked = deskCheck("widget { Freeform { Spacer(min: 50) } }")
+        t.check(checked.diagnostics.contains { $0.id == .spacerOutsideStack })
+        let result = Desk.compile(checked)
+        t.equal(result.diagnostics, checked.diagnostics)
+        guard let outside = result.program else { throw CompilationFixtureError.missingProgram }
+        var runtime = try ProgramRuntime(program: outside)
+        t.equal(try runtime.project(environment: compileEnvironment(), measure: measure).size, SkinSize())
+        let unsupported = Desk.compile(deskCheck("widget { variable least = 12; Row { Spacer(min: least) } }"))
+        t.check(unsupported.program == nil && unsupported.issues.first?.kind == .unsupported)
+    }
+    t.suite("Desk: preset: original unsupported source and all sizes now use catalog proposals") {
+        // Preserve the exact original unsupported fixture as a positive end-to-end control.
+        let original = try compileFixture(t, #"info { size: .small }; widget { Rectangle() }"#)
+        t.equal(original.size, .preset(.small, size: SkinSize(width: 170, height: 170)))
+        var first = try ProgramRuntime(program: original)
+        t.equal(try first.project(environment: compileEnvironment(), measure: measure).size, SkinSize(width: 170, height: 170))
+        let originalTextSource = #"info { size: .small }"# + "\n" + #"widget { Text("A") }"#
+        let textChecked = deskCheck(originalTextSource), textResult = Desk.compile(textChecked)
+        t.equal(textChecked.tree.text, originalTextSource)
+        t.equal(textResult.diagnostics, textChecked.diagnostics)
+        t.check(textResult.issues.isEmpty && textResult.diagnostics(.error).isEmpty)
+        guard let textProgram = textResult.program else { throw CompilationFixtureError.missingProgram }
+        var textRuntime = try ProgramRuntime(program: textProgram)
+        let textScene = try textRuntime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 10, height: 20) }
+        t.equal(textScene.size, SkinSize(width: 170, height: 170)); t.equal(compiledDraws(textScene).map(\.text), ["A"])
+        for (name, size) in [("small", SkinSize(width: 170, height: 170)), ("medium", SkinSize(width: 356, height: 170)), ("large", SkinSize(width: 356, height: 356))] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, "info { size: .\(name) }; widget { Text(\"A\") }"))
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 10, height: 20) }
+            t.equal(scene.size, size); t.equal(scene.elements.first?.frame, SkinRect(width: size.width, height: size.height))
+        }
+        t.equal(try compileFixture(t, "widget { Progress(0.5) }").size, .fit)
+        t.equal(try compileFixture(t, "info { size: .fit }; widget { Progress(0.5) }").size, .fit)
+        var catalog = DeskCatalog.current
+        catalog.limits.smallSize = IdealSize(width: 123, height: 77)
+        let checked = deskCheck("info { size: .small }; widget { Rectangle() }", context: CheckContext(catalog: catalog))
+        t.equal(Desk.compile(checked, catalog: catalog).program?.size, .preset(.small, size: SkinSize(width: 123, height: 77)))
+        catalog.limits.smallSize = IdealSize(width: 0, height: 77)
+        t.check(Desk.compile(checked, catalog: catalog).program == nil)
+    }
+    t.suite("Desk: preset: root size writes are ignored with original diagnostics and children retain sizing") {
+        for modifier in [".size(30, 20)", ".width(2, min: 1, max: 4).height(3, min: 2, max: 5)", ".width(.fill, if: true)"] {
+            let checked = deskCheck("info { size: .small }; widget { Rectangle()\(modifier) }")
+            let result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(checked.diagnostics.contains { $0.id.rawValue == "DK5018" }, modifier)
+            t.equal(result.diagnostics, checked.diagnostics)
+            guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+            t.equal(program.root.width, .fit); t.equal(program.root.height, .fit)
+            t.equal(program.root.minWidth, 0); t.equal(program.root.minHeight, 0)
+            t.equal(program.root.maxWidth, nil); t.equal(program.root.maxHeight, nil)
+            var runtime = try ProgramRuntime(program: program)
+            t.equal(try runtime.project(environment: compileEnvironment(), measure: measure).elements.first?.frame, SkinRect(width: 170, height: 170))
+        }
+        let dynamic = try compileFixture(t, "info { size: .small }; widget { variable side = 2; Rectangle().size(side) }")
+        t.equal(dynamic.root.width, .fit); t.equal(dynamic.root.height, .fit)
+        let implicit = try compileFixture(t, "info { size: .small }; widget { Rectangle().size(20, 10); Rectangle().size(30, 10) }")
+        guard case .column(_, _, let children) = implicit.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(children.map(\.width), [.fixed(20), .fixed(30)])
+        var runtime = try ProgramRuntime(program: implicit)
+        let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(scene.size, SkinSize(width: 170, height: 170)); t.equal(scene.elements[1].frame.width, 20)
+        let checked = deskCheck("info { size: .small }; widget { Rectangle() }")
+        guard let size = deskCompilationNode(checked, text: ".small", kind: .implicitMemberExpr) else { throw CompilationFixtureError.missingProgram }
+        var symbols = checked.symbols; symbols.removeValue(forKey: checked.tree.id(of: size))
+        t.check(Desk.compile(compilationReplacingFacts(checked, symbols: symbols)).program == nil)
+    }
+    t.suite("Desk: preset: fixed child overflow scales drawing and hit geometry together") {
+        let source = """
+            info { size: .small }
+            widget {
+                variable count = 0
+                Column(spacing: 0, align: .left) {
+                    Rectangle().size(340, 340).onClick { count = count + 1 }
+                }.size(1)
+            }
+            """
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(scene.size, SkinSize(width: 170, height: 170))
+        t.equal(scene.elements[1].frame, SkinRect(width: 170, height: 170))
+        guard case .transformed(let transform, let children)? = scene.elements[1].items.first else { throw CompilationFixtureError.missingProgram }
+        t.close(transform.a, 0.5); t.close(transform.d, 0.5); t.check(!children.isEmpty)
+        t.equal(scene.hitMap.entry(at: 169, 169, handling: .leftUp, images: nil)?.elementID, scene.elements[1].id)
+        t.check(scene.hitMap.entry(at: 200, 100, handling: .leftUp, images: nil) == nil)
+        t.check(try runtime.click(at: SkinPoint(x: 169, y: 169), expectedGeneration: scene.generation,
+                                 environment: compileEnvironment(), measure: measure) != nil)
+    }
+}
+
+private func compilationReplacingFacts(_ checked: CheckedFile, symbols: [NodeID: Symbol]? = nil,
+                                       dataUses: [DataUse]? = nil) -> CheckedFile {
+    var value = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols ?? checked.symbols, types: checked.types,
+                            elements: checked.elements, dataUses: dataUses ?? checked.dataUses, dependencies: checked.dependencies,
+                            reactions: checked.reactions, freeformOrders: checked.freeformOrders, stringTable: checked.stringTable,
+                            requirements: checked.requirements, options: checked.options, styles: checked.styles,
+                            translations: checked.translations, root: checked.root)
+    value.loopIdentities = checked.loopIdentities; value.assets = checked.assets
+    value.declarationTypes = checked.declarationTypes
+    value.canonicalNumericValues = checked.canonicalNumericValues; value.numericCoercions = checked.numericCoercions
+    return value
 }

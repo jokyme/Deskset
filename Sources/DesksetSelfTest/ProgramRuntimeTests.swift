@@ -15,6 +15,9 @@ private func programFailure(_ t: TestRunner, _ expected: ProgramRuntimeError, _ 
 }
 
 func runProgramRuntimeTests(_ t: TestRunner) {
+    runProgramProgressTests(t)
+    runProgramSpacerTests(t)
+    runProgramPresetTests(t)
     runProgramFreeformTests(t)
     runProgramPaletteTests(t)
     runProgramPointerTests(t)
@@ -653,6 +656,400 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         t.equal(overflowing.generation, 0)
     }
 
+}
+
+private func runProgramProgressTests(_ t: TestRunner) {
+    let id = ElementID(name: "progress", index: 0)
+    let noText: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+    func bar(_ value: ProgramExpression, index: Int = 0, total: ProgramExpression? = nil,
+             width: ProgramLength = .fixed(100), height: ProgramLength = .fixed(6), hidden: Bool = false,
+             actions: [ProgramAction]? = nil) -> ProgramElement {
+        ProgramElement(id: ElementID(name: "progress", index: index), content: .progress(ProgramProgress(value: value, total: total)),
+                       width: width, height: height, hidden: hidden, idealSize: SkinSize(width: 100, height: 6), onClickActions: actions)
+    }
+    func rects(_ scene: WidgetScene) -> [SkinRect] {
+        scene.drawingItems.flatMap { item -> [SkinRect] in
+            if case .bar(let bar) = item { return bar.visibleRects }
+            return []
+        }
+    }
+
+    t.suite("Program: progress: four directions retain fractional points padding and palette paints") {
+        let color = RGBA(r: 224, g: 80, b: 32), track = RGBA(r: 32, g: 64, b: 96)
+        let expected: [(ProgramDirection, SkinRect)] = [
+            (.right, SkinRect(x: 2, y: 3, width: 11.875, height: 11.5)),
+            (.left, SkinRect(x: 37.625, y: 3, width: 11.875, height: 11.5)),
+            (.up, SkinRect(x: 2, y: 11.625, width: 47.5, height: 2.875)),
+            (.down, SkinRect(x: 2, y: 3, width: 47.5, height: 2.875)),
+        ]
+        for (direction, rect) in expected {
+            let root = ProgramElement(id: id, content: .progress(ProgramProgress(value: .number(0.25), fills: direction,
+                                      color: .literal(color), track: .literal(track))), width: .fixed(53.5), height: .fixed(19.5),
+                                      padding: SkinInsets(left: 2, top: 3, right: 4, bottom: 5))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Directions", root: root))
+            let scene = try runtime.project(environment: programEnvironment(.dark, scale: 2), measure: noText)
+            t.equal(scene.size, SkinSize(width: 53.5, height: 19.5))
+            t.equal(scene.elements.first?.kind, .bar)
+            t.equal(scene.drawingItems, [.fill(SkinRect(x: 2, y: 3, width: 47.5, height: 11.5), Paint(color: track)),
+                                        .bar(BarDraw(visibleRects: [rect], imageRect: nil, path: nil, options: ImageOptions(), color: color))])
+            t.equal(runtime.clockPrecision, nil)
+        }
+        var ideal = try ProgramRuntime(program: WidgetProgram(name: "Ideal", root: bar(.number(0.5), width: .fill)))
+        t.equal(try ideal.project(environment: programEnvironment(), measure: noText).size, SkinSize(width: 100, height: 6))
+    }
+
+    t.suite("Program: progress: live CPU battery and memory ranges share immutable inputs and cadence") {
+        let root = ProgramElement(id: ElementID(name: "root", index: 3), content: .column(spacing: 0, align: .left, children: [
+            bar(.systemProperty(.cpuUsage)), bar(.systemProperty(.batteryLevel), index: 1),
+            bar(.systemProperty(.memoryUsed), index: 2, total: .systemProperty(.memoryTotal)),
+        ]))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Live", root: root))
+        t.equal(runtime.neededSystemProperties, [.cpuUsage, .batteryLevel, .memoryUsed, .memoryTotal])
+        let gib = 1024.0 * 1024 * 1024
+        let first = try runtime.project(environment: programEnvironment(),
+            systemInput: ProgramSystemInput(cpuUsage: 25, memoryUsed: 8 * gib, memoryTotal: 16 * gib, batteryLevel: 80), measure: noText)
+        t.equal(rects(first), [SkinRect(width: 25, height: 6), SkinRect(y: 6, width: 80, height: 6), SkinRect(y: 12, width: 50, height: 6)])
+        t.equal(runtime.clockPrecision, .second)
+        let second = try runtime.project(environment: programEnvironment(),
+            systemInput: ProgramSystemInput(cpuUsage: 75, memoryUsed: 4 * gib, memoryTotal: 32 * gib, batteryLevel: 20), measure: noText)
+        t.equal(rects(second), [SkinRect(width: 75, height: 6), SkinRect(y: 6, width: 20, height: 6), SkinRect(y: 12, width: 12.5, height: 6)])
+        t.equal(second.generation, 2); t.equal(first.generation, 1)
+        var battery = try ProgramRuntime(program: WidgetProgram(name: "Battery", root: bar(.systemProperty(.batteryLevel))))
+        _ = try battery.project(environment: programEnvironment(), systemInput: ProgramSystemInput(), measure: noText)
+        t.equal(battery.clockPrecision, .minute, "missing live data can recover on its catalog cadence")
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden", root: bar(.systemProperty(.cpuUsage), hidden: true)))
+        t.equal(hidden.neededSystemProperties, [])
+        let hiddenScene = try hidden.project(environment: programEnvironment(), measure: noText)
+        t.equal(hiddenScene.size, SkinSize(width: 100, height: 6)); t.equal(hiddenScene.drawingItems, [])
+        t.equal(hidden.clockPrecision, nil)
+        var memory = try ProgramRuntime(program: WidgetProgram(name: "Memory", root: bar(.systemProperty(.memoryUsed), total: .systemProperty(.memoryTotal))))
+        _ = try memory.project(environment: programEnvironment(), systemInput: ProgramSystemInput(memoryUsed: gib, memoryTotal: 2 * gib), measure: noText)
+        t.equal(memory.clockPrecision, .twoSeconds)
+    }
+
+    t.suite("Program: progress: missing and nonpositive totals leave the track while finite values clamp") {
+        for (value, total, width) in [(-5.0, 10.0, 0.0), (-5, -10, 0), (5, 0, 0), (5, -10, 0), (5, 10, 50), (20, 10, 100),
+                                     (Double.greatestFiniteMagnitude, Double.leastNonzeroMagnitude, 100)] {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Range", root: bar(.number(value), total: .number(total))))
+            let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+            t.equal(rects(scene), width == 0 ? [] : [SkinRect(width: width, height: 6)])
+            t.equal(scene.drawingItems.first, .fill(SkinRect(width: 100, height: 6), Paint(color: SkinAppearance.light.tertiaryLabelColor)))
+        }
+        for expression in [ProgramExpression.divide(.number(1), .number(0)), .number(0.5)] {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Missing", root: bar(expression, total: .divide(.number(1), .number(0)))))
+            let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+            t.equal(scene.drawingItems.count, 1); t.equal(rects(scene), [])
+        }
+        var missingCPU = try ProgramRuntime(program: WidgetProgram(name: "Missing CPU", root: bar(.systemProperty(.cpuUsage))))
+        t.equal(rects(try missingCPU.project(environment: programEnvironment(), measure: noText)), [])
+        let typed = bar(.quantity(ProgramNumber(64, dimension: .bytes, displayBase: 1000)),
+                        total: .quantity(ProgramNumber(128, dimension: .bytes, displayBase: 1024)))
+        var units = try ProgramRuntime(program: WidgetProgram(name: "Canonical", root: typed))
+        t.equal(rects(try units.project(environment: programEnvironment(), measure: noText)), [SkinRect(width: 50, height: 6)])
+    }
+
+    t.suite("Program: progress: ordered actions update computed bars and failed projection rolls back") {
+        let declarations = [ProgramDeclaration(name: "amount", kind: .variable, initial: .number(0.25)),
+                            ProgramDeclaration(name: "current", kind: .computed, initial: .declaration(0))]
+        let root = ProgramElement(id: ElementID(name: "root", index: 2), content: .column(spacing: 0, align: .left, children: [
+            bar(.declaration(1), actions: [.assign(ProgramAssignment(declaration: 0, value: .number(0.75))), .copy(.string("Updated"))]),
+            ProgramElement(id: ElementID(name: "caption", index: 1), content: .text(ProgramText("Caption"))),
+        ]))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Transaction", root: root, declarations: declarations))
+        let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize(width: 20, height: 10) }
+        let first = try runtime.project(environment: programEnvironment(), measure: measure)
+        t.equal(rects(first), [SkinRect(width: 25, height: 6)])
+        programFailure(t, .invalidMeasurement(ElementID(name: "caption", index: 1))) {
+            _ = try runtime.clickWithEffects(at: SkinPoint(x: 2, y: 2), expectedGeneration: first.generation,
+                environment: programEnvironment()) { _, _, _ in SkinSize(width: .nan, height: 10) }
+        }
+        t.equal(runtime.generation, first.generation)
+        let recovered = try runtime.project(environment: programEnvironment(), measure: measure)
+        t.equal(rects(recovered), [SkinRect(width: 25, height: 6)])
+        let clicked = try runtime.clickWithEffects(at: SkinPoint(x: 2, y: 2), expectedGeneration: recovered.generation,
+                                                  environment: programEnvironment(), measure: measure)
+        t.equal(clicked?.effects, [.copy("Updated")]); t.equal(clicked.map { rects($0.scene) }, [SkinRect(width: 75, height: 6)])
+        t.check(try runtime.clickWithEffects(at: SkinPoint(x: 2, y: 2), expectedGeneration: first.generation,
+                                           environment: programEnvironment(), measure: measure) == nil)
+        t.equal(runtime.clockPrecision, nil)
+        t.equal(runtime.neededSystemProperties(clickAt: SkinPoint(x: -1, y: -1)), [])
+    }
+
+    t.suite("Program: progress: typed producers expressions colors geometry and shared budgets remain checked") {
+        for invalid in [bar(.boolean(true)), bar(.string("25")), bar(.timeNow),
+                        bar(.systemProperty(.memoryUsed)), bar(.number(0.5), total: .systemProperty(.cpuUsage)),
+                        bar(.number(.nan)), bar(.number(0.5), total: .number(.infinity))] {
+            programFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid", root: invalid)) }
+        }
+        let invalidColor = ProgramElement(id: id, content: .progress(ProgramProgress(value: .number(0.5), track: .literal(RGBA(r: .nan, g: 0, b: 0)))),
+                                          width: .fixed(100), height: .fixed(6))
+        programFailure(t, .invalidPaint(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Color", root: invalidColor)) }
+        var expression = ProgramExpression.number(0.5)
+        for _ in 0..<ProgramLimits.maximumExpressionDepth { expression = .negate(expression) }
+        programFailure(t, .expressionDepth) { _ = try ProgramRuntime(program: WidgetProgram(name: "Deep", root: bar(expression))) }
+        let children = (0..<2501).map { bar(.number(0.5), index: $0, total: .number(1)) }
+        let root = ProgramElement(id: ElementID(name: "root", index: 3000), content: .column(spacing: 0, align: .left, children: children))
+        programFailure(t, .expressionLimit) { _ = try ProgramRuntime(program: WidgetProgram(name: "Many values", root: root)) }
+        var frozen = try ProgramRuntime(program: WidgetProgram(name: "Frozen", root: bar(.declaration(0)),
+            declarations: [ProgramDeclaration(name: "sample", kind: .variable, initial: .systemProperty(.cpuUsage))]))
+        t.equal(frozen.neededSystemProperties, [.cpuUsage])
+        let scene = try frozen.project(environment: programEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 42), measure: noText)
+        t.equal(rects(scene), [SkinRect(width: 42, height: 6)])
+        t.equal(frozen.clockPrecision, nil); t.equal(frozen.neededSystemProperties, [])
+        t.equal(rects(try frozen.project(environment: programEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 90), measure: noText)),
+                [SkinRect(width: 42, height: 6)])
+    }
+}
+
+private func runProgramSpacerTests(_ t: TestRunner) {
+    let noText: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize() }
+    func rect(_ index: Int, _ width: Double = 10, _ height: Double = 10) -> ProgramElement {
+        ProgramElement(id: ElementID(name: "rect", index: index), content: .rectangle(fill: .accent),
+                       width: .fixed(width), height: .fixed(height))
+    }
+    func spacer(_ index: Int, _ minimum: Double = 0, cap: Double? = nil, hidden: Bool = false) -> ProgramElement {
+        ProgramElement(id: ElementID(name: "spacer", index: index), content: .spacer(minimum: minimum), hidden: hidden,
+                       maxWidth: cap)
+    }
+    t.suite("Program: spacer: only the stack main axis flexes and capped shares redistribute") {
+        let root = ProgramElement(id: ElementID(name: "row", index: 4), content: .row(spacing: 2, align: .top, children: [
+            rect(0), spacer(1, 10, cap: 20, hidden: true), spacer(2, 10), rect(3, 20),
+        ]), width: .fixed(100), height: .fixed(10))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Shares", root: root))
+        let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+        t.equal(scene.elements.map(\.frame), [SkinRect(width: 100, height: 10), SkinRect(width: 10, height: 10),
+                                             SkinRect(x: 12, width: 20), SkinRect(x: 34, width: 44), SkinRect(x: 80, width: 20, height: 10)])
+        t.equal(scene.elements[2].visibility, .hiddenKeepsSpace)
+        t.equal(scene.elements[2].items, []); t.equal(scene.elements[3].items, [])
+        t.equal(scene.hitMap.entries, [])
+        let defaults = ProgramElement(id: ElementID(name: "column", index: 2), content: .column(spacing: 2, align: .center,
+            children: [rect(0), spacer(1, 7)]))
+        var fit = try ProgramRuntime(program: WidgetProgram(name: "Minimum", root: defaults))
+        let fitted = try fit.project(environment: programEnvironment(), measure: noText)
+        t.equal(fitted.size, SkinSize(width: 10, height: 19))
+        t.equal(fitted.elements[2].frame, SkinRect(x: 5, y: 12, height: 7))
+    }
+
+    t.suite("Program: spacer: nested fit containers retain rigid minimums without claiming cross flexibility") {
+        let inner = ProgramElement(id: ElementID(name: "inner", index: 1), content: .column(spacing: 2, align: .left,
+            children: [rect(2), rect(3), spacer(4, 5)]))
+        let root = ProgramElement(id: ElementID(name: "root", index: 0), content: .column(spacing: 2, align: .left,
+            children: [rect(5), inner, spacer(6, 3)]), width: .fixed(30), height: .fixed(100))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Nested", root: root))
+        let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+        t.equal(scene.elements.first { $0.id == inner.id }?.frame, SkinRect(y: 12, width: 10, height: 56))
+        t.equal(scene.elements.first { $0.id == ElementID(name: "spacer", index: 4) }?.frame, SkinRect(y: 36, height: 32))
+        t.equal(scene.elements.last?.frame, SkinRect(y: 70, height: 30))
+        var alone = try ProgramRuntime(program: WidgetProgram(name: "Outside", root: spacer(0, 100)))
+        let empty = try alone.project(environment: programEnvironment(), measure: noText)
+        t.equal(empty.size, SkinSize()); t.equal(empty.drawingItems, [])
+        let freeform = ProgramElement(id: ElementID(name: "freeform", index: 2), content: .freeform(align: .center,
+            children: [spacer(0, 100), rect(1, 12, 12)]), width: .fixed(20), height: .fixed(20))
+        var outside = try ProgramRuntime(program: WidgetProgram(name: "Freeform space", root: freeform))
+        t.equal(try outside.project(environment: programEnvironment(), measure: noText).elements[1].frame, SkinRect(x: 10, y: 10))
+    }
+
+    t.suite("Program: spacer: invalid minima and original element depth and overflow guards remain transactional") {
+        for minimum in [-1.0, .nan, .infinity] {
+            let invalid = spacer(0, minimum)
+            programFailure(t, .invalidGeometry(invalid.id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Minimum", root: invalid)) }
+        }
+        let id = ElementID(name: "spacer", index: 0)
+        let padded = ProgramElement(id: id, content: .spacer(minimum: 0), padding: SkinInsets(left: 1))
+        programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Padding", root: padded)) }
+        let rigid = ProgramElement(id: ElementID(name: "root", index: 1), content: .column(spacing: 0, align: .left,
+            children: [spacer(0, 20)]), width: .fixed(10), height: .fixed(10))
+        var short = try ProgramRuntime(program: WidgetProgram(name: "Too short", root: rigid))
+        programFailure(t, .layoutOverflow(rigid.id)) { _ = try short.project(environment: programEnvironment(), measure: noText) }
+        t.equal(short.generation, 0)
+        let children = (0..<5000).map { spacer($0) }
+        let many = ProgramElement(id: ElementID(name: "root", index: 5000), content: .column(spacing: 0, align: .left, children: children))
+        programFailure(t, .elementLimit) { _ = try ProgramRuntime(program: WidgetProgram(name: "Count", root: many)) }
+        var deep = spacer(0)
+        for index in 1...64 { deep = ProgramElement(id: ElementID(name: "column", index: index), content: .column(spacing: 0, align: .left, children: [deep])) }
+        programFailure(t, .depthLimit) { _ = try ProgramRuntime(program: WidgetProgram(name: "Depth", root: deep)) }
+    }
+}
+
+private func runProgramPresetTests(_ t: TestRunner) {
+    let rootID = ElementID(name: "root", index: 0)
+    let noText: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize() }
+    func rectangle(_ index: Int, _ width: Double, _ height: Double, hidden: Bool = false,
+                   position: ProgramPosition? = nil) -> ProgramElement {
+        ProgramElement(id: ElementID(name: "rect", index: index), content: .rectangle(fill: .accent),
+                       width: .fixed(width), height: .fixed(height), hidden: hidden, position: position)
+    }
+    let small = ProgramWidgetSize.preset(.small, size: SkinSize(width: 170, height: 170))
+
+    t.suite("Program: preset: catalog proposals override root constraints and reserve spacer remainder") {
+        let root = ProgramElement(id: rootID, content: .column(spacing: 0, align: .left, children: [
+            rectangle(1, 20, 20),
+            ProgramElement(id: ElementID(name: "spacer", index: 2), content: .spacer(minimum: 10)),
+            ProgramElement(id: ElementID(name: "progress", index: 3), content: .progress(ProgramProgress(value: .number(0.5))),
+                           width: .fill, height: .fixed(10), idealSize: SkinSize(width: 100, height: 6)),
+        ]), width: .fixed(22), height: .fixed(18), padding: SkinInsets(left: 10, top: 10, right: 10, bottom: 10),
+            minWidth: 21, maxWidth: 23, minHeight: 17, maxHeight: 19)
+        let sizes: [(ProgramSizePreset, SkinSize)] = [(.small, SkinSize(width: 170, height: 170)),
+            (.medium, SkinSize(width: 356, height: 170)), (.large, SkinSize(width: 356, height: 356))]
+        t.equal(ProgramSizePreset.allCases.count, 3)
+        for (preset, size) in sizes {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Preset", root: root, size: .preset(preset, size: size)))
+            let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+            t.equal(scene.size, size); t.equal(scene.elements[0].frame, SkinRect(width: size.width, height: size.height))
+            t.equal(scene.elements[1].frame, SkinRect(x: 10, y: 10, width: 20, height: 20))
+            t.equal(scene.elements[2].frame, SkinRect(x: 10, y: 30, height: size.height - 50))
+            t.equal(scene.elements[3].frame, SkinRect(x: 10, y: size.height - 20, width: size.width - 20, height: 10))
+            t.equal(scene.hitMap.width, size.width); t.equal(scene.hitMap.height, size.height)
+            t.equal(runtime.clockPrecision, nil)
+            t.check(scene.drawingItems.allSatisfy { if case .transformed = $0 { return false }; return true })
+        }
+        let fitted = ProgramElement(id: rootID, content: .column(spacing: 3, align: .left,
+            children: [rectangle(1, 20, 10), rectangle(2, 30, 12)]))
+        var fit = try ProgramRuntime(program: WidgetProgram(name: "Fit", root: fitted))
+        let scene = try fit.project(environment: programEnvironment(), measure: noText)
+        t.equal(scene.size, SkinSize(width: 30, height: 25)); t.equal(fit.program.size, .fit)
+        t.equal(scene.elements[2].frame, SkinRect(y: 13, width: 30, height: 12))
+    }
+
+    t.suite("Program: preset: finite overflow maps frames anchors text and progress once without rewriting recipes") {
+        let textID = ElementID(name: "text", index: 1), barID = ElementID(name: "progress", index: 2)
+        let text = ProgramElement(id: textID, content: .text(ProgramText("A", fontSize: 20)), width: .fixed(340), height: .fixed(60),
+                                  onClickActions: [.copy(.string("text"))])
+        let bar = ProgramElement(id: barID, content: .progress(ProgramProgress(value: .number(0.5))),
+                                 width: .fixed(340), height: .fixed(280), onRightClickActions: [.copy(.string("bar"))])
+        let root = ProgramElement(id: rootID, content: .column(spacing: 0, align: .left, children: [text, bar]))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: root, size: small))
+        var proposals: [Double?] = []
+        let scene = try runtime.project(environment: programEnvironment()) { _, _, width in
+            proposals.append(width); return SkinSize(width: 10, height: 20)
+        }
+        let matrix = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0)
+        t.equal(proposals, [nil], "fixed text keeps its real box, rather than retrying under fit")
+        t.equal(scene.size, SkinSize(width: 170, height: 170))
+        t.equal(scene.elements.map(\.frame), [SkinRect(width: 85, height: 85), SkinRect(width: 170, height: 30),
+                                             SkinRect(y: 30, width: 170, height: 140)])
+        t.equal(scene.elements.map(\.anchor), [SkinPoint(), SkinPoint(), SkinPoint(y: 30)])
+        guard case .transformed(let textMatrix, let textItems) = scene.elements[1].items.first,
+              case .text(let drawing) = textItems.first,
+              case .transformed(let barMatrix, let barItems) = scene.elements[2].items.first,
+              case .bar(let progress) = barItems.last else { return t.check(false, "one transform around each original recipe") }
+        t.equal(textMatrix, matrix); t.equal(barMatrix, matrix)
+        t.equal(drawing.text, "A"); t.equal(drawing.style.fontSize, 15, "the existing point-to-renderer conversion is preserved")
+        t.equal(drawing.frame, SkinRect(width: 340, height: 60)); t.equal(drawing.contentFrame, drawing.frame)
+        t.equal(progress.visibleRects, [SkinRect(y: 60, width: 170, height: 280)])
+        t.equal(scene.hitMap.entry(at: 160, 20, handling: .leftUp, images: nil)?.elementID, textID)
+        t.equal(scene.hitMap.entry(at: 160, 150, handling: .rightUp, images: nil)?.elementID, barID)
+        let clicked = try runtime.clickWithEffects(at: SkinPoint(x: 160, y: 150), expectedGeneration: scene.generation,
+            event: .rightUp, environment: programEnvironment()) { _, _, _ in SkinSize(width: 10, height: 20) }
+        t.equal(clicked?.effects, [.copy("bar")]); t.equal(clicked?.scene.elements[2].frame, scene.elements[2].frame)
+        t.check(try runtime.clickWithEffects(at: SkinPoint(x: 160, y: 150), expectedGeneration: scene.generation,
+            event: .rightUp, environment: programEnvironment(), measure: noText) == nil)
+    }
+
+    t.suite("Program: preset: cross axis alignment uses actual offsets rather than origin based natural widths") {
+        for vertical in [true, false] {
+            let child = rectangle(1, vertical ? 340 : 170, vertical ? 170 : 340)
+            let content: ProgramElement.Content = vertical ? .column(spacing: 0, align: .center, children: [child]) :
+                .row(spacing: 0, align: .bottom, children: [child])
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Alignment", root: ProgramElement(id: rootID, content: content), size: small))
+            let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+            let matrix = ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: vertical ? 42.5 : 0, ty: vertical ? 0 : 85)
+            t.equal(scene.elements[0].frame, SkinRect(x: matrix.tx, y: matrix.ty, width: 85, height: 85))
+            t.equal(scene.elements[1].frame, SkinRect(width: vertical ? 170 : 85, height: vertical ? 85 : 170))
+            guard case .transformed(let actual, _) = scene.elements[1].items.first else { return t.check(false, "aligned overflow transform") }
+            t.equal(actual, matrix)
+        }
+    }
+
+    t.suite("Program: preset: visible negative ink and natural text expand bounds while hidden negatives keep origin extents") {
+        let negative = rectangle(1, 300, 300, hidden: true, position: ProgramPosition(x: -300, y: -300))
+        let visible = rectangle(2, 20, 10, position: ProgramPosition())
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden negative", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [negative, visible])), size: small))
+        let hiddenScene = try hidden.project(environment: programEnvironment(), measure: noText)
+        t.equal(hiddenScene.elements[2].frame, SkinRect(width: 20, height: 10))
+        t.equal(hiddenScene.elements[1].frame, SkinRect(x: -300, y: -300, width: 300, height: 300))
+        t.equal(hiddenScene.elements[1].visibility, .hiddenKeepsSpace); t.equal(hiddenScene.drawingItems.count, 1)
+        t.check(hiddenScene.drawingItems.allSatisfy { if case .transformed = $0 { return false }; return true })
+        let stroke = ProgramElement(id: ElementID(name: "stroke", index: 1), content: .rectangle(fill: .accent),
+            width: .fixed(400), height: .fixed(200), stroke: ProgramShapeStroke(color: .text, width: 4),
+            position: ProgramPosition(x: -12, y: -9))
+        var ink = try ProgramRuntime(program: WidgetProgram(name: "Ink", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [stroke])), size: small))
+        let inkScene = try ink.project(environment: programEnvironment(), measure: noText)
+        guard case .transformed(let inkMatrix, _) = inkScene.elements[1].items.first else { return t.check(false, "stroke overflow") }
+        let scale = 170.0 / 404
+        t.close(inkMatrix.a, scale); t.close(inkMatrix.d, scale)
+        t.close(inkMatrix.tx, 14 * scale); t.close(inkMatrix.ty, 11 * scale)
+        t.close(inkScene.elements[1].frame.x, 2 * scale); t.close(inkScene.elements[1].frame.y, 2 * scale)
+        let textID = ElementID(name: "text", index: 1)
+        let text = ProgramElement(id: textID, content: .text(ProgramText("Tall")), width: .fixed(100), height: .fixed(10))
+        var tall = try ProgramRuntime(program: WidgetProgram(name: "Natural text", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [text])), size: small))
+        let tallScene = try tall.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 40, height: 340) }
+        guard case .transformed(let tallMatrix, let items) = tallScene.elements[1].items.first,
+              case .text(let textDraw) = items.first else { return t.check(false, "unclipped natural text") }
+        t.equal(tallMatrix, ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0))
+        t.equal(tallScene.elements[1].frame, SkinRect(width: 50, height: 5))
+        t.equal(textDraw.contentFrame, SkinRect(width: 100, height: 340))
+        var fit = try ProgramRuntime(program: WidgetProgram(name: "Fit remains strict", root: text))
+        programFailure(t, .layoutOverflow(textID)) { _ = try fit.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 40, height: 340) } }
+    }
+
+    t.suite("Program: preset: insufficient remainder retains hidden spacer minima and scaled rounded hits") {
+        let space = ProgramElement(id: ElementID(name: "spacer", index: 2), content: .spacer(minimum: 200), hidden: true)
+        let root = ProgramElement(id: rootID, content: .column(spacing: 0, align: .left, children: [rectangle(1, 10, 20), space]))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Minimum overflow", root: root, size: small))
+        let scene = try runtime.project(environment: programEnvironment(), measure: noText)
+        let scale = 170.0 / 220
+        t.close(scene.elements[1].frame.height, 20 * scale); t.close(scene.elements[2].frame.height, 200 * scale)
+        t.equal(scene.elements[2].visibility, .hiddenKeepsSpace); t.equal(scene.elements[2].items, [])
+        let roundedID = ElementID(name: "rounded", index: 1)
+        let rounded = ProgramElement(id: roundedID, content: .rectangle(fill: .accent), width: .fixed(340), height: .fixed(340),
+            cornerRadius: .points(40), onClickActions: [.copy(.string("rounded"))])
+        var hit = try ProgramRuntime(program: WidgetProgram(name: "Rounded overflow", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [rounded])), size: small))
+        let hitScene = try hit.project(environment: programEnvironment(), measure: noText)
+        t.equal(hitScene.elements[1].frame, SkinRect(width: 170, height: 170))
+        t.equal(hitScene.hitMap.entry(at: 1, 1, handling: .leftUp, images: nil)?.elementID, nil)
+        t.equal(hitScene.hitMap.entry(at: 20, 1, handling: .leftUp, images: nil)?.elementID, roundedID)
+        let clicked = try hit.clickWithEffects(at: SkinPoint(x: 20, y: 1), expectedGeneration: hitScene.generation,
+            environment: programEnvironment(), measure: noText)
+        t.equal(clicked?.effects, [.copy("rounded")])
+    }
+
+    t.suite("Program: preset: nonfinite measurements coordinates and failed actions never publish partial scaling") {
+        for size in [SkinSize(), SkinSize(width: -1, height: 170), SkinSize(width: .nan, height: 170), SkinSize(width: 170, height: .infinity)] {
+            programFailure(t, .invalidGeometry(rootID)) {
+                _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid preset", root: ProgramElement(id: rootID,
+                    content: .freeform(align: .topLeft, children: [rectangle(1, 10, 10)])), size: .preset(.small, size: size)))
+            }
+        }
+        let textID = ElementID(name: "text", index: 1)
+        let text = ProgramElement(id: textID, content: .text(ProgramText(value: .conditional(.declaration(0), then: .string("B"), otherwise: .string("A")))),
+            onClickActions: [.assign(ProgramAssignment(declaration: 0, value: .boolean(true))), .copy(.string("updated"))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rollback", root:
+            ProgramElement(id: rootID, content: .column(spacing: 0, align: .left, children: [text])),
+            declarations: [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false))], size: small))
+        let measure: (String, TextStyle, Double?) -> SkinSize = { _, _, _ in SkinSize(width: 40, height: 20) }
+        let scene = try runtime.project(environment: programEnvironment(), measure: measure)
+        programFailure(t, .invalidMeasurement(textID)) {
+            _ = try runtime.clickWithEffects(at: SkinPoint(x: 1, y: 1), expectedGeneration: scene.generation,
+                environment: programEnvironment()) { _, _, _ in SkinSize(width: .infinity, height: 20) }
+        }
+        t.equal(runtime.generation, scene.generation)
+        let recovered = try runtime.project(environment: programEnvironment(), measure: measure)
+        t.equal(programDraws(recovered).map(\.text), ["A"])
+        let clicked = try runtime.clickWithEffects(at: SkinPoint(x: 1, y: 1), expectedGeneration: recovered.generation,
+            environment: programEnvironment(), measure: measure)
+        t.equal(clicked?.effects, [.copy("updated")]); t.equal(clicked.map { programDraws($0.scene).map(\.text) }, ["B"])
+        var huge = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root:
+            ProgramElement(id: rootID, content: .freeform(align: .topLeft, children: [
+                rectangle(1, .greatestFiniteMagnitude, 10, position: ProgramPosition(x: .greatestFiniteMagnitude)),
+            ])), size: small))
+        programFailure(t, .layoutOverflow(rootID)) { _ = try huge.project(environment: programEnvironment(), measure: noText) }
+        t.equal(huge.generation, 0)
+    }
 }
 
 private func runProgramFreeformTests(_ t: TestRunner) {

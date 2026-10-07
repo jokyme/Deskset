@@ -1196,6 +1196,24 @@ extension Checker {
             a = inferValue(thenNode, context, expected: nil)
             b = inferValue(elseNode, context, expected: a.error || a.type == .any ? nil : a.type)
         }
+        if !context.display, let expected, case .number(let dimension) = expected, dimension != .plain,
+           a.isNumber, b.isNumber,
+           (a.type == expected || a.plainLiteral != nil || hasOpenDimension(a)),
+           (b.type == expected || b.plainLiteral != nil || hasOpenDimension(b)) {
+            let what = DiagnosticArgument.text(LocalizedText("Both results of `?:`", "`?:` 的两个结果"))
+            let firstFits = coerce(a, thenNode, to: expected, what: what, context, range: context.param?.range, param: context.param)
+            let secondFits = coerce(b, elseNode, to: expected, what: what, context, range: context.param?.range, param: context.param)
+            guard firstFits, secondFits else { return .error }
+            // coerce records the use, while these local values also have to carry its adopted dimension.
+            if !dimension.needsWrittenUnit {
+                if a.plainLiteral != nil { a.type = expected }
+                if b.plainLiteral != nil { b.type = expected }
+            }
+        }
+        if !context.display, a.isNumber, b.isNumber, !hasOpenDimension(a), !hasOpenDimension(b),
+           a.plainLiteral != nil || b.plainLiteral != nil || a.adoptsBase || b.adoptsBase {
+            adoptPair(&a, thenNode, &b, elseNode, operation: .compare)
+        }
         var v = a.error ? b : a
         v.deps = condition.deps.union(a.deps).union(b.deps)
         v.plainLiteral = nil

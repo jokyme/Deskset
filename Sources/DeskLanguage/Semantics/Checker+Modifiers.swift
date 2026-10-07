@@ -168,8 +168,32 @@ extension Checker {
     func checkComponentValues(_ spec: ComponentSpec, _ bound: BoundCall, call: CallStmtSyntax, element: ElementNode) {
         switch spec.kind {
         case .progress, .gauge:
-            guard let value = bound.value("value"), bound.value("total") == nil, !value.val.error, value.val.open == nil else { return }
+            guard let value = bound.value("value"), !value.val.error else { return }
+            if let total = bound.value("total") {
+                guard total.param.sameAs == value.param.name, !total.val.error,
+                      value.val.isNumber, total.val.isNumber, !value.val.isJson, !total.val.isJson else { return }
+                var v = value.val, maximum = total.val
+                // SameAs carries the value's dimension and byte base through both inline operands and open declarations.
+                if let slot = v.open {
+                    recordUse(slot, of: maximum, total.node, description: LocalizedText("used with \(spec.name)'s total", "与 \(spec.name) 的满格值一起使用"))
+                }
+                if let slot = maximum.open {
+                    recordUse(slot, of: v, value.node, description: LocalizedText("used with \(spec.name)'s value", "与 \(spec.name) 的进度值一起使用"))
+                }
+                guard !hasOpenDimension(v), !hasOpenDimension(maximum) else { return }
+                adoptPair(&v, value.node, &maximum, total.node, operation: .compare)
+                if !v.error, !maximum.error, v.dimension != maximum.dimension {
+                    report(.unitMismatch, range(total.node), ["op": .text(LocalizedText("use together", "一起使用")),
+                                                             "a": .type(v.type), "b": .type(maximum.type)])
+                }
+                return
+            }
+            guard value.val.open == nil else { return }
             let v = value.val
+            if spec.kind == .progress, NumberLiteralSyntax(value.node) != nil,
+               v.dimension == .plain, let number = v.plainLiteral, number > 1 {
+                reportFractionOver1(value.node, what: .name("component:\(spec.name)"), value: number)
+            }
             let known: Bool
             if v.isJson { known = false }
             else if v.dimension == .percent { known = true }

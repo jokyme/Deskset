@@ -187,6 +187,18 @@ struct ProgramExpressionValidation {
         guard dimension == .plain || dimension == .length else { throw ProgramRuntimeError.invalidExpression }
     }
 
+    mutating func validateProgress(_ progress: ProgramProgress) throws {
+        try register(progress.value)
+        let value = try expressionInfo(progress.value, depth: 1).type
+        guard let dimension = value.dimension else { throw ProgramRuntimeError.invalidExpression }
+        if let total = progress.total {
+            try register(total)
+            guard try expressionInfo(total, depth: 1).type == value else { throw ProgramRuntimeError.invalidExpression }
+        } else {
+            guard dimension == .plain || dimension == .percent else { throw ProgramRuntimeError.invalidExpression }
+        }
+    }
+
     mutating func validateAssignment(_ assignment: ProgramAssignment) throws {
         let index = assignment.declaration
         guard declarations.indices.contains(index) else { throw ProgramRuntimeError.invalidDeclaration(index) }
@@ -385,6 +397,37 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
             clockPrecision = .combined(clockPrecision, .combined(result.precision, result.currentDate ? .second : nil))
         }
         return number.value
+    }
+
+    mutating func progress(_ progress: ProgramProgress, displayed: Bool) throws -> Double {
+        let value = try evaluate(progress.value, depth: 1)
+        let total = try progress.total.map { try evaluate($0, depth: 1) }
+        if displayed {
+            clockPrecision = .combined(clockPrecision, .combined(value.precision, total?.precision))
+            if value.currentDate || total?.currentDate == true { clockPrecision = .combined(clockPrecision, .second) }
+        }
+        guard case .numeric(let number) = value.scalar else {
+            if value.scalar.isMissing { return 0 }
+            throw ProgramRuntimeError.invalidExpression
+        }
+        let maximum: Double
+        if let total {
+            guard case .numeric(let number) = total.scalar else {
+                if total.scalar.isMissing { return 0 }
+                throw ProgramRuntimeError.invalidExpression
+            }
+            maximum = number.value
+        } else {
+            switch number.dimension {
+            case .plain: maximum = 1
+            case .percent: maximum = 100
+            default: throw ProgramRuntimeError.invalidExpression
+            }
+        }
+        guard maximum.isFinite, maximum > 0, number.value.isFinite, number.value > 0 else { return 0 }
+        // Compare before division: two finite extremes must not overflow while finding a drawing fraction.
+        if number.value >= maximum { return 1 }
+        return number.value / maximum
     }
 
     mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar {
