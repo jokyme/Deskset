@@ -154,10 +154,11 @@ public struct ProgramIcon: Equatable, Sendable {
         self.fontSizeExpression = fontSizeExpression; self.hasOwnFont = hasOwnFont
     }
 
-    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, resolvedFontSize: Double?) throws -> TextStyle {
+    func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, resolvedFontSize: Double?,
+                      resolvedColor: RGBA? = nil) throws -> TextStyle {
         try ProgramText(value: name, fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
                         italic: italic, color: color, align: align).drawingStyle(in: appearance, colorInput: colorInput,
-                            wrap: false, resolvedFontSize: resolvedFontSize)
+                            wrap: false, resolvedFontSize: resolvedFontSize, resolvedColor: resolvedColor)
     }
 }
 
@@ -210,6 +211,8 @@ public struct ProgramElement: Equatable, Sendable {
     public let position: ProgramPosition?
     /// A display string for this element's accessibility label. Hidden labels are validated but not evaluated.
     public let voiceOver: ProgramExpression?
+    /// Combined with hidden and ancestor visibility. A true condition hides paint and input while retaining layout.
+    public let hiddenIf: ProgramExpression?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
@@ -217,7 +220,8 @@ public struct ProgramElement: Equatable, Sendable {
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
                 onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil,
-                background: ProgramBackground? = nil, voiceOver: ProgramExpression? = nil) {
+                background: ProgramBackground? = nil, voiceOver: ProgramExpression? = nil,
+                hiddenIf: ProgramExpression? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -237,6 +241,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.onRightClickActions = onRightClickActions
         self.position = position
         self.voiceOver = voiceOver
+        self.hiddenIf = hiddenIf
     }
 }
 
@@ -267,6 +272,8 @@ public enum ProgramColor: Equatable, Sendable {
     case literal(RGBA)
     case text, dim, faint, accent, separator
     case palette(ProgramPaletteColor)
+    /// Producers lower precedence and inheritance into this lazy selection; only Bool expressions are admitted.
+    indirect case conditional(ProgramExpression, then: ProgramColor, otherwise: ProgramColor)
 
     func resolved(in appearance: SkinAppearance, colorInput: ProgramColorInput?) throws -> RGBA {
         let key: ProgramPaletteColor
@@ -278,6 +285,7 @@ public enum ProgramColor: Equatable, Sendable {
         case .accent: key = .accent
         case .separator: key = .separator
         case .palette(let value): key = value
+        case .conditional: throw ProgramRuntimeError.invalidExpression // Requires the projection's evaluator.
         }
         if let colorInput {
             guard let color = colorInput.colors[key] else { throw ProgramRuntimeError.invalidColorInput }
@@ -336,13 +344,13 @@ public struct ProgramText: Equatable, Sendable {
 
     /// Adapt once at the existing renderer boundary. Measuring and TextDraw receive this same value.
     func drawingStyle(in appearance: SkinAppearance, colorInput: ProgramColorInput?, wrap: Bool, text: ProgramTextValue? = nil,
-                      resolvedFontSize: Double? = nil) throws -> TextStyle {
+                      resolvedFontSize: Double? = nil, resolvedColor: RGBA? = nil) throws -> TextStyle {
         var style = TextStyle()
         style.fontFace = fontFamily
         style.fontSize = (resolvedFontSize ?? fontSize) * (72.0 / 96.0)
         style.fontWeight = fontWeight
         style.italic = italic
-        style.color = try color.resolved(in: appearance, colorInput: colorInput)
+        style.color = try resolvedColor ?? color.resolved(in: appearance, colorInput: colorInput)
         style.horizontalAlign = align
         style.verticalAlign = .center
         style.accurateText = true

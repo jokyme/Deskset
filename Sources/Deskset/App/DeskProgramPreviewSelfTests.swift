@@ -680,7 +680,6 @@ enum DeskProgramPreviewSelfTests {
             let cases: [(String, Bool)] = [(#"widget { Ellipse().size(24, 18).hidden() }"#, true),
                 (#"widget { Capsule().size(0, 18) }"#, true), (#"widget { Circle().size(24, 18).fill(.clear) }"#, true),
                 (#"widget { Circle().size(24, 18).stroke(.accent, dash: [2, 3]) }"#, false),
-                (#"widget { Ellipse().size(24, 18).fill(.accent, if: true) }"#, false),
                 (#"widget { Capsule().size(24, 18).margin(1) }"#, false),
                 (#"widget { Ellipse().size(24, 18).unknownModifier() }"#, false)]
             for (replacement, empty) in cases {
@@ -693,6 +692,18 @@ enum DeskProgramPreviewSelfTests {
                 t.check(p.canvas.isHidden)
                 p.canvas.setBoundsSize(NSSize(width: 8, height: 8)) // Qualified clear ROI, as in the existing rectangle tests.
                 let blank = try paint(p.canvas); try canaries(t, blank); t.equal(try ink(blank), 0)
+            }
+            // Keep the original conditional-paint edit as a positive control with independent native pixels.
+            replace(#"widget { Ellipse().size(24, 18).fill(.accent, if: true) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready); t.check(!p.canvas.isHidden)
+            let conditionalReference = CurveReferenceView(recipes: [
+                (try curvePath("Ellipse", in: CGRect(x: 0, y: 0, width: 24, height: 18)),
+                 MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor)
+            ], size: NSSize(width: 24, height: 18))
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(conditionalReference, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.equal(try bytes(actual), try bytes(expected)); t.check(try ink(actual) > 0)
             }
             replace(source, in: f); t.check(settled(f)); t.equal(p.state, .ready)
             let actual = try paint(p.canvas); try canaries(t, actual); t.check(try ink(actual) > 0)

@@ -142,6 +142,26 @@ struct ProgramExpressionCompiler {
         try displayed(node, depth: 1)
     }
 
+    /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
+    mutating func condition(_ node: PositionedNode) throws -> ProgramExpression {
+        guard checked.types[checked.tree.id(of: node)]?.type == .bool else {
+            throw issue(.invalidCheckedModel, node, "A modifier condition requires its checked Bool type")
+        }
+        return try lower(node, depth: 1, displayConditionals: false)
+    }
+
+    mutating func hiddenConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
+        guard var result = values.first else { return nil }
+        for value in values.dropFirst() {
+            count += 1
+            guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
+            }
+            result = .or(result, value)
+        }
+        return result
+    }
+
     private mutating func displayed(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
         guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil else {

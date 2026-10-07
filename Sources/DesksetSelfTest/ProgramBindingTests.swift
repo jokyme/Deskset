@@ -194,6 +194,12 @@ func runProgramBindingTests(_ t: TestRunner) {
         let logic = try checkedBindingProgram(t, #"widget { variable flag = true; computed caption = not false and (flag or false) and "A" != "B" ? "yes" : "no"; Text(caption) }"#)
         var boolean = try ProgramRuntime(program: logic)
         t.equal(bindingStrings(try boolean.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["yes"])
+        let conditional = try checkedBindingProgram(t, #"widget { variable x = true; Text("A").color(.dim, if: x) }"#)
+        var painted = try ProgramRuntime(program: conditional)
+        let scene = try painted.project(environment: bindingEnvironment(false), measure: bindingMeasure)
+        t.equal(bindingStrings(scene), ["A"])
+        guard case .text(let draw)? = scene.drawingItems.first else { throw BindingFixtureFailure.program }
+        t.equal(draw.style.color, SkinAppearance.light.secondaryLabelColor)
     }
 
     t.suite("Desk: bindings: unsupported data actions persistence and formatting retain source issues") {
@@ -205,8 +211,7 @@ func runProgramBindingTests(_ t: TestRunner) {
                      #"widget { saved x = "A"; Text(x) }"#,
                      #"widget { Text(2W) }"#, #"widget { Text(1°C) }"#,
                      #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
-                     #"widget { Text(system.name) }"#,
-                     #"widget { variable x = true; Text("A").color(.dim, if: x) }"#]
+                     #"widget { Text(system.name) }"#]
         for source in cases {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))

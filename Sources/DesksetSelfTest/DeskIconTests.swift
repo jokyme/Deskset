@@ -349,12 +349,23 @@ func runDeskIconTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Desk: icons: unsupported effects styles dimensions conditional paint and resource limits remain explicit") {
+    t.suite("Desk: icons: the original conditional color follows each current appearance") {
+        let program = try iconProgram(t, #"widget { Icon("wifi").color(.accent, if: system.dark) }"#)
+        var runtime = try ProgramRuntime(program: program)
+        for dark in [false, true, false] {
+            let scene = try runtime.project(environment: iconEnvironment(dark), measureIcon: iconMeasure, measure: iconTextMeasure)
+            t.equal(iconDraws(scene).map(\.request.name), ["wifi"])
+            t.equal(iconDraws(scene).first?.request.style.color,
+                    dark ? SkinAppearance.dark.accentColor : SkinAppearance.light.labelColor)
+            t.equal(iconDraws(scene).first?.request.colors, .monochrome)
+        }
+    }
+
+    t.suite("Desk: icons: unsupported effects styles dimensions and resource limits remain explicit") {
         for source in [#"info { permissions: [.location] }"# + "\n" + #"widget { Icon(weather.now.symbol) }"#,
                        #"widget { Icon(moon.symbol) }"#,
                        #"widget { Icon("wifi").iconEffect(.pulse) }"#, #"widget { Icon("wifi").flip(.horizontal) }"#,
                        #"widget { Icon("wifi").iconColors(system.dark ? .multicolor : .monochrome) }"#,
-                       #"widget { Icon("wifi").color(.accent, if: system.dark) }"#,
                        #"widget { Icon("wifi").font(20, if: system.dark) }"#,
                        #"widget { Icon("wifi").iconColors(.multicolor(123)) }"#,
                        #"widget { Icon("wifi").style(symbol) }"# + "\n" + #"style symbol { .font(20) }"#] {

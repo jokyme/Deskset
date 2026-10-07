@@ -340,6 +340,14 @@ final class DeskProgramHost {
                 pending = nil
                 runtime = candidate
                 scene = next; viewport = extent; cycle = projection.cycle; state = .ready
+                // A successful hidden projection retires its gesture, even if the same target appears again
+                // before release. Continuously available targets retain presses across ordinary clock ticks.
+                if let press = primaryPress, !next.hitMap.entries.contains(where: {
+                    $0.elementID == press && $0.action(.leftUp) != .absent
+                }) { primaryPress = nil }
+                if let press = secondaryPress, !next.hitMap.entries.contains(where: {
+                    $0.elementID == press && $0.action(.rightUp) != .absent
+                }) { secondaryPress = nil }
                 frames.setNeedsFrame()
                 if let nextClockDelay { scheduler.startClockBoundary(after: nextClockDelay, for: self) }
                 // The source hit was already presented. A later coalesced redraw is not an action replay or ACK.

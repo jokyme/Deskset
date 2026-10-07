@@ -138,8 +138,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"widget { Text("A").width(.fill).margin(1) }"#,
                      #"widget { Text("A").width(20, min: 10).margin(1) }"#,
                      #"widget { Text("A").offset(x: 2) }"#,
-                     #"widget { Text("A").color(.red, if: true) }"#,
-                     #"widget { Text("A").color(.dim, if: true) }"#,
                      #"widget { Text("A").font(.largeNumber).margin(1) }"#,
                      #"widget { computed value = 1KB / 1s; Text(value) }"#,
                      #"widget { Row(align: .baseline) { Text("A") } }"#]
@@ -245,7 +243,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
                        #"Rectangle().size(12).stroke(.accent, dash: [2, 3])"#, #"Rectangle().size(12).fill(.accent).stroke(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
-                       #"Rectangle().size(12).fill(.red, if: true)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
                        #"Rectangle().size(12).opacity(0.5)"#,
                        #"Circle().size(12).fill(.accent).stroke(.white, dash: [2, 3])"#]
         for element in sources {
@@ -441,7 +438,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
 
     t.suite("Desk: shapes: unimplemented curve facets and other primitives still reject the complete program") {
         for name in ["Circle", "Ellipse", "Capsule"] {
-            for suffix in [".stroke(.accent, dash: [2, 3])", ".fill(gradient(.black, .white))", ".fill(.accent, if: true)", ".opacity(0.5)", ".margin(1)"] {
+            for suffix in [".stroke(.accent, dash: [2, 3])", ".fill(gradient(.black, .white))", ".opacity(0.5)", ".margin(1)"] {
                 let source = "widget { Column { Text(\"must not paint partially\"); " + name + "().size(12)" + suffix + " } }"
                 let checked = deskCheck(source), result = Desk.compile(checked)
                 t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
@@ -1002,15 +999,48 @@ private func runDeskPaletteCompilationTests(_ t: TestRunner) {
         t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
         let result = Desk.compile(checked, catalog: catalog)
         t.check(result.program == nil && result.issues.first?.kind == .unsupported)
-        for source in [#"widget { Text("A").color(.red, if: true) }"#,
-                       #"widget { Column { Text("must not paint partially"); Rectangle().size(12).fill(.red, if: true) } }"#,
-                       ##"widget { Text("A").color(light: "#222222", dark: "#EEEEEE") }"##,
+        for source in [##"widget { Text("A").color(light: "#222222", dark: "#EEEEEE") }"##,
                        #"widget { Rectangle().size(12).fill(gradient(.red, .blue)) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             let result = Desk.compile(checked)
             t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
             t.equal(result.diagnostics, checked.diagnostics)
+        }
+    }
+
+    t.suite("Desk: palette: original conditional paint buffers now produce complete colored scenes") {
+        let colors = Dictionary(uniqueKeysWithValues: ProgramPaletteColor.allCases.enumerated().map {
+            ($0.element, RGBA(r: Double($0.offset + 20), g: 70, b: 140, a: 255))
+        })
+        let input = ProgramColorInput(colors: colors)
+        let cases: [(String, ProgramPaletteColor, Bool)] = [
+            (#"widget { Text("A").color(.red, if: true) }"#, .red, true),
+            (#"widget { Text("A").color(.dim, if: true) }"#, .dim, true),
+            (#"widget { Column { Text("must not paint partially"); Rectangle().size(12).fill(.red, if: true) } }"#, .red, false),
+            (#"widget { Column { Text("must not paint partially"); Rectangle().size(12).fill(.accent, if: true) } }"#, .accent, false),
+            (#"widget { Column { Text("must not paint partially"); Circle().size(12).fill(.accent, if: true) } }"#, .accent, false),
+            (#"widget { Column { Text("must not paint partially"); Ellipse().size(12).fill(.accent, if: true) } }"#, .accent, false),
+            (#"widget { Column { Text("must not paint partially"); Capsule().size(12).fill(.accent, if: true) } }"#, .accent, false)
+        ]
+        for (source, color, textOnly) in cases {
+            var runtime = try ProgramRuntime(program: compileFixture(t, source))
+            let scene = try runtime.project(environment: compileEnvironment(), colorInput: input) { _, _, _ in
+                SkinSize(width: 8, height: 10)
+            }
+            t.equal(compiledDraws(scene).map(\.text), [textOnly ? "A" : "must not paint partially"])
+            t.equal(compiledDraws(scene).first?.style.color, colors[textOnly ? color : .text])
+            t.equal(scene.drawingItems.count, textOnly ? 1 : 2)
+            if !textOnly {
+                switch scene.drawingItems.last {
+                case .fill(let frame, let paint):
+                    t.equal(frame.width, 12); t.equal(frame.height, 12); t.equal(paint.color, colors[color])
+                case .shape(let draw):
+                    t.equal(draw.contentFrame.width, 12); t.equal(draw.contentFrame.height, 12)
+                    t.equal(draw.shapes.first?.fill, colors[color].map(ShapePaint.color))
+                default: t.check(false, "the complete conditional shape is present")
+                }
+            }
         }
     }
 }

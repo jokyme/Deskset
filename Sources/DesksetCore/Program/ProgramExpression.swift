@@ -180,6 +180,33 @@ struct ProgramExpressionValidation {
         guard try expressionInfo(expression, depth: 1).type == .string else { throw ProgramRuntimeError.invalidExpression }
     }
 
+    mutating func validateCondition(_ expression: ProgramExpression) throws {
+        try register(expression)
+        guard try expressionInfo(expression, depth: 1).type == .boolean else { throw ProgramRuntimeError.invalidExpression }
+    }
+
+    /// Color selections share the expression budget. Static paints keep their original zero-expression cost.
+    /// Check every leaf and count the selector depth above expanded declaration references, even in inactive arms.
+    mutating func validateColor(_ color: ProgramColor, invalid: ProgramRuntimeError) throws {
+        var pending = [(color, 1)]
+        while let (color, depth) = pending.popLast() {
+            guard depth <= ProgramLimits.maximumExpressionDepth else { throw ProgramRuntimeError.expressionDepth }
+            switch color {
+            case .literal(let value):
+                guard [value.r, value.g, value.b, value.a].allSatisfy({ $0.isFinite && (0...255).contains($0) }) else { throw invalid }
+            case .conditional(let condition, let yes, let no):
+                count += 1
+                guard count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
+                try register(condition)
+                let info = try expressionInfo(condition, depth: 1)
+                guard info.type == .boolean else { throw ProgramRuntimeError.invalidExpression }
+                guard info.height <= ProgramLimits.maximumExpressionDepth - depth else { throw ProgramRuntimeError.expressionDepth }
+                pending.append(contentsOf: [(no, depth + 1), (yes, depth + 1)])
+            case .text, .dim, .faint, .accent, .separator, .palette: break
+            }
+        }
+    }
+
     mutating func validateFontSize(_ expression: ProgramExpression) throws {
         try register(expression)
         let dimension = try expressionInfo(expression, depth: 1).type.dimension
@@ -413,6 +440,25 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
               value.text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
         if displayed { clockPrecision = .combined(clockPrecision, result.precision) }
         return value
+    }
+
+    /// Only a consumer's outer Bool context maps typed missing to false; inner logic remains three-valued.
+    mutating func condition(_ expression: ProgramExpression, displayed: Bool = true) throws -> Bool {
+        let value = try evaluate(expression, depth: 1)
+        guard value.scalar.type == .boolean else { throw ProgramRuntimeError.invalidExpression }
+        if displayed { clockPrecision = .combined(clockPrecision, .combined(value.precision, value.currentDate ? .second : nil)) }
+        return value.scalar == .boolean(true)
+    }
+
+    mutating func color(_ input: ProgramColor, in appearance: SkinAppearance, colorInput: ProgramColorInput?,
+                        displayed: Bool) throws -> RGBA {
+        var current = input
+        for _ in 0..<ProgramLimits.maximumExpressionDepth {
+            if case .conditional(let condition, let yes, let no) = current {
+                current = try self.condition(condition, displayed: displayed) ? yes : no
+            } else { return try current.resolved(in: appearance, colorInput: colorInput) }
+        }
+        throw ProgramRuntimeError.expressionDepth
     }
 
     /// Symbol names consume raw String values. A typed missing name is an empty symbol, never a display placeholder.

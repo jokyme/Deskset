@@ -241,13 +241,16 @@ struct StaticProgramCompiler {
             guard allowedFacets.contains(facet.rawValue) else {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
             }
-            guard ignoresRootSize && sizeFacets.contains(facet.rawValue) || candidates.allSatisfy({ $0.condition == nil }) else {
+            guard ignoresRootSize && sizeFacets.contains(facet.rawValue) ||
+                    ["hidden", "color", "fill", "track"].contains(facet.rawValue) ||
+                    candidates.allSatisfy({ $0.condition == nil }) else {
                 throw issue(.unsupported, node, "Conditional facet is not implemented: \(facet.rawValue)")
             }
         }
+        try candidatePositions(facts, call: call)
         let index = try reserveIndex(at: node, depth: depth)
         // Text, icons and containers inherit text styles. Ranged meters own their fill and track colors.
-        let appearance = solidShape || image || rangedMeter || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
+        let appearance = solidShape || image || rangedMeter || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, call: call)
         // The checked preset owns the root proposal; retain DK5018 but do not evaluate ignored size facets.
         let width: ProgramLength = ignoresRootSize ? .fit : try length(facts, "width", default: spec.sizing.width, at: node)
         let height: ProgramLength = ignoresRootSize ? .fit : try length(facts, "height", default: spec.sizing.height, at: node)
@@ -260,11 +263,7 @@ struct StaticProgramCompiler {
                                      right: number(facts, "padding.right", default: 0, at: node),
                                      bottom: number(facts, "padding.bottom", default: 0, at: node))
         let position = try position(facts, call: call)
-        let hidden: Bool
-        if let value = try facet(facts, "hidden", at: node) {
-            guard case .boolean(let n) = value else { throw issue(.unsupported, node, "Hidden requires a constant boolean") }
-            hidden = n
-        } else { hidden = false }
+        let visibility = try hidden(facts, call: call)
         let background = try background(facts, call: call)
         let radius = try uniformRadius(facts, call: call)
         let label = try voiceOver(facts, call: call)
@@ -321,15 +320,9 @@ struct StaticProgramCompiler {
                   let fills = ProgramDirection(rawValue: direction) else {
                 throw issue(.unsupported, node, "Unsupported Progress direction")
             }
-            func paint(_ key: String) throws -> ProgramColor {
-                if let own = try facet(facts, key, at: node) { return try color(own, at: node) }
-                guard let source = spec.defaults[FacetID(key)] else {
-                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Progress.\(key) default")
-                }
-                return try color(fixed(source, at: node), at: node)
-            }
             content = .progress(ProgramProgress(value: operands.value, total: operands.total, fills: fills,
-                                                color: try paint("color"), track: try paint("track")))
+                                                color: try meterColor(facts, "color", spec: spec, call: call),
+                                                track: try meterColor(facts, "track", spec: spec, call: call)))
         case "Gauge":
             let arguments = call.arguments?.arguments ?? []
             guard spec.kind == .gauge, spec.signatures.count == 1, spec.signatures[0].params.count == 6,
@@ -380,16 +373,10 @@ struct StaticProgramCompiler {
                 // The standard default stays absent; a supported custom catalog still owns its written value.
                 thickness = defaultThickness == 6 ? nil : .quantity(ProgramNumber(defaultThickness, dimension: .length))
             }
-            func paint(_ key: String) throws -> ProgramColor {
-                if let own = try facet(facts, key, at: node) { return try color(own, at: node) }
-                guard let source = spec.defaults[FacetID(key)] else {
-                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Gauge.\(key) default")
-                }
-                return try color(fixed(source, at: node), at: node)
-            }
             content = .gauge(ProgramGauge(value: operands.value, total: operands.total, shape: shape,
                                          start: start, sweep: sweep, thickness: thickness,
-                                         color: try paint("color"), track: try paint("track")))
+                                         color: try meterColor(facts, "color", spec: spec, call: call),
+                                         track: try meterColor(facts, "track", spec: spec, call: call)))
         case "Rectangle", "Circle", "Ellipse", "Capsule":
             guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
                 throw issue(.unsupported, node, "\(facts.component) takes no arguments or block")
@@ -406,16 +393,18 @@ struct StaticProgramCompiler {
                 }
                 stroke = ProgramShapeStroke(color: try color(paint, at: node), width: width)
             }
-            let fill: ProgramColor
-            if let own = try facet(facts, "fill", at: node) { fill = try color(own, at: node) }
+            let defaultFill: ProgramColor
             // D115: the explicit outline suppresses the implicit fill, including transparent/zero strokes.
-            else if stroke != nil { fill = .literal(.clear) }
+            if (facts.facets["fill"] ?? []).contains(where: { $0.condition == nil }) || stroke != nil {
+                defaultFill = .literal(.clear) // An own base does not consume the catalog's unused fallback.
+            }
             else {
                 guard let source = spec.defaults[FacetID("fill")] else {
                     throw issue(.invalidCheckedModel, node, "The checking catalog has no \(facts.component) fill default")
                 }
-                fill = try color(fixed(source, at: node), at: node)
+                defaultFill = try color(fixed(source, at: node), at: node)
             }
+            let fill = try conditionalColor(facts, "fill", fallback: defaultFill, call: call)
             switch facts.component {
             case "Circle": content = .shape(kind: .circle, fill: fill)
             case "Ellipse": content = .shape(kind: .ellipse, fill: fill)
@@ -520,12 +509,12 @@ struct StaticProgramCompiler {
         let id = ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index)
         elementRefs[id] = checked.tree.id(of: node)
         return ProgramElement(id: id,
-                              content: content, width: width, height: height, padding: padding, hidden: hidden,
+                              content: content, width: width, height: height, padding: padding, hidden: visibility.hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape || rangedMeter ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position, background: background,
-                              voiceOver: label)
+                              voiceOver: label, hiddenIf: visibility.condition)
     }
 
     private func iconColors(_ facts: ElementFacts, call: CallStmtSyntax) throws -> IconColors {
@@ -706,9 +695,28 @@ struct StaticProgramCompiler {
         }
     }
 
-    private mutating func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, at node: PositionedNode) throws -> Appearance {
+    private mutating func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, call: CallStmtSyntax) throws -> Appearance {
+        let node = call.node
         var result = try defaultAppearance(at: node)
         for key in ["font.family", "font.size", "font.weight", "font.italic", "font.design", "color", "align", "digits"] {
+            if key == "color" {
+                var ancestor = facts.parent, seen = Set<NodeID>()
+                var hasAncestorColor = false
+                while let identity = ancestor {
+                    guard seen.insert(identity).inserted, let parent = checked.elements[identity] else {
+                        throw issue(.invalidCheckedModel, node, "Color inheritance refers to an invalid ancestor")
+                    }
+                    if !(parent.facets["color"] ?? []).isEmpty { hasAncestorColor = true; break }
+                    ancestor = parent.parent
+                }
+                let hasBase = (facts.facets["color"] ?? []).contains { $0.condition == nil }
+                guard facts.inherits.contains("color") == (!hasBase && hasAncestorColor) else {
+                    throw issue(.invalidCheckedModel, node, "Color inheritance does not match its checked candidates")
+                }
+                let fallback = facts.inherits.contains("color") ? inherited.color : result.color
+                result.color = try conditionalColor(facts, key, fallback: fallback, call: call)
+                continue
+            }
             if key == "font.size", let best = facts.facets[FacetID(key)]?.first {
                 if let fixed = best.fixedValue {
                     try assign(try self.fixed(fixed, at: node), to: key, appearance: &result, at: node)
@@ -789,6 +797,164 @@ struct StaticProgramCompiler {
         }
     }
 
+    /// Own candidates have one global expansion position, even when a call sets several facets.
+    /// Checking both the receipt order and the actual source order prevents a forged position choosing a winner.
+    private func candidatePositions(_ facts: ElementFacts, call: CallStmtSyntax) throws {
+        let all = facts.facets.values.flatMap { $0 }
+        guard !all.isEmpty else { return }
+        let positions = all.map(\.position)
+        guard Set(positions).count == positions.count, Set(positions) == Set(1...positions.count) else {
+            throw issue(.invalidCheckedModel, call.node, "Facet expansion positions are not the checked sequence")
+        }
+        var previous = 0
+        for modifier in call.modifiers {
+            let identity = checked.tree.id(of: modifier.node)
+            let own = all.filter { $0.origin == .own(identity) }.map(\.position)
+            if let first = own.min(), let last = own.max() {
+                guard first > previous else {
+                    throw issue(.invalidCheckedModel, modifier.node, "Facet positions do not follow their own source modifiers")
+                }
+                previous = last
+            }
+        }
+        guard all.allSatisfy({ candidate in
+            guard case .own(let identity) = candidate.origin else { return false }
+            return call.modifiers.contains { checked.tree.id(of: $0.node) == identity }
+        }) else {
+            throw issue(.invalidCheckedModel, call.node, "A supported facet must come from its own modifier")
+        }
+    }
+
+    private struct OwnCandidate {
+        let value: PositionedNode?
+        let condition: PositionedNode?
+    }
+
+    /// Consume every candidate, including an inactive branch, against the modifier that actually produced it.
+    private func ownCandidates(_ facts: ElementFacts, _ key: String, call: CallStmtSyntax) throws -> [OwnCandidate] {
+        let modifiers = call.modifiers.filter { $0.name.token.text == key }
+        let candidates = facts.facets[FacetID(key)] ?? []
+        guard candidates.count == modifiers.count,
+              key == "hidden" || candidates.filter({ $0.condition == nil }).count <= 1 else {
+            throw issue(.invalidCheckedModel, call.node, "\(key) candidates do not match their own modifiers")
+        }
+        guard !modifiers.isEmpty else { return [] }
+        guard let spec = catalog.modifier(named: key), spec.appliesTo.contains(facts.kind),
+              spec.facets == [FacetID(key)], spec.fixedValues.isEmpty, !spec.softFacets,
+              spec.acceptsCondition, spec.block == .none, spec.event == nil, spec.timing == nil,
+              spec.boxLayer == .none, spec.inheritable == (key == "color"),
+              spec.context == (key == "hidden" ? .both : .view),
+              spec.repeatable == (key == "hidden" ? .yes : .no),
+              let signature = spec.signatures.first, signature.params.count == 1,
+              let parameter = signature.params.first, parameter.facets == [FacetID(key)],
+              parameter.type == (key == "hidden" ? .bool : key == "fill" ? .paint : .color),
+              parameter.role == (key == "hidden" ? .condition : .plain),
+              parameter.label == (key == "hidden" ? "if" : nil),
+              parameter.name == (key == "hidden" ? "condition" : key == "fill" ? "paint" : "color"),
+              parameter.source == .any, !parameter.variadic, !parameter.translatable,
+              parameter.sameAs == nil, parameter.range == nil, parameter.unit == nil,
+              !parameter.wholeNumber,
+              parameter.defaultValue == (key == "hidden" ? .source("true") : nil),
+              parameter.required == (key != "hidden"),
+              spec.signatures.count == (key == "color" ? 2 : 1),
+              let facet = catalog.facet(FacetID(key)), facet.inheritable == (key == "color"),
+              facet.valueType == parameter.type else {
+            throw issue(.unsupported, call.node, "Unsupported checked \(key) conditional catalog contract")
+        }
+        if key == "color" {
+            guard spec.signatures[1].params.count == 2,
+                  ["light", "dark"].allSatisfy({ label in
+                      guard let parameter = spec.signatures[1].param(named: label) else { return false }
+                      return parameter.label == label && parameter.type == .color && parameter.required &&
+                          parameter.facets == [FacetID("color")]
+                  }) else {
+                throw issue(.unsupported, call.node, "Unsupported checked light/dark color catalog contract")
+            }
+        }
+        var used = Set<NodeID>()
+        var result: [OwnCandidate] = []
+        for (index, candidate) in candidates.enumerated() {
+            guard candidate.level == 3, candidate.hard,
+                  index == 0 || candidates[index - 1].sortKey > candidate.sortKey,
+                  case .own(let identity) = candidate.origin, used.insert(identity).inserted,
+                  let modifier = modifiers.first(where: { checked.tree.id(of: $0.node) == identity }),
+                  checked.symbols[identity] == .builtIn(.modifier(key)) else {
+                throw issue(.invalidCheckedModel, call.node, "\(key) has an invalid own candidate or precedence receipt")
+            }
+            let arguments = modifier.arguments?.arguments ?? []
+            let condition = arguments.first(where: { $0.label?.name == "if" })?.value.node
+            let value = arguments.first(where: { $0.label == nil })?.value.node
+            guard arguments.filter({ $0.label?.name == "if" }).count <= 1,
+                  arguments.allSatisfy({ $0.label == nil || $0.label?.name == "if" }),
+                  arguments.filter({ $0.label == nil }).count == (key == "hidden" ? 0 : 1),
+                  candidate.condition == condition.map({ .expr(checked.tree.id(of: $0)) }),
+                  condition.map({ checked.types[checked.tree.id(of: $0)]?.type == .bool }) ?? true,
+                  candidate.fixedValue == (key == "hidden" ? "true" : nil),
+                  candidate.value == checked.tree.id(of: key == "hidden" ? (condition ?? modifier.node) : (value ?? modifier.node)) else {
+                throw issue(.invalidCheckedModel, modifier.node, "\(key) does not match its checked value and condition arguments")
+            }
+            result.append(OwnCandidate(value: value, condition: condition))
+        }
+        return result
+    }
+
+    private mutating func hidden(_ facts: ElementFacts, call: CallStmtSyntax) throws -> (hidden: Bool, condition: ProgramExpression?) {
+        let candidates = try ownCandidates(facts, "hidden", call: call)
+        var conditions: [ProgramExpression] = []
+        for candidate in candidates {
+            if let condition = candidate.condition { conditions.append(try expressions.condition(condition)) }
+        }
+        return (candidates.contains { $0.condition == nil }, try expressions.hiddenConditions(conditions, at: call.node))
+    }
+
+    private mutating func conditionalColor(_ facts: ElementFacts, _ key: String, fallback: ProgramColor,
+                                          call: CallStmtSyntax) throws -> ProgramColor {
+        let candidates = try ownCandidates(facts, key, call: call)
+        // All leaves are lowered, even after an unconditional winner or under an always-false condition.
+        var values: [(color: ProgramColor, condition: ProgramExpression?)] = []
+        for candidate in candidates {
+            guard let value = candidate.value else {
+                throw issue(.invalidCheckedModel, call.node, "A paint candidate has no checked argument")
+            }
+            values.append((try checkedFacetColor(value), try candidate.condition.map { try expressions.condition($0) }))
+        }
+        var result = values.first(where: { $0.condition == nil })?.color ?? fallback
+        // The checker gives best-first order; wrapping low-to-high retains that exact precedence.
+        for value in values.reversed() {
+            if let condition = value.condition { result = .conditional(condition, then: value.color, otherwise: result) }
+        }
+        return result
+    }
+
+    /// Parentheses preserve a static color's checked value; they do not introduce scalar Paint evaluation.
+    private func checkedFacetColor(_ node: PositionedNode, depth: Int = 1) throws -> ProgramColor {
+        guard depth <= min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+            throw issue(.resourceLimit, node, "Shared program color expression depth exceeded")
+        }
+        let identity = checked.tree.id(of: node)
+        guard checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "A static color cannot have a numeric conversion receipt")
+        }
+        if let paren = ParenExprSyntax(node) {
+            guard checked.types[identity]?.type == checked.types[checked.tree.id(of: paren.value.node)]?.type else {
+                throw issue(.invalidCheckedModel, node, "Color parentheses do not preserve their checked type")
+            }
+            return try checkedFacetColor(paren.value.node, depth: depth + 1)
+        }
+        return try checkedBoxColor(node)
+    }
+
+    private mutating func meterColor(_ facts: ElementFacts, _ key: String, spec: ComponentSpec,
+                                    call: CallStmtSyntax) throws -> ProgramColor {
+        if (facts.facets[FacetID(key)] ?? []).contains(where: { $0.condition == nil }) {
+            return try conditionalColor(facts, key, fallback: .literal(.clear), call: call)
+        }
+        guard let source = spec.defaults[FacetID(key)] else {
+            throw issue(.invalidCheckedModel, call.node, "The checking catalog has no \(spec.name).\(key) default")
+        }
+        return try conditionalColor(facts, key, fallback: color(fixed(source, at: call.node), at: call.node), call: call)
+    }
+
     private func boxModifierContract(_ modifier: ModifierAppSyntax, kind: ElementKind) throws {
         let name = modifier.name.token.text
         guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(name)),
@@ -859,7 +1025,7 @@ struct StaticProgramCompiler {
         guard implicit?.arguments == nil, let name, checked.types[identity]?.type == .color,
               checked.symbols[identity] == .enumCase(type: "Color", case: name),
               catalog.index.namedValues["Color.\(name)"]?.type == "Color" else {
-            throw issue(.unsupported, node, "Background colors require a checked literal or catalog Color value")
+            throw issue(.unsupported, node, "Solid colors require a checked literal or catalog Color value")
         }
         return try color(.choice(name), at: node)
     }

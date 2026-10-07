@@ -441,6 +441,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             self.runtime = candidate
             lastColors = input.colors
             scene = next; canvas.scene = next
+            // Retire only gestures whose target disappeared from the committed scene. Clock redraws of
+            // continuously available targets keep their original checked-source gesture identity.
+            if let press = primaryPress, !next.hitMap.entries.contains(where: {
+                $0.elementID == press.element && $0.action(.leftUp) != .absent
+            }) { primaryPress = nil }
+            if let press = secondaryPress, !next.hitMap.entries.contains(where: {
+                $0.elementID == press.element && $0.action(.rightUp) != .absent
+            }) { secondaryPress = nil }
             canvas.frame = NSRect(origin: .zero, size: extent.size)
             canvas.bounds = extent
             updateInspectionOutline()

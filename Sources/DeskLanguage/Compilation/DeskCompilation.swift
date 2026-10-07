@@ -49,7 +49,8 @@ public extension Desk {
     /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
-    /// font sizes, and constant other box/style properties, including checked pt lengths. Missing/invalid font sizes fail the current scene transaction;
+    /// font sizes, dynamic hidden(if:) and conditional solid color/fill/track with inherited color fallbacks,
+    /// and constant other box/style properties, including checked pt lengths. Missing/invalid font sizes fail the current scene transaction;
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Dynamic Progress consumes checked numeric operands and proven memory owner ranges; missing values or nonpositive totals draw an empty track.
@@ -63,6 +64,7 @@ public extension Desk {
     /// An Icon with a fixed box fills it unless it has its own font; inherited fonts and bold/italic alone preserve fitting.
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
+    /// Conditional stroke/background/tint, other conditional facets, styles and hover/pressed states remain unsupported.
     /// Dynamic layout and sibling geometry references, other numeric dimensions, Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
