@@ -2,7 +2,7 @@ import Foundation
 
 /// Executable scalar expressions of the shared program. These are values, not syntax nodes or host services.
 /// Dates and numeric formatting read immutable projection inputs; assignments use the shared action executor.
-/// Numeric values use canonical units (percent points, bytes, seconds or length points), never source-unit spellings.
+/// Numeric values use canonical units (percent points, bytes, seconds, length points or degrees), never source-unit spellings.
 public indirect enum ProgramExpression: Equatable, Sendable {
     case string(String), boolean(Bool)
     case number(Double)
@@ -42,7 +42,7 @@ public struct ProgramDeclaration: Equatable, Sendable {
     }
 }
 
-public enum ProgramNumberDimension: Equatable, Sendable { case plain, percent, bytes, duration, length }
+public enum ProgramNumberDimension: Equatable, Sendable { case plain, percent, bytes, duration, length, angle }
 
 /// The one numeric value of the shared evaluator. Display base is metadata, not a unit conversion or type.
 /// A Bytes value without a deciding base uses 1000. Other dimensions cannot carry a display base.
@@ -188,10 +188,28 @@ struct ProgramExpressionValidation {
     }
 
     mutating func validateProgress(_ progress: ProgramProgress) throws {
-        try register(progress.value)
-        let value = try expressionInfo(progress.value, depth: 1).type
+        try validateFraction(value: progress.value, total: progress.total)
+    }
+
+    mutating func validateGauge(_ gauge: ProgramGauge) throws {
+        try validateFraction(value: gauge.value, total: gauge.total)
+        for expression in [gauge.start, gauge.sweep].compactMap({ $0 }) {
+            try validateGeometry(expression, dimension: .angle)
+        }
+        if let thickness = gauge.thickness { try validateGeometry(thickness, dimension: .length) }
+    }
+
+    private mutating func validateGeometry(_ expression: ProgramExpression, dimension: ProgramNumberDimension) throws {
+        try register(expression)
+        let actual = try expressionInfo(expression, depth: 1).type.dimension
+        guard actual == .plain || actual == dimension else { throw ProgramRuntimeError.invalidExpression }
+    }
+
+    private mutating func validateFraction(value expression: ProgramExpression, total: ProgramExpression?) throws {
+        try register(expression)
+        let value = try expressionInfo(expression, depth: 1).type
         guard let dimension = value.dimension else { throw ProgramRuntimeError.invalidExpression }
-        if let total = progress.total {
+        if let total {
             try register(total)
             guard try expressionInfo(total, depth: 1).type == value else { throw ProgramRuntimeError.invalidExpression }
         } else {
@@ -346,6 +364,14 @@ struct ProgramExpressionValidation {
     }
 }
 
+/// Values resolved once per projection. Missing range data is distinct from a valid zero-position needle.
+struct ProgramGaugeValues: Sendable {
+    let fraction: Double?
+    let start: Double
+    let sweep: Double
+    let thickness: Double
+}
+
 /// A local evaluation transaction. Only variables survive a successful scene publication; computed values are
 /// pulled once per projection or assignment. Failed startup, text measurement or layout discards this value.
 struct ProgramExpressionEvaluation: ProgramActionTarget {
@@ -400,20 +426,47 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
     }
 
     mutating func progress(_ progress: ProgramProgress, displayed: Bool) throws -> Double {
-        let value = try evaluate(progress.value, depth: 1)
-        let total = try progress.total.map { try evaluate($0, depth: 1) }
+        try fraction(value: progress.value, total: progress.total, displayed: displayed) ?? 0
+    }
+
+    mutating func gauge(_ gauge: ProgramGauge, element: ElementID, displayed: Bool) throws -> ProgramGaugeValues {
+        let arc = gauge.shape == .arc || gauge.shape == .needle
+        // Hidden gauges reserve their box, but their values and radial geometry cannot affect layout.
+        guard displayed else { return ProgramGaugeValues(fraction: nil, start: arc ? -135 : 0, sweep: arc ? 270 : 360, thickness: 6) }
+        let fraction = try fraction(value: gauge.value, total: gauge.total, displayed: true)
+        let start = try geometry(gauge.start, fallback: arc ? -135 : 0, dimension: .angle, element: element)
+        let sweep = try geometry(gauge.sweep, fallback: arc ? 270 : 360, dimension: .angle, element: element)
+        let thickness = try geometry(gauge.thickness, fallback: 6, dimension: .length, element: element)
+        guard thickness >= 0 else { throw ProgramRuntimeError.invalidGeometry(element) }
+        return ProgramGaugeValues(fraction: fraction, start: start, sweep: sweep, thickness: thickness)
+    }
+
+    private mutating func geometry(_ expression: ProgramExpression?, fallback: Double,
+                                  dimension: ProgramNumberDimension, element: ElementID) throws -> Double {
+        guard let expression else { return fallback }
+        let value = try evaluate(expression, depth: 1)
+        guard case .numeric(let number) = value.scalar, number.value.isFinite,
+              number.dimension == .plain || number.dimension == dimension else { throw ProgramRuntimeError.invalidGeometry(element) }
+        clockPrecision = .combined(clockPrecision, .combined(value.precision, value.currentDate ? .second : nil))
+        return number.value
+    }
+
+    private mutating func fraction(value expression: ProgramExpression, total totalExpression: ProgramExpression?,
+                                   displayed: Bool) throws -> Double? {
+        let value = try evaluate(expression, depth: 1)
+        let total = try totalExpression.map { try evaluate($0, depth: 1) }
         if displayed {
             clockPrecision = .combined(clockPrecision, .combined(value.precision, total?.precision))
             if value.currentDate || total?.currentDate == true { clockPrecision = .combined(clockPrecision, .second) }
         }
         guard case .numeric(let number) = value.scalar else {
-            if value.scalar.isMissing { return 0 }
+            if value.scalar.isMissing { return nil }
             throw ProgramRuntimeError.invalidExpression
         }
         let maximum: Double
         if let total {
             guard case .numeric(let number) = total.scalar else {
-                if total.scalar.isMissing { return 0 }
+                if total.scalar.isMissing { return nil }
                 throw ProgramRuntimeError.invalidExpression
             }
             maximum = number.value
@@ -424,7 +477,8 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
             default: throw ProgramRuntimeError.invalidExpression
             }
         }
-        guard maximum.isFinite, maximum > 0, number.value.isFinite, number.value > 0 else { return 0 }
+        guard maximum.isFinite, maximum > 0, number.value.isFinite else { return nil }
+        guard number.value > 0 else { return 0 }
         // Compare before division: two finite extremes must not overflow while finding a drawing fraction.
         if number.value >= maximum { return 1 }
         return number.value / maximum

@@ -85,6 +85,7 @@ enum DeskWidgetWindowSelfTests {
         pointerEventTests(t)
         reviewRegressionTests(t)
         mainDeliveryTests(t)
+        gaugeTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -654,6 +655,51 @@ enum DeskWidgetWindowSelfTests {
             return acknowledged
         }, "the owner acknowledged Main's accepted picture")
         return widget
+    }
+
+    private static func gaugeTests(_ t: AppTestRunner) {
+        t.suite("App: Desk gauge: value and geometry publish together and stale presses do not replay") {
+            let source = #"widget { variable level = 25%; variable start = 0deg; variable thickness = 6pt; Gauge(level, shape: .arc, start: start, sweep: 180deg, thickness: thickness).size(96).onClick { level = 75%; start = 90deg; thickness = 10pt } }"#
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let image = widget.content.shown.image else { throw Failure.fixture }
+            func roundlines(_ scene: WidgetScene) -> [RoundlineDraw] {
+                scene.drawingItems.compactMap { if case .roundline(let draw) = $0 { return draw }; return nil }
+            }
+            let initial = roundlines(original.scene)
+            t.equal(initial.count, 2, "track followed by the filled arc")
+            guard initial.count == 2,
+                  case .sector(_, _, let inner, let outer, let start, let sweep) = initial[1].shape else { throw Failure.fixture }
+            t.close(inner, 42); t.close(outer, 48)
+            t.close(start, -.pi / 2); t.close(sweep, .pi / 4)
+            let point = SkinPoint(x: 80, y: 16)
+            host.primaryPress(at: point); host.primaryRelease(at: point)
+            host.frames.runLoopTurn(.beforeWaiting)
+            guard let exported = host.scene else { throw Failure.fixture }
+            t.check(exported.generation > original.scene.generation)
+            t.check(host.frames.hasBitmapDelivery)
+            t.check(widget.content.shown.image === image, "owner projection cannot publish pixels before Main")
+            t.equal(widget.latestPresented?.scene.generation, original.scene.generation)
+            let next = roundlines(exported)
+            guard next.count == 2,
+                  case .sector(_, _, let nextInner, let nextOuter, let nextStart, let nextSweep) = next[1].shape else { throw Failure.fixture }
+            t.close(nextInner, 38); t.close(nextOuter, 48)
+            t.close(nextStart, 0); t.close(nextSweep, .pi * 0.75)
+            host.primaryPress(at: point); host.primaryRelease(at: point)
+            t.equal(host.scene?.generation, exported.generation, "a press against unaccepted pixels is ignored")
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == exported.generation && !host.frames.hasBitmapDelivery
+            })
+            t.equal(host.presented?.scene.generation, exported.generation)
+            t.check(widget.content.shown.image !== image)
+            if let before = image.dataProvider?.data, let after = widget.content.shown.image?.dataProvider?.data {
+                t.check((before as Data) != (after as Data), "the accepted value and geometry changed actual pixels")
+            } else { t.check(false, "both immutable pictures expose their pixel data") }
+            t.equal(widget.view.frame.size, NSSize(width: 96, height: 96))
+            widget.close(deactivate: false)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.check(widget.content.shown.image == nil && widget.latestPresented == nil)
+        }
     }
 
     private static func mainDeliveryTests(_ t: AppTestRunner) {

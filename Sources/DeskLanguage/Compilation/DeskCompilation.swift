@@ -41,11 +41,11 @@ public struct DeskCompilationResult: Sendable {
 }
 
 public extension Desk {
-    /// Checked source → the shared Core program. It supports String/Bool/Date/plain/Percent/Bytes/Duration/Length declarations,
+    /// Checked source → the shared Core program. It supports String/Bool/Date/plain/Percent/Bytes/Duration/Length/Angle declarations,
     /// scalar text templates, checked time.now/Date.in/date formats, numeric and Date/Duration arithmetic,
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark and checked CPU/memory/battery scalar fields, root onLoad variable assignments,
-    /// ordered Text/Progress/basic-shape onClick/onRightClick assignments/copy/open actions,
+    /// ordered Text/Progress/Gauge/basic-shape onClick/onRightClick assignments/copy/open actions,
     /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, constant-minimum Spacer and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, static box colors/glass and uniform corner radii, literal local Images with imageMode, dynamic inherited
@@ -53,6 +53,8 @@ public extension Desk {
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Dynamic Progress consumes checked numeric operands and proven memory owner ranges; missing values or nonpositive totals draw an empty track.
+    /// Gauge shares those ranges across ring/arc/pie/needle, with dynamic checked Angle start/sweep and Length thickness.
+    /// Angles retain canonical degrees through arithmetic/assignments and use integer-degree defaults in display formatting.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
     /// Dynamic layout and sibling geometry references, other numeric dimensions, Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.

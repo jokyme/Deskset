@@ -33,7 +33,7 @@ struct ProgramExpressionCompiler {
                 throw issue(.invalidCheckedModel, declaration.node, "Missing checked declaration type")
             }
             guard supportedType(type) else {
-                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length declarations are implemented")
+                throw issue(.unsupported, declaration.node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle declarations are implemented")
             }
             if kind == .variable { assignmentTypes[index] = type }
             return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
@@ -54,15 +54,15 @@ struct ProgramExpressionCompiler {
     }
 
     /// Keep the operands separate: a missing or nonpositive total produces an empty track at projection time.
-    mutating func progress(value: PositionedNode, total: PositionedNode?) throws -> (value: ProgramExpression, total: ProgramExpression?) {
+    mutating func rangedValue(value: PositionedNode, total: PositionedNode?, component: String) throws -> (value: ProgramExpression, total: ProgramExpression?) {
         guard let type = checked.types[checked.tree.id(of: value)]?.type,
               let dimension = numberDimension(type) else {
-            throw issue(.unsupported, value, "Progress requires a checked plain/Percent/Bytes/Duration/Length expression")
+            throw issue(.unsupported, value, "\(component) requires a checked plain/Percent/Bytes/Duration/Length/Angle expression")
         }
         let expression = try lower(value, depth: 1)
         if let total {
             guard checked.types[checked.tree.id(of: total)]?.type == type else {
-                throw issue(.invalidCheckedModel, total, "Progress total must have the checked value dimension")
+                throw issue(.invalidCheckedModel, total, "\(component) total must have the checked value dimension")
             }
             return (expression, try lower(total, depth: 1))
         }
@@ -123,7 +123,7 @@ struct ProgramExpressionCompiler {
         }
         if type == .bool { return .concatenate([try lower(node, depth: 1)]) }
         guard type == .string || type == .date || numberDimension(type) != nil else {
-            throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length display values")
+            throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle display values")
         }
         return try text(node)
     }
@@ -131,7 +131,7 @@ struct ProgramExpressionCompiler {
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
         let type = checked.types[checked.tree.id(of: node)]?.type
         guard type == .string || type == .date || type.flatMap(numberDimension) != nil else {
-            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration/Length; other value formatting is not implemented")
+            throw issue(.unsupported, node, "Text requires String, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
         }
         let value = try lower(node, depth: 1)
         if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
@@ -148,6 +148,21 @@ struct ProgramExpressionCompiler {
         return try lower(node, depth: 1)
     }
 
+    mutating func gaugeAngle(_ node: PositionedNode) throws -> ProgramExpression {
+        guard checked.types[checked.tree.id(of: node)]?.type == .angle else {
+            throw issue(.unsupported, node, "Gauge angles require a checked Angle expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
+    mutating func gaugeThickness(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type,
+              type == .plainNumber || type == .length else {
+            throw issue(.unsupported, node, "Gauge thickness requires a checked Plain or Length expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
     private mutating func lower(_ node: PositionedNode, depth: Int) throws -> ProgramExpression {
         count += 1
         guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
@@ -160,7 +175,7 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "Missing checked expression type")
         }
         guard supportedType(type) else {
-            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length expressions are implemented")
+            throw issue(.unsupported, node, "Only String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle expressions are implemented")
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
@@ -232,6 +247,24 @@ struct ProgramExpressionCompiler {
                   literal.value?.isFinite == true,
                   let canonical = checked.canonicalNumericValues[checked.tree.id(of: node)], canonical.isFinite else {
                 throw issue(.invalidCheckedModel, node, "Numeric literal requires a final checked canonical value")
+            }
+            if dimension == .angle {
+                let factor: Double
+                if let spelling = literal.unit {
+                    switch spelling.text {
+                    case "deg", "°": factor = 1
+                    case "rad": factor = 180 / Double.pi
+                    default: throw issue(.unsupported, node, "Unsupported Angle unit")
+                    }
+                    guard let unit = catalog.unit(spelling: spelling.text), unit.dimension == .angle,
+                          unit.factor == factor, unit.offset == 0, !unit.adoptsBase else {
+                        throw issue(.unsupported, node, "Unsupported Angle unit catalog contract")
+                    }
+                } else { factor = 1 }
+                guard let written = literal.value, literal.unitAfterSpace == nil,
+                      canonical == written * factor else {
+                    throw issue(.invalidCheckedModel, node, "Angle literal requires its exact canonical degree receipt")
+                }
             }
             if let spelling = literal.unit, let unit = catalog.units.first(where: { $0.spelling == spelling.text }) {
                 let natural = numberDimension(.number(unit.dimension))
@@ -378,6 +411,7 @@ struct ProgramExpressionCompiler {
         case .bytes: return .bytes
         case .duration: return .duration
         case .length: return .length
+        case .angle: return .angle
         default: return nil
         }
     }
@@ -392,7 +426,7 @@ struct ProgramExpressionCompiler {
 
     private func numberFormat(at node: PositionedNode, type: DeskType, options: [FormatOptionSyntax]) throws -> ProgramNumberFormat {
         guard let dimension = numberDimension(type), let rule = catalog.typeFormats.first(where: { $0.type == type }),
-              rule.decimals == (dimension == .percent ? 0 : nil),
+              rule.decimals == (dimension == .percent || dimension == .angle ? 0 : nil),
               rule.style == (dimension == .duration ? .style(".full") : nil),
               catalog.typeFormats.contains(where: { $0.type == .any && $0.decimals == nil && $0.style == nil }) else {
             throw issue(.unsupported, node, "Unsupported catalog numeric or missing default format")
@@ -426,7 +460,7 @@ struct ProgramExpressionCompiler {
                 missing = text
             case "unit", "unitStyle", "style":
                 let enumName = label == "unit" ? "ByteUnit" : label == "unitStyle" ? "UnitStyle" : "DurationStyle"
-                guard (label == "style" ? dimension == .duration : dimension == .bytes),
+                guard (label == "style" ? dimension == .duration : dimension == .bytes || label == "unitStyle" && dimension == .angle),
                       let spec = catalog.formatOptions.first(where: { $0.label == label && $0.type == .enumeration(enumName) }),
                       spec.appliesTo.contains(type), spec.range == nil,
                       checked.types[checked.tree.id(of: option.value.node)]?.type == .enumeration(enumName),

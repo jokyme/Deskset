@@ -3,11 +3,14 @@ public struct RoundlineDraw: Equatable, Sendable {
     public var shape: RoundlineMeter.Shape
     public var color: RGBA
     public var antiAlias: Bool
+    /// Opt-in rounded ends for radial progress. INI lowering keeps its original flat line/sector contract.
+    public var roundCaps: Bool
 
-    public init(shape: RoundlineMeter.Shape, color: RGBA, antiAlias: Bool) {
+    public init(shape: RoundlineMeter.Shape, color: RGBA, antiAlias: Bool, roundCaps: Bool = false) {
         self.shape = shape
         self.color = color
         self.antiAlias = antiAlias
+        self.roundCaps = roundCaps
     }
 }
 

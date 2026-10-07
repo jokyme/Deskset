@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. Proposal-based stacks and Freeform
-/// arrange shapes, images, scalar text and dynamic progress, with startup/user click actions through the shared executor.
+/// arrange shapes, images, scalar text and dynamic progress/gauges, with startup/user click actions through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -38,6 +38,29 @@ public struct ProgramProgress: Equatable, Sendable {
     public init(value: ProgramExpression, total: ProgramExpression? = nil, fills: ProgramDirection = .right,
                 color: ProgramColor = .accent, track: ProgramColor = .faint) {
         self.value = value; self.total = total; self.fills = fills; self.color = color; self.track = track
+    }
+}
+
+public enum ProgramGaugeShape: String, CaseIterable, Equatable, Sendable { case ring, arc, pie, needle }
+
+/// A radial value in its content box. Angles use canonical degrees clockwise from twelve o'clock; thickness is
+/// in points. Nil geometry uses the shape's defaults, while expressions resolve in the same frame as the value.
+public struct ProgramGauge: Equatable, Sendable {
+    public let value: ProgramExpression
+    public let total: ProgramExpression?
+    public let shape: ProgramGaugeShape
+    public let start: ProgramExpression?
+    public let sweep: ProgramExpression?
+    public let thickness: ProgramExpression?
+    public let color: ProgramColor
+    public let track: ProgramColor
+
+    public init(value: ProgramExpression, total: ProgramExpression? = nil, shape: ProgramGaugeShape = .ring,
+                start: ProgramExpression? = nil, sweep: ProgramExpression? = nil, thickness: ProgramExpression? = nil,
+                color: ProgramColor = .accent, track: ProgramColor = .faint) {
+        self.value = value; self.total = total; self.shape = shape
+        self.start = start; self.sweep = sweep; self.thickness = thickness
+        self.color = color; self.track = track
     }
 }
 
@@ -114,6 +137,7 @@ public struct ProgramElement: Equatable, Sendable {
         case text(ProgramText)
         case image(ProgramImage)
         case progress(ProgramProgress)
+        case gauge(ProgramGauge)
         /// Empty layout along the enclosing Row/Column's main axis; elsewhere it takes no space.
         case spacer(minimum: Double)
         /// An unrounded solid rectangle in its content box. Nonfixed dimensions need an explicit ideal size.

@@ -135,17 +135,19 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image", "Progress", "Spacer"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image", "Progress", "Gauge", "Spacer"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let image = facts.component == "Image"
         let progress = facts.component == "Progress"
+        let gauge = facts.component == "Gauge"
+        let rangedMeter = progress || gauge
         let spacer = facts.component == "Spacer"
         let ignoresRootSize = depth == 1 && widgetSize != .fit
         let sizeFacets: Set<String> = ["width", "height", "width.min", "width.max", "height.min", "height.max"]
-        var allowedModifiers: Set<String> = spacer ? ["hidden"] : progress ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
+        var allowedModifiers: Set<String> = spacer ? ["hidden"] : rangedMeter ? ["width", "height", "size", "padding", "color", "track", "name", "hidden"] : image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         allowedModifiers.formUnion(["background", "rounded"])
@@ -158,15 +160,15 @@ struct StaticProgramCompiler {
             if ["background", "rounded"].contains(modifierName) {
                 try boxModifierContract(modifier, kind: facts.kind)
             }
-            if progress && ["color", "track"].contains(modifierName) {
+            if rangedMeter && ["color", "track"].contains(modifierName) {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier(modifierName)),
-                      let paint = catalog.modifier(named: modifierName), paint.appliesTo.contains(.progress),
+                      let paint = catalog.modifier(named: modifierName), paint.appliesTo.contains(facts.kind),
                       paint.facets == [FacetID(modifierName)],
                       paint.signatures.contains(where: { signature in
                           signature.params.count == 1 && signature.params[0].label == nil &&
                           signature.params[0].type == .color && signature.params[0].facets == [FacetID(modifierName)]
                       }) else {
-                    throw issue(.unsupported, modifier.node, "Unsupported checked Progress paint contract")
+                    throw issue(.unsupported, modifier.node, "Unsupported checked \(facts.component) paint contract")
                 }
             }
             if modifier.name.token.text == "font" {
@@ -195,8 +197,8 @@ struct StaticProgramCompiler {
             if ["onClick", "onRightClick"].contains(modifier.name.token.text) {
                 let primary = modifier.name.token.text == "onClick"
                 guard (primary ? onClick == nil && onClickActions == nil : onRightClickActions == nil),
-                      facts.component == "Text" || solidShape || progress else {
-                    throw issue(.unsupported, modifier.node, "Only Text, Progress and basic shape primary/secondary click actions are implemented")
+                      facts.component == "Text" || solidShape || rangedMeter else {
+                    throw issue(.unsupported, modifier.node, "Only Text, Progress, Gauge and basic shape primary/secondary click actions are implemented")
                 }
                 let actions = try clickActions(modifier, kind: facts.kind)
                 if !primary {
@@ -220,7 +222,7 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Separate light/dark colors are not implemented")
             }
         }
-        var allowedFacets: Set<String> = spacer ? ["hidden"] : progress
+        var allowedFacets: Set<String> = spacer ? ["hidden"] : rangedMeter
             ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "color", "track", "hidden", "name"]
             : image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
@@ -238,8 +240,8 @@ struct StaticProgramCompiler {
             }
         }
         let index = try reserveIndex(at: node, depth: depth)
-        // Only text and containers inherit text styles. Progress owns both its fill and track colors.
-        let appearance = solidShape || image || progress || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
+        // Only text and containers inherit text styles. Ranged meters own their fill and track colors.
+        let appearance = solidShape || image || rangedMeter || spacer ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
         // The checked preset owns the root proposal; retain DK5018 but do not evaluate ignored size facets.
         let width: ProgramLength = ignoresRootSize ? .fit : try length(facts, "width", default: spec.sizing.width, at: node)
         let height: ProgramLength = ignoresRootSize ? .fit : try length(facts, "height", default: spec.sizing.height, at: node)
@@ -297,7 +299,8 @@ struct StaticProgramCompiler {
                   let value = arguments.first(where: { $0.label == nil })?.value.node else {
                 throw issue(.unsupported, node, "Unsupported checked Progress contract")
             }
-            let operands = try expressions.progress(value: value, total: arguments.first { $0.label?.name == "total" }?.value.node)
+            let operands = try expressions.rangedValue(value: value, total: arguments.first { $0.label?.name == "total" }?.value.node,
+                                                      component: "Progress")
             let direction: String
             if let fills = arguments.first(where: { $0.label?.name == "fills" })?.value.node {
                 guard case .choice(let choice) = try constant(fills),
@@ -320,6 +323,66 @@ struct StaticProgramCompiler {
             }
             content = .progress(ProgramProgress(value: operands.value, total: operands.total, fills: fills,
                                                 color: try paint("color"), track: try paint("track")))
+        case "Gauge":
+            let arguments = call.arguments?.arguments ?? []
+            guard spec.kind == .gauge, spec.signatures.count == 1, spec.signatures[0].params.count == 6,
+                  spec.signatures[0].params.allSatisfy({ !$0.variadic }),
+                  let valueParameter = spec.signatures[0].param(named: "value"), valueParameter.label == nil,
+                  valueParameter.type == .anyNumber, valueParameter.required, valueParameter.defaultValue == nil,
+                  let totalParameter = spec.signatures[0].param(named: "total"), totalParameter.label == "total",
+                  totalParameter.type == .anyNumber, !totalParameter.required,
+                  totalParameter.sameAs == "value", totalParameter.defaultValue == nil,
+                  let shapeParameter = spec.signatures[0].param(named: "shape"), shapeParameter.label == "shape",
+                  shapeParameter.type == .enumeration("GaugeShape"), !shapeParameter.required, shapeParameter.sameAs == nil,
+                  let startParameter = spec.signatures[0].param(named: "start"), startParameter.label == "start",
+                  startParameter.type == .angle, !startParameter.required, startParameter.sameAs == nil, startParameter.defaultValue == nil,
+                  let sweepParameter = spec.signatures[0].param(named: "sweep"), sweepParameter.label == "sweep",
+                  sweepParameter.type == .angle, !sweepParameter.required, sweepParameter.sameAs == nil, sweepParameter.defaultValue == nil,
+                  let thicknessParameter = spec.signatures[0].param(named: "thickness"), thicknessParameter.label == "thickness",
+                  thicknessParameter.type == .length, !thicknessParameter.required, thicknessParameter.sameAs == nil, call.block == nil,
+                  arguments.filter({ $0.label == nil }).count == 1,
+                  ["total", "shape", "start", "sweep", "thickness"].allSatisfy({ label in
+                      arguments.filter { $0.label?.name == label }.count <= 1
+                  }),
+                  arguments.allSatisfy({ $0.label == nil || ["total", "shape", "start", "sweep", "thickness"].contains($0.label?.name ?? "") }),
+                  let value = arguments.first(where: { $0.label == nil })?.value.node else {
+                throw issue(.unsupported, node, "Unsupported checked Gauge contract")
+            }
+            let operands = try expressions.rangedValue(value: value,
+                total: arguments.first { $0.label?.name == "total" }?.value.node, component: "Gauge")
+            let choice: String
+            if let shape = arguments.first(where: { $0.label?.name == "shape" })?.value.node {
+                guard case .choice(let name) = try constant(shape),
+                      checked.types[checked.tree.id(of: shape)]?.type == .enumeration("GaugeShape"),
+                      checked.symbols[checked.tree.id(of: shape)] == .enumCase(type: "GaugeShape", case: name) else {
+                    throw issue(.unsupported, shape, "Gauge shape requires a checked constant GaugeShape case")
+                }
+                choice = name
+            } else { choice = try defaultChoice(component: "Gauge", parameter: "shape", at: node) }
+            guard catalog.enumeration("GaugeShape")?.enumCase(named: choice) != nil,
+                  let shape = ProgramGaugeShape(rawValue: choice) else {
+                throw issue(.unsupported, node, "Unsupported Gauge shape")
+            }
+            let start = try arguments.first { $0.label?.name == "start" }.map { try expressions.gaugeAngle($0.value.node) }
+            let sweep = try arguments.first { $0.label?.name == "sweep" }.map { try expressions.gaugeAngle($0.value.node) }
+            let defaultThickness = try defaultNumber(component: "Gauge", parameter: "thickness", at: node)
+            let thickness: ProgramExpression?
+            if let argument = arguments.first(where: { $0.label?.name == "thickness" }) {
+                thickness = try expressions.gaugeThickness(argument.value.node)
+            } else {
+                // The standard default stays absent; a supported custom catalog still owns its written value.
+                thickness = defaultThickness == 6 ? nil : .quantity(ProgramNumber(defaultThickness, dimension: .length))
+            }
+            func paint(_ key: String) throws -> ProgramColor {
+                if let own = try facet(facts, key, at: node) { return try color(own, at: node) }
+                guard let source = spec.defaults[FacetID(key)] else {
+                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Gauge.\(key) default")
+                }
+                return try color(fixed(source, at: node), at: node)
+            }
+            content = .gauge(ProgramGauge(value: operands.value, total: operands.total, shape: shape,
+                                         start: start, sweep: sweep, thickness: thickness,
+                                         color: try paint("color"), track: try paint("track")))
         case "Rectangle", "Circle", "Ellipse", "Capsule":
             guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
                 throw issue(.unsupported, node, "\(facts.component) takes no arguments or block")
@@ -443,7 +506,7 @@ struct StaticProgramCompiler {
         return ProgramElement(id: id,
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
-                              idealSize: solidShape || progress ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
+                              idealSize: solidShape || rangedMeter ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position, background: background)
     }

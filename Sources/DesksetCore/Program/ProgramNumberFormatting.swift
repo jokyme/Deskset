@@ -29,6 +29,8 @@ public struct ProgramNumberFormat: Equatable, Sendable {
         switch dimension {
         case .plain, .percent, .length:
             guard unit == nil, unitStyle == nil, durationStyle == nil else { throw ProgramRuntimeError.invalidExpression }
+        case .angle:
+            guard unit == nil, durationStyle == nil else { throw ProgramRuntimeError.invalidExpression }
         case .bytes:
             guard durationStyle == nil else { throw ProgramRuntimeError.invalidExpression }
         case .duration:
@@ -51,6 +53,17 @@ public struct ProgramNumberFormat: Equatable, Sendable {
         case .percent: return try decimal(number.value, places: decimals ?? 0, locale: locale)
         case .bytes: return try bytes(number, locale: locale)
         case .duration: return try duration(number.value, locale: locale)
+        case .angle:
+            if unitStyle == .full {
+                let style = Measurement<UnitAngle>.FormatStyle(width: .wide, locale: locale, usage: .asProvided,
+                    numberFormatStyle: .number.locale(locale).precision(.fractionLength(decimals ?? 0)))
+                return try text(style.attributed.format(Measurement(value: number.value, unit: .degrees)),
+                                unitSymbol: nil, durationClock: false)
+            }
+            let value = try decimal(number.value, places: decimals ?? 0, locale: locale)
+            guard unitStyle != .some(.none) else { return value }
+            guard value.text.utf16.count < ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
+            return ProgramTextValue(text: value.text + "°", numberRanges: value.numberRanges)
         }
     }
 

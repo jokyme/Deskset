@@ -10,6 +10,7 @@ enum RenderContextSelfTests {
     static func run(_ t: AppTestRunner) {
         #if DEBUG
         roundDrawTests(t)
+        roundCapTests(t)
         #endif
         t.suite("App: skin threading: each skin measures and draws with text layouts of its own") {
             let ini = "[Rainmeter]\nUpdate=-1\n[Title]\nMeter=String\nText=Hello there\nFontSize=12\n"
@@ -370,6 +371,59 @@ enum RenderContextSelfTests {
                     SkinRenderer.drawRotator(frozen.draw, $0, context)
                 }
                 t.check(pixels == frozen.pixels[index], "Rotator can be drawn with a fresh cache after its skin is released")
+            }
+        }
+    }
+
+    /// New Desk round caps have their own native path oracle. The legacy default and its frozen comparison above
+    /// remain untouched, including the existing full-circle even-odd rendering branch.
+    private static func roundCapTests(_ t: AppTestRunner) {
+        t.suite("App: round drawing values: Gauge round caps match an independent native centerline") {
+            let color = RGBA(r: 230, g: 70, b: 40, a: 128)
+            for (scale, window) in [(1, false), (1, true), (2, false), (2, true)] {
+                for sweep in [Double.pi / 2, -Double.pi / 2, 0.01] {
+                    let value = RoundlineDraw(shape: .sector(centerX: 48, centerY: 48, innerRadius: 20,
+                        outerRadius: 30, startAngle: 0, sweep: sweep), color: color, antiAlias: true, roundCaps: true)
+                    let actual = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(value, $0) }
+                    let expected = try roundPixels(scale: scale, window: window) { ctx in
+                        ctx.setShouldAntialias(true)
+                        ctx.setStrokeColor(CGColor(srgbRed: 230.0 / 255, green: 70.0 / 255, blue: 40.0 / 255, alpha: 128.0 / 255))
+                        ctx.setLineWidth(10); ctx.setLineCap(.round)
+                        let path = CGMutablePath()
+                        path.addArc(center: CGPoint(x: 48, y: 48), radius: 25, startAngle: 0,
+                                    endAngle: sweep, clockwise: sweep < 0)
+                        ctx.addPath(path); ctx.strokePath()
+                    }
+                    t.equal(actual, expected, "single native stroke at \(scale)x window=\(window), sweep=\(sweep)")
+                    let alpha = stride(from: 3, to: actual.count, by: 4).map { actual[$0] }
+                    t.check(alpha.contains(128), "round-cap body is visible")
+                    t.check(alpha.allSatisfy { $0 <= 128 }, "short-arc caps do not accumulate translucent alpha")
+                    if sweep == Double.pi / 2 {
+                        let capOffset = ((44 * scale) * (96 * scale) + 73 * scale) * 4 + 3
+                        t.check(actual[capOffset] > 100, "the start cap extends before the 3 o'clock endpoint")
+                        let butt = RoundlineDraw(shape: value.shape, color: color, antiAlias: true)
+                        let old = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(butt, $0) }
+                        t.equal(old[capOffset], 0, "legacy sectors still have their original straight end")
+                    }
+                }
+            }
+        }
+
+        t.suite("App: round drawing values: Gauge full circles preserve legacy seams and zero arcs paint nothing") {
+            for (scale, window) in [(1, false), (1, true), (2, false), (2, true)] {
+                for sweep in [2 * Double.pi, -2 * Double.pi] {
+                    let shape = RoundlineMeter.Shape.sector(centerX: 48, centerY: 48, innerRadius: 20,
+                                                     outerRadius: 30, startAngle: 0.3, sweep: sweep)
+                    let ordinary = RoundlineDraw(shape: shape, color: .black, antiAlias: true)
+                    let capped = RoundlineDraw(shape: shape, color: .black, antiAlias: true, roundCaps: true)
+                    let before = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(ordinary, $0) }
+                    let after = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(capped, $0) }
+                    t.equal(after, before, "a full ring keeps the seam-free legacy ellipse fill")
+                }
+                let zero = RoundlineDraw(shape: .sector(centerX: 48, centerY: 48, innerRadius: 20,
+                    outerRadius: 30, startAngle: 0, sweep: 0), color: .black, antiAlias: true, roundCaps: true)
+                let bytes = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(zero, $0) }
+                t.check(bytes.allSatisfy { $0 == 0 }, "zero sweep does not become a round dot")
             }
         }
     }

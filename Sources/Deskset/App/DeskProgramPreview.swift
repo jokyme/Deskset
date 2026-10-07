@@ -414,6 +414,16 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             }
         case .bar(let bar):
             return (bar.color.a > 0 || bar.path != nil) && bar.visibleRects.contains { $0.width > 0 && $0.height > 0 }
+        case .roundline(let value):
+            guard value.color.a.isFinite, value.color.a > 0 else { return false }
+            switch value.shape {
+            case .none: return false
+            case let .line(x1, y1, x2, y2, width):
+                return [x1, y1, x2, y2, width].allSatisfy(\.isFinite) && width > 0 && (x1 != x2 || y1 != y2)
+            case let .sector(cx, cy, inner, outer, start, sweep):
+                return [cx, cy, inner, outer, start, sweep].allSatisfy(\.isFinite)
+                    && inner >= 0 && outer > inner && sweep != 0
+            }
         case .glass(let region):
             let visible = region.clip.map { region.rect.cgRect.intersection($0.cgRect) } ?? region.rect.cgRect
             return !visible.isEmpty

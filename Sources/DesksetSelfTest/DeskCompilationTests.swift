@@ -32,6 +32,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
     runDeskPointRadiusCompilationTests(t)
     runDeskFreeformCompilationTests(t)
     runDeskProgressCompilationTests(t)
+    runDeskGaugeCompilationTests(t)
     runDeskSpacerAndPresetCompilationTests(t)
     runDeskBackgroundCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
@@ -1656,6 +1657,264 @@ private func runDeskBackgroundCompilationTests(_ t: TestRunner) {
         rejected(checked, catalog: catalog)
         catalog = .current; catalog.modifiers[rounded].signatures[0].params[0].defaultValue = .source("12")
         rejected(checked, catalog: catalog)
+    }
+}
+
+private func runDeskGaugeCompilationTests(_ t: TestRunner) {
+    let measure: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in SkinSize(width: 20, height: 12) }
+    func draws(_ scene: WidgetScene) -> [RoundlineDraw] {
+        scene.drawingItems.compactMap { if case .roundline(let value) = $0 { return value }; return nil }
+    }
+    func sector(_ draw: RoundlineDraw?) throws -> (inner: Double, outer: Double, start: Double, sweep: Double) {
+        guard let draw, case .sector(_, _, let inner, let outer, let start, let sweep) = draw.shape else {
+            throw CompilationFixtureError.missingProgram
+        }
+        return (inner, outer, start, sweep)
+    }
+    func input(_ seconds: Double = 0, locale: String = "en_US") -> ProgramDateInput {
+        ProgramDateInput(instant: Date(timeIntervalSince1970: seconds), timeZone: TimeZone(secondsFromGMT: 0)!,
+                         locale: Locale(identifier: locale))
+    }
+    t.suite("Desk: gauges: four shapes preserve catalog defaults and clockwise geometry") {
+        for shape in ProgramGaugeShape.allCases {
+            let source = "widget { Gauge(0.25, shape: .\(shape.rawValue)) }"
+            let program = try compileFixture(t, source)
+            guard case .gauge(let gauge) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(gauge, ProgramGauge(value: .number(0.25), shape: shape))
+            t.equal(program.root.width, .fit); t.equal(program.root.height, .fit)
+            t.equal(program.root.idealSize, SkinSize(width: 44, height: 44))
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.equal(scene.size, SkinSize(width: 44, height: 44)); t.equal(scene.elements.first?.kind, .roundline)
+            let items = draws(scene); t.equal(items.count, 2)
+            t.equal(items.first?.color, SkinAppearance.light.tertiaryLabelColor)
+            t.equal(items.last?.color, SkinAppearance.light.accentColor)
+            let track = try sector(items.first)
+            let arc = shape == .arc || shape == .needle
+            let degrees = arc ? -135.0 : 0.0, sweep = arc ? 270.0 : 360.0
+            t.close(sin(track.start), sin((degrees - 90) * .pi / 180))
+            t.close(cos(track.start), cos((degrees - 90) * .pi / 180))
+            t.close(track.sweep, sweep * .pi / 180)
+            if shape == .needle {
+                guard case .line = items.last?.shape else { throw CompilationFixtureError.missingProgram }
+            } else {
+                let fill = try sector(items.last)
+                t.close(fill.sweep, sweep * 0.25 * .pi / 180)
+                if shape == .pie { t.equal(fill.inner, 0) }
+                else { t.close(fill.outer - fill.inner, 6) }
+            }
+        }
+        let defaultProgram = try compileFixture(t, "widget { Gauge(0.25) }")
+        t.equal(defaultProgram.root.content, .gauge(ProgramGauge(value: .number(0.25))))
+        let checked = deskCheck("widget { Gauge(60) }")
+        t.check(Desk.compile(checked).program != nil)
+        t.check(!checked.diagnostics.contains { $0.id == .fractionOver1 }, "Gauge keeps its existing checker policy")
+    }
+    t.suite("Desk: gauges: explicit degrees radians and dynamic geometry retain checked dimensions") {
+        for (start, expected) in [("90", 90.0), ("90deg", 90.0), ("90°", 90.0), ("1rad", 180 / Double.pi),
+                                  ("-90deg", -90.0), ("(90deg)", 90.0)] {
+            let program = try compileFixture(t, "widget { Gauge(25%, start: \(start), sweep: 180deg, thickness: 4pt).size(40) }")
+            guard case .gauge(let gauge) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(gauge.start, .quantity(ProgramNumber(expected, dimension: .angle)), start)
+            t.equal(gauge.sweep, .quantity(ProgramNumber(180, dimension: .angle)))
+            t.equal(gauge.thickness, .quantity(ProgramNumber(4, dimension: .length)))
+            var runtime = try ProgramRuntime(program: program)
+            let frame = try runtime.project(environment: compileEnvironment(), measure: measure)
+            let fill = try sector(draws(frame).last)
+            t.close(sin(fill.start), sin((expected - 90) * .pi / 180), start)
+            t.close(cos(fill.start), cos((expected - 90) * .pi / 180), start)
+            t.close(fill.sweep, .pi / 4); t.close(fill.outer - fill.inner, 4)
+        }
+        let source = """
+            widget {
+                variable start = -90deg
+                computed angle = start + cpu.usage * 360deg
+                computed width = cpu.coreCount + 2
+                Gauge(25%, start: angle, sweep: 180deg, thickness: width).size(40)
+                    .onClick { start = 0deg }
+            }
+            """
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        t.equal(runtime.neededSystemProperties, Set([.cpuUsage, .cpuCoreCount]))
+        let first = try runtime.project(environment: compileEnvironment(),
+            systemInput: ProgramSystemInput(cpuUsage: 25, cpuCoreCount: 2), measure: measure)
+        let initial = try sector(draws(first).last); t.close(initial.start, -.pi / 2)
+        guard let changed = try runtime.click(at: SkinPoint(x: 20, y: 20), expectedGeneration: first.generation,
+            environment: compileEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 25, cpuCoreCount: 2),
+            measure: measure) else { throw CompilationFixtureError.missingProgram }
+        let after = try sector(draws(changed).last); t.close(after.start, 0)
+        t.close(after.outer - after.inner, 4)
+        t.equal(changed.elements.map(\.id), first.elements.map(\.id))
+    }
+    t.suite("Desk: gauges: numeric ranges aliases and missing preserve dynamic track semantics") {
+        for value in ["0.25", "25%", "2GB, total: 8GB", "250ms, total: 1s", "5pt, total: 20pt", "30deg, total: 120deg"] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, "widget { Gauge(\(value)).size(40) }"))
+            let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+            t.close(try sector(draws(scene).last).sweep, .pi / 2, value)
+        }
+        let alias = "widget { computed amount = memory.used; computed alias = (amount); Gauge(alias).size(40) }"
+        let program = try compileFixture(t, alias)
+        guard case .gauge(let gauge) = program.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(gauge.total, .systemProperty(.memoryTotal))
+        var runtime = try ProgramRuntime(program: program)
+        t.equal(runtime.neededSystemProperties, Set([.memoryUsed, .memoryTotal]))
+        let first = try runtime.project(environment: compileEnvironment(),
+            systemInput: ProgramSystemInput(memoryUsed: 250, memoryTotal: 1_000), measure: measure)
+        let second = try runtime.project(environment: compileEnvironment(),
+            systemInput: ProgramSystemInput(memoryUsed: 750, memoryTotal: 1_000), measure: measure)
+        t.close(try sector(draws(first).last).sweep, .pi / 2)
+        t.close(try sector(draws(second).last).sweep, 3 * .pi / 2)
+        let bytes = try compileFixture(t, "widget { Gauge(memory.used, total: 8GB).size(40) }")
+        guard case .gauge(let byteGauge) = bytes.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(byteGauge.total, .quantity(ProgramNumber(8_589_934_592, dimension: .bytes, displayBase: 1024)))
+        var byteRuntime = try ProgramRuntime(program: bytes)
+        t.close(try sector(draws(try byteRuntime.project(environment: compileEnvironment(),
+            systemInput: ProgramSystemInput(memoryUsed: 2_147_483_648), measure: measure)).last).sweep, .pi / 2)
+        for value in ["1 / 0", "1, total: 1 / 0", "1, total: 0", "-5, total: -10"] {
+            var empty = try ProgramRuntime(program: compileFixture(t, "widget { Gauge(\(value), shape: .needle).size(40) }"))
+            let scene = try empty.project(environment: compileEnvironment(), measure: measure)
+            t.equal(draws(scene).count, 1, "missing or unusable total keeps only the needle track: \(value)")
+        }
+        var zero = try ProgramRuntime(program: compileFixture(t, "widget { Gauge(0, shape: .needle).size(40) }"))
+        let zeroItems = draws(try zero.project(environment: compileEnvironment(), measure: measure))
+        t.equal(zeroItems.count, 2, "a real zero remains a visible pointer at the start")
+        guard case .line = zeroItems.last?.shape else { throw CompilationFixtureError.missingProgram }
+        var progress = try ProgramRuntime(program: compileFixture(t, "widget { Progress(30deg, total: 90deg).size(90, 10) }"))
+        t.equal(compiledBars(try progress.project(environment: compileEnvironment(), measure: measure)).first?.visibleRects,
+                [SkinRect(width: 30, height: 10)], "the shared Angle range has an explicit positive control")
+    }
+    t.suite("Desk: gauges: colors backgrounds rounding and source references stay on the actual box") {
+        let source = ##"widget { Column { Gauge(25%).size(40).padding(2).color("#123456").track("#ABCDEF").background(.glass, tint: .accent).rounded(7) }.color(.dim) }"##
+        let checked = deskCheck(source), result = Desk.compile(checked)
+        guard let program = result.program, case .column(_, _, let children) = program.root.content,
+              let child = children.first, case .gauge(let gauge) = child.content,
+              let ref = result.elementRefs[child.id] else { throw CompilationFixtureError.missingProgram }
+        t.check(result.issues.isEmpty, "\(result.issues)")
+        t.equal(gauge.color, .literal(RGBA(r: 18, g: 52, b: 86))); t.equal(gauge.track, .literal(RGBA(r: 171, g: 205, b: 239)))
+        t.equal(child.background, .glass(style: .regular, tint: .accent)); t.equal(child.cornerRadius, .points(7))
+        t.equal(CallStmtSyntax(checked.tree.resolve(ref)!)?.callee.path, ["Gauge"])
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment(), measure: measure)
+        t.equal(scene.elements.last?.frame, SkinRect(width: 40, height: 40))
+        t.equal(scene.elements.last?.glass?.cornerRadius, 7)
+        t.equal(draws(scene).first?.color, RGBA(r: 171, g: 205, b: 239))
+        t.equal(draws(scene).last?.color, RGBA(r: 18, g: 52, b: 86))
+        var catalog = DeskCatalog.current
+        guard let index = catalog.components.firstIndex(where: { $0.name == "Gauge" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[index].defaults["color"] = ".dim"; catalog.components[index].defaults["track"] = ".separator"
+        catalog.components[index].signatures[0].params[2].defaultValue = .source(".pie")
+        catalog.components[index].signatures[0].params[5].defaultValue = .source("8")
+        let altered = Desk.compile(deskCheck("widget { Gauge(0.25) }", context: CheckContext(catalog: catalog)), catalog: catalog)
+        guard let alteredProgram = altered.program, case .gauge(let custom) = alteredProgram.root.content else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.equal(custom.shape, .pie); t.equal(custom.thickness, .quantity(ProgramNumber(8, dimension: .length)))
+        t.equal(custom.color, .dim); t.equal(custom.track, .separator)
+    }
+    t.suite("Desk: gauges: Angle assignments formatted text and ordered effects keep degree receipts") {
+        let source = """
+            widget {
+                variable angle = 25.5deg
+                Gauge(0.25, start: angle).size(40)
+                    .onClick { angle = 90; copy(angle); copy(1rad); open("https://example.test/gauge") }
+                    .onRightClick { angle = -45deg }
+                Text("{angle}|{angle, decimals: 1}|{angle, unitStyle: .none}|{angle, unitStyle: .short}")
+            }
+            """
+        let program = try compileFixture(t, source)
+        t.equal(program.declarations.first?.initial, .quantity(ProgramNumber(25.5, dimension: .angle)))
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: compileEnvironment(), dateInput: input(), measure: measure)
+        t.equal(compiledDraws(first).first?.text, "26°|25.5°|26|26°")
+        guard let changed = try runtime.clickWithEffects(at: SkinPoint(x: 20, y: 20), expectedGeneration: first.generation,
+            environment: compileEnvironment(), dateInput: input(), measure: measure) else { throw CompilationFixtureError.missingProgram }
+        t.equal(changed.effects, [.copy("90°"), .copy("57°"), .open("https://example.test/gauge")])
+        t.equal(compiledDraws(changed.scene).first?.text, "90°|90.0°|90|90°")
+        guard let right = try runtime.clickWithEffects(at: SkinPoint(x: 20, y: 20), expectedGeneration: changed.scene.generation,
+            event: .rightUp, environment: compileEnvironment(), dateInput: input(), measure: measure) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.check(right.effects.isEmpty); t.equal(compiledDraws(right.scene).first?.text, "-45°|-45.0°|-45|-45°")
+        t.check(try runtime.clickWithEffects(at: SkinPoint(x: 20, y: 20), expectedGeneration: first.generation,
+            environment: compileEnvironment(), dateInput: input(), measure: measure) == nil)
+        var locale = try ProgramRuntime(program: compileFixture(t, #"widget { Text("{25.5deg, decimals: 1}") }"#))
+        t.equal(compiledDraws(try locale.project(environment: compileEnvironment(), dateInput: input(locale: "fr_FR"), measure: measure)).first?.text,
+                "25,5°")
+        let full = try compileFixture(t, #"widget { Text("{25.5deg, unitStyle: .full}") }"#)
+        guard case .text(let fullText) = full.root.content,
+              case .concatenate(let parts) = fullText.value,
+              case .formatNumber(_, let format)? = parts.first else { throw CompilationFixtureError.missingProgram }
+        t.equal(format.unitStyle, .full, "the checked Angle full-unit option reaches the shared formatter")
+        let rollback = "widget { variable thickness = 4pt; Gauge(25%, thickness: thickness).size(40).onClick { thickness = -4pt; copy(\"pending\") } }"
+        var guarded = try ProgramRuntime(program: compileFixture(t, rollback))
+        let original = try guarded.project(environment: compileEnvironment(), measure: measure)
+        do {
+            _ = try guarded.clickWithEffects(at: SkinPoint(x: 20, y: 20), expectedGeneration: original.generation,
+                environment: compileEnvironment(), measure: measure)
+            t.check(false, "an invalid geometry assignment must abort before exposing its later effect")
+        } catch { t.check(true) }
+        t.equal(guarded.generation, original.generation)
+        let restored = try guarded.project(environment: compileEnvironment(), measure: measure)
+        let band = try sector(draws(restored).last); t.close(band.outer - band.inner, 4)
+    }
+    t.suite("Desk: gauges: visible dynamic geometry requests the clock while hidden geometry does not") {
+        let source = "widget { variable began = time.now; Gauge(0.25, start: ((time.now - began) / 1s) * 6deg, thickness: 4pt).size(40) }"
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        let before = try runtime.project(environment: compileEnvironment(), dateInput: input(0), measure: measure)
+        let after = try runtime.project(environment: compileEnvironment(), dateInput: input(15), measure: measure)
+        t.close(try sector(draws(before).last).start, -.pi / 2)
+        t.close(try sector(draws(after).last).start, 0); t.equal(runtime.clockPrecision, .second)
+        var hidden = try ProgramRuntime(program: compileFixture(t, source.replacingOccurrences(of: ".size(40)", with: ".size(40).hidden()")))
+        let scene = try hidden.project(environment: compileEnvironment(), dateInput: input(15), measure: measure)
+        t.check(scene.drawingItems.isEmpty); t.equal(scene.size, after.size); t.equal(hidden.clockPrecision, nil)
+    }
+    t.suite("Desk: gauges: dynamic enum unknown dimensions and unsupported paints refuse the complete program") {
+        for expression in ["Gauge(0.5, shape: system.dark ? .ring : .pie)", "Gauge(2GB)", "Gauge(memory.total)",
+                           "Gauge(1°C, total: 2°C)", "Gauge(1W, total: 2W)", "Gauge(0.5, start: cpu.coreCount)",
+                           "Gauge(0.5, start: 1s)", "Gauge(0.5, thickness: 1s)", "Gauge(0.5).font(12)",
+                           "Gauge(0.5).color(light: .black, dark: .white)", "Gauge(0.5).track(.color(light: .black, dark: .white))"] {
+            let checked = deskCheck("widget { Text(\"Before\"); \(expression) }"), result = Desk.compile(checked)
+            t.check(result.program == nil, expression); t.check(result.elementRefs.isEmpty && result.imageSources.isEmpty)
+            t.check(!result.issues.isEmpty || !checked.diagnostics(.error).isEmpty, expression)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+    }
+    t.suite("Desk: gauges: stale numeric enum catalog and budget receipts never publish partial output") {
+        let source = "widget { Gauge(25%, shape: .arc, start: 1rad, sweep: 180deg, thickness: 4pt).color(.accent) }"
+        let checked = deskCheck(source)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked)); t.check(Desk.compile(checked).program != nil)
+        guard let angle = deskCompilationNode(checked, text: "1rad", kind: .numberLiteral),
+              let shape = deskCompilationNode(checked, text: ".arc", kind: .implicitMemberExpr) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        let angleID = checked.tree.id(of: angle), shapeID = checked.tree.id(of: shape)
+        func rejected(_ value: CheckedFile, catalog: DeskCatalog = .current) {
+            let result = Desk.compile(value, catalog: catalog)
+            t.check(result.program == nil && result.elementRefs.isEmpty && result.imageSources.isEmpty)
+            t.check(!result.issues.isEmpty); t.equal(result.diagnostics, checked.diagnostics)
+        }
+        var missing = checked; missing.canonicalNumericValues.removeValue(forKey: angleID); rejected(missing)
+        var wrong = checked; wrong.canonicalNumericValues[angleID] = 1; rejected(wrong)
+        var types = checked.types; types[angleID] = SemType(type: .plainNumber)
+        rejected(compilationReplacingFacts(checked, types: types))
+        var symbols = checked.symbols; symbols[shapeID] = .enumCase(type: "Direction", case: "arc")
+        rejected(compilationReplacingFacts(checked, symbols: symbols))
+        guard let gaugeIndex = DeskCatalog.current.components.firstIndex(where: { $0.name == "Gauge" }),
+              let unitIndex = DeskCatalog.current.units.firstIndex(where: { $0.spelling == "rad" }),
+              let paintIndex = DeskCatalog.current.modifiers.firstIndex(where: { $0.name == "color" }) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        var catalog = DeskCatalog.current; catalog.components[gaugeIndex].signatures[0].params[1].sameAs = "shape"
+        rejected(checked, catalog: catalog)
+        catalog = .current; catalog.components[gaugeIndex].signatures[0].params[3].type = .plainNumber
+        rejected(checked, catalog: catalog)
+        catalog = .current; catalog.units[unitIndex].factor = 1
+        rejected(checked, catalog: catalog)
+        catalog = .current; catalog.modifiers[paintIndex].appliesTo = .of(.text)
+        rejected(checked, catalog: catalog)
+        catalog = .current; catalog.limits.maximumTokens = 3
+        let budget = Desk.compile(checked, catalog: catalog)
+        t.check(budget.program == nil && budget.elementRefs.isEmpty); t.equal(budget.issues.first?.kind, .resourceLimit)
     }
 }
 

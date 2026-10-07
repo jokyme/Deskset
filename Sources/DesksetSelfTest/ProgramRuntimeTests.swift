@@ -219,6 +219,7 @@ private func programFailure(_ t: TestRunner, _ expected: ProgramRuntimeError, _ 
 
 func runProgramRuntimeTests(_ t: TestRunner) {
     runProgramProgressTests(t)
+    runProgramGaugeTests(t)
     runProgramSpacerTests(t)
     runProgramPresetTests(t)
     runProgramFreeformTests(t)
@@ -1002,6 +1003,243 @@ private func runProgramProgressTests(_ t: TestRunner) {
         t.equal(frozen.clockPrecision, nil); t.equal(frozen.neededSystemProperties, [])
         t.equal(rects(try frozen.project(environment: programEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 90), measure: noText)),
                 [SkinRect(width: 42, height: 6)])
+    }
+}
+
+private func runProgramGaugeTests(_ t: TestRunner) {
+    let id = ElementID(name: "gauge", index: 0)
+    let noText: (String, TextStyle, Double?) throws -> SkinSize = { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+    func quantity(_ value: Double, _ dimension: ProgramNumberDimension) -> ProgramExpression { .quantity(ProgramNumber(value, dimension: dimension)) }
+    func node(_ gauge: ProgramGauge, index: Int = 0, hidden: Bool = false, actions: [ProgramAction]? = nil) -> ProgramElement {
+        ProgramElement(id: ElementID(name: "gauge", index: index), content: .gauge(gauge), hidden: hidden,
+            idealSize: SkinSize(width: 44, height: 44), onClickActions: actions)
+    }
+    func draws(_ scene: WidgetScene) -> [RoundlineDraw] {
+        scene.drawingItems.compactMap { if case .roundline(let value) = $0 { return value }; return nil }
+    }
+    func scene(_ gauge: ProgramGauge) throws -> WidgetScene {
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Gauge", root: node(gauge)))
+        return try runtime.project(environment: programEnvironment(), measure: noText)
+    }
+    func sector(_ draw: RoundlineDraw?) -> [Double] {
+        if let draw, case let .sector(cx, cy, inner, outer, start, sweep) = draw.shape { return [cx, cy, inner, outer, start, sweep] }
+        return []
+    }
+
+    t.suite("Program: gauges: four defaults preserve independent geometry paints and rounded ends") {
+        for shape in ProgramGaugeShape.allCases {
+            let result = try scene(ProgramGauge(value: .number(0.25), shape: shape))
+            let items = draws(result), track = sector(items.first)
+            t.equal(result.size, SkinSize(width: 44, height: 44)); t.equal(result.elements[0].kind, .roundline)
+            t.equal(items.count, 2); t.equal(track.count, 6)
+            guard items.count == 2, track.count == 6 else { continue }
+            t.equal(Array(track.prefix(4)), [22, 22, shape == .pie ? 0 : 16, 22])
+            let arc = shape == .arc || shape == .needle
+            t.close(track[4], arc ? -5 * .pi / 4 : -.pi / 2)
+            t.close(track[5], arc ? 3 * .pi / 2 : 2 * .pi)
+            t.equal(items[0].roundCaps, shape != .pie); t.check(items.allSatisfy(\.antiAlias))
+            t.equal(items[0].color, SkinAppearance.light.tertiaryLabelColor); t.equal(items[1].color, SkinAppearance.light.accentColor)
+            if shape == .needle {
+                guard case let .line(x1, y1, x2, y2, width) = items[1].shape else { return t.check(false, "needle is a real pointer") }
+                t.equal(x1, 22); t.equal(y1, 22); t.equal(width, 6); t.check(!items[1].roundCaps)
+                t.close(x2, 22 + 19 * cos(-7 * .pi / 8)); t.close(y2, 22 + 19 * sin(-7 * .pi / 8))
+            } else {
+                let foreground = sector(items.last)
+                t.equal(foreground.count, 6)
+                if foreground.count == 6 { t.close(foreground[5], arc ? 3 * .pi / 8 : .pi / 2) }
+            }
+        }
+        let padded = ProgramElement(id: id, content: .gauge(ProgramGauge(value: .number(1), thickness: .number(100))),
+            width: .fixed(80), height: .fixed(60), padding: SkinInsets(left: 4, top: 6, right: 8, bottom: 10))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Inscribed", root: padded))
+        let result = try runtime.project(environment: programEnvironment(scale: 2), measure: noText)
+        t.equal(Array(sector(draws(result).first).prefix(4)), [38, 28, 0, 22], "thickness clamps inward against the smaller content radius")
+        t.equal(result.elements[0].frame, SkinRect(width: 80, height: 60))
+    }
+
+    t.suite("Program: gauges: missing differs from true zero while empty radial geometry stays empty") {
+        let missing = ProgramExpression.divide(.number(1), .number(0))
+        for shape in ProgramGaugeShape.allCases {
+            for (value, total) in [(missing, Optional<ProgramExpression>.none), (.number(0.5), .some(.number(0))),
+                                   (.number(0.5), .some(.number(-1))), (.number(0.5), .some(missing))] {
+                t.equal(try draws(scene(ProgramGauge(value: value, total: total, shape: shape))).count, 1)
+            }
+            for value in [0.0, -1.0] {
+                t.equal(try draws(scene(ProgramGauge(value: .number(value), shape: shape))).count, shape == .needle ? 2 : 1)
+            }
+            t.equal(try draws(scene(ProgramGauge(value: .number(0.5), shape: shape, sweep: .number(0)))).count,
+                    shape == .needle ? 1 : 0, "a zero-sweep needle still points to its start")
+            t.equal(try draws(scene(ProgramGauge(value: .number(0.5), shape: shape, thickness: .number(0)))).count,
+                    shape == .pie ? 2 : 0, "pie is a filled sector independent of its validated thickness")
+            for (width, height) in [(0.0, 44.0), (44.0, 0.0)] {
+                var runtime = try ProgramRuntime(program: WidgetProgram(name: "Zero box", root: ProgramElement(id: id,
+                    content: .gauge(ProgramGauge(value: .number(1), shape: shape)), width: .fixed(width), height: .fixed(height))))
+                t.equal(try runtime.project(environment: programEnvironment(), measure: noText).drawingItems, [])
+            }
+        }
+        let overflowRatio = try draws(scene(ProgramGauge(value: .number(.greatestFiniteMagnitude), total: .number(.leastNonzeroMagnitude))))
+        t.close(sector(overflowRatio.last).last ?? 0, 2 * .pi)
+        let angleRange = try draws(scene(ProgramGauge(value: quantity(90, .angle), total: quantity(360, .angle))))
+        t.close(sector(angleRange.last).last ?? 0, .pi / 2)
+    }
+
+    t.suite("Program: gauges: multi-turn signed and extreme finite angles remain bounded and seamless") {
+        for shape in [ProgramGaugeShape.ring, .arc, .pie] {
+            for sweep in [720.0, -720.0] {
+                let items = try draws(scene(ProgramGauge(value: .number(0.25), shape: shape,
+                    start: quantity(450, .angle), sweep: quantity(sweep, .angle))))
+                t.close(sector(items.first).last ?? 0, sweep > 0 ? 2 * .pi : -2 * .pi)
+                t.close(sector(items.last).last ?? 0, sweep > 0 ? .pi : -.pi, "multiply before saturating multi-turn travel")
+                t.close(sector(items.last).dropFirst(4).first ?? 1, 0, "450 degrees starts at three o'clock")
+            }
+        }
+        for shape in ProgramGaugeShape.allCases {
+            for value in [0.0, 0.25, 1.0] {
+                let items = try draws(scene(ProgramGauge(value: .number(value), shape: shape,
+                    start: quantity(.greatestFiniteMagnitude, .angle), sweep: quantity(.greatestFiniteMagnitude, .angle))))
+                t.equal(items.count, value == 0 && shape != .needle ? 1 : 2)
+                for item in items {
+                    switch item.shape {
+                    case let .sector(cx, cy, inner, outer, start, sweep):
+                        t.check([cx, cy, inner, outer, start, sweep].allSatisfy(\.isFinite)); t.check(abs(sweep) <= 2 * .pi)
+                    case let .line(x1, y1, x2, y2, width):
+                        t.check([x1, y1, x2, y2, width].allSatisfy(\.isFinite)); t.check(x2 >= 0 && x2 <= 44 && y2 >= 0 && y2 <= 44)
+                    case .none: t.check(false, "valid finite geometry is drawable")
+                    }
+                }
+            }
+        }
+    }
+
+    t.suite("Program: gauges: dynamic geometry shares immutable inputs dependencies and hidden cadence") {
+        let gauge = ProgramGauge(value: .systemProperty(.cpuUsage),
+            start: .multiply(.systemProperty(.batteryLevel), quantity(360, .angle)),
+            sweep: .multiply(.divide(.systemProperty(.memoryUsed), .systemProperty(.memoryTotal)), quantity(720, .angle)),
+            thickness: .multiply(.systemProperty(.cpuUsage), quantity(20, .length)))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Live radial", root: node(gauge)))
+        t.equal(runtime.neededSystemProperties, [.cpuUsage, .batteryLevel, .memoryUsed, .memoryTotal])
+        let first = try runtime.project(environment: programEnvironment(),
+            systemInput: ProgramSystemInput(cpuUsage: 25, memoryUsed: 500, memoryTotal: 1000, batteryLevel: 50), measure: noText)
+        let track = sector(draws(first).first), foreground = sector(draws(first).last)
+        t.equal(Array(track.prefix(4)), [22, 22, 17, 22]); t.close(track[4], .pi / 2)
+        t.close(track[5], 2 * .pi); t.close(foreground[5], .pi / 2); t.equal(runtime.clockPrecision, .second)
+        let second = try runtime.project(environment: programEnvironment(),
+            systemInput: ProgramSystemInput(cpuUsage: 50, memoryUsed: 250, memoryTotal: 1000, batteryLevel: 0), measure: noText)
+        let changed = sector(draws(second).first)
+        t.equal(changed[2], 12); t.close(changed[4], -.pi / 2); t.close(changed[5], .pi)
+        t.close(sector(draws(second).last)[5], .pi / 2)
+        programFailure(t, .invalidGeometry(id)) { _ = try runtime.project(environment: programEnvironment(), measure: noText) }
+        t.equal(runtime.generation, second.generation)
+        let parent = ProgramElement(id: ElementID(name: "hidden", index: 1), content: .column(spacing: 0, align: .left, children: [node(gauge)]), hidden: true)
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden live radial", root: parent))
+        t.equal(hidden.neededSystemProperties, [])
+        let empty = try hidden.project(environment: programEnvironment(), measure: noText)
+        t.equal(empty.size, SkinSize(width: 44, height: 44)); t.equal(empty.drawingItems, []); t.equal(hidden.clockPrecision, nil)
+    }
+
+    t.suite("Program: gauges: geometry failures roll back earlier assignments and frozen effects") {
+        let declarations = [ProgramDeclaration(name: "amount", kind: .variable, initial: .number(0.25)),
+            ProgramDeclaration(name: "phase", kind: .variable, initial: quantity(0, .angle)),
+            ProgramDeclaration(name: "thickness", kind: .variable, initial: quantity(6, .length))]
+        let gauge = ProgramGauge(value: .declaration(0), start: .declaration(1), thickness: .declaration(2))
+        let actions: [ProgramAction] = [.assign(ProgramAssignment(declaration: 0, value: .number(0.75))),
+            .assign(ProgramAssignment(declaration: 1, value: quantity(90, .angle))),
+            .assign(ProgramAssignment(declaration: 2, value: .subtract(quantity(10, .length), .multiply(.systemProperty(.cpuUsage), quantity(20, .length))))),
+            .copy(.formatNumber(.declaration(1), ProgramNumberFormat()))]
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Radial transaction", root: node(gauge, actions: actions), declarations: declarations))
+        let first = try runtime.project(environment: programEnvironment(), measure: noText)
+        t.equal(runtime.neededSystemProperties, []); t.equal(runtime.neededSystemProperties(clickAt: SkinPoint(x: 2, y: 2)), [.cpuUsage])
+        programFailure(t, .invalidGeometry(id)) {
+            _ = try runtime.clickWithEffects(at: SkinPoint(x: 2, y: 2), expectedGeneration: first.generation,
+                environment: programEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 100), measure: noText)
+        }
+        t.equal(runtime.generation, first.generation)
+        let recovered = try runtime.project(environment: programEnvironment(), measure: noText)
+        t.equal(draws(recovered), draws(first), "the failed click cannot retain its earlier value or angle assignments")
+        let clicked = try runtime.clickWithEffects(at: SkinPoint(x: 2, y: 2), expectedGeneration: recovered.generation,
+            environment: programEnvironment(), systemInput: ProgramSystemInput(cpuUsage: 25), measure: noText)
+        t.equal(clicked?.effects, [.copy("90°")])
+        guard let changed = clicked.map({ draws($0.scene) }), changed.count == 2 else { return t.check(false, "committed radial frame") }
+        t.equal(sector(changed.first)[2], 17); t.close(sector(changed.first)[4], 0); t.close(sector(changed.last)[5], 3 * .pi / 2)
+        t.equal(runtime.clockPrecision, nil); t.equal(runtime.neededSystemProperties, [])
+    }
+
+    t.suite("Program: gauges: negative Freeform and preset transform content background and hit bounds once") {
+        let childID = ElementID(name: "negative", index: 1)
+        let child = ProgramElement(id: childID, content: .gauge(ProgramGauge(value: .number(0.5))), width: .fixed(200), height: .fixed(200),
+            padding: SkinInsets(left: 20, top: 20, right: 20, bottom: 20), onClickActions: [],
+            position: ProgramPosition(x: -100, y: -100), background: .glass(style: .clear))
+        let root = ProgramElement(id: id, content: .freeform(align: .topLeft, children: [child]), width: .fixed(100), height: .fixed(100))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Radial fit", root: root, size: .preset(.small, size: SkinSize(width: 100, height: 100))))
+        let result = try runtime.project(environment: programEnvironment(scale: 2), measure: noText)
+        t.equal(result.elements[1].frame, SkinRect(width: 100, height: 100)); t.equal(result.elements[1].glass?.rect, SkinRect(width: 100, height: 100))
+        guard case .transformed(let matrix, let items)? = result.elements[1].items.first,
+              case .roundline(let track)? = items.first else { return t.check(false, "one final bitmap transform") }
+        t.equal(matrix, ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 50, ty: 50)); t.equal(items.count, 2)
+        t.equal(Array(sector(track).prefix(4)), [0, 0, 74, 80])
+        t.equal(result.hitMap.entry(at: 3, 3, handling: .leftUp, images: nil)?.elementID, childID, "outer padding remains clickable")
+        guard let glass = result.elements[1].glass else { return t.check(false, "native background") }
+        t.equal(result.drawingItems, [.glass(glass)] + result.elements[1].items)
+    }
+
+    t.suite("Program: gauges: invalid types paints geometry and shared expression budgets are guarded") {
+        for gauge in [ProgramGauge(value: .boolean(true)), ProgramGauge(value: quantity(1, .angle)),
+                      ProgramGauge(value: .number(0.5), total: quantity(1, .angle)),
+                      ProgramGauge(value: .number(0.5), start: quantity(1, .length)),
+                      ProgramGauge(value: .number(0.5), thickness: quantity(1, .angle)),
+                      ProgramGauge(value: .number(0.5), sweep: .number(.infinity)),
+                      ProgramGauge(value: .number(0.5), thickness: .number(.nan))] {
+            programFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid radial", root: node(gauge))) }
+        }
+        for hidden in [false, true] {
+            for thickness in [ProgramExpression.number(-1), quantity(-1, .length)] {
+                programFailure(t, .invalidGeometry(id)) {
+                    _ = try ProgramRuntime(program: WidgetProgram(name: "Negative literal", root: node(ProgramGauge(value: .number(0.5), thickness: thickness), hidden: hidden)))
+                }
+            }
+        }
+        for gauge in [ProgramGauge(value: .number(0.5), thickness: .subtract(quantity(0, .length), quantity(1, .length))),
+                      ProgramGauge(value: .number(0.5), start: .divide(quantity(1, .angle), .number(0))),
+                      ProgramGauge(value: .number(0.5), sweep: .multiply(quantity(.greatestFiniteMagnitude, .angle), .number(2)))] {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Invalid resolved radial", root: node(gauge)))
+            programFailure(t, .invalidGeometry(id)) { _ = try runtime.project(environment: programEnvironment(), measure: noText) }
+            t.equal(runtime.generation, 0)
+        }
+        programFailure(t, .invalidPaint(id)) {
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Bad paint", root: node(ProgramGauge(value: .number(1), track: .literal(RGBA(r: .nan, g: 0, b: 0))))))
+        }
+        programFailure(t, .invalidGeometry(id)) {
+            _ = try ProgramRuntime(program: WidgetProgram(name: "No catalog size", root: ProgramElement(id: id, content: .gauge(ProgramGauge(value: .number(1))))))
+        }
+        var deep = quantity(0, .angle)
+        for _ in 0..<ProgramLimits.maximumExpressionDepth { deep = .negate(deep) }
+        programFailure(t, .expressionDepth) { _ = try ProgramRuntime(program: WidgetProgram(name: "Deep geometry", root: node(ProgramGauge(value: .number(1), start: deep)))) }
+        let children = (0..<2501).map { node(ProgramGauge(value: .number(1), sweep: quantity(360, .angle)), index: $0) }
+        let root = ProgramElement(id: ElementID(name: "root", index: 3000), content: .column(spacing: 0, align: .left, children: children))
+        programFailure(t, .expressionLimit) { _ = try ProgramRuntime(program: WidgetProgram(name: "Many radial expressions", root: root)) }
+    }
+
+    t.suite("Program: gauges: Angle formatting keeps canonical degrees locale decimals and numeric ranges") {
+        let basic = try ProgramNumberFormat().string(from: ProgramNumber(45.4, dimension: .angle), dimension: .angle, locale: Locale(identifier: "en_US"))
+        t.equal(basic.text, "45°"); t.equal(basic.numberRanges, [0..<2])
+        for (locale, expected) in [("en_US", "12.5°"), ("de_DE", "12,5°"), ("ar_EG", "١٢٫٥°")] {
+            let value = try ProgramNumberFormat(decimals: 1).string(from: ProgramNumber(12.5, dimension: .angle), dimension: .angle, locale: Locale(identifier: locale))
+            t.equal(value.text, expected); t.equal(value.numberRanges, [0..<4])
+        }
+        let plain = try ProgramNumberFormat(decimals: 1, unitStyle: .some(.none)).string(from: ProgramNumber(12.5, dimension: .angle), dimension: .angle, locale: Locale(identifier: "en_US"))
+        t.equal(plain.text, "12.5"); t.equal(plain.numberRanges, [0..<4])
+        let full = try ProgramNumberFormat(decimals: 1, unitStyle: .full).string(from: ProgramNumber(12.5, dimension: .angle), dimension: .angle, locale: Locale(identifier: "en_US"))
+        t.equal(full.text, "12.5 degrees"); t.equal(full.numberRanges, [0..<4])
+        let defaultFull = try ProgramNumberFormat(unitStyle: .full).string(from: ProgramNumber(45.4, dimension: .angle), dimension: .angle, locale: Locale(identifier: "en_US"))
+        t.equal(defaultFull.text, "45 degrees"); t.equal(defaultFull.numberRanges, [0..<2])
+        let missing = try ProgramNumberFormat().string(from: nil, dimension: .angle, locale: Locale(identifier: "en_US"))
+        t.equal(missing.text, "–"); t.equal(missing.numberRanges, [])
+        for format in [ProgramNumberFormat(unit: .bytes), ProgramNumberFormat(durationStyle: .clock)] {
+            programFailure(t, .invalidExpression) { try format.validate(for: .angle) }
+        }
+        let formatted = ProgramTextValue(text: "45 " + basic.text, numberRanges: [3..<5])
+        let style = try ProgramText("45 45°").drawingStyle(in: .light, colorInput: nil, wrap: false, text: formatted)
+        t.equal(style.inlineSpans, [InlineSpan(location: 3, length: 2, setting: .typography(feature: "tnum", value: 1))])
     }
 }
 

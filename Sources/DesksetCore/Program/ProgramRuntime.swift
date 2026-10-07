@@ -134,6 +134,24 @@ public struct ProgramRuntime: Sendable {
                 for color in [progress.color, progress.track] {
                     if case .literal(let rgba) = color, !Self.valid(rgba) { throw ProgramRuntimeError.invalidPaint(node.id) }
                 }
+            case .gauge(let gauge):
+                contentCount += 1
+                if node.idealSize == nil {
+                    guard case .fixed = node.width, case .fixed = node.height else {
+                        throw ProgramRuntimeError.invalidGeometry(node.id)
+                    }
+                }
+                try expressions.validateGauge(gauge)
+                switch gauge.thickness {
+                case .number(let value)?:
+                    guard value >= 0 else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                case .quantity(let value)?:
+                    guard value.value >= 0 else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                default: break
+                }
+                for color in [gauge.color, gauge.track] {
+                    if case .literal(let rgba) = color, !Self.valid(rgba) { throw ProgramRuntimeError.invalidPaint(node.id) }
+                }
             case .spacer(let minimum):
                 contentCount += 1
                 guard minimum.isFinite, minimum >= 0, node.padding == .zero,
@@ -225,6 +243,10 @@ public struct ProgramRuntime: Sendable {
                     active.append(progress.value)
                     if let total = progress.total { active.append(total) }
                 }
+                if case .gauge(let gauge) = node.content, !hidden {
+                    active.append(gauge.value)
+                    active.append(contentsOf: [gauge.total, gauge.start, gauge.sweep, gauge.thickness].compactMap { $0 })
+                }
                 switch node.content {
                 case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children):
                     pending.append(contentsOf: children.map { ($0, hidden) })
@@ -310,7 +332,7 @@ public struct ProgramRuntime: Sendable {
         while let (node, parentHidden) = pending.popLast() {
             let hidden = parentHidden || node.hidden
             switch node.content {
-            case .text, .progress: if !hidden { visibleContent.insert(node.id) }
+            case .text, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
             case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending += children.map { ($0, hidden) }
             default: break
             }
@@ -324,6 +346,8 @@ public struct ProgramRuntime: Sendable {
                                      wrap: false, text: value, resolvedFontSize: fontSize))
                              }, resolveProgress: { id, progress in
                                  try evaluation.progress(progress, displayed: visibleContent.contains(id))
+                             }, resolveGauge: { id, gauge in
+                                 try evaluation.gauge(gauge, element: id, displayed: visibleContent.contains(id))
                              }, measure: measure, state: &layoutState)
         var elements: [SceneElement] = []
         try append(box, at: SkinPoint(), inheritedHidden: false, into: &elements)
@@ -455,6 +479,7 @@ public struct ProgramRuntime: Sendable {
         let fill: RGBA?
         let track: RGBA?
         let progress: Double?
+        let gauge: ProgramGaugeValues?
         let stroke: RGBA?
         let backgroundColor: RGBA?
         let backgroundTint: RGBA?
@@ -478,6 +503,7 @@ public struct ProgramRuntime: Sendable {
         var text: [ElementID: TextInput] = [:]
         var measures: [TextKey: SkinSize] = [:]
         var progress: [ElementID: Double] = [:]
+        var gauges: [ElementID: ProgramGaugeValues] = [:]
     }
 
     private func flexibility(_ node: ProgramElement, parentVertical: Bool? = nil, into state: inout LayoutState) -> Flexibility {
@@ -490,7 +516,7 @@ public struct ProgramRuntime: Sendable {
         let children: [ProgramElement]
         switch node.content {
         case .column(_, _, let nodes), .row(_, _, let nodes), .freeform(_, let nodes): children = nodes
-        case .text, .image, .rectangle, .shape, .progress, .spacer: children = []
+        case .text, .image, .rectangle, .shape, .progress, .gauge, .spacer: children = []
         }
         let childAxis: Bool?
         switch node.content { case .column: childAxis = true; case .row: childAxis = false; default: childAxis = nil }
@@ -504,6 +530,7 @@ public struct ProgramRuntime: Sendable {
     private func layout(_ node: ProgramElement, proposedWidth: Double?, proposedHeight: Double?, appearance: SkinAppearance,
                         resolve: (ElementID, ProgramText) throws -> TextInput,
                         resolveProgress: (ElementID, ProgramProgress) throws -> Double,
+                        resolveGauge: (ElementID, ProgramGauge) throws -> ProgramGaugeValues,
                         measure: (String, TextStyle, Double?) throws -> SkinSize, state: inout LayoutState) throws -> Box {
         let key = ProposalKey(id: node.id, width: proposedWidth, height: proposedHeight)
         if let old = state.boxes[key] { return old }
@@ -535,7 +562,7 @@ public struct ProgramRuntime: Sendable {
         let offeredWidth = requestedWidth ?? proposedWidth.map { clamp($0, minimum: minWidth, maximum: maxWidth) } ?? maxWidth
         let offeredHeight = requestedHeight ?? proposedHeight.map { clamp($0, minimum: minHeight, maximum: maxHeight) } ?? maxHeight
         var width: Double, height: Double, style: TextStyle?, resolvedText: String?, textSize: SkinSize?,
-            fill: RGBA?, track: RGBA?, fraction: Double?, image: ProgramImageResource?
+            fill: RGBA?, track: RGBA?, fraction: Double?, gaugeValues: ProgramGaugeValues?, image: ProgramImageResource?
         var children: [(Box, SkinPoint)] = []
         var minimumContent = SkinSize()
         switch node.content {
@@ -601,6 +628,18 @@ public struct ProgramRuntime: Sendable {
                 state.progress[node.id] = value; fraction = value
             }
             minimumContent = SkinSize(width: max(0, width - horizontal), height: max(0, height - vertical))
+        case .gauge(let gauge):
+            let ideal = node.idealSize ?? SkinSize()
+            width = try requestedWidth ?? clamp(sum([ideal.width, horizontal]), minimum: minWidth, maximum: maxWidth)
+            height = try requestedHeight ?? clamp(sum([ideal.height, vertical]), minimum: minHeight, maximum: maxHeight)
+            fill = try gauge.color.resolved(in: appearance, colorInput: state.colors)
+            track = try gauge.track.resolved(in: appearance, colorInput: state.colors)
+            if let cached = state.gauges[node.id] { gaugeValues = cached }
+            else {
+                let value = try resolveGauge(node.id, gauge)
+                state.gauges[node.id] = value; gaugeValues = value
+            }
+            minimumContent = SkinSize(width: max(0, width - horizontal), height: max(0, height - vertical))
         case .spacer(let minimum):
             if let vertical = state.spacerAxes[node.id] {
                 let lower = max(minimum, vertical ? minHeight : minWidth)
@@ -621,7 +660,8 @@ public struct ProgramRuntime: Sendable {
             let initialCross = offeredCross.map { max(0, $0 - crossPadding) }
             var boxes = try nodes.map {
                 try layout($0, proposedWidth: column ? initialCross : nil, proposedHeight: column ? nil : initialCross,
-                           appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                           appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                           measure: measure, state: &state)
             }
             func main(_ size: SkinSize) -> Double { column ? size.height : size.width }
             func cross(_ size: SkinSize) -> Double { column ? size.width : size.height }
@@ -637,7 +677,8 @@ public struct ProgramRuntime: Sendable {
             if initialCross != finalCross {
                 boxes = try nodes.map {
                     try layout($0, proposedWidth: column ? finalCross : nil, proposedHeight: column ? nil : finalCross,
-                               appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                               appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                               measure: measure, state: &state)
                 }
             }
             let naturalMain = try sum(boxes.map { main($0.size) } + [gap, mainPadding])
@@ -712,7 +753,8 @@ public struct ProgramRuntime: Sendable {
                     proposedMain[index] = allocated[offset]
                     boxes[index] = try layout(nodes[index], proposedWidth: column ? finalCross : allocated[offset],
                                               proposedHeight: column ? allocated[offset] : finalCross,
-                                              appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                                              appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                              measure: measure, state: &state)
                 }
             }
             // A Row's assigned widths can wrap text and increase its fit height. Keep those assignments
@@ -727,7 +769,8 @@ public struct ProgramRuntime: Sendable {
                     boxes = try nodes.indices.map { index in
                         try layout(nodes[index], proposedWidth: column ? finalCross : proposedMain[index],
                                    proposedHeight: column ? proposedMain[index] : finalCross,
-                                   appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                                   appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                   measure: measure, state: &state)
                     }
                 }
             }
@@ -753,7 +796,8 @@ public struct ProgramRuntime: Sendable {
                 return try layout(child,
                     proposedWidth: positioned ? (child.width == .fill ? knownWidth : nil) : initialWidth,
                     proposedHeight: positioned ? (child.height == .fill ? knownHeight : nil) : initialHeight,
-                    appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                    appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                    measure: measure, state: &state)
             }
             func origin(_ size: SkinSize, position: ProgramPosition) throws -> SkinPoint {
                 let factor = Self.alignmentFactors(position.anchor)
@@ -783,7 +827,8 @@ public struct ProgramRuntime: Sendable {
             if initialWidth != finalWidth || initialHeight != finalHeight {
                 for i in boxes.indices where nodes[i].position == nil {
                     boxes[i] = try layout(nodes[i], proposedWidth: finalWidth, proposedHeight: finalHeight,
-                                          appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, measure: measure, state: &state)
+                                          appearance: appearance, resolve: resolve, resolveProgress: resolveProgress, resolveGauge: resolveGauge,
+                                          measure: measure, state: &state)
                 }
             }
             // An unspecified fit proposal stays unspecified for positioned fill children: feeding the
@@ -847,7 +892,7 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .image, .rectangle, .shape, .freeform, .progress, .spacer: break
+            case .text, .image, .rectangle, .shape, .freeform, .progress, .gauge, .spacer: break
             }
         }
         var layoutBounds = SkinRect(width: width, height: height)
@@ -880,7 +925,7 @@ public struct ProgramRuntime: Sendable {
                       layoutBounds: layoutBounds,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth,
                                         height: max(innerHeight, textSize?.height ?? 0)),
-                      style: style, text: resolvedText, textSize: textSize, fill: fill, track: track, progress: fraction,
+                      style: style, text: resolvedText, textSize: textSize, fill: fill, track: track, progress: fraction, gauge: gaugeValues,
                       stroke: try node.stroke.map { try $0.color.resolved(in: appearance, colorInput: state.colors) },
                       backgroundColor: backgroundColor, backgroundTint: backgroundTint, image: image, children: children)
         state.boxes[key] = box
@@ -957,6 +1002,21 @@ public struct ProgramRuntime: Sendable {
                         }
                         items.append(.bar(BarDraw(visibleRects: [rect], imageRect: nil, path: nil, options: ImageOptions(), color: fill)))
                     }
+                }
+            }
+        case .gauge(let gauge):
+            kind = .roundline
+            guard let fill = box.fill, let track = box.track, let values = box.gauge else {
+                throw ProgramRuntimeError.invalidPaint(box.node.id)
+            }
+            if !hidden {
+                let content = SkinRect(x: point.x + box.content.x, y: point.y + box.content.y,
+                                       width: box.content.width, height: box.content.height)
+                guard [content.x, content.y, content.width, content.height, content.maxX, content.maxY].allSatisfy(\.isFinite) else {
+                    throw ProgramRuntimeError.layoutOverflow(box.node.id)
+                }
+                if content.width > 0, content.height > 0 {
+                    items = try gaugeDrawing(gauge, values: values, color: fill, track: track, in: content, element: box.node.id)
                 }
             }
         case .rectangle, .shape:
@@ -1077,6 +1137,46 @@ public struct ProgramRuntime: Sendable {
         case .bottom: return SkinPoint(x: 0.5, y: 1)
         case .bottomRight: return SkinPoint(x: 1, y: 1)
         }
+    }
+
+    /// Gauge ink stays inside the content box, so box layout, viewport, background and hit geometry share the
+    /// same final preset transform. This deliberately does not apply INI option clamps or minimum arc patches.
+    private func gaugeDrawing(_ gauge: ProgramGauge, values: ProgramGaugeValues, color: RGBA, track: RGBA,
+                              in content: SkinRect, element: ElementID) throws -> [DrawItem] {
+        let radius = min(content.width, content.height) / 2
+        let thickness = min(values.thickness, radius)
+        let cx = content.x + content.width / 2, cy = content.y + content.height / 2
+        guard [cx, cy, radius, cx - radius, cx + radius, cy - radius, cy + radius].allSatisfy(\.isFinite) else {
+            throw ProgramRuntimeError.layoutOverflow(element)
+        }
+        guard radius > 0 else { return [] }
+        let startDegrees = values.start.truncatingRemainder(dividingBy: 360)
+        let radians = Double.pi / 180
+        let start = (startDegrees - 90) * radians
+        var items: [DrawItem] = []
+        func sector(_ travel: Double, color: RGBA) {
+            let inner = gauge.shape == .pie ? 0 : radius - thickness
+            guard travel != 0, radius > inner else { return }
+            // Preserve multi-turn progress: e.g. 720 degrees at one quarter is a half circle.
+            let sweep = min(max(travel, -360), 360) * radians
+            guard sweep != 0 else { return }
+            items.append(.roundline(RoundlineDraw(shape: .sector(centerX: cx, centerY: cy,
+                innerRadius: inner, outerRadius: radius, startAngle: start, sweep: sweep), color: color,
+                antiAlias: true, roundCaps: gauge.shape != .pie)))
+        }
+        sector(values.sweep, color: track)
+        guard let fraction = values.fraction else { return items }
+        let travel = values.sweep * fraction
+        if gauge.shape == .needle {
+            guard thickness > 0 else { return items }
+            // Reduce both finite terms before adding; enormous authored angles never overflow this sum.
+            let angle = (startDegrees + travel.truncatingRemainder(dividingBy: 360) - 90) * radians
+            let tip = RoundMeterMath.point(centerX: cx, centerY: cy, radius: radius - thickness / 2, angle: angle)
+            guard tip.x.isFinite, tip.y.isFinite else { throw ProgramRuntimeError.layoutOverflow(element) }
+            items.append(.roundline(RoundlineDraw(shape: .line(x1: cx, y1: cy, x2: tip.x, y2: tip.y,
+                                                              width: thickness), color: color, antiAlias: true)))
+        } else if fraction > 0 { sector(travel, color: color) }
+        return items
     }
 
     /// Pure local geometry; each new immutable payload gets its own correct renderer cache identity.

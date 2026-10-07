@@ -1062,7 +1062,211 @@ enum DeskProgramPreviewSelfTests {
         runInspectionPreviewTests(t)
         runFreeformPreviewTests(t)
         runProgressPreviewTests(t)
+        runGaugePreviewTests(t)
         runPresetPreviewTests(t)
+    }
+
+    private static func runGaugePreviewTests(_ t: AppTestRunner) {
+        t.suite("Desk: gauge preview: four text-free shapes match literal native recipes in both appearances and scales") {
+            let shapes = ["ring", "arc", "pie", "needle"]
+            for shape in shapes {
+                let source = "widget { Gauge(0.25, shape: .\(shape)).size(80).color(.accent).track(.clear) }"
+                let f = try fixture(t, source), p = f.preview
+                for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                    f.controller.window?.appearance = NSAppearance(named: appearance)
+                    p.refreshEnvironment()
+                    t.equal(p.state, .ready); t.check(!p.canvas.isHidden, "Gauge alone keeps the canvas visible")
+                    t.equal(p.canvas.bounds, CGRect(x: 0, y: 0, width: 80, height: 80))
+                    let color = MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor
+                    let draw: RoundlineDraw
+                    switch shape {
+                    case "ring":
+                        draw = RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 34, outerRadius: 40,
+                            startAngle: -Double.pi / 2, sweep: Double.pi / 2), color: color, antiAlias: true, roundCaps: true)
+                    case "arc":
+                        draw = RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 34, outerRadius: 40,
+                            startAngle: -5 * Double.pi / 4, sweep: 3 * Double.pi / 8), color: color, antiAlias: true, roundCaps: true)
+                    case "pie":
+                        draw = RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 0, outerRadius: 40,
+                            startAngle: -Double.pi / 2, sweep: Double.pi / 2), color: color, antiAlias: true)
+                    default:
+                        draw = RoundlineDraw(shape: .line(x1: 40, y1: 40,
+                            x2: 40 + 37 * cos(-7 * Double.pi / 8), y2: 40 + 37 * sin(-7 * Double.pi / 8), width: 6),
+                            color: color, antiAlias: true)
+                    }
+                    let reference = ReferenceView(items: [.roundline(draw)], size: CGSize(width: 80, height: 80))
+                    for scale in [1, 2] {
+                        let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        try canaries(t, actual); try canaries(t, expected)
+                        t.check(try ink(actual) > 0)
+                        t.equal(try bytes(actual), try bytes(expected), "literal \(shape), \(appearance.rawValue), \(scale)x")
+                        if shape == "ring" {
+                            let independent = GaugeQuarterReferenceView(color: color)
+                            t.equal(try bytes(actual), try bytes(paint(independent, scale: scale)), "independent CGPath round stroke")
+                            t.check((actual.colorAt(x: 66 * scale, y: 13 * scale)?.alphaComponent ?? 0) > 0.5,
+                                    "a quarter ring travels clockwise from 12 o'clock into the upper-right quadrant")
+                            t.equal(actual.colorAt(x: 13 * scale, y: 13 * scale)?.alphaComponent, 0)
+                            t.equal(actual.colorAt(x: 66 * scale, y: 66 * scale)?.alphaComponent, 0)
+                        }
+                    }
+                }
+                t.equal(try Data(contentsOf: f.file), Data(source.utf8), "preview never saves or installs")
+            }
+        }
+
+        t.suite("Desk: gauge preview: value total angle and thickness updates replace actual pixels after native input") {
+            let source = #"widget { variable amount = 20; variable limit = 80; variable heading = 0deg; variable span = 180deg; variable lineWidth = 8pt; Gauge(amount, total: limit, shape: .arc, start: heading, sweep: span, thickness: lineWidth).size(80).color(.black).track(.clear).name(dial).onClick { amount = 50; limit = 100; heading = 90deg; span = -180deg; lineWidth = 10pt; copy("changed") } }"#
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            let first = RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 32, outerRadius: 40,
+                startAngle: -Double.pi / 2, sweep: Double.pi / 4), color: .black, antiAlias: true, roundCaps: true)
+            let next = RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 30, outerRadius: 40,
+                startAngle: 0, sweep: -Double.pi / 2), color: .black, antiAlias: true, roundCaps: true)
+            func check(_ draw: RoundlineDraw) throws {
+                t.equal(p.state, .ready)
+                let reference = ReferenceView(items: [.roundline(draw)], size: CGSize(width: 80, height: 80))
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected))
+                }
+            }
+            try check(first)
+            let old = try bytes(paint(p.canvas)), captured = p.scene
+            try click(at: CGPoint(x: 40, y: 40), in: f)
+            t.equal(p.recordedEffects, [.copy("changed")]); try check(next)
+            t.check(try bytes(paint(p.canvas)) != old)
+            t.check(captured?.generation != p.scene?.generation)
+            t.equal(f.editor.text, source)
+        }
+
+        t.suite("Desk: gauge preview: missing live data leaves only the track and resumes at the next boundary") {
+            let time = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_000.25), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let system = PreviewCountingSystem()
+            let f = try fixture(t, "widget { Gauge(cpu.usage, shape: .pie).size(80).color(.black).track(.white) }",
+                                clock: time.clock, executor: time, system: system), p = f.preview
+            p.setVisible(true)
+            func check(_ fraction: Double) throws {
+                var items: [DrawItem] = [.roundline(RoundlineDraw(shape: .sector(centerX: 40, centerY: 40,
+                    innerRadius: 0, outerRadius: 40, startAngle: -Double.pi / 2, sweep: 2 * Double.pi), color: .white, antiAlias: true))]
+                if fraction > 0 {
+                    items.append(.roundline(RoundlineDraw(shape: .sector(centerX: 40, centerY: 40, innerRadius: 0,
+                        outerRadius: 40, startAngle: -Double.pi / 2, sweep: 2 * Double.pi * fraction), color: .black, antiAlias: true)))
+                }
+                let reference = ReferenceView(items: items, size: CGSize(width: 80, height: 80))
+                t.equal(p.state, .ready)
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected), "pie track and live fraction \(fraction)")
+                }
+            }
+            t.equal(system.cpuCalls, 1); try check(0.42)
+            system.cpu = 75; time.advance(until: 0.75); t.equal(system.cpuCalls, 2); try check(0.75)
+            system.cpu = .nan; time.advance(by: 1); t.equal(system.cpuCalls, 3); try check(0)
+            t.equal(time.pendingCount, 1)
+            p.setVisible(false); t.equal(time.pendingCount, 0)
+            system.cpu = 50; time.advance(by: 5); t.equal(system.cpuCalls, 3)
+            p.setVisible(true); t.equal(system.cpuCalls, 4); try check(0.5)
+            p.close(); t.equal(time.pendingCount, 0)
+        }
+
+        t.suite("Desk: gauge preview: zero track transparent and degenerate edits clear pixels and recover") {
+            let original = "widget { Gauge(0.5).size(80).color(.black).track(.clear) }"
+            let f = try fixture(t, original), p = f.preview
+            t.equal(p.state, .ready)
+            let saved = try bytes(paint(p.canvas))
+            for source in [
+                "widget { Gauge(0.5).size(80).color(.clear).track(.clear) }",
+                "widget { Gauge(0).size(80).color(.black).track(.clear) }",
+                "widget { Gauge(0.5, sweep: 0deg).size(80).color(.black).track(.clear) }",
+                "widget { Gauge(0.5, thickness: 0pt).size(80).color(.black).track(.white) }",
+                "widget { Gauge(0.5).size(80).color(.black).hidden() }"
+            ] {
+                replace(source, in: f); t.check(settled(f))
+                t.equal(p.state, .empty); t.check(p.canvas.isHidden)
+                // Hidden layout may collapse to a one-point viewport; qualify an explicit empty capture ROI.
+                p.canvas.setBoundsSize(CGSize(width: 8, height: 8))
+                let cleared = try paint(p.canvas); try canaries(t, cleared)
+                t.equal(try ink(cleared), 0, "the previous ring cannot survive an empty recipe")
+            }
+            for source in [
+                "widget { Gauge(0).size(80).color(.black).track(.white) }",
+                "widget { Gauge(0, shape: .needle, sweep: 0deg).size(80).color(.black).track(.clear) }",
+                "widget { Gauge(0.5, shape: .pie, thickness: 0pt).size(80).color(.black).track(.clear) }"
+            ] {
+                replace(source, in: f); t.check(settled(f)); t.equal(p.state, .ready)
+                t.check(try ink(paint(p.canvas)) > 0, "zero values and thickness follow the actual visible shape")
+            }
+            replace("widget { Gauge(0.5).size(80).color() }", in: f); t.check(settled(f))
+            t.check(p.scene == nil && p.canvas.isHidden, "invalid source clears the old scene")
+            replace(original, in: f); t.check(settled(f)); t.equal(p.state, .ready)
+            t.equal(try bytes(paint(p.canvas)), saved, "valid edits restore the independently established picture")
+        }
+
+        t.suite("Desk: gauge preview: negative Freeform glass and colored backgrounds keep world coordinates and order") {
+            let source = ##"widget { Freeform { Gauge(0.5, thickness: 8pt).size(80).position(x: -40pt, y: -20pt).background(.glass).color(.accent).track(.clear).name(dial).onClick { copy("dial") } }.size(120, 80).background("#102030") }"##
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            let viewport = CGRect(x: -40, y: -20, width: 160, height: 100)
+            t.equal(p.canvas.bounds, viewport)
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                f.controller.window?.appearance = NSAppearance(named: appearance); p.refreshEnvironment()
+                let color = MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor
+                let items: [DrawItem] = [
+                    .fill(SkinRect(width: 120, height: 80), Paint(color: RGBA(r: 16, g: 32, b: 48))),
+                    .glass(GlassRegion(id: "reference", rect: SkinRect(x: -40, y: -20, width: 80, height: 80))),
+                    .roundline(RoundlineDraw(shape: .sector(centerX: 0, centerY: 20, innerRadius: 32, outerRadius: 40,
+                        startAngle: -Double.pi / 2, sweep: Double.pi), color: color, antiAlias: true, roundCaps: true))
+                ]
+                let reference = ReferenceView(items: items, size: viewport.size, glass: .placeholder(dark: appearance == .darkAqua))
+                reference.bounds = viewport
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected), "negative glass/gauge remain above the parent fill")
+                }
+            }
+            guard let ref = f.controller.deskChecking?.snapshot.elements().first(where: { $0.name == "dial" })?.element else {
+                throw Failure.fixture
+            }
+            p.setZoom(2); p.setInspecting(true)
+            try click(at: CGPoint(x: 0, y: 20), in: f)
+            t.equal(p.inspectedElement, ref); t.check(p.recordedEffects.isEmpty)
+            p.setInspecting(false); try click(at: CGPoint(x: 0, y: 20), in: f)
+            t.equal(p.recordedEffects, [.copy("dial")])
+        }
+
+        t.suite("Desk: gauge preview: preset transforms scale the background ring and native click together") {
+            let source = ##"""
+                info { name: "Gauge", size: .small }
+                widget {
+                    Column(spacing: 0, align: .left) {
+                        Gauge(0.5, thickness: 16pt).size(340).background("#102030").color(.black).track(.clear).name(dial).onClick { copy("scaled") }
+                    }
+                }
+                """##
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            t.equal(p.state, .ready)
+            t.equal(p.canvas.bounds, CGRect(x: 0, y: 0, width: 170, height: 170))
+            let items: [DrawItem] = [
+                .fill(SkinRect(width: 340, height: 340), Paint(color: RGBA(r: 16, g: 32, b: 48))),
+                .roundline(RoundlineDraw(shape: .sector(centerX: 170, centerY: 170, innerRadius: 154, outerRadius: 170,
+                    startAngle: -Double.pi / 2, sweep: Double.pi), color: .black, antiAlias: true, roundCaps: true))
+            ]
+            let reference = ReferenceView(items: [.transformed(ShapeTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 0, ty: 0), items)],
+                                          size: CGSize(width: 170, height: 170))
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.equal(try bytes(actual), try bytes(expected))
+            }
+            p.setZoom(2)
+            try click(at: CGPoint(x: 150, y: 85), in: f); t.equal(p.recordedEffects, [.copy("scaled")])
+            try click(at: CGPoint(x: 300, y: 170), in: f)
+            t.equal(p.recordedEffects, [.copy("scaled")], "unscaled coordinates cannot activate the displayed gauge")
+        }
     }
 
     private static func runProgressPreviewTests(_ t: AppTestRunner) {
@@ -3028,6 +3232,29 @@ enum DeskProgramPreviewSelfTests {
             }
             paint(path, fill)
             if width > 0 { paint(path.copy(strokingWithWidth: width, lineCap: .butt, lineJoin: .miter, miterLimit: 10), stroke) }
+        }
+    }
+
+    /// A literal quarter ring drawn through native Core Graphics, without DrawItem or RoundlineRenderer.
+    private final class GaugeQuarterReferenceView: NSView {
+        let color: RGBA
+        override var isFlipped: Bool { true }
+        init(color: RGBA) {
+            self.color = color
+            super.init(frame: CGRect(x: 0, y: 0, width: 80, height: 80))
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState(); defer { context.restoreGState() }
+            context.setAllowsAntialiasing(true); context.setShouldAntialias(true)
+            context.setStrokeColor(CGColor(srgbRed: color.r / 255, green: color.g / 255,
+                                           blue: color.b / 255, alpha: color.a / 255))
+            context.setLineWidth(6); context.setLineCap(.round)
+            let path = CGMutablePath()
+            path.addArc(center: CGPoint(x: 40, y: 40), radius: 37, startAngle: -.pi / 2,
+                        endAngle: 0, clockwise: false)
+            context.addPath(path); context.strokePath()
         }
     }
 
