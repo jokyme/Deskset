@@ -30,6 +30,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
     runDeskFontSizeCompilationTests(t)
     runDeskCompilationReferenceTests(t)
     runDeskPointRadiusCompilationTests(t)
+    runDeskFreeformCompilationTests(t)
     t.suite("Desk: compilation: checked literal text becomes shared program and scene") {
         let source = "\u{FEFF}info { name: \"Literal\", size: .fit }\r\nwidget { Text(\"甲😀\\nB\").font(12).color(\"#123456\").name(title) }\r\n"
         let checked = deskCheck(source)
@@ -131,7 +132,6 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"options { show = Toggle("Show") }"# + "\n" + #"widget { Text("A") }"#,
                      #"style label { .font(13) }"# + "\n" + #"widget { Text("A").style(label) }"#,
                      #"widget { Grid(columns: 2) { Text("A") } }"#,
-                     #"widget { Freeform { Text("A") } }"#,
                      #"widget { Text("A").width(.fill).margin(1) }"#,
                      #"widget { Text("A").width(20, min: 10).margin(1) }"#,
                      #"widget { Text("A").offset(x: 2) }"#,
@@ -587,6 +587,167 @@ func runDeskCompilationTests(_ t: TestRunner) {
 
 }
 
+private func runDeskFreeformCompilationTests(_ t: TestRunner) {
+    t.suite("Desk: freeform compilation: original container control and all alignments preserve source identity") {
+        let original = try compileFixture(t, #"widget { Freeform { Text("A") } }"#)
+        guard case .freeform(let defaultAlign, let originalChildren) = original.root.content else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.equal(defaultAlign, .center); t.equal(originalChildren.count, 1)
+        var originalRuntime = try ProgramRuntime(program: original)
+        let originalScene = try originalRuntime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 20, height: 10) }
+        t.equal(originalScene.size, SkinSize(width: 20, height: 10))
+        t.equal(compiledDraws(originalScene).map(\.text), ["A"])
+        let cases: [(String, Double, Double)] = [
+            ("topLeft", 0, 0), ("top", 30, 0), ("topRight", 60, 0),
+            ("left", 0, 25), ("center", 30, 25), ("right", 60, 25),
+            ("bottomLeft", 0, 50), ("bottom", 30, 50), ("bottomRight", 60, 50),
+        ]
+        for (align, x, y) in cases {
+            let source = "widget { Freeform(align: .\(align)) { Text(\"A\").size(20, 10) }.size(80, 60) }"
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.issues.isEmpty, "\(result.issues)")
+            guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 20, height: 10) }
+            t.equal(scene.size, SkinSize(width: 80, height: 60))
+            t.equal(scene.elements[1].frame, SkinRect(x: x, y: y, width: 20, height: 10), align)
+            t.equal(Set(result.elementRefs.keys), Set(scene.elements.map(\.id)))
+            t.equal(Set(result.elementRefs.values), Set(checked.elements.keys))
+        }
+    }
+
+    t.suite("Desk: freeform compilation: signed point positions anchors padding and missing axes reach layout") {
+        let cases: [(String, Double, Double)] = [
+            ("topLeft", 13, 23), ("top", 3, 23), ("topRight", -7, 23),
+            ("left", 13, 18), ("center", 3, 18), ("right", -7, 18),
+            ("bottomLeft", 13, 13), ("bottom", 3, 13), ("bottomRight", -7, 13),
+        ]
+        for (anchor, x, y) in cases {
+            let program = try compileFixture(t, "widget { Freeform { Rectangle().size(20pt, 10pt).padding(2pt).position(x: 10pt, y: 20pt, anchor: .\(anchor)) }.padding(3pt) }")
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.elements[1].frame, SkinRect(x: x, y: y, width: 20, height: 10), anchor)
+        }
+        for coordinates in ["x: -12pt, y: -9", "x: -12, y: -9pt"] {
+            let program = try compileFixture(t, "widget { Freeform { Rectangle().size(40pt, 32pt).position(\(coordinates)) } }")
+            guard case .freeform(_, let children) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(children[0].position, ProgramPosition(x: -12, y: -9))
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.size, SkinSize(width: 28, height: 23), "fit extends from the origin without shifting negative children")
+            t.equal(scene.elements[1].frame, SkinRect(x: -12, y: -9, width: 40, height: 32))
+        }
+        let defaults = try compileFixture(t, "widget { Freeform { Rectangle().size(4).position(); Rectangle().size(4).position(y: -2pt) } }")
+        guard case .freeform(_, let children) = defaults.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(children.map(\.position), [ProgramPosition(), ProgramPosition(y: -2)])
+    }
+
+    t.suite("Desk: freeform compilation: point dimensions constraints spacing padding font and outlines stay checked") {
+        let source = #"widget { Column(spacing: 4pt, align: .left) { Text("A").width(30pt, min: 20pt, max: 80pt).height(20pt).font(12pt).padding(1pt); Rectangle().size(40pt).stroke(.accent, width: 1pt).rounded(16pt) }.padding(3pt) }"#
+        let program = try compileFixture(t, source)
+        guard case .column(let spacing, _, let children) = program.root.content else { throw CompilationFixtureError.missingProgram }
+        t.equal(spacing, 4); t.equal(children[0].width, .fixed(30))
+        t.equal(children[0].minWidth, 20); t.equal(children[0].maxWidth, 80)
+        t.equal(children[1].width, .fixed(40)); t.equal(children[1].stroke?.width, 1)
+        t.equal(children[1].cornerRadius, .points(16))
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment()) { _, style, _ in
+            t.close(TextStyle.pixelSize(points: style.fontSize), 12)
+            return SkinSize(width: 8, height: 12)
+        }
+        t.equal(scene.size, SkinSize(width: 46, height: 70))
+        t.equal(scene.elements[1].frame, SkinRect(x: 3, y: 3, width: 30, height: 20))
+        t.equal(scene.elements[2].frame, SkinRect(x: 3, y: 27, width: 40, height: 40))
+        // Preserve both original point-length unsupported fixtures as exact positive controls.
+        for original in [#"widget { Rectangle().size(40pt).rounded(16pt) }"#,
+                         #"widget { Rectangle().size(40).stroke(.accent, width: 1pt).rounded(16pt) }"#] {
+            let value = try compileFixture(t, original)
+            t.equal(value.root.width, .fixed(40)); t.equal(value.root.cornerRadius, .points(16))
+        }
+    }
+
+    t.suite("Desk: freeform compilation: nested images retain demands and custom catalog defaults are consumed") {
+        let source = #"widget { Freeform { Column { Image("New.png").size(12pt) }.position(x: -4pt) } }"#
+        let empty = CheckContext(resources: PackageResources(package: DeskPackage()))
+        let missing = deskCheck(source, context: empty), demand = Desk.compile(missing)
+        t.check(demand.program == nil && demand.elementRefs.isEmpty)
+        t.check(demand.issues.isEmpty); t.equal(demand.imageSources, ["New.png"])
+        t.equal(demand.diagnostics, missing.diagnostics)
+        t.check(demand.diagnostics.contains { $0.id == .fileNotFound && $0.severity == .error })
+        let package = DeskPackage(files: [DeskPackageFile(path: "New.png", kind: .image, size: 10,
+            pixelSize: DeskPixelSize(width: 8, height: 12))], texts: [missing.tree.file: source], isSingleFile: true)
+        let ready = Desk.compile(deskCheck(source, context: CheckContext(resources: PackageResources(package: package))))
+        t.check(ready.program != nil && ready.issues.isEmpty); t.equal(ready.elementRefs.count, 3)
+        t.equal(ready.imageSources, ["New.png"])
+
+        var catalog = DeskCatalog.current
+        guard let component = catalog.components.firstIndex(where: { $0.name == "Freeform" }),
+              let modifier = catalog.modifiers.firstIndex(where: { $0.name == "position" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[component].signatures[0].params[0].defaultValue = .source(".bottomRight")
+        catalog.modifiers[modifier].signatures[0].params[0].defaultValue = .source("7")
+        catalog.modifiers[modifier].signatures[0].params[1].defaultValue = .source("9")
+        catalog.modifiers[modifier].signatures[0].params[2].defaultValue = .source(".center")
+        let checked = deskCheck("widget { Freeform { Rectangle().size(4).position() } }", context: CheckContext(catalog: catalog))
+        let result = Desk.compile(checked, catalog: catalog)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked)); t.check(result.issues.isEmpty, "\(result.issues)")
+        guard let program = result.program, case .freeform(let align, let children) = program.root.content else {
+            throw CompilationFixtureError.missingProgram
+        }
+        t.equal(align, .bottomRight); t.equal(children[0].position, ProgramPosition(x: 7, y: 9, anchor: .center))
+    }
+
+    t.suite("Desk: freeform compilation: unsupported layout expressions and invalid placement retain diagnostics") {
+        let unsupported = [
+            "widget { computed x = 4pt; Freeform { Rectangle().position(x: x) } }",
+            "widget { Freeform { Rectangle().size(4).name(a); Rectangle().position(x: a.right) } }",
+            "widget { Freeform { Rectangle().position(x: 1pt, if: true) } }",
+            "widget { Freeform { Rectangle().position(x: (4pt)) } }",
+            "widget { Freeform { Rectangle().position(x: 2pt + 2pt) } }",
+            "widget { Freeform { Rectangle().position(x: 4pt).margin(2) } }",
+        ]
+        for source in unsupported {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && result.elementRefs.isEmpty, source)
+            t.equal(result.issues.first?.kind, .unsupported, source)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+        let invalid = ["widget { Rectangle().position(x: 2) }",
+                       "widget { Row { Rectangle().position(x: 2) } }",
+                       "widget { Freeform { Rectangle().position(x: 2ms) } }",
+                       "widget { Freeform { Rectangle().width(-2pt) } }"]
+        for source in invalid {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(result.program == nil && result.elementRefs.isEmpty, source)
+            t.equal(result.diagnostics, checked.diagnostics)
+            if checked.diagnostics(.error).isEmpty { t.equal(result.issues.first?.kind, .unsupported) }
+            else { t.check(result.issues.isEmpty) }
+        }
+    }
+
+    t.suite("Desk: freeform compilation: point and signed coordinates require current finite numeric receipts") {
+        for source in ["widget { Rectangle().size(40pt) }",
+                       "widget { Freeform { Rectangle().position(x: -12pt) } }"] {
+            var checked = deskCheck(source)
+            let key = source.contains("position") ? "position.x" : "width"
+            guard let value = checked.elements.values.compactMap({ $0.facets[FacetID(key)]?.first?.value }).first else {
+                throw CompilationFixtureError.missingProgram
+            }
+            t.check(Desk.compile(checked).program != nil)
+            checked.canonicalNumericValues.removeValue(forKey: value)
+            let missing = Desk.compile(checked)
+            t.check(missing.program == nil && missing.elementRefs.isEmpty)
+            t.equal(missing.issues.first?.kind, .unsupported)
+            checked.canonicalNumericValues[value] = .infinity
+            let nonfinite = Desk.compile(checked)
+            t.check(nonfinite.program == nil && nonfinite.elementRefs.isEmpty)
+            t.equal(nonfinite.issues.first?.kind, .unsupported)
+        }
+    }
+}
+
 private func runDeskPointRadiusCompilationTests(_ t: TestRunner) {
     t.suite("Desk: shape style: explicit pt radii consume checked Length values and reach geometry") {
         for radius in [16, 0] {
@@ -639,9 +800,7 @@ private func runDeskPointRadiusCompilationTests(_ t: TestRunner) {
                        String(repeating: "9", count: 320) + "pt"].map { "widget { Rectangle().size(40).rounded(\($0)) }" }
             + [#"widget { computed radius = 16pt; Rectangle().size(40).rounded(radius) }"#,
                #"widget { Rectangle().size(40).rounded(16pt, topLeft: 0pt) }"#,
-               #"widget { Rectangle().size(40).rounded(16pt, if: true) }"#,
-               #"widget { Rectangle().size(40pt).rounded(16pt) }"#,
-               #"widget { Rectangle().size(40).stroke(.accent, width: 1pt).rounded(16pt) }"#]
+               #"widget { Rectangle().size(40).rounded(16pt, if: true) }"#]
         for source in sources {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(result.program == nil && result.elementRefs.isEmpty, source)

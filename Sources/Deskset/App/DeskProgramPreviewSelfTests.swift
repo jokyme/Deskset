@@ -1011,6 +1011,76 @@ enum DeskProgramPreviewSelfTests {
         runClickActionPreviewTests(t)
         runPointerEventPreviewTests(t)
         runInspectionPreviewTests(t)
+        runFreeformPreviewTests(t)
+    }
+
+    private static func runFreeformPreviewTests(_ t: AppTestRunner) {
+        t.suite("Desk: freeform preview: negative native text retains pixels selection and click coordinates at zoom") {
+            let source = #"widget { Freeform { Text("Left").font(20pt).color(.accent).size(180pt, 60pt).position(x: -100pt, y: -20pt).name(label).onClick { copy("picked") } } }"#
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let ref = snapshot.elements().first(where: { $0.name == "label" })?.element else { throw Failure.fixture }
+            t.equal(p.state, .ready)
+            t.equal(p.scene?.size, SkinSize(width: 80, height: 40))
+            let viewport = NSRect(x: -100, y: -20, width: 180, height: 60)
+            t.equal(p.canvas.bounds, viewport)
+            var style = TextStyle()
+            style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400
+            style.color = MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor
+            style.horizontalAlign = .center; style.verticalAlign = .center
+            style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+            let frame = SkinRect(x: -100, y: -20, width: 180, height: 60)
+            let item = DrawItem.text(TextDraw(text: "Left", style: style, frame: frame, contentFrame: frame,
+                                             anchor: SkinPoint(x: -100, y: -20)))
+            t.equal(p.scene?.drawingItems, [item])
+            let reference = ReferenceView(items: [item], size: viewport.size); reference.bounds = viewport
+            let wrong = ReferenceView(items: [.text(TextDraw(text: "Left", style: style, frame: SkinRect(width: 180, height: 60),
+                contentFrame: SkinRect(width: 180, height: 60), anchor: SkinPoint()))], size: viewport.size)
+            wrong.bounds = viewport
+            let blank = ReferenceView(items: [], size: viewport.size); blank.bounds = viewport
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.check(try ink(actual) > 0); t.equal(try ink(paint(blank, scale: scale)), 0)
+                t.equal(try bytes(actual), try bytes(expected), "independent native negative text at \(scale)x")
+                t.check(try bytes(actual) != bytes(paint(wrong, scale: scale)), "shifting negative coordinates changes the pixels")
+            }
+            p.setZoom(2)
+            _ = p.canvas.scrollToVisible(NSRect(x: -96, y: -16, width: 8, height: 8))
+            t.close(Double(p.scrollView.magnification), 2)
+            p.setInspecting(true)
+            var selected: [ElementRef?] = []
+            p.onSelectElement = { _, value in selected.append(value) }
+            try click(at: NSPoint(x: -92, y: -12), in: f)
+            t.equal(selected, [ref]); t.equal(p.inspectedElement, ref)
+            t.check(p.recordedEffects.isEmpty, "inspection does not dispatch the text action")
+            p.setInspecting(false)
+            try click(at: NSPoint(x: -92, y: -12), in: f)
+            t.equal(p.recordedEffects, [.copy("picked")], "the same negative scene point reaches the runtime")
+            try click(at: NSPoint(x: -104, y: -12), in: f)
+            t.equal(p.recordedEffects, [.copy("picked")], "paint viewport does not expand the target box")
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: freeform preview: all-negative transparent inspection remains reachable and hidden boxes stay excluded") {
+            let source = #"widget { Freeform { Rectangle().size(40, 32).fill(.clear).position(x: -60, y: -50).name(clearBox); Rectangle().size(20).position(x: -300, y: -300).hidden().name(hiddenBox) } }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let snapshot = f.controller.deskChecking?.snapshot,
+                  let ref = snapshot.elements().first(where: { $0.name == "clearBox" })?.element else { throw Failure.fixture }
+            t.equal(p.scene?.size, SkinSize())
+            t.equal(p.state, .empty)
+            p.setVisible(true); p.setInspecting(true)
+            t.equal(p.state, .ready)
+            t.equal(p.canvas.bounds, NSRect(x: -60, y: -50, width: 61, height: 51))
+            t.check(p.scene?.hitMap.entries.isEmpty == true)
+            let capture = try paint(p.canvas); try canaries(t, capture); t.equal(try ink(capture), 0)
+            try click(at: NSPoint(x: -40, y: -34), in: f)
+            t.equal(p.inspectedElement, ref)
+            try click(at: NSPoint(x: -290, y: -290), in: f)
+            t.check(p.inspectedElement == nil, "a hidden negative box has no inspection target")
+            p.setInspecting(false); t.equal(p.state, .empty)
+        }
     }
 
     private static func runInspectionPreviewTests(_ t: AppTestRunner) {

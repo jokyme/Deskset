@@ -21,6 +21,22 @@ public enum ProgramLength: Equatable, Sendable {
     case fixed(Double)
 }
 
+/// Nine positions within a box, shared by Freeform alignment and a positioned child's anchor.
+public enum ProgramAlignment: String, CaseIterable, Equatable, Sendable {
+    case topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight
+}
+
+/// A static point in the parent Freeform's content coordinates. The anchor belongs to the child's entire box.
+public struct ProgramPosition: Equatable, Sendable {
+    public let x: Double
+    public let y: Double
+    public let anchor: ProgramAlignment
+
+    public init(x: Double = 0, y: Double = 0, anchor: ProgramAlignment = .topLeft) {
+        self.x = x; self.y = y; self.anchor = anchor
+    }
+}
+
 /// Filled curves in the final content box. Circle is centered and uses the smaller box dimension.
 public enum ProgramShapeKind: Equatable, Sendable {
     case circle, ellipse, capsule
@@ -69,6 +85,7 @@ public struct ProgramElement: Equatable, Sendable {
         case shape(kind: ProgramShapeKind, fill: ProgramColor)
         case column(spacing: Double, align: HorizontalTextAlign, children: [ProgramElement])
         case row(spacing: Double, align: VerticalTextAlign, children: [ProgramElement])
+        case freeform(align: ProgramAlignment, children: [ProgramElement])
     }
 
     public let id: ElementID
@@ -95,13 +112,15 @@ public struct ProgramElement: Equatable, Sendable {
     public let onClickActions: [ProgramAction]?
     /// Secondary release actions. An empty block consumes the event just as an empty primary handler does.
     public let onRightClickActions: [ProgramAction]?
+    /// Valid only on a direct Freeform child. nil uses the parent's alignment; negative coordinates are allowed.
+    public let position: ProgramPosition?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
                 onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
-                onRightClickActions: [ProgramAction]? = nil) {
+                onRightClickActions: [ProgramAction]? = nil, position: ProgramPosition? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -118,6 +137,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.onClick = onClick
         self.onClickActions = onClickActions
         self.onRightClickActions = onRightClickActions
+        self.position = position
     }
 }
 

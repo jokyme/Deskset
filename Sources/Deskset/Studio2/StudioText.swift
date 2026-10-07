@@ -159,6 +159,19 @@ enum StudioText {
         case deskInspectorDiskChanged = "desk.inspector.diskChanged"
         case deskInspectorSourceUnavailable = "desk.inspector.sourceUnavailable"
         case deskInspectorEditRejected = "desk.inspector.editRejected"
+        case deskInspectorWidth = "desk.inspector.width"
+        case deskInspectorHeight = "desk.inspector.height"
+        case deskInspectorSizing = "desk.inspector.sizing"
+        case deskInspectorFixed = "desk.inspector.fixed"
+        case deskInspectorFill = "desk.inspector.fill"
+        case deskInspectorInherited = "desk.inspector.inherited"
+        case deskInspectorContainerAligned = "desk.inspector.containerAligned"
+        case deskInspectorInvalidSize = "desk.inspector.invalidSize"
+        case deskInspectorInvalidFontSize = "desk.inspector.invalidFontSize"
+        case deskInspectorInvalidPosition = "desk.inspector.invalidPosition"
+        case deskInspectorInvalidText = "desk.inspector.invalidText"
+        case deskInspectorPresetSize = "desk.inspector.presetSize"
+        case deskInspectorFontPreset = "desk.inspector.fontPreset"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -795,6 +808,19 @@ enum StudioText {
                                          "无法读取源文件，请检查文件后再编辑属性。"),
         .deskInspectorEditRejected: ("This value can no longer be applied. Select the element again.",
                                     "当前修改已失效，请重新选择元素。"),
+        .deskInspectorWidth: ("Width", "宽度"),
+        .deskInspectorHeight: ("Height", "高度"),
+        .deskInspectorSizing: ("Sizing", "尺寸方式"),
+        .deskInspectorFixed: ("Fixed · enter a number", "固定 · 输入数值"),
+        .deskInspectorFill: ("Fill available space", "撑满可用空间"),
+        .deskInspectorInherited: ("Inherited or default text style", "继承或默认文字样式"),
+        .deskInspectorContainerAligned: ("Follows the container’s alignment", "按容器对齐"),
+        .deskInspectorInvalidSize: ("Enter a finite, nonnegative size.", "请输入有限且非负的尺寸。"),
+        .deskInspectorInvalidFontSize: ("Enter a finite text size greater than zero.", "请输入有限且大于零的字号。"),
+        .deskInspectorInvalidPosition: ("Enter a finite coordinate.", "请输入有限坐标。"),
+        .deskInspectorInvalidText: ("Enter text within the widget’s length limit.", "请输入符合小组件长度限制的文字。"),
+        .deskInspectorPresetSize: ("The widget’s preset sets this root size.", "小组件的尺寸预设决定根元素的大小。"),
+        .deskInspectorFontPreset: ("Text size comes from a text preset.", "字号由文字预设决定。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),

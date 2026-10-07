@@ -103,15 +103,16 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Rectangle", "Circle", "Ellipse", "Capsule", "Image"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Freeform", "Rectangle", "Circle", "Ellipse", "Capsule", "Image"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let image = facts.component == "Image"
-        let allowedModifiers: Set<String> = image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
+        var allowedModifiers: Set<String> = image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
+        allowedModifiers.insert("position")
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
         var onRightClickActions: [ProgramAction]?
@@ -167,10 +168,11 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Separate light/dark colors are not implemented")
             }
         }
-        let allowedFacets: Set<String> = image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
+        var allowedFacets: Set<String> = image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
+        allowedFacets.formUnion(["position.x", "position.y", "position.anchor"])
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
@@ -192,6 +194,7 @@ struct StaticProgramCompiler {
                                      top: number(facts, "padding.top", default: 0, at: node),
                                      right: number(facts, "padding.right", default: 0, at: node),
                                      bottom: number(facts, "padding.bottom", default: 0, at: node))
+        let position = try position(facts, call: call)
         let hidden: Bool
         if let value = try facet(facts, "hidden", at: node) {
             guard case .boolean(let n) = value else { throw issue(.unsupported, node, "Hidden requires a constant boolean") }
@@ -294,6 +297,20 @@ struct StaticProgramCompiler {
                                         fontWeight: appearance.weight, italic: appearance.italic,
                                         color: appearance.color, align: appearance.align, digits: appearance.digits,
                                         fontSizeExpression: appearance.sizeExpression))
+        case "Freeform":
+            let arguments = call.arguments?.arguments ?? []
+            guard arguments.allSatisfy({ $0.label?.name == "align" }) else {
+                throw issue(.unsupported, node, "Unsupported Freeform argument")
+            }
+            let align: String
+            if let value = arguments.first?.value.node {
+                guard case .choice(let choice) = try constant(value) else {
+                    throw issue(.unsupported, value, "Freeform alignment must be constant")
+                }
+                align = choice
+            } else { align = try defaultChoice(component: "Freeform", parameter: "align", at: node) }
+            let children = try (call.block?.items ?? []).map { try element($0, inherited: appearance, depth: depth + 1) }
+            content = .freeform(align: try alignment(align, at: node), children: children)
         default:
             let arguments = call.arguments?.arguments ?? []
             guard arguments.allSatisfy({ ["spacing", "align"].contains($0.label?.name ?? "") }) else {
@@ -302,7 +319,7 @@ struct StaticProgramCompiler {
             let spacingNode = arguments.first { $0.label?.name == "spacing" }?.value.node
             let spacing: Double
             if let value = spacingNode {
-                guard case .number(let n) = try constant(value), n >= 0 else { throw issue(.unsupported, value, "Static spacing must be nonnegative") }
+                guard case .number(let n) = try lengthConstant(value), n >= 0 else { throw issue(.unsupported, value, "Static spacing must be nonnegative") }
                 spacing = n
             } else { spacing = try defaultNumber(component: facts.component, parameter: "spacing", at: node) }
             let alignNode = arguments.first { $0.label?.name == "align" }?.value.node
@@ -332,7 +349,7 @@ struct StaticProgramCompiler {
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
-                              onRightClickActions: onRightClickActions)
+                              onRightClickActions: onRightClickActions, position: position)
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {
@@ -435,7 +452,7 @@ struct StaticProgramCompiler {
                         throw issue(.invalidCheckedModel, node, "Font size refers to a different syntax tree")
                     }
                     if NumberLiteralSyntax(value) != nil {
-                        try assign(try constant(value), to: key, appearance: &result, at: value)
+                        try assign(try lengthConstant(value), to: key, appearance: &result, at: value)
                     } else {
                         result.sizeExpression = try expressions.fontSize(value)
                     }
@@ -538,6 +555,40 @@ struct StaticProgramCompiler {
         }
     }
 
+    private func alignment(_ value: String, at node: PositionedNode) throws -> ProgramAlignment {
+        guard catalog.enumeration("Alignment")?.enumCase(named: value) != nil,
+              let alignment = ProgramAlignment(rawValue: value) else {
+            throw issue(.unsupported, node, "Unsupported box alignment: \(value)")
+        }
+        return alignment
+    }
+
+    private func position(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramPosition? {
+        let modifiers = call.modifiers.filter { $0.name.token.text == "position" }
+        guard !modifiers.isEmpty || facts.facets.keys.contains(where: { $0.rawValue.hasPrefix("position.") }) else { return nil }
+        guard let parent = facts.parent, checked.elements[parent]?.component == "Freeform",
+              modifiers.count == 1, let modifier = modifiers.first,
+              checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("position")),
+              let spec = catalog.modifier(named: "position"), spec.appliesTo.contains(facts.kind),
+              spec.signatures.count == 1, spec.signatures[0].params.count == 3 else {
+            throw issue(.invalidCheckedModel, call.node, "Position requires a checked direct Freeform child")
+        }
+        func value(_ parameter: String, type: DeskType) throws -> Value {
+            let key = "position.\(parameter)"
+            guard let param = spec.signatures[0].param(named: parameter), param.type == type,
+                  param.facets == [FacetID(key)], case .source(let source)? = param.defaultValue else {
+                throw issue(.unsupported, modifier.node, "Unsupported position catalog contract")
+            }
+            return try facet(facts, key, at: modifier.node) ?? fixed(source, at: modifier.node)
+        }
+        guard case .number(let x) = try value("x", type: .length),
+              case .number(let y) = try value("y", type: .length),
+              case .choice(let anchor) = try value("anchor", type: .enumeration("Alignment")) else {
+            throw issue(.unsupported, modifier.node, "Position requires constant coordinates and anchor")
+        }
+        return ProgramPosition(x: x, y: y, anchor: try alignment(anchor, at: modifier.node))
+    }
+
     private func length(_ facts: ElementFacts, _ key: String, default source: String, at node: PositionedNode) throws -> ProgramLength {
         let value = try facet(facts, key, at: node) ?? fixed(source, at: node)
         switch value {
@@ -564,7 +615,37 @@ struct StaticProgramCompiler {
         guard let best = facts.facets[FacetID(key)]?.first else { return nil }
         if let value = best.fixedValue { return try fixed(value, at: node) }
         guard let value = checked.tree.resolve(best.value) else { throw issue(.invalidCheckedModel, node, "Facet refers to a different syntax tree") }
+        if key == "position.x" || key == "position.y" { return try lengthConstant(value, signed: true) }
+        if ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right",
+            "padding.top", "padding.bottom", "stroke.width", "font.size"].contains(key) { return try lengthConstant(value) }
         return try constant(value)
+    }
+
+    /// Length properties accept attached pt literals only after checking their dimension and canonical value.
+    /// Signed coordinates are a literal spelling, not a constant-folding path for unsupported layout expressions.
+    private func lengthConstant(_ node: PositionedNode, signed: Bool = false) throws -> Value {
+        if signed, let prefix = PrefixExprSyntax(node), prefix.operator.token.kind == .minus,
+           NumberLiteralSyntax(prefix.operand.node) != nil {
+            guard case .number(let value) = try lengthConstant(prefix.operand.node),
+                  checked.types[checked.tree.id(of: node)]?.type == .length,
+                  let canonical = checked.canonicalNumericValues[checked.tree.id(of: node)],
+                  canonical.isFinite, canonical == -value else {
+                throw issue(.unsupported, node, "Signed position requires a checked finite Length literal")
+            }
+            return .number(canonical)
+        }
+        if let literal = NumberLiteralSyntax(node), literal.unit?.text == "pt" {
+            let identity = checked.tree.id(of: node)
+            guard literal.unit?.status == .known, literal.unitAfterSpace == nil, literal.value?.isFinite == true,
+                  checked.types[identity]?.type == .length,
+                  let canonical = checked.canonicalNumericValues[identity], canonical.isFinite,
+                  let unit = catalog.unit(spelling: "pt"), unit.dimension == .length,
+                  unit.factor.isFinite, unit.offset == 0 else {
+                throw issue(.unsupported, node, "Point values require a checked finite Length literal")
+            }
+            return .number(canonical)
+        }
+        return try constant(node)
     }
 
     /// Explicit points are a checked Length spelling for rectangle corners, not a general constant/unit extension.

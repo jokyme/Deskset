@@ -257,10 +257,169 @@ enum DeskProgramDrawingSelfTests {
         secondaryPointerTests(t)
         failureTests(t)
         imageOwnerTests(t)
+        freeformOwnerTests(t)
         for worker in [false, true] {
             t.suite("App: Desk bitmap owner: real \(worker ? "worker" : "main") executor retains and releases its complete bundle") {
                 try liveOwner(t, worker: worker)
             }
+        }
+    }
+
+    private static func freeformOwnerTests(_ t: AppTestRunner) {
+        t.suite("App: Desk Freeform bitmap: negative text image fill and stroke match independent native pixels") {
+            let root = t.temporaryDirectory("desk-freeform-pictures")
+            let picture = try referenceBitmap(CGSize(width: 4, height: 2), scale: 1) { ctx in
+                ctx.setFillColor(RGBA(r: 220, g: 40, b: 20).cgColor)
+                ctx.fill(CGRect(x: 0, y: 0, width: 4, height: 2))
+                ctx.setFillColor(RGBA(r: 20, g: 60, b: 220).cgColor)
+                ctx.fill(CGRect(x: 2, y: 0, width: 2, height: 1))
+            }
+            let output = NSMutableData()
+            guard let encoder = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else { throw Failure.bitmap }
+            CGImageDestinationAddImage(encoder, picture, nil)
+            guard CGImageDestinationFinalize(encoder) else { throw Failure.bitmap }
+            try (output as Data).write(to: root.appendingPathComponent("picture.png"))
+            let cases = [("text", #"Text("F").font(20).color(.accent)"#),
+                         ("image", #"Image("picture.png").imageMode(.stretch)"#),
+                         ("fill", "Rectangle().fill(.accent)"),
+                         ("stroke", "Rectangle().stroke(.accent, width: 4)")]
+            for (kind, leaf) in cases {
+                for scale in [1, 2] {
+                    let prepared = kind == "image" ? DeskProgramResources.prepare(root: root, literals: ["picture.png"],
+                        maximumBytes: 4096, maximumFiles: 1) : nil
+                    defer { prepared?.removeCopies() }
+                    let source = "widget { Freeform { " + leaf + ".size(40, 32).position(x: -12, y: -9) } }"
+                    let program: WidgetProgram
+                    if let prepared {
+                        t.equal(prepared.failure, nil)
+                        let result = Desk.compile(Desk.check(Desk.parse(source, fileName: "Freeform.desk"), context: CheckContext(
+                            resources: PackageResources(package: DeskPackage(files: prepared.files)))))
+                        t.check(result.diagnostics.allSatisfy { $0.severity != .error })
+                        t.check(result.issues.isEmpty, "\(result.issues)")
+                        guard let value = result.program else { throw Failure.compilation }
+                        program = value
+                    } else { program = try compile(source, t) }
+                    let input = try ownerInput(scale: scale), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+                    let host = try DeskProgramHost(program: program, executor: time, provider: provider,
+                        input: input, prepared: prepared, clock: time.clock)
+                    defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                    host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                    let frame = SkinRect(x: -12, y: -9, width: 40, height: 32)
+                    let origin = kind == "stroke" ? CGPoint(x: -14, y: -11) : CGPoint(x: -12, y: -9)
+                    let size = kind == "stroke" ? CGSize(width: 44, height: 36) : CGSize(width: 40, height: 32)
+                    t.equal(host.state, .ready)
+                    t.equal(host.scene?.size, SkinSize(width: 28, height: 23), "Freeform fits right/bottom extents without moving negative children")
+                    t.equal(host.scene?.elements.dropFirst().first?.frame, frame)
+                    t.equal(host.viewport, CGRect(origin: origin, size: size))
+                    t.equal(host.presented?.origin, SkinPoint(x: origin.x, y: origin.y))
+                    t.equal(host.presented?.size, size)
+                    func reference(origin: CGPoint) throws -> Data {
+                        let image = try referenceBitmap(size, scale: scale, origin: origin) { ctx in
+                            let rect = CGRect(x: -12, y: -9, width: 40, height: 32)
+                            switch kind {
+                            case "text":
+                                let text = TextDraw(text: "F", style: referenceStyle(points: 20,
+                                    color: input.environment.appearance.value.accentColor), frame: frame,
+                                    contentFrame: frame, anchor: SkinPoint(x: -12, y: -9))
+                                DesksetDraw.DrawExecutor.draw([.text(text)], in: ctx,
+                                    context: DrawContext(fonts: AppFontResolver()), cycle: 1,
+                                    target: DrawTarget.capture(ctx, glass: .none))
+                            case "image":
+                                ctx.translateBy(x: -12, y: 23); ctx.scaleBy(x: 1, y: -1)
+                                ctx.draw(picture, in: CGRect(x: 0, y: 0, width: 40, height: 32))
+                            case "fill":
+                                ctx.setFillColor(input.environment.appearance.value.accentColor.cgColor); ctx.fill(rect)
+                            default:
+                                ctx.setStrokeColor(input.environment.appearance.value.accentColor.cgColor)
+                                ctx.setLineWidth(4); ctx.setLineCap(.butt); ctx.setLineJoin(.miter); ctx.setMiterLimit(10)
+                                ctx.stroke(rect)
+                            }
+                        }
+                        return try bitmapBytes(image)
+                    }
+                    let expected = try reference(origin: origin)
+                    t.check(stride(from: 3, to: expected.count, by: 4).contains { expected[$0] != 0 }, "\(kind) has visible reference pixels")
+                    t.equal(try presentedBytes(provider), expected, "\(kind) paints at the literal negative frame at \(scale)x")
+                    t.check(try reference(origin: .zero) != expected, "omitting viewport translation must fail for \(kind)")
+                }
+            }
+        }
+
+        t.suite("App: Desk Freeform bitmap: all-negative transparent hit boxes survive while hidden overflow stays absent") {
+            for transparent in [false, true] {
+                let fill = transparent ? ".clear" : ".accent"
+                let source = """
+                widget { Freeform {
+                    Rectangle().size(40, 32).fill(\(fill)).position(x: -60, y: -50).onClick { copy("visible") }
+                    Rectangle().size(40, 32).fill(.accent).position(x: -70, y: -60).hidden().onClick { copy("hidden") }
+                } }
+                """
+                let input = try ownerInput(), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+                let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider,
+                    input: input, clock: time.clock)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                t.equal(host.state, .ready)
+                t.equal(host.scene?.size, SkinSize(), "all children end before the logical origin")
+                t.equal(host.scene?.elements.last?.visibility, .hiddenKeepsSpace)
+                t.equal(host.scene?.elements.last?.frame, SkinRect(x: -70, y: -60, width: 40, height: 32))
+                t.equal(host.viewport, CGRect(x: -60, y: -50, width: 61, height: 51), "only the visible box extends the one-point root viewport")
+                t.equal(host.presented?.origin, SkinPoint(x: -60, y: -50))
+                let reference = try referenceBitmap(CGSize(width: 61, height: 51), scale: 1,
+                                                    origin: CGPoint(x: -60, y: -50)) { ctx in
+                    if !transparent {
+                        ctx.setFillColor(input.environment.appearance.value.accentColor.cgColor)
+                        ctx.fill(CGRect(x: -60, y: -50, width: 40, height: 32))
+                    }
+                }
+                let expected = try bitmapBytes(reference)
+                t.equal(try presentedBytes(provider), expected, "hidden paint is absent even when its box overlaps the visible child")
+                t.equal(stride(from: 3, to: expected.count, by: 4).contains { expected[$0] != 0 }, !transparent)
+                host.primaryPress(at: SkinPoint(x: -40, y: -34))
+                t.check(host.primaryRelease(at: SkinPoint(x: -40, y: -34)) == nil, "scene coordinates are not bitmap-local input")
+                let local = SkinPoint(x: 20, y: 16)
+                host.primaryPress(at: local)
+                t.equal(host.primaryRelease(at: local), [.copy("visible")], "transparent negative space remains actionable; hidden overlay cannot intercept")
+                t.check(host.primaryRelease(at: local) == nil, "one press produces one transaction")
+            }
+        }
+
+        t.suite("App: Desk Freeform bitmap: warm frame producer resets cached pixels when only viewport origin changes") {
+            let input = try ownerInput(), context = SkinRenderContext()
+            var runtime = try ProgramRuntime(program: compile("widget { Freeform { Rectangle().fill(.accent).size(40, 32).position(x: -12, y: -9) } }", t))
+            let scene = try runtime.project(environment: input.environment, colorInput: input.colors) { _, _, _ in
+                throw Failure.bitmap // This source has no text to measure.
+            }
+            let view = NSView(), provider = BitmapProvider(view)
+            var origin = SkinPoint(x: -12, y: -9)
+            let size = CGSize(width: 40, height: 32)
+            let frames = SkinFrameProducer(provider: provider, bitmapCapture: { _, _ in
+                SkinBitmapDrawing.Capture(scene: scene, context: context, cycle: 1, size: size,
+                                          source: "Freeform origin cache", origin: origin)
+            })
+            defer { frames.stop(); frames.clearBitmapContents(); provider.teardown(); withExtendedLifetime(view) {} }
+            func expected(_ origin: CGPoint) throws -> Data {
+                try bitmapBytes(referenceBitmap(size, scale: 1, origin: origin) { ctx in
+                    ctx.setFillColor(input.environment.appearance.value.accentColor.cgColor)
+                    ctx.fill(CGRect(x: -12, y: -9, width: 40, height: 32))
+                })
+            }
+            frames.take(facts(input)); frames.setNeedsFrame(); frames.drawFirstFrame()
+            let first = try expected(CGPoint(x: -12, y: -9))
+            for _ in 0..<3 { frames.setNeedsFrame(); frames.runLoopTurn(.beforeWaiting) }
+            t.equal(try presentedBytes(provider), first)
+            t.check(frames.drawing.lastStats.copied > 0, "the same producer actually has warm reusable pictures")
+            let held = provider.content.shown.image
+            origin = SkinPoint(x: -8, y: -5)
+            frames.setNeedsFrame(); frames.runLoopTurn(.beforeWaiting)
+            let second = try expected(CGPoint(x: -8, y: -5))
+            t.check(second != first, "the independent changed-origin recipe rejects stale cached bytes")
+            t.equal(try presentedBytes(provider), second)
+            t.equal(frames.drawing.lastStats.copied, 0, "same context, scene and dimensions cannot reuse the old-origin picture")
+            for _ in 0..<3 { frames.setNeedsFrame(); frames.runLoopTurn(.beforeWaiting) }
+            t.check(frames.drawing.lastStats.copied > 0)
+            t.equal(try presentedBytes(provider), second)
+            t.equal(try bitmapBytes(held), first, "changing origin cannot mutate an image already handed to a provider")
         }
     }
 

@@ -612,11 +612,20 @@ enum DeskWidgetWindowSelfTests {
                                                program: program, prepared: nil, app: f.app, executor: executor,
                                                clock: clock,
                                                actionServices: recorder.services)
+        func presentationState() -> String {
+            "started=\(widget.isStarted), closing=\(widget.isClosing), closed=\(widget.isClosed), " +
+            "unavailable=\(String(describing: widget.lastUnavailableMessage)), " +
+            "epoch=\(widget.destinationEpoch), acceptedEpoch=\(widget.lastAcceptedEpoch), " +
+            "generation=\(String(describing: widget.latestPresented?.scene.generation)), " +
+            "origin=\(String(describing: widget.latestPresented?.origin)), size=\(String(describing: widget.latestPresented?.size)), " +
+            "scale=\(widget.window.backingScaleFactor), appearance=\(widget.window.effectiveAppearance.name.rawValue), " +
+            "colorSpace=\(String(describing: widget.window.colorSpace))"
+        }
         try beforePresentation?(widget)
         t.check(AppSelfTest.spin(timeout: 10) {
             (executor as? VirtualTimeExecutor)?.runUntilIdle()
             return widget.isStarted && widget.latestPresented != nil
-        })
+        }, "first presentation: \(presentationState())")
         let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
                                                              scale: widget.window.backingScaleFactor)
         guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
@@ -633,7 +642,7 @@ enum DeskWidgetWindowSelfTests {
         t.check(AppSelfTest.spin(timeout: 10) {
             (executor as? VirtualTimeExecutor)?.runUntilIdle()
             return delivered && widget.latestPresented != nil
-        })
+        }, "controlled facts delivered=\(delivered): \(presentationState())")
         return widget
     }
 
@@ -1083,6 +1092,51 @@ enum DeskWidgetWindowSelfTests {
     }
 
     private static func accessibilityTests(_ t: AppTestRunner) {
+        t.suite("App: Desk Freeform accessibility: actual negative Text frame maps to screen and activates once from a worker") {
+            let worker = SkinThreadExecutor(name: "Desk Freeform accessibility worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let source = """
+            widget { variable n = 0; Freeform {
+                Text("{n}").font(20).size(40, 32).position(x: -60, y: -50).onClick { n = n + 1; copy("{n}") }
+                Text("H").font(20).size(40, 32).position(x: -70, y: -60).hidden().onClick { copy("hidden") }
+            } }
+            """
+            let recorder = ActionRecorder()
+            let widget = try actionFixture(t, recorder: recorder, executor: worker, text: source)
+            created = widget
+            t.equal(widget.view.accessibilityParts.count, 1, "hidden overlapping Text is absent from the actual AX tree")
+            guard let child = widget.view.accessibilityParts.first, let presented = widget.latestPresented,
+                  let element = presented.scene.elements.first(where: { $0.id == child.id }) else { throw Failure.fixture }
+            t.equal(presented.scene.size, SkinSize())
+            t.equal(element.frame, SkinRect(x: -60, y: -50, width: 40, height: 32))
+            t.equal(presented.origin, SkinPoint(x: -60, y: -50))
+            t.equal(presented.size, CGSize(width: 61, height: 51))
+            t.equal(child.accessibilityRole(), .button)
+            t.equal(child.accessibilityLabel(), "0")
+            let localFrame = NSRect(x: 0, y: 0, width: 40, height: 32)
+            let expectedScreen = NSAccessibility.screenRect(fromView: widget.view, rect: localFrame)
+            t.equal(child.accessibilityFrame(), expectedScreen, "AX subtracts the accepted viewport origin exactly once")
+            t.check(expectedScreen != NSAccessibility.screenRect(fromView: widget.view,
+                rect: NSRect(x: -60, y: -50, width: 40, height: 32)), "omitting the scene-to-view conversion must fail")
+            t.equal(presented.scene.hitMap.entry(at: -40, -34, handling: .leftUp, images: nil)?.elementID, child.id)
+            t.check(presented.scene.hitMap.entry(at: 20, 16, handling: .leftUp, images: nil) == nil,
+                    "using bitmap coordinates directly would miss this fully negative action")
+            t.check(child.accessibilityPerformPress())
+            t.check(!child.accessibilityPerformPress(), "the held AX child cannot enqueue a second transaction")
+            t.check(AppSelfTest.spin(timeout: 10) { recorder.calls.count == 1 })
+            t.equal(recorder.calls, ["copy:1"])
+            t.check(recorder.mainThreads.allSatisfy { $0 })
+            t.check(AppSelfTest.spin(timeout: 10) { widget.view.accessibilityParts.first?.accessibilityLabel() == "1" })
+            t.check(!child.accessibilityPerformPress(), "the previous negative-coordinate child is stale after redraw")
+        }
+
         t.suite("App: Desk accessibility: projected Text label and AX press execute once on Main from a worker") {
             let worker = SkinThreadExecutor(name: "Desk accessibility worker test")
             var created: DeskWidgetWindowController?

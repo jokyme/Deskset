@@ -33,13 +33,18 @@ public struct ProgramRuntime: Sendable {
         for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
         var actionCount = program.onLoad.count
         var clickHandlers: [ElementID: ClickHandler] = [:]
-        var pending = [(program.root, 1)], count = 0, contentCount = 0
+        var pending = [(program.root, 1, false)], count = 0, contentCount = 0
         var identities = Set<ElementID>()
-        while let (node, depth) = pending.popLast() {
+        while let (node, depth, mayPosition) = pending.popLast() {
             count += 1
             guard count <= ProgramLimits.maximumElements else { throw ProgramRuntimeError.elementLimit }
             guard depth <= ProgramLimits.maximumDepth else { throw ProgramRuntimeError.depthLimit }
             guard identities.insert(node.id).inserted else { throw ProgramRuntimeError.duplicateIdentity(node.id) }
+            if let position = node.position {
+                guard mayPosition, position.x.isFinite, position.y.isFinite else {
+                    throw ProgramRuntimeError.invalidGeometry(node.id)
+                }
+            }
             guard node.onClick == nil || node.onClickActions == nil else {
                 throw ProgramRuntimeError.ambiguousClickHandler(node.id)
             }
@@ -116,7 +121,11 @@ public struct ProgramRuntime: Sendable {
                 guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
                 guard spacing.isFinite, spacing >= 0 else { throw ProgramRuntimeError.invalidGeometry(node.id) }
                 guard children.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
-                pending.append(contentsOf: children.reversed().map { ($0, depth + 1) })
+                pending.append(contentsOf: children.reversed().map { ($0, depth + 1, false) })
+            case .freeform(_, let children):
+                guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                guard children.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
+                pending.append(contentsOf: children.reversed().map { ($0, depth + 1, true) })
             }
         }
         guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
@@ -181,7 +190,7 @@ public struct ProgramRuntime: Sendable {
                     }
                 }
                 switch node.content {
-                case .column(_, _, let children), .row(_, _, let children):
+                case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children):
                     pending.append(contentsOf: children)
                 default:
                     break
@@ -264,7 +273,7 @@ public struct ProgramRuntime: Sendable {
             let hidden = parentHidden || node.hidden
             switch node.content {
             case .text: if !hidden { visibleText.insert(node.id) }
-            case .column(_, _, let children), .row(_, _, let children): pending += children.map { ($0, hidden) }
+            case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending += children.map { ($0, hidden) }
             default: break
             }
         }
@@ -397,7 +406,7 @@ public struct ProgramRuntime: Sendable {
     private func flexibility(_ node: ProgramElement, into state: inout LayoutState) -> Flexibility {
         let children: [ProgramElement]
         switch node.content {
-        case .column(_, _, let nodes), .row(_, _, let nodes): children = nodes
+        case .column(_, _, let nodes), .row(_, _, let nodes), .freeform(_, let nodes): children = nodes
         case .text, .image, .rectangle, .shape: children = []
         }
         let descendants = children.map { flexibility($0, into: &state) }
@@ -615,6 +624,70 @@ public struct ProgramRuntime: Sendable {
             height = column ? mainSize : crossSize
             minimumContent = column ? SkinSize(width: minimumCross, height: minimumMain) : SkinSize(width: minimumMain, height: minimumCross)
             children = boxes.map { ($0, SkinPoint()) }
+        case .freeform(let align, let nodes):
+            let initialWidth = offeredWidth.map { max(0, $0 - horizontal) }
+            let initialHeight = offeredHeight.map { max(0, $0 - vertical) }
+            let knownWidth = requestedWidth.map { max(0, $0 - horizontal) }
+            let knownHeight = requestedHeight.map { max(0, $0 - vertical) }
+            var boxes = try nodes.map { child in
+                let positioned = child.position != nil
+                return try layout(child,
+                    proposedWidth: positioned ? (child.width == .fill ? knownWidth : nil) : initialWidth,
+                    proposedHeight: positioned ? (child.height == .fill ? knownHeight : nil) : initialHeight,
+                    appearance: appearance, resolve: resolve, measure: measure, state: &state)
+            }
+            func origin(_ size: SkinSize, position: ProgramPosition) throws -> SkinPoint {
+                let factor = Self.alignmentFactors(position.anchor)
+                let point = SkinPoint(x: position.x - factor.x * size.width, y: position.y - factor.y * size.height)
+                guard point.x.isFinite, point.y.isFinite else { throw ProgramRuntimeError.layoutOverflow(node.id) }
+                return point
+            }
+            func extent(minimum: Bool = false) throws -> SkinSize {
+                var result = SkinSize()
+                for i in boxes.indices {
+                    let box = boxes[i]
+                    guard let flex = state.flex[nodes[i].id] else { throw ProgramRuntimeError.invalidGeometry(nodes[i].id) }
+                    let size = minimum ? SkinSize(width: flex.width ? box.minimum.width : box.size.width,
+                                                  height: flex.height ? box.minimum.height : box.size.height) : box.size
+                    let point = try nodes[i].position.map { try origin(size, position: $0) } ?? SkinPoint()
+                    let right = point.x + size.width, bottom = point.y + size.height
+                    guard right.isFinite, bottom.isFinite else { throw ProgramRuntimeError.layoutOverflow(node.id) }
+                    result.width = max(result.width, right); result.height = max(result.height, bottom)
+                }
+                return result
+            }
+            let natural = try extent()
+            width = try requestedWidth ?? clamp(sum([natural.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
+            height = try requestedHeight ?? clamp(sum([natural.height, vertical]), minimum: node.minHeight, maximum: node.maxHeight)
+            guard width >= horizontal, height >= vertical else { throw ProgramRuntimeError.layoutOverflow(node.id) }
+            let finalWidth = width - horizontal, finalHeight = height - vertical
+            if initialWidth != finalWidth || initialHeight != finalHeight {
+                for i in boxes.indices where nodes[i].position == nil {
+                    boxes[i] = try layout(nodes[i], proposedWidth: finalWidth, proposedHeight: finalHeight,
+                                          appearance: appearance, resolve: resolve, measure: measure, state: &state)
+                }
+            }
+            // An unspecified fit proposal stays unspecified for positioned fill children: feeding the
+            // computed extent back into them would make a positive-positioned fill grow on every pass.
+            let reflowed = try extent()
+            width = try requestedWidth ?? clamp(sum([reflowed.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
+            height = try requestedHeight ?? clamp(sum([reflowed.height, vertical]), minimum: node.minHeight, maximum: node.maxHeight)
+            let minimumExtent = try extent(minimum: true)
+            // Unlike a stack, the container's own constraints may be smaller than its positioned contents.
+            minimumContent = SkinSize(width: min(minimumExtent.width, width - horizontal),
+                                      height: min(minimumExtent.height, height - vertical))
+            let factor = Self.alignmentFactors(align)
+            for i in boxes.indices {
+                let point: SkinPoint
+                if let position = nodes[i].position { point = try origin(boxes[i].size, position: position) }
+                else {
+                    point = SkinPoint(x: (width - horizontal - boxes[i].size.width) * factor.x,
+                                      y: (height - vertical - boxes[i].size.height) * factor.y)
+                }
+                let offset = SkinPoint(x: p.left + point.x, y: p.top + point.y)
+                guard offset.x.isFinite, offset.y.isFinite else { throw ProgramRuntimeError.layoutOverflow(node.id) }
+                children.append((boxes[i], offset))
+            }
         }
         guard width.isFinite, height.isFinite, width >= horizontal, height >= vertical else {
             throw ProgramRuntimeError.layoutOverflow(node.id)
@@ -650,7 +723,7 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .image, .rectangle, .shape: break
+            case .text, .image, .rectangle, .shape, .freeform: break
             }
         }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
@@ -704,6 +777,7 @@ public struct ProgramRuntime: Sendable {
             }
         case .column: kind = .unknown("Column")
         case .row: kind = .unknown("Row")
+        case .freeform: kind = .unknown("Freeform")
         case .rectangle, .shape:
             kind = .shape
             guard let fill = box.fill else { throw ProgramRuntimeError.invalidPaint(box.node.id) }
@@ -728,6 +802,20 @@ public struct ProgramRuntime: Sendable {
                                      items: items, glass: nil, imageDependencies: imageDependencies))
         for (child, offset) in box.children {
             try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden, into: &elements)
+        }
+    }
+
+    private static func alignmentFactors(_ align: ProgramAlignment) -> SkinPoint {
+        switch align {
+        case .topLeft: return SkinPoint(x: 0, y: 0)
+        case .top: return SkinPoint(x: 0.5, y: 0)
+        case .topRight: return SkinPoint(x: 1, y: 0)
+        case .left: return SkinPoint(x: 0, y: 0.5)
+        case .center: return SkinPoint(x: 0.5, y: 0.5)
+        case .right: return SkinPoint(x: 1, y: 0.5)
+        case .bottomLeft: return SkinPoint(x: 0, y: 1)
+        case .bottom: return SkinPoint(x: 0.5, y: 1)
+        case .bottomRight: return SkinPoint(x: 1, y: 1)
         }
     }
 

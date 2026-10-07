@@ -47,13 +47,13 @@ public extension Desk {
     /// system.dark and checked CPU/memory/battery scalar fields, root onLoad variable assignments,
     /// ordered Text/basic-shape onClick/onRightClick assignments/copy/open actions,
     /// copy display formatting for the supported scalar types (open remains String-only),
-    /// proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
+    /// proposal-based Column/Row and Freeform with literal positions and nine-point anchors, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, dynamic inherited
-    /// font sizes, and constant other box/style properties. Missing/invalid font sizes fail the current scene transaction;
+    /// font sizes, and constant other box/style properties, including checked pt lengths. Missing/invalid font sizes fail the current scene transaction;
     /// this finite program input path does not define missing-value policy for every dynamic facet.
     /// All named Color cases stay typed; platform hosts supply a complete immutable palette at projection time.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
-    /// Other numeric dimensions, Duration decimals, relative/subsecond Date formats and
+    /// Dynamic layout and sibling geometry references, other numeric dimensions, Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
@@ -70,7 +70,7 @@ public extension Desk {
                 while let node = pending.popLast() {
                     switch node.content {
                     case .image(let image): images.insert(image.source)
-                    case .column(_, _, let children), .row(_, _, let children): pending.append(contentsOf: children)
+                    case .column(_, _, let children), .row(_, _, let children), .freeform(_, let children): pending.append(contentsOf: children)
                     default: break
                     }
                 }

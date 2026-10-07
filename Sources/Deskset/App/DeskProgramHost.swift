@@ -2,13 +2,22 @@ import AppKit
 import DesksetCore
 import DesksetDraw
 
-/// The known Desk path geometry encloses centered strokes without changing layout or hit coordinates.
+/// Visible Desk boxes and known path geometry enclose overflow without changing layout or hit coordinates.
 /// This is the preview's viewport calculation, not a generic ink-coverage guarantee.
 enum DeskProgramViewport {
     enum Failure: Error { case extent }
 
     static func extent(_ scene: WidgetScene) throws -> CGRect {
         var result = CGRect(x: 0, y: 0, width: max(scene.size.width, 1), height: max(scene.size.height, 1))
+        for element in scene.elements where element.visibility == .visible {
+            let frame = element.frame
+            guard [frame.x, frame.y, frame.width, frame.height, frame.x + frame.width, frame.y + frame.height].allSatisfy(\.isFinite),
+                  frame.width >= 0, frame.height >= 0 else { throw Failure.extent }
+            // Transparent boxes can still receive clicks or inspector selection outside the logical root.
+            if frame.width > 0, frame.height > 0 {
+                result = result.union(CGRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height))
+            }
+        }
         for item in scene.drawingItems {
             guard case .shape(let draw) = item else { continue }
             for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {

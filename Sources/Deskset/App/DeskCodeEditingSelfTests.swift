@@ -12,6 +12,7 @@ enum DeskCodeEditingSelfTests {
         waveMenuTests(t)
         keyboardMenuTests(t)
         inspectorEditTests(t)
+        inspectorPropertyTests(t)
         inspectorSelectionTests(t)
         inspectorStaleTests(t)
         inspectorSourceTests(t)
@@ -485,6 +486,60 @@ enum DeskCodeEditingSelfTests {
             t.check(!f.controller.isDeskInspectorShown && !preview.isInspecting)
             t.check(pane.pageView.onEvent == nil && f.controller.deskElementInspector == nil)
             t.check(f.editor.frame.width >= 359 && preview.view.frame.width >= 279)
+        }
+    }
+
+    private static func inspectorPropertyTests(_ t: AppTestRunner) {
+        t.suite("Desk: inspector properties: real text size and position fields preserve source preview undo and save") {
+            let source = "\u{FEFF}// 甲😀\r\nwidget { Freeform { Text(\"Before\").font(20pt).size(180pt, 60pt).position(x: -12pt, y: -9pt, anchor: .topLeft).name(label) } }\r\n"
+            let cases: [(String, String, String, String, SkinRect, String, Double)] = [
+                ("desk.width", "200", "180pt", "200pt", SkinRect(x: -12, y: -9, width: 200, height: 60), "Before", 20),
+                ("desk.text.size", "24", "20pt", "24pt", SkinRect(x: -12, y: -9, width: 180, height: 60), "Before", 24),
+                ("desk.position.x", "-28", "-12pt", "-28pt", SkinRect(x: -28, y: -9, width: 180, height: 60), "Before", 20),
+                ("desk.text.content", "甲 {x}", "Before", "甲 {{x}}", SkinRect(x: -12, y: -9, width: 180, height: 60), "甲 {x}", 20),
+            ]
+            for (item, input, old, new, frame, text, size) in cases {
+                let f = try fixture(t, text: source)
+                guard let window = f.controller.window, let pane = f.controller.deskInspector,
+                      let preview = f.controller.deskPreview, let undo = window.undoManager else {
+                    throw InspectorFixtureFailure.page
+                }
+                window.makeKeyAndOrderFront(nil)
+                t.check(settled(f))
+                let model = try showInspector(t, f, at: (source as NSString).range(of: "Text(").location)
+                guard let row = pane.pageView.itemView(item) as? StudioRowView, let box = row.numberBox else {
+                    return t.check(false, "the real native property control exists: \(item)")
+                }
+                t.check(window.makeFirstResponder(f.editor.textView))
+                t.check(window.makeFirstResponder(box.field), item)
+                guard let fieldEditor = box.field.currentEditor() as? NSTextView else { throw InspectorFixtureFailure.page }
+                fieldEditor.setSelectedRange(NSRange(location: 0, length: fieldEditor.string.utf16.count))
+                fieldEditor.insertText(input, replacementRange: fieldEditor.selectedRange())
+                t.equal(f.editor.text, source, "the field waits for native end editing")
+                t.check(window.makeFirstResponder(f.editor.textView))
+                let expected = source.replacingOccurrences(of: old, with: new)
+                t.equal(f.editor.text, expected, item)
+                t.check(settled(f)); t.equal(preview.state, .ready)
+                guard let draw = preview.scene?.drawingItems.compactMap({ value -> TextDraw? in
+                    if case .text(let text) = value { return text }; return nil
+                }).first else { throw InspectorFixtureFailure.page }
+                t.equal(draw.frame, frame); t.equal(draw.text, text)
+                t.close(TextStyle.pixelSize(points: draw.style.fontSize), size)
+                t.equal(preview.canvas.bounds, NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height))
+                t.equal(try Data(contentsOf: f.file), Data(source.utf8), "editing still uses the normal deferred save")
+                t.check(!f.controller.applyDeskInspectorEvent(.number(item: item, part: 0, change: .typed(input)), from: model),
+                        "the old page cannot write after recompilation")
+                CodeEditorSelfTests.spin(0.02)
+                undo.undo()
+                t.equal(Data(f.editor.text.utf8), Data(source.utf8), "one undo restores exact source bytes")
+                t.check(!undo.canUndo && !f.editor.isDirty)
+                t.check(settled(f))
+                undo.redo(); t.equal(f.editor.text, expected); t.check(settled(f))
+                t.check(f.editor.commitNow(explicit: true))
+                t.equal(try Data(contentsOf: f.file), Data(expected.utf8))
+                t.check(!f.editor.isDirty && f.app.sortedControllers.isEmpty)
+                window.close()
+            }
         }
     }
 

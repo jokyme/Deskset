@@ -25,6 +25,102 @@ func deskIDs(of snippet: String, context: CheckContext = CheckContext()) -> [Str
 }
 
 func runDeskCheckerTests(_ t: TestRunner) {
+    func ownLengthArgument(_ checked: CheckedFile, _ facts: ElementFacts?, facet: FacetID,
+                           modifier: String, source: String, value: Double) {
+        guard let candidate = facts?.facets[facet]?.first,
+              let node = checked.tree.resolve(candidate.value), let literal = NumberLiteralSyntax(node),
+              case .own(let origin) = candidate.origin,
+              let originNode = checked.tree.resolve(origin), let call = ModifierAppSyntax(originNode) else {
+            t.check(false, "\(facet): a written Length argument remains referable in its checked tree")
+            return
+        }
+        t.check(candidate.fixedValue == nil, "\(facet): own arguments retain their source reference")
+        t.equal(call.name.token.text, modifier)
+        t.check(call.arguments?.arguments.contains { checked.tree.id(of: $0.value.node) == candidate.value } == true,
+                "\(facet): the candidate points to the original modifier argument")
+        t.equal(node.node.trimmedText, source, "\(facet): written argument")
+        t.equal(literal.value, value)
+        t.equal(checked.canonicalNumericValues[candidate.value], value, "\(facet): checked Length value")
+    }
+
+    t.suite("Desk: checker: root facts: single roots publish the final flag independently of inheritance") {
+        let cases: [(String, String)] = [
+            ("Rectangle().rounded(8)", "Rectangle"),
+            ("Circle()", "Circle"),
+            ("Image(\"picture.png\")", "Image"),
+            ("Text(\"A\")", "Text"),
+            ("Column { Rectangle().rounded(8) }", "Column"),
+            ("Row { Text(\"A\") }", "Row"),
+            ("Freeform { Rectangle().position(x: -2) }", "Freeform"),
+        ]
+        for preset in ["small", "fit"] {
+            for (source, component) in cases {
+                let checked = deskCheck("info { name: \"T\", size: .\(preset) }\nwidget { \(source) }")
+                t.equal(checked.diagnostics.map(\.id.rawValue), [], "\(component), \(preset): \(deskDescribe(checked))")
+                guard let root = checked.root, let facts = checked.elements[root] else {
+                    t.check(false, "\(component), \(preset): the explicit root has published facts")
+                    continue
+                }
+                t.equal(facts.component, component)
+                t.check(facts.isRoot, "\(component), \(preset): the published root flag is current")
+                t.check(facts.parent == nil, "\(component), \(preset): the root has no parent")
+                t.equal(checked.elements.filter { $0.value.isRoot }.map(\.key), [root])
+                t.check(checked.elements.filter { $0.key != root }.allSatisfy {
+                    !$0.value.isRoot && $0.value.parent == root
+                }, "\(component), \(preset): children are not roots")
+            }
+        }
+        let sized = deskCheck("info { name: \"T\", size: .small }\nwidget { Rectangle().size(30, 20).rounded(8) }")
+        t.equal(sized.diagnostics.map(\.id.rawValue), ["DK5018"], "publishing the root keeps the existing ignored-size warning")
+        let facts = sized.root.flatMap { sized.elements[$0] }
+        t.check(facts?.isRoot == true)
+        ownLengthArgument(sized, facts, facet: "width", modifier: "size", source: "30", value: 30)
+        ownLengthArgument(sized, facts, facet: "height", modifier: "size", source: "20", value: 20)
+    }
+
+    t.suite("Desk: checker: root facts: nested and implicit-root elements retain their own role") {
+        let nested = deskCheck("""
+            info { name: "T", size: .small }
+            widget {
+                Column {
+                    Rectangle().width(20).name(box)
+                    Image("picture.png").size(12).name(picture)
+                    Text("A").name(title)
+                    Freeform { Rectangle().name(inner) }.name(layer)
+                }.padding(4).color(.dim)
+            }
+            """)
+        t.equal(nested.diagnostics.map(\.id.rawValue), [], deskDescribe(nested))
+        guard let root = nested.root, let layer = nested.elements.first(where: { $0.value.name == "layer" }) else {
+            t.check(false, "nested fixture has an explicit root and Freeform child")
+            return
+        }
+        t.equal(nested.elements.filter { $0.value.isRoot }.map(\.key), [root])
+        for name in ["box", "picture", "title", "layer"] {
+            let facts = nested.elements.values.first { $0.name == name }
+            t.check(facts?.isRoot == false, "\(name) is not the widget root")
+            t.equal(facts?.parent, root, "\(name) keeps its enclosing Column")
+        }
+        let inner = nested.elements.values.first { $0.name == "inner" }
+        t.check(inner?.isRoot == false)
+        t.equal(inner?.parent, layer.key)
+        t.check(nested.elements.values.first { $0.name == "title" }?.inherits.contains("color") == true,
+                "the root publication does not remove inherited facts")
+        ownLengthArgument(nested, nested.elements.values.first { $0.name == "box" },
+                          facet: "width", modifier: "width", source: "20", value: 20)
+
+        for source in ["Rectangle().width(20)\nText(\"A\").height(10)",
+                       "Column { Rectangle().width(20) }\nImage(\"picture.png\").size(12)"] {
+            let implicit = deskCheck("info { name: \"T\", size: .small }\nwidget {\n\(source)\n}")
+            t.equal(implicit.diagnostics.map(\.id.rawValue), ["DK2021"], deskDescribe(implicit))
+            t.check(implicit.root == nil, "the implicit Column has no source element ID")
+            t.check(implicit.elements.values.allSatisfy { !$0.isRoot }, "the implicit Column's children are not explicit roots")
+            t.equal(implicit.elements.values.filter { $0.parent == nil }.count, 2)
+            ownLengthArgument(implicit, implicit.elements.values.first { $0.component == "Rectangle" },
+                              facet: "width", modifier: "width", source: "20", value: 20)
+        }
+    }
+
     t.suite("Desk: checker — the design's error-message examples and their messages") {
         // (code, id, English message, Chinese message)
         let cases: [(String, String, String, String)] = [
