@@ -34,6 +34,7 @@ public extension Desk {
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
     /// system.dark and checked CPU/memory/battery scalar fields, root onLoad variable assignments,
     /// ordered Text/basic-shape onClick assignments/copy/open actions,
+    /// copy display formatting for the supported scalar types (open remains String-only),
     /// proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, dynamic inherited
     /// font sizes, and constant other box/style properties. Missing/invalid font sizes fail the current scene transaction;

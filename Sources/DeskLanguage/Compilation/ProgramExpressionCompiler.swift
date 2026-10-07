@@ -56,9 +56,20 @@ struct ProgramExpressionCompiler {
             throw issue(.invalidCheckedModel, node, "Missing checked action argument type")
         }
         guard type == .string else {
-            throw issue(.unsupported, node, "Copy and open require a checked String expression")
+            throw issue(.unsupported, node, "Open requires a checked String expression")
         }
         return try lower(node, depth: 1)
+    }
+
+    mutating func copyText(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked copy argument type")
+        }
+        if type == .bool { return .concatenate([try lower(node, depth: 1)]) }
+        guard type == .string || type == .date || numberDimension(type) != nil else {
+            throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length display values")
+        }
+        return try text(node)
     }
 
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {

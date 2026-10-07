@@ -374,8 +374,8 @@ struct StaticProgramCompiler {
               !parameter.translatable, parameter.unit == nil else {
             throw issue(.unsupported, call.callee.node, "Unsupported checked \(name) action parameter contract")
         }
-        let value = try expressions.actionString(arguments[0].value.node)
-        return name == "copy" ? .copy(value) : .open(value)
+        if name == "copy" { return .copy(try expressions.copyText(arguments[0].value.node)) }
+        return .open(try expressions.actionString(arguments[0].value.node))
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {

@@ -1742,6 +1742,71 @@ private func runProgramClickEffectTests(_ t: TestRunner) {
         t.equal(oldNext.map(bindingStrings), ["1"])
     }
 
+    t.suite("Desk: click effects: copy display values preserve ordered writes units missing and locale") {
+        let source = #"widget { variable n = 1.25; variable bytes = 1KB; variable flag = false; computed twice = n * 2; Text("Tap").size(80, 30).onClick { copy(42); n = n + 1.25; copy(twice); copy(n); copy(bytes); bytes = 2KiB; copy(bytes); copy(flag); flag = not flag; copy(flag); copy(cpu.usage); copy(1 / 0); copy(1 / 0 < 1); open("https://example.com/?n={n}") } }"#
+        let program = try checkedBindingProgram(t, source)
+        guard let zone = TimeZone(secondsFromGMT: 0) else { throw BindingFixtureFailure.program }
+        let cases = [("en_US", "2.5", "1.0 KB", "2.0 KB", "No", "Yes"),
+                     ("de_DE", "2,5", "1,0 KB", "2,0 KB", "No", "Yes"),
+                     ("zh_CN", "2.5", "1.0 KB", "2.0 KB", "否", "是")]
+        for (locale, number, firstBytes, secondBytes, no, yes) in cases {
+            let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0), timeZone: zone,
+                                       locale: Locale(identifier: locale))
+            var runtime = try ProgramRuntime(program: program)
+            let first = try runtime.project(environment: environment, dateInput: date, measure: bindingMeasure)
+            t.equal(runtime.neededSystemProperties, [])
+            t.equal(runtime.neededSystemProperties(clickAt: point), [.cpuUsage])
+            guard let clicked = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+                environment: environment, dateInput: date, systemInput: ProgramSystemInput(cpuUsage: 42.6),
+                measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+            t.equal(clicked.effects, [.copy("42"), .copy("5"), .copy(number), .copy(firstBytes), .copy(secondBytes),
+                                      .copy(no), .copy(yes), .copy("43"), .copy("–"), .copy("–"),
+                                      .open("https://example.com/?n=\(number)")], locale)
+            t.equal(runtime.clockPrecision, nil, "copy-only data never arms a polling clock")
+            t.equal(runtime.neededSystemProperties, [])
+            t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: date,
+                                                       measure: bindingMeasure)), ["Tap"])
+        }
+        let duration = try checkedBindingProgram(t, #"widget { Text("Tap").onClick { copy(90s); copy(2pt) } }"#)
+        let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0), timeZone: zone,
+                                   locale: Locale(identifier: "de_DE"))
+        var runtime = try ProgramRuntime(program: duration)
+        let first = try runtime.project(environment: environment, dateInput: date, measure: bindingMeasure)
+        let clicked = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+                                                  environment: environment, dateInput: date, measure: bindingMeasure)
+        t.equal(clicked?.effects, [.copy("1 Minute und 30 Sekunden"), .copy("2")])
+        t.equal(runtime.clockPrecision, nil)
+    }
+
+    t.suite("Desk: click effects: copy Date uses checked formats zones and no post-click clock") {
+        var catalog = DeskCatalog.current
+        guard let namespace = catalog.namespaces.firstIndex(where: { $0.name == "time" }),
+              let now = catalog.namespaces[namespace].members.firstIndex(where: { $0.name == "now" }),
+              let zone = TimeZone(secondsFromGMT: 0) else { throw BindingFixtureFailure.program }
+        catalog.namespaces[namespace].members[now].defaultFormat = .pattern("HH:mm:ss")
+        let source = #"widget { variable count = 0; Text("{count}").size(80, 30).onClick { count = count + 1; copy(time.now); copy(time.now.in("Asia/Tokyo")); copy(time.now + 90s); copy(time.now + (1s / 0)) } }"#
+        let program = try checkedBindingProgram(t, source, catalog: catalog)
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(runtime.clockPrecision, nil)
+        bindingFailure(t, .invalidDateInput) {
+            _ = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+                                            environment: environment, measure: bindingMeasure)
+        }
+        t.equal(runtime.generation, first.generation)
+        let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0), timeZone: zone,
+                                   locale: Locale(identifier: "en_US_POSIX"))
+        guard let clicked = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation,
+            environment: environment, dateInput: date, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(clicked.effects, [.copy("00:00:00"), .copy("09:00:00"), .copy("00:01:30"), .copy("–")])
+        t.equal(bindingStrings(clicked.scene), ["1"], "failed date evaluation rolls back the preceding assignment")
+        t.equal(runtime.clockPrecision, nil, "Date formatting in a user action does not keep a clock alive")
+        let later = ProgramDateInput(instant: date.instant.addingTimeInterval(60), timeZone: zone, locale: date.locale)
+        t.equal(bindingStrings(try runtime.project(environment: environment, dateInput: later,
+                                                   measure: bindingMeasure)), ["1"], "a clock change never replays the click")
+        t.equal(runtime.clockPrecision, nil)
+    }
+
     t.suite("Desk: click effects: failed projection and legacy calls commit no variables or effects") {
         let program = try checkedBindingProgram(t, source)
         var runtime = try ProgramRuntime(program: program)
@@ -1858,15 +1923,17 @@ private func runProgramClickEffectTests(_ t: TestRunner) {
         }
         for source in [#"widget { Text("Tap").onLoad { copy("A") } }"#,
                        #"widget { Text("Tap").onClick { open(1) } }"#,
+                       #"widget { Text("Tap").onClick { open(true) } }"#,
+                       #"widget { Text("Tap").onClick { open(time.now) } }"#,
                        #"widget { Text("Tap").onClick { copy("A", "B") } }"#,
                        #"widget { Text("Tap").onDoubleClick { copy("A") } }"#,
                        #"widget { Text("Tap").onClick { log("A") } }"#] {
             t.check(Desk.compile(deskCheck(source)).program == nil, source)
         }
-        let displayNumber = deskCheck(#"widget { Text("Tap").onClick { copy(42) } }"#)
-        t.check(displayNumber.diagnostics(.error).isEmpty, deskDescribe(displayNumber))
-        t.equal(Desk.compile(displayNumber).issues.first?.kind, .unsupported,
-                "copy does not silently inherit display-value coercion")
+        let unsupportedDisplay = deskCheck(#"widget { Text("Tap").onClick { copy(2W) } }"#)
+        t.check(unsupportedDisplay.diagnostics(.error).isEmpty, deskDescribe(unsupportedDisplay))
+        t.equal(Desk.compile(unsupportedDisplay).issues.first?.kind, .unsupported,
+                "unsupported numeric dimensions refuse the complete program")
     }
 }
 
