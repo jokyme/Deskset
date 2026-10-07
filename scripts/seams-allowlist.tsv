@@ -44,7 +44,7 @@ effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
-background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	9	FIFO message dispatch to widget host executor owner for lifecycle, fact updates, primary/secondary presses and cancellation, release effects, and power change notification; not a skin input
+background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	10	FIFO message dispatch to widget host executor owner for lifecycle, fact updates, Main bitmap acceptance ACKs, primary/secondary presses and cancellation, release effects, and power change notification; not a skin input
 background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	5	presentation callbacks, availability, close acknowledgments and immutable click-effects batches delivered FIFO to Main; issued session/epoch/serial checked before injected external services
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	2	desktop widget window dragging reads cursor position on main thread; not a skin input

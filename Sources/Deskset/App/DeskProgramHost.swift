@@ -96,7 +96,7 @@ final class DeskProgramHost {
         let locale: Locale
     }
 
-    /// The exact scene and viewport handed to the provider, not an unpresented projection or a window resize.
+    /// The exact scene and viewport accepted by the provider, after Main's ACK when delivery is asynchronous.
     struct Presented {
         let scene: WidgetScene
         let origin: SkinPoint
@@ -148,7 +148,10 @@ final class DeskProgramHost {
                 switch result {
                 case .failed: if state == .ready { fail(Failure.bitmap) }
                 case .presented(let capture):
-                    guard state == .ready, capture.scene.generation == scene?.generation else { return }
+                    // Projection can advance while Main holds a picture. The producer qualifies the ACK's
+                    // identity and destination; retain what actually reached the screen, even if logic is newer.
+                    // Pointer input still requires presented and current generations to match.
+                    guard state == .ready else { return }
                     let value = Presented(scene: capture.scene, origin: capture.origin,
                         size: CGSize(width: ceil(capture.size.width * capture.scene.environment.scale) / capture.scene.environment.scale,
                                      height: ceil(capture.size.height * capture.scene.environment.scale) / capture.scene.environment.scale),
@@ -395,9 +398,22 @@ final class DeskProgramHost {
     func close() { current.close() }
 
     deinit {
-        guard let owner else { return }
-        self.owner = nil
-        if executor.isCurrent { owner.close() }
-        else { executor.async { owner.close(); withExtendedLifetime(owner) {} } }
+        guard owner != nil else { return }
+        if executor.isCurrent {
+            owner?.close()
+            owner = nil
+        } else {
+            // Main may finish before the submitting stack resumes. Transfer through a box so that stack never
+            // holds the last Owner reference; detach under the lock, then close and release on the executor.
+            let transfer = Guarded(owner)
+            owner = nil
+            executor.async {
+                let retiring = transfer.access { value -> Owner? in
+                    defer { value = nil }
+                    return value
+                }
+                retiring?.close()
+            }
+        }
     }
 }

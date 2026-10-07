@@ -160,6 +160,7 @@ enum DeskProgramDrawingSelfTests {
     }
 
     private static func ownerTests(_ t: AppTestRunner) {
+        ownerRetirementTest(t)
         t.suite("App: Desk bitmap owner: centered outlines retain negative paint bounds and native bytes") {
             let program = try compile("widget { Rectangle().size(24, 18).stroke(.accent, width: 4) }", t)
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
@@ -1167,6 +1168,65 @@ enum DeskProgramDrawingSelfTests {
         deinit { result.access { $0.append((executor.isCurrent, Thread.isMainThread)) } }
     }
     private final class WeakOwner { weak var context: SkinRenderContext? }
+
+    /// Model a submitter being descheduled until Main has already run the queued closure. Work is still FIFO
+    /// and never inline; only the background submitter is held at this deterministic test boundary.
+    private final class CompletionGatedMainExecutor: SkinExecutor {
+        var isCurrent: Bool { Thread.isMainThread }
+        let heldSubmission = Guarded(false)
+        let callbackFinished = Guarded(false)
+        let completedSubmission = Guarded(false)
+        let resumeSubmitter = DispatchSemaphore(value: 0)
+
+        func async(_ work: @escaping () -> Void) {
+            if !isCurrent, heldSubmission.access({ held in let result = held; held = false; return result }) {
+                MainSkinExecutor.shared.async { [callbackFinished] in
+                    work(); callbackFinished.access { $0 = true }
+                }
+                let finished = withExtendedLifetime(work) { resumeSubmitter.wait(timeout: .now() + 15) == .success }
+                completedSubmission.access { $0 = finished }
+            } else { MainSkinExecutor.shared.async(work) }
+        }
+        func async(after delay: TimeInterval, _ work: @escaping () -> Void) -> SkinScheduledWork {
+            MainSkinExecutor.shared.async(after: delay, work)
+        }
+        func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
+                   _ fire: @escaping () -> Void) -> SkinScheduledWork {
+            MainSkinExecutor.shared.timer(interval: interval, leeway: leeway, repeats: repeats, fire)
+        }
+    }
+
+    private static func ownerRetirementTest(_ t: AppTestRunner) {
+        t.suite("App: Desk bitmap owner: final owner release stays on Main when its submitter resumes late") {
+            let program = try compile(#"widget { Text("retire").font(20) }"#, t)
+            let executor = CompletionGatedMainExecutor(), input = try ownerInput()
+            defer { executor.resumeSubmitter.signal() }
+            let held = Guarded<DeskProgramHost?>(nil), releases = Guarded<[(Bool, Bool)]>([])
+            let dropped = Guarded(false), weakOwner = WeakOwner()
+            do {
+                let probe = ReleaseProbe(executor, releases)
+                let fixed = SkinClock.fixed(Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+                let clock = SkinClock(now: { withExtendedLifetime(probe) { fixed.now() } },
+                                      uptime: fixed.uptime, timeZone: fixed.timeZone)
+                let host = try DeskProgramHost(program: program, executor: executor, provider: nil, input: input, clock: clock)
+                weakOwner.context = host.context
+                held.access { $0 = host }
+            }
+            executor.heldSubmission.access { $0 = true }
+            DispatchQueue.global().async {
+                held.access { $0 = nil }
+                dropped.access { $0 = true }
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { executor.callbackFinished.current })
+            t.check(!dropped.current, "the submitting stack still holds the completed closure")
+            t.equal(releases.current.count, 1)
+            t.check(releases.current.allSatisfy { $0.0 && $0.1 }, "the complete owner, including clock captures, retires on Main")
+            t.check(weakOwner.context == nil)
+            executor.resumeSubmitter.signal()
+            t.check(AppSelfTest.spin(timeout: 10) { dropped.current })
+            t.check(executor.completedSubmission.current, "the test released its submitter without a timeout")
+        }
+    }
 
     private static func liveOwner(_ t: AppTestRunner, worker: Bool) throws {
         let program = try compile(#"widget { Text("{time.now, format: "HH:mm:ss"}").font(20).color(.accent).size(160, 40).padding(4) }"#, t)

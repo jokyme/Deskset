@@ -84,6 +84,7 @@ enum DeskWidgetWindowSelfTests {
         presetAccessibilityTests(t)
         pointerEventTests(t)
         reviewRegressionTests(t)
+        mainDeliveryTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -360,9 +361,8 @@ enum DeskWidgetWindowSelfTests {
                 widgetWin.latestPresented == nil && widgetWin.lastUnavailableMessage != nil
             }, "presentation cleared and unavailable state set on nil colorSpace")
 
-            // 3. Restore valid RGB colorSpace
-            var factsValidCS = widgetWin.currentFacts()
-            factsValidCS.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            // 3. Restore the actual destination profile, not just another RGB profile.
+            let factsValidCS = widgetWin.currentFacts()
             widgetWin.executor.async { [hostOwner] in
                 hostOwner.take(factsValidCS, input: input)
             }
@@ -486,7 +486,7 @@ enum DeskWidgetWindowSelfTests {
                 isVisible: true,
                 isOrderedIn: true,
                 scale: scale,
-                colorSpace: SkinFrameProducer.sRGB,
+                colorSpace: widgetWin.window.colorSpace?.cgColorSpace,
                 appearance: input.environment.appearance.name,
                 takesPointer: true,
                 sequence: 101,
@@ -516,20 +516,18 @@ enum DeskWidgetWindowSelfTests {
 
             // Enqueue a Main queue sentinel after the queued stale receipts.
             // Because DispatchQueue.main is serial FIFO, the sentinel executes strictly after
-            // the queued handleUnavailable and handlePresented blocks have run.
+            // the queued unavailable and frame-delivery blocks have run.
             var staleReceiptsDrained = false
             DispatchQueue.main.async {
+                // Check at the FIFO boundary itself: rejecting a stale delivery now asks for fresh facts and
+                // can accept a current-epoch recovery later in this same RunLoop spin.
+                t.equal(widgetWin.lastUnavailableMessage, nil, "queued stale unavailable receipt was rejected on epoch mismatch")
+                t.equal(widgetWin.lastAcceptedEpoch, initialEpoch, "queued stale presented receipt was rejected on epoch mismatch")
+                t.equal(widgetWin.latestPresented?.scene.generation, initialPresented.scene.generation,
+                        "latestPresented preserved from initial until a qualified recovery")
                 staleReceiptsDrained = true
             }
             t.check(AppSelfTest.spin(timeout: 5) { staleReceiptsDrained }, "queued stale receipts processed before assertion")
-
-            // Assert that the queued stale receipts (from staleEpoch) were rejected:
-            // 1. The queued unavailable receipt did not overwrite lastUnavailableMessage
-            t.equal(widgetWin.lastUnavailableMessage, nil, "queued stale unavailable receipt was rejected on epoch mismatch")
-            // 2. The queued presented receipt did not update lastAcceptedEpoch
-            t.equal(widgetWin.lastAcceptedEpoch, initialEpoch, "queued stale presented receipt was rejected on epoch mismatch")
-            // 3. latestPresented was not overwritten by stale callback
-            t.equal(widgetWin.latestPresented?.scene.generation, initialPresented.scene.generation, "latestPresented preserved from initial")
 
             // Now test real recovery under current restoredEpoch:
             // Deliver nil-profile facts under restoredEpoch -> clears latestPresented and sets lastUnavailableMessage
@@ -557,7 +555,7 @@ enum DeskWidgetWindowSelfTests {
                 isVisible: true,
                 isOrderedIn: true,
                 scale: scale,
-                colorSpace: SkinFrameProducer.sRGB,
+                colorSpace: widgetWin.window.colorSpace?.cgColorSpace,
                 appearance: input.environment.appearance.name,
                 takesPointer: true,
                 sequence: 103,
@@ -644,7 +642,170 @@ enum DeskWidgetWindowSelfTests {
             (executor as? VirtualTimeExecutor)?.runUntilIdle()
             return delivered && widget.latestPresented != nil
         }, "controlled facts delivered=\(delivered): \(presentationState())")
+        // Main acceptance now precedes an owner FIFO ACK. Pointer tests must start after that receipt.
+        let generation = widget.latestPresented?.scene.generation
+        var acknowledged = false
+        executor.async { [owner = widget.owner] in
+            let accepted = owner.host?.presented?.scene.generation == generation
+            DispatchQueue.main.async { acknowledged = accepted }
+        }
+        t.check(AppSelfTest.spin(timeout: 10) {
+            (executor as? VirtualTimeExecutor)?.runUntilIdle()
+            return acknowledged
+        }, "the owner acknowledged Main's accepted picture")
         return widget
+    }
+
+    private static func mainDeliveryTests(_ t: AppTestRunner) {
+        t.suite("App: Desk Main delivery: held pixels and geometry commit together before the owner ACK") {
+            let source = #"widget { variable n = 0; Text("{n}").font(20).onClick { n = n + 100000 } }"#
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let image = widget.content.shown.image,
+                  let element = original.scene.elements.first else { throw Failure.fixture }
+            let firstCount = widget.content.state.presented, oldFrame = widget.window.frame
+            let point = SkinPoint(x: element.frame.x + element.frame.width / 2 - original.origin.x,
+                                  y: element.frame.y + element.frame.height / 2 - original.origin.y)
+            var ownerReceipts: [UInt64] = []
+            host.didPresent = { ownerReceipts.append($0.scene.generation) }
+            host.primaryPress(at: point); host.primaryRelease(at: point)
+            host.frames.runLoopTurn(.beforeWaiting)
+            guard let exported = host.scene else { throw Failure.fixture }
+            t.check(host.frames.hasBitmapDelivery, "Main has not run the exported request")
+            t.check(exported.size.width > original.size.width, "the accepted assignment needs a wider native window")
+            host.refresh() // Logic may advance, while the exported scene and its private capture stay fixed.
+            t.check((host.scene?.generation ?? 0) > exported.generation)
+            t.check(widget.content.shown.image === image, "owner drawing does not replace provider pixels")
+            t.equal(widget.content.state.presented, firstCount)
+            t.equal(widget.window.frame, oldFrame)
+            t.equal(widget.view.frame.size, original.size)
+            t.equal(host.presented?.scene.generation, original.scene.generation)
+            var mainCommitted = false
+            DispatchQueue.main.async {
+                t.equal(widget.latestPresented?.scene.generation, exported.generation)
+                t.equal(widget.content.state.presented, firstCount + 1)
+                t.equal(widget.content.shown.bounds.size, widget.view.frame.size)
+                t.equal(widget.window.frame.size, widget.view.frame.size)
+                t.check(widget.window.frame.width > oldFrame.width)
+                t.equal(host.presented?.scene.generation, original.scene.generation, "the owner ACK is still queued")
+                mainCommitted = true
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { mainCommitted && ownerReceipts.count == 2 })
+            t.equal(ownerReceipts.first, exported.generation, "an accepted picture remains the presented scene even when logic is newer")
+            t.equal(host.presented?.scene.generation, host.scene?.generation)
+            t.equal(widget.latestPresented?.scene.generation, host.presented?.scene.generation)
+            t.check(!host.frames.hasBitmapDelivery)
+        }
+
+        t.suite("App: Desk Main delivery: repeated failures retain feedback and cancelled clears cannot erase recovery") {
+            let widget = try actionFixture(t, recorder: ActionRecorder())
+            guard let host = widget.owner.host else { throw Failure.fixture }
+            let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                 scale: widget.window.backingScaleFactor)
+            var invalid = widget.currentFacts()
+            invalid.colorSpace = nil
+            let shown = widget.content.shown.image, count = widget.content.state.presented
+            widget.owner.take(invalid, input: input)
+            host.refresh(); host.drawFirstFrame()
+            t.check(widget.content.shown.image === shown, "a failed owner queues its clear rather than writing Main's layer")
+            t.check(host.presented == nil)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.lastUnavailableMessage != nil && widget.content.shown.image == nil })
+            t.check(widget.latestPresented == nil)
+            t.equal(widget.content.state.presented, count, "clears do not masquerade as a successful picture")
+            let prefix = "Desk widget unavailable (\(widget.source.entry)):"
+            t.equal(Log.recent.filter { $0.message.hasPrefix(prefix) }.count, 1)
+            host.refresh(); host.drawFirstFrame()
+            var repeatedErrorDrained = false
+            DispatchQueue.main.async {
+                t.equal(Log.recent.filter { $0.message.hasPrefix(prefix) }.count, 1,
+                        "a replacement clear retains feedback without repeating the same warning")
+                repeatedErrorDrained = true
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { repeatedErrorDrained })
+            let valid = widget.currentFacts()
+            widget.owner.take(valid, input: input)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.latestPresented != nil && host.presented != nil })
+            t.check(widget.lastUnavailableMessage == nil)
+
+            let recovered = widget.content.shown.image
+            widget.owner.take(invalid, input: input)
+            host.refresh(); host.drawFirstFrame()
+            var oldErrorsDrained = false
+            DispatchQueue.main.async {
+                t.check(widget.lastUnavailableMessage == nil, "recovery cancelled every replaced clear and its old error")
+                t.check(widget.content.shown.image === recovered)
+                oldErrorsDrained = true
+            }
+            widget.owner.take(valid, input: input)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                oldErrorsDrained && widget.latestPresented != nil && host.presented != nil && !host.frames.hasBitmapDelivery
+            })
+            t.check(widget.lastUnavailableMessage == nil)
+        }
+
+        t.suite("App: Desk Main delivery: a different RGB profile and duplicate receipt never publish pixels") {
+            let widget = try actionFixture(t, recorder: ActionRecorder())
+            guard let host = widget.owner.host, let original = widget.latestPresented else { throw Failure.fixture }
+            var captured: SkinBitmapDelivery?
+            let forward = host.frames.requestBitmapDelivery
+            host.frames.requestBitmapDelivery = { request in
+                if case .frame(let frame) = request { captured = frame }
+                forward?(request)
+            }
+            host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+            guard let delivery = captured else { throw Failure.fixture }
+            let alternate = [CGColorSpace(name: CGColorSpace.sRGB)!, CGColorSpace(name: CGColorSpace.displayP3)!]
+                .first { $0 != delivery.space }!
+            let bad = SkinBitmapDelivery(frame: delivery.frame, scene: delivery.scene, origin: delivery.origin,
+                space: alternate, appearance: delivery.appearance, panelGeneration: delivery.panelGeneration,
+                serial: delivery.serial, lifecycle: delivery.lifecycle)
+            let count = widget.content.state.presented, image = widget.content.shown.image
+            widget.handleBitmapRequest(.frame(bad), session: widget.sessionID)
+            t.equal(bad.state, .finished(accepted: false))
+            t.equal(widget.content.state.presented, count)
+            t.check(widget.content.shown.image === image)
+            t.equal(widget.latestPresented?.scene.generation, original.scene.generation)
+            t.check(AppSelfTest.spin(timeout: 10) { delivery.state == .finished(accepted: true) && !host.frames.hasBitmapDelivery })
+            let acceptedCount = widget.content.state.presented, acceptedSerial = widget.lastPresentationSerial
+            widget.handleBitmapRequest(.frame(delivery), session: widget.sessionID)
+            t.equal(widget.content.state.presented, acceptedCount)
+            t.equal(widget.lastPresentationSerial, acceptedSerial)
+            host.frames.requestBitmapDelivery = forward
+        }
+
+        t.suite("App: Desk Main delivery: a queued frame cannot revive a closing window") {
+            let widget = try actionFixture(t, recorder: ActionRecorder())
+            guard let host = widget.owner.host else { throw Failure.fixture }
+            host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+            t.check(host.frames.hasBitmapDelivery)
+            let count = widget.content.state.presented
+            widget.close(deactivate: false)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.equal(widget.content.state.presented, count)
+            t.check(widget.content.shown.image == nil)
+            t.check(widget.latestPresented == nil)
+            t.equal(host.state, .closed)
+        }
+
+        t.suite("App: Desk Main delivery: released contents repaint the same scene with a new serial") {
+            let widget = try actionFixture(t, recorder: ActionRecorder())
+            guard let host = widget.owner.host, let original = widget.latestPresented else { throw Failure.fixture }
+            let count = widget.content.state.presented, serial = widget.lastPresentationSerial
+            let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
+                                                                 scale: widget.window.backingScaleFactor)
+            let orderedOut = widget.currentFacts()
+            t.check(!orderedOut.isOrderedIn, "the test has not ordered a native window on screen")
+            host.take(orderedOut, input: input); host.frames.releaseUnseen()
+            t.check(AppSelfTest.spin(timeout: 10) { widget.latestPresented == nil && widget.content.shown.image == nil })
+            t.equal(host.scene?.generation, original.scene.generation)
+            host.drawFirstFrame()
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented != nil && !host.frames.hasBitmapDelivery && widget.content.state.presented == count + 1
+            })
+            t.equal(widget.latestPresented?.scene.generation, original.scene.generation)
+            t.equal(host.presented?.scene.generation, original.scene.generation)
+            t.check(widget.lastPresentationSerial > serial)
+        }
     }
 
     private static func reviewRegressionTests(_ t: AppTestRunner) {
@@ -1249,8 +1410,21 @@ enum DeskWidgetWindowSelfTests {
                 toolTip: coveredEntry.toolTip, elementID: ElementID(name: "overlay", index: 999))
             scene.hitMap.entries.insert(overlay, at: 0)
             let origin = SkinPoint(x: -11, y: -17)
-            let covered = DeskProgramHost.Presented(scene: scene, origin: origin, size: original.size, scale: original.scale)
-            widget.handlePresented(covered, session: widget.sessionID, epoch: widget.destinationEpoch)
+            guard let image = widget.content.shown.image, let space = widget.window.colorSpace?.cgColorSpace,
+                  let host = widget.owner.host else { throw Failure.fixture }
+            var captured: SkinBitmapDelivery?
+            let forward = host.frames.requestBitmapDelivery
+            host.frames.requestBitmapDelivery = { request in
+                if case .frame(let frame) = request { captured = frame }
+                forward?(request)
+            }
+            host.refresh(); host.frames.runLoopTurn(.beforeWaiting)
+            guard let captured else { throw Failure.fixture }
+            host.frames.requestBitmapDelivery = forward
+            let covered = SkinBitmapDelivery(frame: SkinFrame(image: image, scale: original.scale), scene: scene,
+                origin: origin, space: space, appearance: scene.environment.appearance.name,
+                panelGeneration: widget.destinationEpoch, serial: captured.serial, lifecycle: captured.lifecycle)
+            widget.handleBitmapRequest(.frame(covered), session: widget.sessionID)
             guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
             let localFrame = NSRect(x: element.frame.x - origin.x, y: element.frame.y - origin.y,
                                    width: element.frame.width, height: element.frame.height)

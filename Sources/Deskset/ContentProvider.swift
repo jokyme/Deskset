@@ -148,12 +148,26 @@ final class LayerContentProvider: ContentProvider {
         lock.lock()
         defer { lock.unlock() }
         guard !isTornDown, !retirementRequested, ownerRoot == nil else { return }
-        transaction {
-            contentLayer.bounds = CGRect(origin: .zero, size: frame.size)
-            contentLayer.contentsScale = frame.scale
-            contentLayer.contents = frame.image
-        }
+        transaction { applyBitmap(frame) }
         presented += 1
+    }
+
+    /// Main has already claimed the delivery and supplies the surrounding disabled-actions transaction. This
+    /// shares the legacy writer's lock/retirement guard, but never starts or flushes an earlier transaction.
+    func presentAccepted(_ frame: SkinFrame) -> Bool {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot == nil else { return false }
+        applyBitmap(frame)
+        presented += 1
+        return true
+    }
+
+    private func applyBitmap(_ frame: SkinFrame) {
+        contentLayer.bounds = CGRect(origin: .zero, size: frame.size)
+        contentLayer.contentsScale = frame.scale
+        contentLayer.contents = frame.image
     }
 
     func setVisible(_ visible: Bool) {
@@ -176,6 +190,16 @@ final class LayerContentProvider: ContentProvider {
         defer { lock.unlock() }
         guard !isTornDown else { return }
         transaction { contentLayer.contents = nil }
+    }
+
+    /// The ordered Main clear belongs to the caller's transaction, just like presentAccepted.
+    func releaseContentsAccepted() -> Bool {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot == nil else { return false }
+        contentLayer.contents = nil
+        return true
     }
 
     func teardown() {

@@ -26,6 +26,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
     private(set) var sessionID = UUID()
     private var factsSequence = 0
     private var lastPresentedGeneration: UInt64 = 0
+    private(set) var lastPresentationSerial: UInt64 = 0
+    private var lastPresentationLifecycle: UInt64 = 0
     private(set) var latestPresented: DeskProgramHost.Presented?
     private(set) var lastUnavailableMessage: String?
     private(set) var lastActionFailure: String?
@@ -91,14 +93,22 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                 return
             }
             hostOwner.start(input: initialInput, facts: initialFacts,
-                            onPresent: { presented, epoch in
+                            onDelivery: { [weak hostOwner] request in
+                                guard let hostOwner else { return }
                                 DispatchQueue.main.async { [weak self] in
-                                    self?.handlePresented(presented, session: currentSession, epoch: epoch)
+                                    self?.handleBitmapRequest(request, session: currentSession)
+                                    // A deallocated window still rejects and acknowledges its outstanding request.
+                                    switch request {
+                                    case .frame(let frame): frame.finishOnMain(accepted: false)
+                                    case .clear(let clear): clear.finishOnMain(accepted: false)
+                                    }
+                                    hostOwner.executor.async { [hostOwner] in hostOwner.finishBitmapRequest(request) }
                                 }
                             },
-                            onUnavailable: { errorDesc, epoch in
+                            onUnavailable: { errorDesc, epoch, invalidation in
                                 DispatchQueue.main.async { [weak self] in
-                                    self?.handleUnavailable(errorDesc, session: currentSession, epoch: epoch)
+                                    self?.handleUnavailable(errorDesc, session: currentSession, epoch: epoch,
+                                                            invalidation: invalidation)
                                 }
                             })
         }
@@ -195,32 +205,70 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Contract: Main accepts didPresent by session/panel/generation; rejects stale queued frames when
-    /// destination/profile/backing change; updates view.frame FIRST, then window frame.
-    func handlePresented(_ presented: DeskProgramHost.Presented, session: UUID, epoch: UInt64) {
+    /// Validate before touching pixels. A request claims its single Main transaction; the owner receives its ACK
+    /// only after the content, view and window have committed together. The direct INI writer does not use this.
+    func handleBitmapRequest(_ request: SkinBitmapRequest, session: UUID) {
         precondition(Thread.isMainThread)
-        guard !isClosing, !isClosed, session == sessionID else { return }
+        switch request {
+        case .frame(let delivery):
+            defer { delivery.finishOnMain(accepted: false) }
+            guard !isClosing, !isClosed, session == sessionID, delivery.state == .pending else { return }
+            // A display notification can still be queued. Read the actual destination now, including its profile.
+            let facts = currentFacts()
+            guard delivery.panelGeneration == destinationEpoch,
+                  delivery.frame.scale == facts.scale, delivery.scene.environment.scale == Double(facts.scale),
+                  delivery.space == facts.colorSpace, facts.colorSpace?.model == .rgb,
+                  delivery.appearance == facts.appearance,
+                  delivery.scene.environment.appearance.name == facts.appearance else {
+                publishFacts()
+                return
+            }
+            guard delivery.serial > lastPresentationSerial, delivery.lifecycle >= lastPresentationLifecycle,
+                  delivery.origin.x.isFinite, delivery.origin.y.isFinite,
+                  delivery.frame.size.width.isFinite, delivery.frame.size.height.isFinite,
+                  delivery.frame.size.width > 0, delivery.frame.size.height > 0 else { return }
+            if delivery.panelGeneration == lastAcceptedEpoch {
+                guard delivery.scene.generation >= lastPresentedGeneration else { return }
+            }
+            guard delivery.claimOnMain() else { return }
+            let presented = DeskProgramHost.Presented(scene: delivery.scene, origin: delivery.origin,
+                                                       size: delivery.frame.size, scale: delivery.frame.scale)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let accepted = content.presentAccepted(delivery.frame)
+            if accepted { resize(for: presented) }
+            CATransaction.commit()
+            guard accepted else { return }
+            lastPresentationSerial = delivery.serial
+            lastPresentationLifecycle = delivery.lifecycle
+            recordPresented(presented, epoch: delivery.panelGeneration)
+            delivery.finishOnMain(accepted: true)
 
-        // Must match current destination epoch
-        guard epoch == destinationEpoch else { return }
-
-        // 1. Generation check: within the same accepted epoch, reject older/same generations.
-        // When transitioning to a new epoch (epoch > lastAcceptedEpoch), redraw with same generation is accepted.
-        if epoch == lastAcceptedEpoch {
-            guard presented.scene.generation > lastPresentedGeneration else { return }
+        case .clear(let invalidation):
+            defer { invalidation.finishOnMain(accepted: false) }
+            guard !isClosing, !isClosed, session == sessionID else { return }
+            _ = currentFacts()
+            guard invalidation.panelGeneration == destinationEpoch else {
+                publishFacts()
+                return
+            }
+            guard invalidation.serial > lastPresentationSerial,
+                  invalidation.lifecycle >= lastPresentationLifecycle,
+                  invalidation.claimOnMain() else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let accepted = content.releaseContentsAccepted()
+            CATransaction.commit()
+            guard accepted else { return }
+            lastPresentationSerial = invalidation.serial
+            lastPresentationLifecycle = invalidation.lifecycle
+            latestPresented = nil
+            view.clearAccessibility()
+            invalidation.finishOnMain(accepted: true)
         }
+    }
 
-        // 2. Reject stale destination / backing scale / color space model
-        guard presented.scale == window.backingScaleFactor,
-              presented.size.width.isFinite, presented.size.height.isFinite,
-              presented.size.width > 0, presented.size.height > 0,
-              presented.scene.environment.appearance.name == window.effectiveAppearance.name.rawValue,
-              let colorSpace = window.colorSpace?.cgColorSpace,
-              colorSpace.model == .rgb else {
-            publishFacts()
-            return
-        }
-
+    private func recordPresented(_ presented: DeskProgramHost.Presented, epoch: UInt64) {
         latestPresented = presented
         lastPresentedGeneration = presented.scene.generation
         lastAcceptedEpoch = epoch
@@ -229,10 +277,24 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         view.toolTip = nil
         view.setAccessibilityLabel(nil)
 
-        // 1. First update view.frame
-        view.frame = NSRect(origin: .zero, size: presented.size)
+        // Shown and active intent are written only after the complete first transaction is accepted.
+        if !isStarted {
+            isStarted = true
+            if app.presentsWindows { window.orderFront(nil) }
+            let pos = WindowGeometry.topLeft(of: window.frame, primaryHeight: WindowGeometry.primaryHeight(WindowGeometry.currentScreens()))
+            app.state.updateDeskInstance(instance.id) {
+                $0.active = true
+                $0.x = pos.x
+                $0.y = pos.y
+            }
+            publishFacts()
+        }
+        view.refreshAccessibility()
+    }
 
-        // 2. Then update window frame
+    private func resize(for presented: DeskProgramHost.Presented) {
+        // The view's geometry precedes its containing window in the same disabled-actions transaction.
+        view.frame = NSRect(origin: .zero, size: presented.size)
         let screens = WindowGeometry.currentScreens()
         let ph = WindowGeometry.primaryHeight(screens)
         let newFrame: CGRect
@@ -253,39 +315,30 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         }
 
         window.setFrame(newFrame, display: false)
-
-        // Contract: Shown and active written only after first successful frame presentation accepted by Main
-        if !isStarted {
-            isStarted = true
-            if app.presentsWindows {
-                window.orderFront(nil)
-            }
-            let pos = WindowGeometry.topLeft(of: newFrame, primaryHeight: ph)
-            app.state.updateDeskInstance(instance.id) {
-                $0.active = true
-                $0.x = pos.x
-                $0.y = pos.y
-            }
-            // After being shown, publish real visible facts
-            publishFacts()
-        }
-        view.refreshAccessibility()
     }
 
     /// Contract: Filter stale sessions, clear Main accepted presentation, localized visible UI feedback, keep active intent.
-    func handleUnavailable(_ errorDesc: String, session: UUID, epoch: UInt64) {
+    func handleUnavailable(_ errorDesc: String, session: UUID, epoch: UInt64,
+                           invalidation: SkinBitmapInvalidation? = nil) {
         precondition(Thread.isMainThread)
         guard !isClosing, !isClosed, session == sessionID else { return }
 
         // Reject stale unavailable reports from mismatched destination epoch
         guard epoch == destinationEpoch else { return }
+        if let invalidation {
+            guard invalidation.state == .finished(accepted: true),
+                  invalidation.serial == lastPresentationSerial,
+                  invalidation.lifecycle == lastPresentationLifecycle else { return }
+        }
 
         latestPresented = nil
         view.clearAccessibility()
         let localizedMessage = localizedUnavailableDescription(errorDesc)
+        let changed = lastUnavailableMessage != localizedMessage
         lastUnavailableMessage = localizedMessage
         view.toolTip = localizedMessage
         view.setAccessibilityLabel(localizedMessage)
+        guard changed else { return }
         Log.write("Desk widget unavailable (\(source.entry)): \(localizedMessage)", level: .warning)
         if !isStarted {
             app.alert(StudioText[.deskWidgetUnavailable], localizedMessage, style: .warning)
@@ -491,8 +544,8 @@ final class DeskWidgetHostOwner {
     }
 
     func start(input: DeskProgramHost.Input, facts: SkinWindowFacts,
-               onPresent: @escaping (DeskProgramHost.Presented, UInt64) -> Void,
-               onUnavailable: @escaping (String, UInt64) -> Void) {
+               onDelivery: @escaping (SkinBitmapRequest) -> Void,
+               onUnavailable: @escaping (String, UInt64, SkinBitmapInvalidation?) -> Void) {
         precondition(executor.isCurrent)
         guard !isClosed else {
             prepared?.removeCopies()
@@ -508,13 +561,15 @@ final class DeskWidgetHostOwner {
                 readyHost.close()
                 return
             }
-            readyHost.didPresent = { [weak self] presented in
+            readyHost.frames.requestBitmapDelivery = { [weak self] request in
                 guard let self else { return }
-                onPresent(presented, self.currentEpoch)
-            }
-            readyHost.didBecomeUnavailable = { [weak self] errorDesc in
-                guard let self else { return }
-                onUnavailable(errorDesc, self.currentEpoch)
+                onDelivery(request)
+                // Each replacement clear inherits the current failure. A second failed capture can supersede
+                // the first clear before Main runs; binding only the first error callback would lose feedback.
+                if case .clear(let invalidation) = request, let state = self.host?.state,
+                   case .unavailable(let message) = state {
+                    onUnavailable(message, self.currentEpoch, invalidation)
+                }
             }
             self.host = readyHost
             readyHost.take(facts, input: input)
@@ -523,7 +578,16 @@ final class DeskWidgetHostOwner {
         } catch {
             prepared?.removeCopies()
             prepared = nil
-            onUnavailable(String(describing: error), currentEpoch)
+            onUnavailable(String(describing: error), currentEpoch, nil)
+        }
+    }
+
+    func finishBitmapRequest(_ request: SkinBitmapRequest) {
+        precondition(executor.isCurrent)
+        guard let host else { return }
+        switch request {
+        case .frame(let delivery): host.frames.finishBitmapDelivery(delivery)
+        case .clear(let invalidation): host.frames.finishBitmapInvalidation(invalidation)
         }
     }
 

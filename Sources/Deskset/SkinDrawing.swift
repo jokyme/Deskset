@@ -422,6 +422,19 @@ final class SkinFrameProducer {
     enum BitmapResult { case presented(SkinBitmapDrawing.Capture), failed }
     /// Synchronous on the producer's owner, after presentation or a failed bitmap. Callers capture owners weakly.
     var bitmapResult: ((BitmapResult) -> Void)?
+    /// Opt-in immutable Main delivery. Without it, bitmap owners keep their direct presentation contract.
+    var requestBitmapDelivery: ((SkinBitmapRequest) -> Void)?
+    private struct PendingBitmap {
+        let delivery: SkinBitmapDelivery
+        let capture: SkinBitmapDrawing.Capture
+        let began: TimeInterval
+        let forShowing: Bool
+    }
+    private var pendingBitmap: PendingBitmap?
+    private var pendingBitmapInvalidation: SkinBitmapInvalidation?
+    private var bitmapSerial: UInt64 = 0
+    private var bitmapLifecycle: UInt64 = 0
+    var hasBitmapDelivery: Bool { pendingBitmap != nil }
     private let workActivity: SkinWorkWatchdog.Activity?
 
     /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
@@ -550,6 +563,7 @@ final class SkinFrameProducer {
 
     /// The skin closed: no more frames.
     func stop() {
+        cancelBitmapDelivery()
         isStopped = true
         let endedNativeStage = stopNativeStage()
         needsFrame = false
@@ -573,11 +587,77 @@ final class SkinFrameProducer {
     /// Layer publication and legacy owners keep their own existing release and last-good-frame contracts.
     func clearBitmapContents() {
         precondition(contentMode == .bitmap)
+        cancelBitmapDelivery()
         needsFrame = false
         drawnForShowing = false
         drawing.releaseKept()
-        provider?.releaseContents()
+        if requestBitmapDelivery != nil { requestBitmapClear() }
+        else { provider?.releaseContents() }
         contentsReleased = true
+    }
+
+    /// Owner only. A claimed frame keeps its capture until Main finishes; no owner work waits for that ACK.
+    private func cancelBitmapDelivery(cancelClear: Bool = true) {
+        guard requestBitmapDelivery != nil else { return }
+        bitmapLifecycle &+= 1
+        if let pendingBitmap, pendingBitmap.delivery.cancel() { self.pendingBitmap = nil }
+        if cancelClear {
+            pendingBitmapInvalidation?.cancel()
+            pendingBitmapInvalidation = nil
+        }
+    }
+
+    private func requestBitmapClear() {
+        guard let requestBitmapDelivery else { return }
+        pendingBitmapInvalidation?.cancel()
+        bitmapSerial &+= 1
+        let clear = SkinBitmapInvalidation(panelGeneration: panelGeneration, serial: bitmapSerial,
+                                          lifecycle: bitmapLifecycle)
+        pendingBitmapInvalidation = clear
+        requestBitmapDelivery(.clear(clear))
+    }
+
+    /// FIFO ACK after the Main transaction. Serial identity permits redraw of the same scene generation after
+    /// releasing pixels; an invalidated or stopped delivery never advances owner presentation metadata.
+    func finishBitmapDelivery(_ delivery: SkinBitmapDelivery) {
+        precondition(executor?.isCurrent == true)
+        guard let pending = pendingBitmap, pending.delivery === delivery else { return }
+        let accepted: Bool
+        switch delivery.state {
+        case .pending, .applying: return
+        case .finished(let value): accepted = value
+        case .cancelled: accepted = false
+        }
+        pendingBitmap = nil
+        let forShowing = pending.forShowing
+        defer {
+            if !isStopped, needsFrame {
+                executor?.async { [weak self] in
+                    guard let self else { return }
+                    if forShowing && (framesDrawn == 0 || contentsReleased) { drawFirstFrame() }
+                    else { runLoopTurn(.beforeWaiting) }
+                }
+            }
+        }
+        guard !isStopped, delivery.lifecycle == bitmapLifecycle,
+              delivery.panelGeneration == panelGeneration else { return }
+        if accepted {
+            recordPresented(began: pending.began, source: pending.capture.source)
+            if pending.forShowing && !isOrderedIn { drawnForShowing = true }
+            bitmapResult?(.presented(pending.capture))
+        } else {
+            setNeedsFrame()
+        }
+    }
+
+    func finishBitmapInvalidation(_ invalidation: SkinBitmapInvalidation) {
+        precondition(executor?.isCurrent == true)
+        guard pendingBitmapInvalidation === invalidation else { return }
+        switch invalidation.state {
+        case .pending, .applying: return
+        case .finished(accepted: false): return // Keep the clear owed, but retry only when new facts arrive.
+        case .finished(accepted: true), .cancelled: pendingBitmapInvalidation = nil
+        }
     }
 
     /// Whether the window can be seen, as far as its facts tell.
@@ -596,6 +676,11 @@ final class SkinFrameProducer {
     /// The window's facts, as the runtime's window model took them.
     func take(_ facts: SkinWindowFacts?) {
         guard let facts, !isStopped else { return }
+        let destinationChanged = panelGeneration != facts.panelGeneration || actualSpace != facts.colorSpace
+            || (facts.scale > 0 && facts.scale.isFinite && facts.scale != scale) || facts.appearance != appearance
+        let hadBitmapDelivery = pendingBitmap != nil
+        let hadBitmapInvalidation = pendingBitmapInvalidation != nil
+        if destinationChanged { cancelBitmapDelivery() }
         explicitlyHidden = facts.settings.hidden
         if explicitlyHidden { cancelNativeStage() }
         var redraw = false
@@ -630,8 +715,11 @@ final class SkinFrameProducer {
         }
         isOrderedIn = facts.isOrderedIn
         isUnoccluded = facts.isVisible
+        if requestBitmapDelivery != nil, hadBitmapInvalidation,
+           destinationChanged || pendingBitmapInvalidation?.state == .finished(accepted: false) { requestBitmapClear() }
         // Before the first frame there is nothing to draw again: the skin's first redraw asks for it.
-        if redraw && (framesDrawn > 0 || contentMode.usesLayers) { setNeedsFrame() }
+        if redraw && (framesDrawn > 0 || contentMode.usesLayers || hadBitmapDelivery) { setNeedsFrame() }
+        if destinationChanged, requestBitmapDelivery != nil, framesDrawn > 0 || hadBitmapDelivery { setNeedsFrame() }
         let seen = canBeSeen
         if seen != toldVisible {
             toldVisible = seen
@@ -654,12 +742,16 @@ final class SkinFrameProducer {
     /// Lets go of what a window that cannot be seen does not need (tests call it at once).
     func releaseUnseen() {
         guard !isStopped, !canBeSeen else { return }
+        let hadBitmapDelivery = pendingBitmap != nil
+        let owedBitmapFrame = hadBitmapDelivery && !contentsReleased
+        cancelBitmapDelivery(cancelClear: false)
+        if owedBitmapFrame { setNeedsFrame() }
         cancelNativeStage()
         if drawing.keepsPictures {
             drawing.releaseKept()
             releases.pictures += 1
         }
-        if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
+        if !isOrderedIn && (framesDrawn > 0 || hadBitmapDelivery) && !contentsReleased, let provider {
             guard pendingScenePatch == nil, layerRuntime?.nativePublicationHoldsWriter != true else {
                 releaseAfterWriter = true
                 return
@@ -669,7 +761,8 @@ final class SkinFrameProducer {
                 catch { layerFailure = .rendering(String(describing: error)); return }
                 (provider as? LayerContentProvider)?.releaseLayerFrame()
             }
-            provider.releaseContents()
+            if requestBitmapDelivery != nil { requestBitmapClear() }
+            else { provider.releaseContents() }
             contentsReleased = true
             releases.contents += 1
         }
@@ -681,7 +774,7 @@ final class SkinFrameProducer {
     func drawFirstFrame() {
         guard framesDrawn == 0 || contentsReleased, !isStopped else { return }
         let before = framesDrawn
-        draw()
+        draw(forShowing: true)
         if framesDrawn > before { drawnForShowing = true }
     }
 
@@ -714,9 +807,9 @@ final class SkinFrameProducer {
     }
 
     /// Draws the skin as it is now and presents it; a picture that cannot be made keeps the last one on screen.
-    private func draw() {
+    private func draw(forShowing: Bool = false) {
         // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
-        guard pendingScenePatch == nil else { return }
+        guard pendingScenePatch == nil, pendingBitmap == nil else { return }
         let nativeStage: SkinNativeStage?
         if let stage = pendingNativeStage, stage.nativeFramesReady,
            layerRuntime?.nativePublicationHoldsWriter == true, !stage.hasPublicationRollback,
@@ -773,8 +866,29 @@ final class SkinFrameProducer {
                 { ctx in validate(capture, ctx) }
             })
         }
-        guard let picture else { bitmapResult?(.failed); return }
-        provider.present(SkinFrame(image: picture, scale: scale))
+        guard let picture else {
+            if requestBitmapDelivery != nil {
+                cancelBitmapDelivery()
+                drawing.releaseKept()
+                requestBitmapClear()
+                contentsReleased = true
+            }
+            bitmapResult?(.failed)
+            return
+        }
+        let frame = SkinFrame(image: picture, scale: scale)
+        if let requestBitmapDelivery, let captured {
+            pendingBitmapInvalidation?.cancel()
+            pendingBitmapInvalidation = nil
+            bitmapSerial &+= 1
+            let delivery = SkinBitmapDelivery(frame: frame, scene: captured.scene, origin: captured.origin,
+                space: space, appearance: appearance, panelGeneration: panelGeneration,
+                serial: bitmapSerial, lifecycle: bitmapLifecycle)
+            pendingBitmap = PendingBitmap(delivery: delivery, capture: captured, began: began, forShowing: forShowing)
+            requestBitmapDelivery(.frame(delivery))
+            return
+        }
+        provider.present(frame)
         recordPresented(began: began, source: source)
         if let captured { bitmapResult?(.presented(captured)) }
     }
