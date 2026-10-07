@@ -465,7 +465,14 @@ public struct PositionedNode: Sendable {
     public var rangeWithLeadingTrivia: Range<Int> { offset..<textRange.upperBound }
 
     public func firstChild(_ kind: SyntaxKind) -> PositionedNode? {
-        childNodes.first { $0.kind == kind }
+        var at = offset
+        for child in node.children {
+            if case .node(let n) = child, n.kind == kind {
+                return PositionedNode(node: n, offset: at)
+            }
+            at += child.byteLength
+        }
+        return nil
     }
 
     public func children(_ kind: SyntaxKind) -> [PositionedNode] {

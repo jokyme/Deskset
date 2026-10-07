@@ -249,6 +249,64 @@ func runDeskParserTests(_ t: TestRunner) {
         t.check(SyntaxSlot.allCases.allSatisfy { $0.rawValue.hasPrefix("slot:") })
     }
 
+    t.suite("Desk: parser — direct child lookup preserves positions and identity") {
+        let prefix = Token(kind: .identifier, text: "甲😀", leadingTrivia: [.newline(.crlf)], trailingTrivia: [.spaces(2)])
+        let nested = SyntaxNode(kind: .identifierExpr, children: [.token(Token(kind: .identifier, text: "inside"))])
+        let recovery = SyntaxNode(kind: .unexpected, children: [.node(nested)])
+        let empty = SyntaxNode(kind: .callee, children: [])
+        let missing = SyntaxNode(kind: .numberLiteral, children: [.token(.missing(.number))])
+        let present = SyntaxNode(kind: .numberLiteral,
+                                 children: [.token(Token(kind: .number, text: "13", leadingTrivia: [.spaces(1)]))])
+        let parent = PositionedNode(node: SyntaxNode(kind: .block, children: [
+            .token(prefix), .node(recovery), .token(.missing(.comma)), .node(empty), .node(missing), .node(present),
+        ]), offset: 17)
+        t.equal(prefix.utf8Length, 11, "CRLF, Unicode and trailing trivia all count in UTF-8 bytes")
+        t.check(parent.firstChild(.unexpected)?.node === recovery, "recovery nodes remain selectable")
+        t.equal(parent.firstChild(.unexpected)?.offset, 28)
+        t.check(parent.firstChild(.callee)?.node === empty, "empty direct nodes remain selectable")
+        t.equal(parent.firstChild(.callee)?.range, 34..<34)
+        t.check(parent.firstChild(.numberLiteral)?.node === missing, "the first same-kind node wins even if missing")
+        t.equal(parent.firstChild(.numberLiteral)?.range, 34..<34)
+        t.equal(parent.firstChild(.identifierExpr)?.kind, nil, "a matching descendant is not a direct child")
+        t.equal(parent.firstChild(.argumentClause)?.kind, nil)
+        let repeated = PositionedNode(node: SyntaxNode(kind: .block, children: [
+            .token(prefix), .node(present), .node(missing),
+        ]), offset: 17)
+        t.check(repeated.firstChild(.numberLiteral)?.node === present, "the existing first node is returned, not copied")
+        t.equal(repeated.firstChild(.numberLiteral)?.range, 28..<31)
+        t.equal(repeated.firstChild(.numberLiteral)?.textRange, 29..<31)
+        t.equal(PositionedNode(node: empty, offset: 17).firstChild(.callee)?.kind, nil)
+        let tokenOnly = PositionedNode(node: SyntaxNode(kind: .block, children: [.token(prefix)]), offset: 17)
+        t.equal(tokenOnly.firstChild(.identifierExpr)?.kind, nil)
+
+        let source = "widget {\r\n    Text(\"甲😀\").font(13)\r\n    Text(\"second\")\r\n}\r\n"
+        let tree = deskParse(source)
+        let version = tree.version
+        guard let widget = tree.rootNode.firstChild(.widgetBlock), let block = widget.firstChild(.block),
+              let call = block.firstChild(.callStmt), let modifier = call.firstChild(.modifierApp),
+              let clause = modifier.firstChild(.argumentClause), let argument = clause.firstChild(.argument),
+              let number = argument.firstChild(.numberLiteral) else {
+            t.check(false, "the parsed direct-child slots remain available")
+            return
+        }
+        t.equal(tree.diagnostics.map(\.description), [])
+        t.check(call.node === block.childNodes.first?.node, "the first parsed call keeps its node identity")
+        t.equal(CallStmtSyntax(call)?.callee.path, ["Text"])
+        let start = "widget {\r\n    Text(\"甲😀\").font(".utf8.count
+        t.equal(number.offset, start)
+        t.equal(number.textRange, start..<(start + 2))
+        let id = tree.id(of: number)
+        t.equal(id, NodeID(kind: .numberLiteral, utf8Start: start, treeVersion: version, utf8End: start + 2))
+        t.check(tree.resolve(id)?.node === number.node)
+        t.equal(tree.resolve(id)?.range, number.range)
+        t.equal(tree.quickResolve(id)?.range, number.range)
+        t.equal(block.firstChild(.numberLiteral)?.kind, nil, "parsed lookups also stop at direct children")
+        t.equal(tree.version, version)
+        let other = deskParse(source)
+        t.check(other.version > version)
+        t.equal(other.resolve(id)?.kind, nil, "lookup does not weaken the source version boundary")
+    }
+
     t.suite("Desk: parser — canonical expression references and types") {
         func nodes(_ tree: SyntaxTree, kind: SyntaxKind) -> [PositionedNode] {
             var found: [PositionedNode] = []
