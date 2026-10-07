@@ -113,6 +113,7 @@ struct StaticProgramCompiler {
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         var onClick: [ProgramAssignment]?
         var onClickActions: [ProgramAction]?
+        var onRightClickActions: [ProgramAction]?
         for modifier in call.modifiers {
             if modifier.name.token.text == "font" {
                 guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("font")),
@@ -137,11 +138,17 @@ struct StaticProgramCompiler {
                 try rootOnLoad(modifier, element: node)
                 continue
             }
-            if modifier.name.token.text == "onClick" {
-                guard onClick == nil, onClickActions == nil, facts.component == "Text" || solidShape else {
-                    throw issue(.unsupported, modifier.node, "Only Text and basic shape onClick actions are implemented")
+            if ["onClick", "onRightClick"].contains(modifier.name.token.text) {
+                let primary = modifier.name.token.text == "onClick"
+                guard (primary ? onClick == nil && onClickActions == nil : onRightClickActions == nil),
+                      facts.component == "Text" || solidShape else {
+                    throw issue(.unsupported, modifier.node, "Only Text and basic shape primary/secondary click actions are implemented")
                 }
                 let actions = try clickActions(modifier, kind: facts.kind)
+                if !primary {
+                    onRightClickActions = actions
+                    continue
+                }
                 let assignments = actions.compactMap { action -> ProgramAssignment? in
                     if case .assign(let assignment) = action { return assignment }
                     return nil
@@ -321,18 +328,26 @@ struct StaticProgramCompiler {
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
                               idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
-                              stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions)
+                              stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
+                              onRightClickActions: onRightClickActions)
     }
 
     private mutating func clickActions(_ modifier: ModifierAppSyntax, kind: ElementKind) throws -> [ProgramAction] {
         let identity = checked.tree.id(of: modifier.node)
-        guard checked.symbols[identity] == .builtIn(.modifier("onClick")),
-              let spec = catalog.modifier(named: "onClick"), spec.appliesTo.contains(kind),
-              spec.event == EventSpec(runtimeEvent: "leftMouseUp", userInitiated: true, eventRecord: "Event"),
+        let name = modifier.name.token.text
+        let runtimeEvent: String
+        switch name {
+        case "onClick": runtimeEvent = "leftMouseUp"
+        case "onRightClick": runtimeEvent = "rightMouseUp"
+        default: throw issue(.invalidCheckedModel, modifier.node, "Unsupported checked click event")
+        }
+        guard checked.symbols[identity] == .builtIn(.modifier(name)),
+              let spec = catalog.modifier(named: name), spec.appliesTo.contains(kind),
+              spec.event == EventSpec(runtimeEvent: runtimeEvent, userInitiated: true, eventRecord: "Event"),
               spec.timing == nil, case .actions(required: true) = spec.block,
               spec.signatures.count == 1, spec.signatures[0].params.isEmpty,
               (modifier.arguments?.arguments ?? []).isEmpty, let block = modifier.block else {
-            throw issue(.invalidCheckedModel, modifier.node, "Missing checked built-in onClick contract")
+            throw issue(.invalidCheckedModel, modifier.node, "Missing checked built-in \(name) contract")
         }
         let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
         guard clickActionCount <= limit, onLoad.count <= limit - clickActionCount,
@@ -353,7 +368,7 @@ struct StaticProgramCompiler {
               call.block == nil, call.modifiers.isEmpty,
               let arguments = call.arguments?.arguments, arguments.count == 1,
               arguments[0].label == nil else {
-            throw issue(.unsupported, statement, "Only session variable assignments, copy and open are implemented in onClick")
+            throw issue(.unsupported, statement, "Only session variable assignments, copy and open are implemented in click events")
         }
         guard checked.symbols[checked.tree.id(of: call.callee.node)] == .builtIn(.function(name)) else {
             throw issue(.invalidCheckedModel, call.callee.node, "Missing checked built-in action identity")

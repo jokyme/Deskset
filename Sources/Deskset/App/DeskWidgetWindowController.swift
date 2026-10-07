@@ -316,20 +316,28 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
     func sendPrimaryRelease(at point: SkinPoint) {
         guard let token = issueClickToken() else { return }
-        enqueuePrimaryRelease(at: point, token: token, pressBeforeRelease: false)
+        enqueueRelease(at: point, token: token, pressBeforeRelease: false, event: .leftUp)
     }
 
-    private func enqueuePrimaryRelease(at point: SkinPoint, token: DeskWidgetClickToken, pressBeforeRelease: Bool) {
+    func sendSecondaryRelease(at point: SkinPoint) {
+        guard let token = issueClickToken() else { return }
+        enqueueRelease(at: point, token: token, pressBeforeRelease: false, event: .rightUp)
+    }
+
+    private func enqueueRelease(at point: SkinPoint, token: DeskWidgetClickToken, pressBeforeRelease: Bool,
+                                event: MouseEventKind) {
         let hostOwner = owner
         executor.async { [hostOwner] in
             if pressBeforeRelease {
                 hostOwner.primaryPress(at: point, expectedGeneration: token.sourceGeneration, epoch: token.epoch)
             }
-            hostOwner.primaryRelease(at: point, token: token) { returnedToken, effects in
+            let receive: (DeskWidgetClickToken, [ProgramEffect]) -> Void = { returnedToken, effects in
                 DispatchQueue.main.async { [weak self] in
                     self?.handleEffects(effects, token: returnedToken, issuedToken: token)
                 }
             }
+            if event == .leftUp { hostOwner.primaryRelease(at: point, token: token, onEffects: receive) }
+            else { hostOwner.secondaryRelease(at: point, token: token, onEffects: receive) }
         }
     }
 
@@ -349,7 +357,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         guard point.x.isFinite, point.y.isFinite, let token = issueClickToken(),
               token.session == child.session, token.epoch == child.epoch,
               token.sourceGeneration == child.generation else { return false }
-        enqueuePrimaryRelease(at: point, token: token, pressBeforeRelease: true)
+        enqueueRelease(at: point, token: token, pressBeforeRelease: true, event: .leftUp)
         return true
     }
 
@@ -469,6 +477,8 @@ final class DeskWidgetHostOwner {
     private(set) var isClosed = false
 
     private(set) var currentEpoch: UInt64 = 0
+    private var primaryPressEpoch: UInt64?
+    private var secondaryPressEpoch: UInt64?
 
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider,
          prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String) {
@@ -520,35 +530,78 @@ final class DeskWidgetHostOwner {
     func take(_ facts: SkinWindowFacts, input: DeskProgramHost.Input) {
         precondition(executor.isCurrent)
         guard !isClosed else { return }
+        if currentEpoch != facts.panelGeneration {
+            host?.primaryRelease(at: nil)
+            host?.secondaryRelease(at: nil)
+            primaryPressEpoch = nil
+            secondaryPressEpoch = nil
+        }
         currentEpoch = facts.panelGeneration
         host?.take(facts, input: input)
         host?.drawFirstFrame()
     }
 
     func primaryPress(at point: SkinPoint, expectedGeneration: UInt64, epoch: UInt64? = nil) {
+        press(at: point, expectedGeneration: expectedGeneration, epoch: epoch, event: .leftUp)
+    }
+
+    func secondaryPress(at point: SkinPoint, expectedGeneration: UInt64, epoch: UInt64? = nil) {
+        press(at: point, expectedGeneration: expectedGeneration, epoch: epoch, event: .rightUp)
+    }
+
+    private func press(at point: SkinPoint, expectedGeneration: UInt64, epoch: UInt64?, event: MouseEventKind) {
         precondition(executor.isCurrent)
+        cancelPress(event)
         guard !isClosed, let host, host.scene?.generation == expectedGeneration else { return }
         if let epoch, epoch != currentEpoch { return }
-        host.primaryPress(at: point)
+        if event == .leftUp { host.primaryPress(at: point); primaryPressEpoch = currentEpoch }
+        else { host.secondaryPress(at: point); secondaryPressEpoch = currentEpoch }
     }
 
     func primaryRelease(at point: SkinPoint?, expectedGeneration: UInt64?) {
+        release(at: point, expectedGeneration: expectedGeneration, event: .leftUp)
+    }
+
+    func secondaryRelease(at point: SkinPoint?, expectedGeneration: UInt64?) {
+        release(at: point, expectedGeneration: expectedGeneration, event: .rightUp)
+    }
+
+    private func release(at point: SkinPoint?, expectedGeneration: UInt64?, event: MouseEventKind) {
         precondition(executor.isCurrent)
         guard !isClosed, let host else { return }
-        if let expectedGeneration, host.scene?.generation != expectedGeneration { return }
-        host.primaryRelease(at: point)
+        if let expectedGeneration, host.scene?.generation != expectedGeneration { cancelPress(event); return }
+        if event == .leftUp { host.primaryRelease(at: point); primaryPressEpoch = nil }
+        else { host.secondaryRelease(at: point); secondaryPressEpoch = nil }
     }
 
     func primaryRelease(at point: SkinPoint, token: DeskWidgetClickToken,
                         onEffects: (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
+        release(at: point, token: token, event: .leftUp, onEffects: onEffects)
+    }
+
+    func secondaryRelease(at point: SkinPoint, token: DeskWidgetClickToken,
+                          onEffects: (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
+        release(at: point, token: token, event: .rightUp, onEffects: onEffects)
+    }
+
+    private func release(at point: SkinPoint, token: DeskWidgetClickToken, event: MouseEventKind,
+                         onEffects: (DeskWidgetClickToken, [ProgramEffect]) -> Void) {
         precondition(executor.isCurrent)
         guard !isClosed, let host else { return }
-        guard token.epoch == currentEpoch, token.sourceGeneration == host.scene?.generation,
+        let pressEpoch = event == .leftUp ? primaryPressEpoch : secondaryPressEpoch
+        guard token.epoch == currentEpoch, token.epoch == pressEpoch, token.sourceGeneration == host.scene?.generation,
               token.sourceGeneration == host.presented?.scene.generation else {
-            host.primaryRelease(at: nil)
+            cancelPress(event)
             return
         }
-        if let effects = host.primaryRelease(at: point), !effects.isEmpty { onEffects(token, effects) }
+        let effects = event == .leftUp ? host.primaryRelease(at: point) : host.secondaryRelease(at: point)
+        if event == .leftUp { primaryPressEpoch = nil } else { secondaryPressEpoch = nil }
+        if let effects, !effects.isEmpty { onEffects(token, effects) }
+    }
+
+    private func cancelPress(_ event: MouseEventKind) {
+        if event == .leftUp { host?.primaryRelease(at: nil); primaryPressEpoch = nil }
+        else { host?.secondaryRelease(at: nil); secondaryPressEpoch = nil }
     }
 
     func notifyPowerChange() {
@@ -570,6 +623,8 @@ final class DeskWidgetHostOwner {
             return
         }
         isClosed = true
+        primaryPressEpoch = nil
+        secondaryPressEpoch = nil
         host?.close()
         host = nil
         prepared?.removeCopies()
@@ -585,6 +640,10 @@ final class DeskWidgetView: NSView {
     private var dragStart: NSPoint?
     private var windowOrigin: NSPoint?
     private var dragged = false
+    private var primaryGesture: (event: MouseEventKind, session: UUID, epoch: UInt64)?
+    private var secondaryGesture: (session: UUID, epoch: UInt64)?
+    /// Self-tests intercept the real constructed menu instead of entering AppKit's modal menu tracking loop.
+    var contextMenuPresenterForTesting: ((NSMenu, NSEvent) -> Void)?
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
@@ -599,7 +658,7 @@ final class DeskWidgetView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         setAccessibilityLabel(controller.program.name)
-        let clickable = Set(presented.scene.hitMap.entries.compactMap(\.elementID))
+        let clickable = Set(presented.scene.hitMap.entries.filter { $0.action(.leftUp) != .absent }.compactMap(\.elementID))
         var parts: [DeskWidgetTextAccessibilityElement] = []
         for element in presented.scene.elements where element.visibility == .visible && clickable.contains(element.id) {
             // ProgramRuntime stores a Text's sole projected TextDraw directly on the same SceneElement ID.
@@ -653,10 +712,18 @@ final class DeskWidgetView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let controller, !controller.isClosing, !controller.isClosed else { return }
+        if let previous = primaryGesture { cancelPointer(previous.event) }
+        primaryGesture = nil
+        dragStart = nil
+        dragged = false
         if event.modifierFlags.contains(.control) {
-            showContextMenu(with: event)
+            cancelPointer(.leftUp)
+            if let press = beginSecondaryPress(with: event) {
+                primaryGesture = (.rightUp, press.session, press.epoch)
+            }
             return
         }
+        primaryGesture = (.leftUp, controller.sessionID, controller.lastAcceptedEpoch)
         dragStart = NSEvent.mouseLocation
         windowOrigin = window?.frame.origin
         dragged = false
@@ -676,7 +743,14 @@ final class DeskWidgetView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if primaryGesture?.event == .rightUp {
+            primaryGesture = nil
+            cancelPointer(.rightUp)
+            return
+        }
         guard let controller, !controller.isClosing, !controller.isClosed,
+              let press = primaryGesture, press.session == controller.sessionID,
+              press.epoch == controller.destinationEpoch,
               let start = dragStart, let origin = windowOrigin, let window else { return }
         let now = NSEvent.mouseLocation
         let dx = now.x - start.x, dy = now.y - start.y
@@ -696,7 +770,21 @@ final class DeskWidgetView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let press = primaryGesture
+        primaryGesture = nil
         guard let controller, !controller.isClosing, !controller.isClosed else {
+            dragStart = nil
+            dragged = false
+            return
+        }
+        guard let press else { return }
+        if press.event == .rightUp {
+            endSecondaryPress(with: event, session: press.session, epoch: press.epoch)
+            return
+        }
+        guard press.session == controller.sessionID, press.epoch == controller.destinationEpoch,
+              press.epoch == controller.lastAcceptedEpoch else {
+            cancelPointer(.leftUp)
             dragStart = nil
             dragged = false
             return
@@ -714,17 +802,90 @@ final class DeskWidgetView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        showContextMenu(with: event)
+        secondaryGesture = beginSecondaryPress(with: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        secondaryGesture = nil
+        cancelPointer(.rightUp)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        let press = secondaryGesture
+        secondaryGesture = nil
+        guard let press else { return }
+        endSecondaryPress(with: event, session: press.session, epoch: press.epoch)
+    }
+
+    private func pointerPresentation() -> DeskProgramHost.Presented? {
+        guard acceptsPointerMenu(), let controller,
+              controller.lastAcceptedEpoch == controller.destinationEpoch else { return nil }
+        return controller.latestPresented
+    }
+
+    private func acceptsPointerMenu() -> Bool {
+        guard let controller, !controller.isClosing, !controller.isClosed,
+              !isHiddenOrHasHiddenAncestor, !controller.window.ignoresMouseEvents,
+              !controller.app.presentsWindows || (controller.window.isVisible && controller.window.occlusionState.contains(.visible)) else {
+            return false
+        }
+        // The native component menu remains reachable while a program fails or a new destination awaits its
+        // first picture. It uses the living Main window, never a stale program hit or viewport mapping.
+        return true
+    }
+
+    private func beginSecondaryPress(with event: NSEvent) -> (session: UUID, epoch: UInt64)? {
+        cancelPointer(.rightUp)
+        guard let controller, acceptsPointerMenu() else { return nil }
+        guard let presented = pointerPresentation() else { showContextMenu(with: event); return nil }
+        let local = convert(event.locationInWindow, from: nil)
+        let point = SkinPoint(x: local.x, y: local.y)
+        let hit = presented.scene.hitMap.entry(at: point.x + presented.origin.x, point.y + presented.origin.y,
+                                                handling: .rightUp, images: nil)
+        guard !event.modifierFlags.contains(.option), hit != nil else {
+            showContextMenu(with: event)
+            return nil
+        }
+        let epoch = controller.lastAcceptedEpoch
+        controller.executor.async { [owner = controller.owner] in
+            owner.secondaryPress(at: point, expectedGeneration: presented.scene.generation, epoch: epoch)
+        }
+        return (controller.sessionID, epoch)
+    }
+
+    private func endSecondaryPress(with event: NSEvent, session: UUID, epoch: UInt64) {
+        guard let controller, session == controller.sessionID, epoch == controller.destinationEpoch,
+              epoch == controller.lastAcceptedEpoch else {
+            cancelPointer(.rightUp)
+            return
+        }
+        if event.modifierFlags.contains(.option) {
+            cancelPointer(.rightUp)
+            showContextMenu(with: event)
+            return
+        }
+        guard pointerPresentation() != nil else { cancelPointer(.rightUp); return }
+        let local = convert(event.locationInWindow, from: nil)
+        controller.sendSecondaryRelease(at: SkinPoint(x: local.x, y: local.y))
+    }
+
+    private func cancelPointer(_ event: MouseEventKind) {
+        guard let controller else { return }
+        controller.executor.async { [owner = controller.owner] in
+            if event == .leftUp { owner.primaryRelease(at: nil, expectedGeneration: nil) }
+            else { owner.secondaryRelease(at: nil, expectedGeneration: nil) }
+        }
     }
 
     private func showContextMenu(with event: NSEvent) {
-        guard let controller, !controller.isClosing, !controller.isClosed else { return }
+        guard acceptsPointerMenu() else { return }
         let menu = NSMenu(title: "Desk Widget")
         let removeItem = NSMenuItem(title: StudioText[.removeWidgetFromDesktop],
                                     action: #selector(removeWidgetFromDesktop(_:)), keyEquivalent: "")
         removeItem.target = self
         menu.addItem(removeItem)
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
+        if let contextMenuPresenterForTesting { contextMenuPresenterForTesting(menu, event) }
+        else { NSMenu.popUpContextMenu(menu, with: event, for: self) }
     }
 
     @objc private func removeWidgetFromDesktop(_ sender: Any?) {

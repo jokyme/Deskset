@@ -254,6 +254,7 @@ enum DeskProgramDrawingSelfTests {
 
         pointerTests(t)
         actionOwnerTests(t)
+        secondaryPointerTests(t)
         failureTests(t)
         imageOwnerTests(t)
         for worker in [false, true] {
@@ -383,6 +384,84 @@ enum DeskProgramDrawingSelfTests {
                 host.close(); time.advance(until: 11)
                 t.equal(time.pendingCount, 0)
             }
+        }
+    }
+
+    private static func secondaryPointerTests(_ t: AppTestRunner) {
+        t.suite("App: Desk pointer events: bitmap owner samples only the selected transaction and consumes empty secondary handlers") {
+            let source = #"widget { variable n = 0; Row(spacing: 0) { Text(n).font(20).size(80, 40).onClick { n = n + 10; copy("{cpu.usage}") }.onRightClick { n = n + 1; copy("{n}"); copy("{memory.used, unit: .gib, unitStyle: .none, decimals: 0}"); open("https://example.com/{n}") }; Text("Empty").size(80, 40).onRightClick { } } }"#
+            let input = try ownerInput(), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+            let system = DrawingSystemFixture()
+            let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider,
+                                          input: input, clock: time.clock, system: system)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+            t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 0)
+            let point = SkinPoint(x: 20, y: 20)
+            t.check(host.secondaryRelease(at: point) == nil, "secondary release requires its own press")
+            host.primaryPress(at: point)
+            t.check(host.secondaryRelease(at: point) == nil, "a primary press cannot authorize the secondary event")
+            host.secondaryPress(at: point)
+            t.equal(host.secondaryRelease(at: point), [.copy("1"), .copy("8"), .open("https://example.com/1")])
+            t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 1)
+            t.equal(textValues(host).first, "1")
+            t.check(host.secondaryRelease(at: point) == nil)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(host.primaryRelease(at: point), [.copy("25")], "the independent primary press retains its own handler")
+            t.equal(system.cpuCalls, 1); t.equal(system.memCalls, 1)
+            t.equal(textValues(host).first, "11")
+            host.frames.runLoopTurn(.beforeWaiting)
+            let before = host.scene?.generation
+            host.secondaryPress(at: SkinPoint(x: 100, y: 20))
+            t.equal(host.secondaryRelease(at: SkinPoint(x: 100, y: 20)), [])
+            t.equal(host.scene?.generation, before.map { $0 + 1 }, "empty secondary handlers commit a consumed click")
+        }
+
+        t.suite("App: Desk pointer events: bitmap secondary hit identity origin ticks and cancellation stay qualified") {
+            let source = #"widget { variable n = 0; Row(spacing: 0, align: .top) { Rectangle().size(24, 18).stroke(.accent, width: 4).onRightClick { n = n + 1; copy("{n}") }; Text(n).size(40, 30).onRightClick { copy("other") }; Text("{time.now, format: "HH:mm:ss"}").size(160, 40) } }"#
+            for scale in [1, 2] {
+                let input = try ownerInput(scale: scale), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+                let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider,
+                                              input: input, clock: time.clock)
+                defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+                host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+                t.equal(host.presented?.origin, SkinPoint(x: -2, y: -2))
+                host.secondaryPress(at: SkinPoint(x: 1, y: 6))
+                t.check(host.secondaryRelease(at: SkinPoint(x: 1, y: 6)) == nil, "stroke outside the original box is not a handler")
+                let point = SkinPoint(x: 2.5, y: 6)
+                host.secondaryPress(at: point)
+                time.advance(until: 0.75); host.frames.runLoopTurn(.beforeWaiting)
+                t.equal(host.secondaryRelease(at: point), [.copy("1")], "a real boundary tick preserves a legal secondary press")
+                host.frames.runLoopTurn(.beforeWaiting)
+                host.secondaryPress(at: point)
+                t.check(host.secondaryRelease(at: SkinPoint(x: 35, y: 6)) == nil, "a different valid handler cannot receive the press")
+                t.check(host.secondaryRelease(at: point) == nil)
+                host.secondaryPress(at: point); host.secondaryRelease(at: nil)
+                t.check(host.secondaryRelease(at: point) == nil, "explicit cancellation consumes the press")
+                host.secondaryPress(at: point)
+                host.take(facts(input, pointer: false), input: input)
+                host.take(facts(input), input: input)
+                t.check(host.secondaryRelease(at: point) == nil, "restoring eligibility does not restore a cancelled press")
+                host.secondaryPress(at: point); host.refresh()
+                t.check(host.secondaryRelease(at: point) == nil, "an unpresented owner generation cannot qualify the release")
+                host.frames.runLoopTurn(.beforeWaiting)
+                host.secondaryPress(at: point); host.close()
+                t.check(host.secondaryRelease(at: point) == nil)
+                t.equal(textValues(host), [])
+            }
+        }
+
+        t.suite("App: Desk pointer events: failed secondary bitmap projection releases no external requests") {
+            let source = #"widget { variable points = 20; Text("Right").font(points).size(80, 40).onRightClick { points = 0; copy("must not escape") } }"#
+            let input = try ownerInput(), time = try ownerClock(), view = NSView(), provider = BitmapProvider(view)
+            let host = try DeskProgramHost(program: compile(source, t), executor: time, provider: provider, input: input, clock: time.clock)
+            defer { host.close(); provider.teardown(); withExtendedLifetime(view) {} }
+            host.take(facts(input), input: input); host.start(); host.drawFirstFrame()
+            host.secondaryPress(at: SkinPoint(x: 20, y: 20))
+            t.check(host.secondaryRelease(at: SkinPoint(x: 20, y: 20)) == nil)
+            t.check(host.scene == nil && host.presented == nil)
+            host.refresh()
+            t.equal(textValues(host), ["Right"], "the rejected font assignment did not commit")
         }
     }
 

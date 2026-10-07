@@ -38,6 +38,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private var accepts: ((DeskSnapshot) -> Bool)?
     private var projecting = false
     private var primaryPress: (snapshot: DeskSnapshot, element: ElementID)?
+    private var secondaryPress: (snapshot: DeskSnapshot, element: ElementID)?
     private let clock: SkinClock
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
@@ -81,6 +82,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
         canvas.onPrimaryPress = { [weak self] point in self?.beginPrimaryPress(at: point) }
         canvas.onPrimaryRelease = { [weak self] point in self?.endPrimaryPress(at: point) }
+        canvas.onSecondaryPress = { [weak self] point in self?.beginSecondaryPress(at: point) }
+        canvas.onSecondaryRelease = { [weak self] point in self?.endSecondaryPress(at: point) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -98,7 +101,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         precondition(executor.isCurrent && Thread.isMainThread)
         guard state != .closed, visible != value else { return }
         visible = value
-        if value { updateForTick() } else { primaryPress = nil; tickScheduler.cancel() }
+        if value { updateForTick() } else {
+            primaryPress = nil; secondaryPress = nil; canvas.clearPointerGestures(); tickScheduler.cancel()
+        }
     }
 
     func updateForTick() {
@@ -245,6 +250,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         precondition(Thread.isMainThread)
         guard state != .closed else { return }
         primaryPress = nil
+        secondaryPress = nil
+        canvas.clearPointerGestures()
         if let readError { clear(.unavailable(readError)); return }
         guard accepts?(candidate) == true, candidate.isChecked else { clear(.checking); return }
         // A supported new literal can still have DK4029 in the old resource package while its actual bytes are
@@ -283,7 +290,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         return (stamp, values.colors)
     }
 
-    private func project(click: (point: SkinPoint, generation: UInt64)? = nil,
+    private func project(click: (point: SkinPoint, generation: UInt64, event: MouseEventKind)? = nil,
                          captured: (stamp: EnvironmentStamp, colors: ProgramColorInput)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
               var runtime else { return }
@@ -310,13 +317,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: 1)
                 return SkinSize(width: layout.size.width, height: layout.size.height)
             }
-            let needed = runtime.neededSystemProperties(clickAt: click?.point)
+            let needed = runtime.neededSystemProperties(clickAt: click?.point, event: click?.event ?? .leftUp)
             let now = dateInput.instant.timeIntervalSince1970
             let systemInput = sampler.sample(from: system, for: needed, at: now)
             let next: WidgetScene
             var effects: [ProgramEffect] = []
             if let click {
                 guard let clicked = try runtime.clickWithEffects(at: click.point, expectedGeneration: click.generation,
+                                                     event: click.event,
                                                      environment: stamp, images: images, dateInput: dateInput,
                                                      colorInput: input.colors, systemInput: systemInput, measure: measure) else { return }
                 next = clicked.scene
@@ -422,23 +430,41 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     }
 
     private func beginPrimaryPress(at point: SkinPoint) {
-        primaryPress = nil
+        beginPress(at: point, event: .leftUp)
+    }
+
+    private func beginSecondaryPress(at point: SkinPoint) {
+        beginPress(at: point, event: .rightUp)
+    }
+
+    private func beginPress(at point: SkinPoint, event: MouseEventKind) {
+        if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
         guard visible, prepareToDraw(), let snapshot,
-              let id = scene?.hitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil)?.elementID else { return }
-        primaryPress = (snapshot, id)
+              let id = scene?.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID else { return }
+        if event == .leftUp { primaryPress = (snapshot, id) } else { secondaryPress = (snapshot, id) }
     }
 
     private func endPrimaryPress(at point: SkinPoint?) {
-        let press = primaryPress
-        primaryPress = nil
+        endPress(at: point, event: .leftUp)
+    }
+
+    private func endSecondaryPress(at point: SkinPoint?) {
+        endPress(at: point, event: .rightUp)
+    }
+
+    private func endPress(at point: SkinPoint?, event: MouseEventKind) {
+        let press = event == .leftUp ? primaryPress : secondaryPress
+        if event == .leftUp { primaryPress = nil } else { secondaryPress = nil }
         guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), let scene,
-              scene.hitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil)?.elementID == press.element else { return }
+              scene.hitMap.entry(at: point.x, point.y, handling: event, images: nil)?.elementID == press.element else { return }
         // A legal boundary tick changes the scene, not this checked source session or pressed element identity.
-        project(click: (point, scene.generation))
+        project(click: (point, scene.generation, event))
     }
 
     private func clear(_ next: State, keepingProgram: Bool = false) {
         primaryPress = nil
+        secondaryPress = nil
+        canvas.clearPointerGestures()
         tickScheduler.cancel()
         state = next
         // A current program can recover when a display/font changes; errors retain no previous scene or cache.
@@ -579,6 +605,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.onImageFailure = nil
         canvas.onPrimaryPress = nil
         canvas.onPrimaryRelease = nil
+        canvas.onSecondaryPress = nil
+        canvas.onSecondaryRelease = nil
     }
 }
 
@@ -592,20 +620,69 @@ final class DeskProgramPreviewCanvas: NSView {
     fileprivate var onImageFailure: (() -> Void)?
     fileprivate var onPrimaryPress: ((SkinPoint) -> Void)?
     fileprivate var onPrimaryRelease: ((SkinPoint?) -> Void)?
+    fileprivate var onSecondaryPress: ((SkinPoint) -> Void)?
+    fileprivate var onSecondaryRelease: ((SkinPoint?) -> Void)?
+    private var primaryEvent: MouseEventKind?
+    private var secondaryPressed = false
     override var isFlipped: Bool { true }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        guard event.buttonNumber == 0, !event.modifierFlags.contains(.control) else { onPrimaryRelease?(nil); return }
+        if primaryEvent == .rightUp { onSecondaryRelease?(nil) }
+        primaryEvent = nil
+        onPrimaryRelease?(nil)
+        guard event.buttonNumber == 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
-        onPrimaryPress?(SkinPoint(x: point.x, y: point.y))
+        if event.modifierFlags.contains(.control) {
+            onSecondaryRelease?(nil)
+            guard !event.modifierFlags.contains(.option) else { return }
+            primaryEvent = .rightUp
+            onSecondaryPress?(SkinPoint(x: point.x, y: point.y))
+        } else {
+            primaryEvent = .leftUp
+            onPrimaryPress?(SkinPoint(x: point.x, y: point.y))
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard event.buttonNumber == 0, !event.modifierFlags.contains(.control) else { onPrimaryRelease?(nil); return }
+        let selected = primaryEvent
+        primaryEvent = nil
+        guard event.buttonNumber == 0, let selected else { return }
         let point = convert(event.locationInWindow, from: nil)
-        onPrimaryRelease?(SkinPoint(x: point.x, y: point.y))
+        if selected == .leftUp { onPrimaryRelease?(SkinPoint(x: point.x, y: point.y)) }
+        else { onSecondaryRelease?(event.modifierFlags.contains(.option) ? nil : SkinPoint(x: point.x, y: point.y)) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if primaryEvent == .rightUp { primaryEvent = nil; onSecondaryRelease?(nil) }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        secondaryPressed = false
+        onSecondaryRelease?(nil)
+        guard !event.modifierFlags.contains(.option) else { return }
+        secondaryPressed = true
+        let point = convert(event.locationInWindow, from: nil)
+        onSecondaryPress?(SkinPoint(x: point.x, y: point.y))
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        secondaryPressed = false
+        onSecondaryRelease?(nil)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        let pressed = secondaryPressed
+        secondaryPressed = false
+        guard pressed else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        onSecondaryRelease?(event.modifierFlags.contains(.option) ? nil : SkinPoint(x: point.x, y: point.y))
+    }
+
+    fileprivate func clearPointerGestures() {
+        primaryEvent = nil
+        secondaryPressed = false
     }
 
     override func draw(_ dirtyRect: NSRect) {

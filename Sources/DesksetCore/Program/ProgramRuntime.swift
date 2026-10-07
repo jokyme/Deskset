@@ -21,7 +21,7 @@ public struct ProgramRuntime: Sendable {
     public private(set) var clockPrecision: ProgramClockPrecision?
     private var variables: [ProgramScalar?]?
     private struct ClickHandler: Sendable {
-        let actions: [ProgramAction]
+        let actions: [MouseEventKind: [ProgramAction]]
         let radius: ProgramCornerRadius?
     }
     private let clickHandlers: [ElementID: ClickHandler]
@@ -43,12 +43,20 @@ public struct ProgramRuntime: Sendable {
             guard node.onClick == nil || node.onClickActions == nil else {
                 throw ProgramRuntimeError.ambiguousClickHandler(node.id)
             }
-            let handlerActionCount = node.onClickActions?.count ?? node.onClick?.count ?? 0
-            guard handlerActionCount <= ProgramLimits.maximumExpressions - actionCount else { throw ProgramRuntimeError.expressionLimit }
-            if let actions = node.onClickActions ?? node.onClick?.map({ ProgramAction.assign($0) }) {
-                actionCount += handlerActionCount
+            let handlers: [(MouseEventKind, [ProgramAction]?)] = [
+                (.leftUp, node.onClickActions ?? node.onClick?.map({ ProgramAction.assign($0) })),
+                (.rightUp, node.onRightClickActions)
+            ]
+            var actionsByEvent: [MouseEventKind: [ProgramAction]] = [:]
+            for (event, actions) in handlers {
+                guard let actions else { continue }
+                guard actions.count <= ProgramLimits.maximumExpressions - actionCount else { throw ProgramRuntimeError.expressionLimit }
+                actionCount += actions.count
                 for action in actions { try expressions.validateAction(action) }
-                clickHandlers[node.id] = ClickHandler(actions: actions, radius: node.cornerRadius)
+                actionsByEvent[event] = actions
+            }
+            if !actionsByEvent.isEmpty {
+                clickHandlers[node.id] = ClickHandler(actions: actionsByEvent, radius: node.cornerRadius)
             }
             func valid(_ length: ProgramLength) -> Bool {
                 if case .fixed(let n) = length { return n.isFinite && n >= 0 }
@@ -122,8 +130,9 @@ public struct ProgramRuntime: Sendable {
     }
 
     /// Evaluates the set of system properties needed for a project or click operation.
+    /// Only primary/secondary releases are supported; other event kinds return no dependencies.
     /// - For click (`point != nil`):
-    ///   Checks hit map for a valid, non-hidden element with a click handler.
+    ///   Checks hit map for a valid, non-hidden element with a handler for the selected event.
     ///   If hit: collects properties needed by the hit handler's action arguments PLUS subsequent scene projection.
     ///   If miss or unhandled: returns empty set (no hardware sampling performed).
     /// - For projection (`point == nil`):
@@ -136,15 +145,16 @@ public struct ProgramRuntime: Sendable {
     ///   elements marked hidden, because DESK-DESIGN §611 preserves layout space for hidden elements and layout
     ///   resolves/measures them). Conditional branches are conservatively unioned without dynamic evaluation,
     ///   so inactive branches may be sampled; complete zero-sampling for hidden layout branches is not yet implemented.
-    public func neededSystemProperties(clickAt point: SkinPoint? = nil) -> Set<ProgramSystemProperty> {
+    public func neededSystemProperties(clickAt point: SkinPoint? = nil, event: MouseEventKind = .leftUp) -> Set<ProgramSystemProperty> {
+        guard event == .leftUp || event == .rightUp else { return [] }
         if let point {
             guard point.x.isFinite, point.y.isFinite, variables != nil,
-                  let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
+                  let entry = currentHitMap.entry(at: point.x, point.y, handling: event, images: nil),
                   let id = entry.elementID,
-                  let handler = clickHandlers[id] else {
+                  let actions = clickHandlers[id]?.actions[event] else {
                 return []
             }
-            var activeExpressions = handler.actions.map(\.expression)
+            var activeExpressions = actions.map(\.expression)
             return collectProperties(active: &activeExpressions, includeLayoutText: true)
         } else {
             var activeExpressions: [ProgramExpression] = []
@@ -278,7 +288,7 @@ public struct ProgramRuntime: Sendable {
             hitMap.entries.append(SkinHitMap.Entry(name: element.id.name, frame: element.frame,
                                                    shape: Self.clickShape(element.frame, radius: handler.radius),
                                                    container: nil, glass: nil, isButton: false,
-                                                   actions: [.leftUp: handler.actions.isEmpty ? .caught : .runs],
+                                                   actions: handler.actions.mapValues { $0.isEmpty ? .caught : .runs },
                                                    cursor: true, cursorName: "", toolTip: nil, elementID: element.id))
         }
         let scene = WidgetScene(generation: next.partialValue, size: box.size, background: [],
@@ -307,23 +317,25 @@ public struct ProgramRuntime: Sendable {
         return result.scene
     }
 
-    /// Dispatch one current primary release without executing external services. The host qualifies its press
+    /// Dispatch one current primary or secondary release without executing external services. The host qualifies its press
     /// and source session; Core rejects stale scenes and missed/hidden boxes. Each statement observes preceding
     /// writes. Variables and frozen, ordered effects commit only after the resulting projection succeeds.
-    public mutating func clickWithEffects(at point: SkinPoint, expectedGeneration: UInt64, environment: EnvironmentStamp,
+    public mutating func clickWithEffects(at point: SkinPoint, expectedGeneration: UInt64, event: MouseEventKind = .leftUp,
+                                          environment: EnvironmentStamp,
                                           images: [String: ProgramImageResource] = [:], dateInput: ProgramDateInput? = nil,
                                           colorInput: ProgramColorInput? = nil,
                                           systemInput: ProgramSystemInput? = nil,
                                           measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> ProgramClickResult? {
-        guard point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
-              let entry = currentHitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil),
-              let id = entry.elementID, let handler = clickHandlers[id] else { return nil }
+        guard event == .leftUp || event == .rightUp,
+              point.x.isFinite, point.y.isFinite, variables != nil, expectedGeneration == generation,
+              let entry = currentHitMap.entry(at: point.x, point.y, handling: event, images: nil),
+              let id = entry.elementID, let actions = clickHandlers[id]?.actions[event] else { return nil }
         var candidate = self
         try colorInput?.validate()
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: environment.appearance.value.isDark,
                                                       variables: variables, dateInput: dateInput, systemInput: systemInput)
         var effects: [ProgramEffect] = []
-        for action in handler.actions {
+        for action in actions {
             if let effect = try ActionExecutor.perform(action, on: &evaluation) { effects.append(effect) }
         }
         candidate.variables = evaluation.variables

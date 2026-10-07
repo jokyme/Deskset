@@ -68,6 +68,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     runProgramFontSizeTests(t)
     runProgramSystemDataTests(t)
     runProgramClickEffectTests(t)
+    runDeskPointerTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
                             ProgramDeclaration(name: "caption", kind: .computed,
@@ -1934,6 +1935,139 @@ private func runProgramClickEffectTests(_ t: TestRunner) {
         t.check(unsupportedDisplay.diagnostics(.error).isEmpty, deskDescribe(unsupportedDisplay))
         t.equal(Desk.compile(unsupportedDisplay).issues.first?.kind, .unsupported,
                 "unsupported numeric dimensions refuse the complete program")
+    }
+}
+
+private func runDeskPointerTests(_ t: TestRunner) {
+    let environment = bindingEnvironment(false), point = SkinPoint(x: 12, y: 12)
+
+    t.suite("Desk: pointer events: checked secondary leaf actions preserve primary handlers and stable identities") {
+        let source = #"widget { variable n = 0; computed twice = n * 2; Text("{n}").size(40, 30).onClick { n = n + 1 }.onRightClick { n = n + 2; copy(twice); open("https://example.com/right") } }"#
+        let program = try checkedBindingProgram(t, source)
+        t.equal(program.root.onClick?.count, 1)
+        t.check(program.root.onClickActions == nil)
+        t.equal(program.root.onRightClickActions?.count, 3)
+        t.equal(program, try checkedBindingProgram(t, "// same source identity\n" + source))
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        guard let left = try runtime.click(at: point, expectedGeneration: first.generation,
+            environment: environment, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(left), ["1"])
+        let right = try runtime.clickWithEffects(at: point, expectedGeneration: left.generation, event: .rightUp,
+            environment: environment, measure: bindingMeasure)
+        t.equal(right.map { bindingStrings($0.scene) }, ["3"])
+        t.equal(right?.effects, [.copy("6"), .open("https://example.com/right")])
+        for leaf in ["Rectangle", "Circle", "Ellipse", "Capsule"] {
+            let shape = try checkedBindingProgram(t,
+                "widget { variable flag = false; \(leaf)().size(40, 30).onRightClick { flag = true } }")
+            t.check(shape.root.onClick == nil && shape.root.onClickActions == nil)
+            t.equal(shape.root.onRightClickActions?.count, 1)
+            var shaped = try ProgramRuntime(program: shape)
+            let scene = try shaped.project(environment: environment, measure: bindingMeasure)
+            t.check(try shaped.click(at: point, expectedGeneration: scene.generation,
+                environment: environment, measure: bindingMeasure) == nil)
+            t.check(try shaped.clickWithEffects(at: point, expectedGeneration: scene.generation, event: .rightUp,
+                environment: environment, measure: bindingMeasure) != nil)
+        }
+        let emptyProgram = try checkedBindingProgram(t, #"widget { Text("Tap").size(40, 30).onRightClick { } }"#)
+        t.equal(emptyProgram.root.onRightClickActions, [])
+        var empty = try ProgramRuntime(program: emptyProgram)
+        let emptyScene = try empty.project(environment: environment, measure: bindingMeasure)
+        let caught = try empty.clickWithEffects(at: point, expectedGeneration: emptyScene.generation, event: .rightUp,
+            environment: environment, measure: bindingMeasure)
+        t.check(caught != nil); t.equal(caught?.effects, [])
+    }
+
+    t.suite("Desk: pointer events: checked secondary contracts and finite unsupported contexts are enforced") {
+        let source = #"widget { Text("Tap").onRightClick { copy("A") } }"#
+        let checked = deskCheck(source)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        guard let modifier = DeskCatalog.current.modifiers.firstIndex(where: { $0.name == "onRightClick" }),
+              let identity = checked.symbols.first(where: { $0.value == .builtIn(.modifier("onRightClick")) })?.key else {
+            throw BindingFixtureFailure.program
+        }
+        let changes: [(String, (inout ModifierSpec) -> Void)] = [
+            ("event", { $0.event?.runtimeEvent = "rightMouseDown" }),
+            ("user", { $0.event?.userInitiated = false }),
+            ("record", { $0.event?.eventRecord = nil }),
+            ("timing", { $0.timing = .onLoad }),
+            ("block", { $0.block = .actions(required: false) }),
+            ("signatures", { $0.signatures.append($0.signatures[0]) }),
+            ("role", { $0.appliesTo = .of(.item) })
+        ]
+        for (label, change) in changes {
+            var catalog = DeskCatalog.current
+            change(&catalog.modifiers[modifier])
+            let result = Desk.compile(checked, catalog: catalog)
+            t.check(result.program == nil, label)
+            t.equal(result.issues.first?.kind, .invalidCheckedModel, label)
+        }
+        for remove in [false, true] {
+            var symbols = checked.symbols
+            if remove { symbols.removeValue(forKey: identity) }
+            else { symbols[identity] = .builtIn(.modifier("onClick")) }
+            var damaged = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: symbols, types: checked.types,
+                elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
+                reactions: checked.reactions, freeformOrders: checked.freeformOrders, stringTable: checked.stringTable,
+                requirements: checked.requirements, root: checked.root)
+            damaged.declarationTypes = checked.declarationTypes
+            t.equal(Desk.compile(damaged).issues.first?.kind, .invalidCheckedModel)
+        }
+        for unsupported in [
+            #"widget { Column { Text("Tap") }.onRightClick { copy("A") } }"#,
+            #"widget { Image("unsupported.png").onRightClick { copy("A") } }"#,
+            #"widget { Text("Tap").onRightClick { log("A") } }"#,
+            #"widget { variable flag = false; Text("Tap").onRightClick { if flag { flag = false } } }"#,
+            #"widget { Text("Tap").onRightClick { copy("{event.x}") } }"#,
+            #"widget { Text("Tap").onDoubleClick { copy("A") } }"#
+        ] {
+            let result = Desk.compile(deskCheck(unsupported))
+            t.check(result.program == nil, unsupported)
+            t.equal(result.issues.first?.kind, .unsupported, unsupported)
+            t.check(result.imageSources.isEmpty)
+        }
+        for value in ["42", "true", "time.now"] {
+            t.check(Desk.compile(deskCheck("widget { Text(\"Tap\").onRightClick { open(\(value)) } }")).program == nil,
+                "open remains String-only")
+        }
+    }
+
+    t.suite("Desk: pointer events: shared startup primary secondary budgets and action-only demand stay bounded") {
+        func source(_ rightCount: Int) -> String {
+            "widget { variable flag = false; Text(\"Tap\").onLoad { flag = true }.onClick { " +
+                String(repeating: "flag = false; ", count: 4) + "}.onRightClick { " +
+                String(repeating: "flag = true; ", count: rightCount) + "} }"
+        }
+        var catalog = DeskCatalog.current
+        catalog.limits.maximumTokens = 10
+        let bounded = Desk.compile(deskCheck(source(3)), catalog: catalog)
+        t.check(bounded.program != nil, "\(bounded.issues)")
+        t.equal(bounded.program?.onLoad.count, 1)
+        t.equal(bounded.program?.root.onClick?.count, 4)
+        t.equal(bounded.program?.root.onRightClickActions?.count, 3)
+        let exceeded = Desk.compile(deskCheck(source(4)), catalog: catalog)
+        t.check(exceeded.program == nil); t.equal(exceeded.issues.first?.kind, .resourceLimit)
+
+        let program = try checkedBindingProgram(t,
+            #"widget { Text("Tap").size(40, 30).onClick { copy(memory.used) }.onRightClick { copy(cpu.usage); copy("{time.now, format: "HH:mm:ss"}") } }"#)
+        var runtime = try ProgramRuntime(program: program)
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(runtime.neededSystemProperties, [])
+        t.equal(runtime.neededSystemProperties(clickAt: point), [.memoryUsed])
+        t.equal(runtime.neededSystemProperties(clickAt: point, event: .rightUp), [.cpuUsage])
+        let input = ProgramSystemInput(cpuUsage: 42)
+        bindingFailure(t, .invalidDateInput) {
+            _ = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+                environment: environment, systemInput: input, measure: bindingMeasure)
+        }
+        t.equal(runtime.generation, first.generation)
+        let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0),
+            timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_US_POSIX"))
+        let right = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+            environment: environment, dateInput: date, systemInput: input, measure: bindingMeasure)
+        t.equal(right?.effects, [.copy("42"), .copy("00:00:00")])
+        t.equal(runtime.clockPrecision, nil, "action-only time and periodic data do not keep a clock running")
+        t.equal(runtime.neededSystemProperties, [])
     }
 }
 

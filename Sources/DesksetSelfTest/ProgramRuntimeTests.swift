@@ -16,6 +16,7 @@ private func programFailure(_ t: TestRunner, _ expected: ProgramRuntimeError, _ 
 
 func runProgramRuntimeTests(_ t: TestRunner) {
     runProgramPaletteTests(t)
+    runProgramPointerTests(t)
     func rectangle(_ index: Int, width: ProgramLength = .fill, height: ProgramLength = .fill,
                    minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                    ideal: SkinSize = SkinSize(width: 10, height: 10), hidden: Bool = false) -> ProgramElement {
@@ -651,6 +652,156 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         t.equal(overflowing.generation, 0)
     }
 
+}
+
+private func runProgramPointerTests(_ t: TestRunner) {
+    let environment = programEnvironment(), point = SkinPoint(x: 12, y: 12)
+    let id = ElementID(name: "pointer", index: 0)
+    func measure(_ text: String, _ style: TextStyle, _ width: Double?) -> SkinSize {
+        SkinSize(width: 12, height: 18)
+    }
+    func strings(_ scene: WidgetScene) -> [String] { programDraws(scene).map(\.text) }
+
+    t.suite("Program: pointer events: primary and secondary actions remain separate with legacy primary dispatch") {
+        let root = ProgramElement(id: id, content: .text(ProgramText(value: .declaration(0))),
+            width: .fixed(40), height: .fixed(30),
+            onClick: [ProgramAssignment(declaration: 0, value: .string("left"))],
+            onRightClickActions: [.assign(ProgramAssignment(declaration: 0, value: .string("right"))),
+                                  .copy(.declaration(0)), .open(.string("https://example.com/right"))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Separate", root: root,
+            declarations: [ProgramDeclaration(name: "caption", kind: .variable, initial: .string("initial"))]))
+        let first = try runtime.project(environment: environment, measure: measure)
+        t.equal(first.hitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil)?.elementID, id)
+        t.equal(first.hitMap.entry(at: point.x, point.y, handling: .rightUp, images: nil)?.elementID, id)
+        guard let left = try runtime.click(at: point, expectedGeneration: first.generation,
+            environment: environment, measure: measure) else { return t.check(false, "legacy primary click") }
+        t.equal(strings(left), ["left"])
+        t.check(try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+            environment: environment, measure: measure) == nil, "stale secondary scene is rejected")
+        for event in MouseEventKind.allCases where event != .leftUp && event != .rightUp {
+            t.check(try runtime.clickWithEffects(at: point, expectedGeneration: left.generation, event: event,
+                environment: environment, measure: measure) == nil, "unsupported \(event)")
+            t.equal(runtime.neededSystemProperties(clickAt: point, event: event), [])
+        }
+        t.equal(runtime.generation, left.generation)
+        guard let right = try runtime.clickWithEffects(at: point, expectedGeneration: left.generation, event: .rightUp,
+            environment: environment, measure: measure) else { return t.check(false, "secondary click") }
+        t.equal(strings(right.scene), ["right"])
+        t.equal(right.effects, [.copy("right"), .open("https://example.com/right")])
+        let next = try runtime.clickWithEffects(at: point, expectedGeneration: right.scene.generation,
+            environment: environment, measure: measure)
+        t.equal(next?.effects, [])
+        t.equal(next.map { strings($0.scene) }, ["left"])
+    }
+
+    t.suite("Program: pointer events: empty secondary handlers consume rounded padded boxes without bubbling") {
+        let childID = ElementID(name: "child", index: 1)
+        func root(_ childRight: [ProgramAction]?, hidden: Bool = false) -> ProgramElement {
+            let child = ProgramElement(id: childID, content: .rectangle(fill: .literal(RGBA(r: 0, g: 0, b: 0, a: 0))),
+                width: .fixed(40), height: .fixed(30), padding: SkinInsets(left: 4, top: 4, right: 4, bottom: 4),
+                cornerRadius: .points(8), onClickActions: [.copy(.string("child left"))], onRightClickActions: childRight)
+            return ProgramElement(id: id, content: .column(spacing: 0, align: .left, children: [child]), hidden: hidden,
+                onRightClickActions: [.copy(.string("parent right"))])
+        }
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Empty child", root: root([])))
+        let first = try runtime.project(environment: environment, measure: measure)
+        t.equal(first.hitMap.entry(at: point.x, point.y, handling: .rightUp, images: nil)?.elementID, childID)
+        let empty = try runtime.clickWithEffects(at: SkinPoint(x: 3, y: 12), expectedGeneration: first.generation,
+            event: .rightUp, environment: environment, measure: measure)
+        t.check(empty != nil, "padding and transparent paint still hit the rounded box")
+        t.equal(empty?.effects, [], "an empty child handler does not bubble to its parent")
+        let corner = try runtime.clickWithEffects(at: SkinPoint(x: 1, y: 1), expectedGeneration: runtime.generation,
+            event: .rightUp, environment: environment, measure: measure)
+        t.equal(corner?.effects, [.copy("parent right")], "a rounded corner miss selects the next right handler")
+        var onlyLeftChild = try ProgramRuntime(program: WidgetProgram(name: "Different child event", root: root(nil)))
+        let leftScene = try onlyLeftChild.project(environment: environment, measure: measure)
+        let parent = try onlyLeftChild.clickWithEffects(at: point, expectedGeneration: leftScene.generation,
+            event: .rightUp, environment: environment, measure: measure)
+        t.equal(parent?.effects, [.copy("parent right")], "a primary handler does not capture a secondary event")
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden ancestor", root: root([], hidden: true)))
+        let hiddenScene = try hidden.project(environment: environment, measure: measure)
+        t.check(hiddenScene.hitMap.entries.isEmpty)
+        t.check(try hidden.clickWithEffects(at: point, expectedGeneration: hiddenScene.generation,
+            event: .rightUp, environment: environment, measure: measure) == nil)
+        for miss in [SkinPoint(x: -1, y: 12), SkinPoint(x: .nan, y: 12)] {
+            t.check(try runtime.clickWithEffects(at: miss, expectedGeneration: runtime.generation,
+                event: .rightUp, environment: environment, measure: measure) == nil)
+        }
+    }
+
+    t.suite("Program: pointer events: failed secondary action and projection preserve the prior transaction") {
+        let root = ProgramElement(id: id, content: .text(ProgramText(value: .declaration(0))),
+            width: .fixed(40), height: .fixed(30),
+            onClick: [ProgramAssignment(declaration: 0, value: .string("Off"))],
+            onRightClickActions: [.assign(ProgramAssignment(declaration: 0, value: .string("On"))), .copy(.declaration(0)),
+                .open(.formatDate(.timeNow, .pattern("HH:mm:ss")))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rollback", root: root,
+            declarations: [ProgramDeclaration(name: "caption", kind: .variable, initial: .string("Off"))]))
+        let first = try runtime.project(environment: environment, measure: measure)
+        programFailure(t, .invalidDateInput) {
+            _ = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+                environment: environment, measure: measure)
+        }
+        t.equal(runtime.generation, first.generation)
+        let date = ProgramDateInput(instant: Date(timeIntervalSince1970: 0),
+            timeZone: TimeZone(secondsFromGMT: 0)!, locale: Locale(identifier: "en_US_POSIX"))
+        programFailure(t, .invalidMeasurement(id)) {
+            _ = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+                environment: environment, dateInput: date) { text, _, _ in
+                    text == "On" ? SkinSize(width: -1, height: 18) : SkinSize(width: 12, height: 18)
+                }
+        }
+        t.equal(runtime.generation, first.generation)
+        let unchanged = try runtime.project(environment: environment, measure: measure)
+        t.equal(strings(unchanged), ["Off"])
+        let right = try runtime.clickWithEffects(at: point, expectedGeneration: unchanged.generation, event: .rightUp,
+            environment: environment, dateInput: date, measure: measure)
+        t.equal(right.map { strings($0.scene) }, ["On"])
+        t.equal(right?.effects, [.copy("On"), .open("00:00:00")])
+        t.equal(runtime.clockPrecision, nil)
+    }
+
+    t.suite("Program: pointer events: startup and both handlers share validation and expression budgets") {
+        let assignment = ProgramAssignment(declaration: 0, value: .boolean(true))
+        let declarations = [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false))]
+        func program(_ right: [ProgramAction], ambiguous: Bool = false) -> WidgetProgram {
+            let root = ProgramElement(id: id, content: .text(ProgramText("Tap")),
+                onClick: ambiguous ? [] : Array(repeating: assignment, count: ProgramLimits.maximumExpressions - 4),
+                onClickActions: ambiguous ? [] : nil, onRightClickActions: right)
+            return WidgetProgram(name: "Budget", root: root, declarations: declarations, onLoad: [assignment])
+        }
+        var accepted = try ProgramRuntime(program: program([.assign(assignment)]))
+        t.equal(strings(try accepted.project(environment: environment, measure: measure)), ["Tap"])
+        programFailure(t, .expressionLimit) {
+            _ = try ProgramRuntime(program: program([.assign(assignment), .assign(assignment)]))
+        }
+        programFailure(t, .ambiguousClickHandler(id)) { _ = try ProgramRuntime(program: program([], ambiguous: true)) }
+        for action in [ProgramAction.copy(.number(1)), .open(.boolean(true))] {
+            let root = ProgramElement(id: id, content: .text(ProgramText("Tap")), onRightClickActions: [action])
+            programFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid right", root: root)) }
+        }
+    }
+
+    t.suite("Program: pointer events: dependencies include only the selected handler and shared projection") {
+        let root = ProgramElement(id: id,
+            content: .text(ProgramText(value: .concatenate([.systemProperty(.cpuCoreCount)]))),
+            width: .fixed(40), height: .fixed(30),
+            onClickActions: [.copy(.concatenate([.systemProperty(.memoryUsed)]))],
+            onRightClickActions: [.copy(.concatenate([.systemProperty(.cpuUsage)]))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Demand", root: root))
+        t.equal(runtime.neededSystemProperties, [.cpuCoreCount])
+        t.equal(runtime.neededSystemProperties(clickAt: point, event: .rightUp), [])
+        let input = ProgramSystemInput(cpuUsage: 42, cpuCoreCount: 8, memoryUsed: 1024)
+        let first = try runtime.project(environment: environment, systemInput: input, measure: measure)
+        t.equal(runtime.neededSystemProperties(clickAt: point), [.memoryUsed, .cpuCoreCount])
+        t.equal(runtime.neededSystemProperties(clickAt: point, event: .rightUp), [.cpuUsage, .cpuCoreCount])
+        t.equal(runtime.neededSystemProperties(clickAt: SkinPoint(x: -1, y: 12), event: .rightUp), [])
+        let right = try runtime.clickWithEffects(at: point, expectedGeneration: first.generation, event: .rightUp,
+            environment: environment, systemInput: input, measure: measure)
+        t.equal(right?.effects, [.copy("42")])
+        t.equal(runtime.neededSystemProperties, [.cpuCoreCount])
+        t.equal(runtime.clockPrecision, nil)
+    }
 }
 
 private func runProgramPaletteTests(_ t: TestRunner) {

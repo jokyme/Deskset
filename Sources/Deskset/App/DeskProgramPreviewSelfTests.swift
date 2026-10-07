@@ -1009,6 +1009,110 @@ enum DeskProgramPreviewSelfTests {
         runClockPreviewTests(t)
         runClickPreviewTests(t)
         runClickActionPreviewTests(t)
+        runPointerEventPreviewTests(t)
+    }
+
+    private static func runPointerEventPreviewTests(_ t: AppTestRunner) {
+        t.suite("App: Desk pointer events: preview secondary and Control record only their selected ordered requests") {
+            let source = #"widget { variable n = 0; Row(spacing: 0) { Text(n).font(20).size(80, 40).onClick { copy("{cpu.usage}") }.onRightClick { n = n + 1; copy("{n}"); open("https://example.com/{n}"); copy("{memory.used, unit: .gib, unitStyle: .none, decimals: 0}") }; Text("Other").size(100, 40).onRightClick { copy("other") }; Text("Empty").size(80, 40).onRightClick { }; Text("Primary").size(80, 40).onClick { copy("last primary") } } }"#
+            let system = PreviewCountingSystem(), f = try fixture(t, source, system: system), p = f.preview
+            p.setVisible(true)
+            var batches: [[ProgramEffect]] = []
+            p.onRecordedEffects = { batches.append($0) }
+            t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 0)
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.recordedEffects.isEmpty, "a secondary press records no requests before its release")
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            let first: [ProgramEffect] = [.copy("1"), .open("https://example.com/1"), .copy("16")]
+            t.equal(p.recordedEffects, first); t.equal(batches, [first])
+            t.equal(system.cpuCalls, 0); t.equal(system.memCalls, 1)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f, flags: [.control])
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            let second: [ProgramEffect] = [.copy("2"), .open("https://example.com/2"), .copy("16")]
+            t.equal(p.recordedEffects, first + second, "releasing Control still releases the selected secondary handler")
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f, flags: [.control])
+            let expected = first + second + [.copy("42")]
+            t.equal(p.recordedEffects, expected, "adding Control after a primary press does not change its event")
+            t.equal(system.cpuCalls, 1)
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f, flags: [.option])
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f, flags: [.control, .option])
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f, flags: [.option])
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 100, y: 20), in: f)
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseDragged, at: NSPoint(x: 100, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f, flags: [.control])
+            try mouse(.leftMouseDragged, at: NSPoint(x: 100, y: 20), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.recordedEffects, expected, "Option, cross-leaf, drag and unmatched releases cancel without primary leakage")
+            let before = p.scene?.generation
+            try mouse(.rightMouseDown, at: NSPoint(x: 200, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 200, y: 20), in: f)
+            t.equal(p.scene?.generation, before.map { $0 + 1 }, "empty right handler consumes a real secondary click")
+            try mouse(.rightMouseDown, at: NSPoint(x: 280, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 280, y: 20), in: f)
+            p.updateForTick(); p.refreshEnvironment()
+            t.equal(p.recordedEffects, expected, "a missing secondary handler or an ordinary redraw never runs a primary action")
+            t.equal(batches, [first, second, [.copy("42")]])
+            t.check(f.app.sortedControllers.isEmpty && f.app.deskWidgetWindows.isEmpty)
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("App: Desk pointer events: preview secondary geometry CPU ticks and checked-session cancellation stay qualified") {
+            let time = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 1_790_586_059.25), timeZone: TimeZone(secondsFromGMT: 0)!)
+            let system = PreviewCountingSystem()
+            let source = #"widget { variable n = 0; Row(spacing: 0, align: .top) { Rectangle().size(24, 18).stroke(.accent, width: 4).onRightClick { n = n + 1; copy("{n}") }; Text(n).size(40, 30).onRightClick { copy("other") }; Text(cpu.usage).size(280, 40) } }"#
+            let f = try fixture(t, source, clock: time.clock, executor: time, system: system), p = f.preview
+            p.setVisible(true)
+            t.equal(p.canvas.bounds.origin, NSPoint(x: -2, y: -2))
+            p.setZoom(2)
+            p.scrollView.contentView.scroll(to: NSPoint(x: 8, y: 0))
+            p.scrollView.reflectScrolledClipView(p.scrollView.contentView)
+            try mouse(.rightMouseDown, at: NSPoint(x: -1, y: 6), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: -1, y: 6), in: f)
+            t.check(p.recordedEffects.isEmpty, "the outside stroke is painted but does not become a hit box")
+            try mouse(.rightMouseDown, at: NSPoint(x: 1, y: 6), in: f)
+            let generation = p.scene?.generation
+            system.cpu = 75
+            time.advance(until: 0.75)
+            t.check(p.scene?.generation != generation)
+            try mouse(.rightMouseUp, at: NSPoint(x: 1, y: 6), in: f)
+            t.equal(p.recordedEffects, [.copy("1")], "CPU ticks preserve the legal element press with zoom/scroll and negative origin")
+            try mouse(.rightMouseDown, at: NSPoint(x: 1, y: 6), in: f)
+            p.setVisible(false); p.setVisible(true)
+            try mouse(.rightMouseUp, at: NSPoint(x: 1, y: 6), in: f)
+            t.equal(p.recordedEffects, [.copy("1")], "restoring visibility does not restore a cancelled press")
+            try mouse(.rightMouseDown, at: NSPoint(x: 1, y: 6), in: f)
+            replace(source.replacingOccurrences(of: "n = 0", with: "n = 5"), in: f)
+            t.check(settled(f))
+            try mouse(.rightMouseUp, at: NSPoint(x: 1, y: 6), in: f)
+            t.check(p.recordedEffects.isEmpty, "a checked source replacement invalidates both the press and prior records")
+            try mouse(.rightMouseDown, at: NSPoint(x: 1, y: 6), in: f)
+            f.controller.window?.close()
+            try mouse(.rightMouseUp, at: NSPoint(x: 1, y: 6), in: f)
+            t.equal(p.state, .closed); t.check(p.recordedEffects.isEmpty)
+        }
+
+        t.suite("App: Desk pointer events: hidden and failed preview secondary handlers cannot record requests") {
+            let f = try fixture(t, #"widget { Text("Hidden").hidden().size(80, 40).onRightClick { copy("hidden") } }"#), p = f.preview
+            p.setVisible(true)
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.recordedEffects.isEmpty); t.equal(p.scene?.hitMap.entries.count, 0)
+            replace(#"widget { variable points = 20; Text("Fail").font(points).size(80, 40).onRightClick { points = 0; copy("must not escape") } }"#, in: f)
+            t.check(settled(f))
+            try mouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.scene == nil && p.recordedEffects.isEmpty)
+            p.updateForTick()
+            t.equal(clockTexts(p), ["Fail"], "failed secondary projection rolls back the font assignment")
+        }
     }
 
     private static func runClickActionPreviewTests(_ t: AppTestRunner) {
@@ -1407,7 +1511,15 @@ enum DeskProgramPreviewSelfTests {
         guard let event = NSEvent.mouseEvent(with: type, location: windowPoint, modifierFlags: flags, timestamp: 0,
                                             windowNumber: f.controller.window?.windowNumber ?? 0, context: nil,
                                             eventNumber: 0, clickCount: 1, pressure: 1) else { throw Failure.fixture }
-        if type == .leftMouseDown { canvas.mouseDown(with: event) } else { canvas.mouseUp(with: event) }
+        switch type {
+        case .leftMouseDown: canvas.mouseDown(with: event)
+        case .leftMouseDragged: canvas.mouseDragged(with: event)
+        case .leftMouseUp: canvas.mouseUp(with: event)
+        case .rightMouseDown: canvas.rightMouseDown(with: event)
+        case .rightMouseDragged: canvas.rightMouseDragged(with: event)
+        case .rightMouseUp: canvas.rightMouseUp(with: event)
+        default: throw Failure.fixture
+        }
     }
 
     private static func click(at point: NSPoint, in f: Fixture) throws {

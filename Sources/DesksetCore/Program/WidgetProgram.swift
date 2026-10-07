@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid shape paints, local images, scalar text bindings and local startup/click assignments through the shared executor.
+/// proposal-based stacks, solid shape paints, local images, scalar text bindings and startup/user click actions through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -93,12 +93,15 @@ public struct ProgramElement: Equatable, Sendable {
     public let onClick: [ProgramAssignment]?
     /// Ordered assignments and frozen host requests. Core never executes the external requests itself.
     public let onClickActions: [ProgramAction]?
+    /// Secondary release actions. An empty block consumes the event just as an empty primary handler does.
+    public let onRightClickActions: [ProgramAction]?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
                 idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil,
-                onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil) {
+                onClick: [ProgramAssignment]? = nil, onClickActions: [ProgramAction]? = nil,
+                onRightClickActions: [ProgramAction]? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -114,6 +117,7 @@ public struct ProgramElement: Equatable, Sendable {
         self.cornerRadius = cornerRadius
         self.onClick = onClick
         self.onClickActions = onClickActions
+        self.onRightClickActions = onRightClickActions
     }
 }
 

@@ -72,6 +72,7 @@ final class DeskProgramHost {
         var destinationReady = false
         var projecting = false
         var primaryPress: ElementID?
+        var secondaryPress: ElementID?
         var didPresent: ((Presented) -> Void)?
         var didBecomeUnavailable: ((String) -> Void)?
         var isClosed: Bool { state == .closed }
@@ -104,7 +105,7 @@ final class DeskProgramHost {
         }
 
         @discardableResult
-        func project(click: SkinPoint? = nil) -> [ProgramEffect]? {
+        func project(click: SkinPoint? = nil, event: MouseEventKind = .leftUp) -> [ProgramEffect]? {
             precondition(executor.isCurrent)
             guard !isClosed, !projecting else { return nil }
             projecting = true
@@ -119,7 +120,7 @@ final class DeskProgramHost {
                 self.context = context
                 let input = self.input
                 let date = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: input.locale)
-                let needed = runtime.neededSystemProperties(clickAt: click)
+                let needed = runtime.neededSystemProperties(clickAt: click, event: event)
                 let now = date.instant.timeIntervalSince1970
                 let systemInput = sampler.sample(from: system, for: needed, at: now)
                 let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
@@ -133,6 +134,7 @@ final class DeskProgramHost {
                 var effects: [ProgramEffect] = []
                 if let click {
                     guard let current = scene, let value = try candidate.clickWithEffects(at: click, expectedGeneration: current.generation,
+                        event: event,
                         environment: input.environment, images: prepared?.images ?? [:], dateInput: date,
                         colorInput: input.colors, systemInput: systemInput, measure: measure) else { arm(after: date.instant); return nil }
                     next = value.scene
@@ -196,7 +198,7 @@ final class DeskProgramHost {
             guard !isClosed else { return }
             let message = String(describing: error)
             let changed = state != .unavailable(message)
-            scheduler.cancel(); primaryPress = nil
+            scheduler.cancel(); primaryPress = nil; secondaryPress = nil
             scene = nil; viewport = nil; presented = nil; context = nil
             state = .unavailable(message)
             frames.clearBitmapContents()
@@ -206,7 +208,7 @@ final class DeskProgramHost {
         func close() {
             precondition(executor.isCurrent)
             guard !isClosed else { return }
-            scheduler.cancel(); primaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
+            scheduler.cancel(); primaryPress = nil; secondaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
             state = .closed
             frames.stop(); frames.clearBitmapContents(); frames.bitmapResult = nil
             scene = nil; viewport = nil; presented = nil; context = nil
@@ -272,10 +274,10 @@ final class DeskProgramHost {
         owner.input = input
         owner.visible = facts.isOrderedIn && !facts.settings.hidden
         owner.pointerEligible = owner.visible && facts.isVisible && facts.takesPointer
-        if !owner.pointerEligible { owner.primaryPress = nil }
+        if !owner.pointerEligible { owner.primaryPress = nil; owner.secondaryPress = nil }
         owner.destinationReady = false
         owner.frames.take(facts)
-        if !owner.visible { owner.primaryPress = nil; owner.scheduler.cancel() }
+        if !owner.visible { owner.primaryPress = nil; owner.secondaryPress = nil; owner.scheduler.cancel() }
         guard facts.colorSpace?.model == .rgb, input.environment.scale == Double(facts.scale),
               input.environment.appearance.name == facts.appearance else {
             owner.fail(ProgramRuntimeError.invalidEnvironment); return
@@ -306,27 +308,35 @@ final class DeskProgramHost {
     func drawFirstFrame() { current.frames.drawFirstFrame() }
 
     /// Points are relative to the presented bitmap's top-left corner, already in points rather than pixels.
-    func primaryPress(at point: SkinPoint) {
+    func primaryPress(at point: SkinPoint) { press(at: point, event: .leftUp) }
+    func secondaryPress(at point: SkinPoint) { press(at: point, event: .rightUp) }
+
+    private func press(at point: SkinPoint, event: MouseEventKind) {
         let owner = current
-        owner.primaryPress = nil
+        if event == .leftUp { owner.primaryPress = nil } else { owner.secondaryPress = nil }
         guard owner.pointerEligible, point.x.isFinite, point.y.isFinite,
               let value = owner.presented, value.scene.generation == owner.scene?.generation else { return }
-        owner.primaryPress = value.scene.hitMap.entry(at: point.x + value.origin.x, point.y + value.origin.y,
-            handling: .leftUp, images: nil)?.elementID
+        let id = value.scene.hitMap.entry(at: point.x + value.origin.x, point.y + value.origin.y,
+            handling: event, images: nil)?.elementID
+        if event == .leftUp { owner.primaryPress = id } else { owner.secondaryPress = id }
     }
 
     /// Returns frozen requests only after the entire click and host extent/resource preflight succeed.
     /// The Main adapter owns external execution; a future bitmap failure cannot undo an executed request.
     @discardableResult
-    func primaryRelease(at point: SkinPoint?) -> [ProgramEffect]? {
+    func primaryRelease(at point: SkinPoint?) -> [ProgramEffect]? { release(at: point, event: .leftUp) }
+    @discardableResult
+    func secondaryRelease(at point: SkinPoint?) -> [ProgramEffect]? { release(at: point, event: .rightUp) }
+
+    private func release(at point: SkinPoint?, event: MouseEventKind) -> [ProgramEffect]? {
         let owner = current
-        let press = owner.primaryPress
-        owner.primaryPress = nil
+        let press = event == .leftUp ? owner.primaryPress : owner.secondaryPress
+        if event == .leftUp { owner.primaryPress = nil } else { owner.secondaryPress = nil }
         guard owner.pointerEligible, let point, point.x.isFinite, point.y.isFinite, let press, let value = owner.presented,
               value.scene.generation == owner.scene?.generation else { return nil }
         let mapped = SkinPoint(x: point.x + value.origin.x, y: point.y + value.origin.y)
-        guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: .leftUp, images: nil)?.elementID == press else { return nil }
-        return owner.project(click: mapped)
+        guard value.scene.hitMap.entry(at: mapped.x, mapped.y, handling: event, images: nil)?.elementID == press else { return nil }
+        return owner.project(click: mapped, event: event)
     }
 
     /// Completes synchronously on the executor. Main may then tear down its provider/window; the executor is shared.

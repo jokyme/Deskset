@@ -74,6 +74,7 @@ enum DeskWidgetWindowSelfTests {
     static func run(_ t: AppTestRunner) {
         clickActionTests(t)
         accessibilityTests(t)
+        pointerEventTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
             t.check(waitForCheck(f), "document is checked")
@@ -585,7 +586,8 @@ enum DeskWidgetWindowSelfTests {
 
     private static func actionFixture(_ t: AppTestRunner, recorder: ActionRecorder,
                                       executor: SkinExecutor = MainSkinExecutor.shared,
-                                      text: String = actionSource) throws -> DeskWidgetWindowController {
+                                      text: String = actionSource,
+                                      beforePresentation: ((DeskWidgetWindowController) throws -> Void)? = nil) throws -> DeskWidgetWindowController {
         let f = try fixture(t, text: text)
         let result = Desk.compile(Desk.check(Desk.parse(text, fileName: "Main.desk")))
         t.check(result.issues.isEmpty, "\(result.issues)")
@@ -600,6 +602,7 @@ enum DeskWidgetWindowSelfTests {
         let widget = DeskWidgetWindowController(source: source, instance: instance, directory: directory,
                                                program: program, prepared: nil, app: f.app, executor: executor,
                                                actionServices: recorder.services)
+        try beforePresentation?(widget)
         t.check(AppSelfTest.spin(timeout: 10) { widget.isStarted && widget.latestPresented != nil })
         let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
                                                              scale: widget.window.backingScaleFactor)
@@ -626,6 +629,187 @@ enum DeskWidgetWindowSelfTests {
         widget.owner.primaryRelease(at: point, token: token) { batch = ($0, $1) }
         guard let batch else { throw Failure.fixture }
         return batch
+    }
+
+    private static func pointerMouse(_ type: NSEvent.EventType, at point: NSPoint,
+                                     in widget: DeskWidgetWindowController, flags: NSEvent.ModifierFlags = []) throws {
+        let location = widget.view.convert(point, to: nil)
+        guard let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: flags, timestamp: 0,
+            windowNumber: widget.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else {
+            throw Failure.fixture
+        }
+        switch type {
+        case .leftMouseDown: widget.view.mouseDown(with: event)
+        case .leftMouseDragged: widget.view.mouseDragged(with: event)
+        case .leftMouseUp: widget.view.mouseUp(with: event)
+        case .rightMouseDown: widget.view.rightMouseDown(with: event)
+        case .rightMouseDragged: widget.view.rightMouseDragged(with: event)
+        case .rightMouseUp: widget.view.rightMouseUp(with: event)
+        default: throw Failure.fixture
+        }
+    }
+
+    private static let pointerSource = #"widget { variable n = 0; Row(spacing: 0) { Text(n).font(20).size(80, 40).onClick { copy("primary") }.onRightClick { n = n + 1; copy("{n}"); open("https://example.com/{n}") }; Text("Right only").size(100, 40).onRightClick { copy("other") }; Text("Empty").size(80, 40).onRightClick { }; Text("Menu").size(80, 40).onClick { copy("last primary") } } }"#
+
+    private static func pointerEventTests(_ t: AppTestRunner) {
+        t.suite("App: Desk pointer events: desktop startup and new Option presses retain the native menu during a pending destination") {
+            let recorder = ActionRecorder()
+            var menus = 0
+            let widget = try actionFixture(t, recorder: recorder, text: pointerSource, beforePresentation: { widget in
+                t.check(!widget.isStarted && widget.latestPresented == nil, "the actual first Main presentation is still queued")
+                widget.view.contextMenuPresenterForTesting = { _, _ in menus += 1 }
+                try pointerMouse(.rightMouseDown, at: NSPoint(x: 0.5, y: 0.5), in: widget, flags: [.option])
+                try pointerMouse(.rightMouseUp, at: NSPoint(x: 0.5, y: 0.5), in: widget)
+                try pointerMouse(.leftMouseDown, at: NSPoint(x: 0.5, y: 0.5), in: widget, flags: [.control])
+                try pointerMouse(.leftMouseUp, at: NSPoint(x: 0.5, y: 0.5), in: widget)
+                t.equal(menus, 2)
+            })
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            let epoch = widget.destinationEpoch
+            let dark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            widget.window.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch != epoch && widget.latestPresented != nil,
+                    "the old accepted picture remains while the destination changes")
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            t.equal(menus, 2, "a held old-epoch Option release cancels instead of adopting the new window")
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control, .option])
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            t.equal(menus, 4, "new Option secondary presses reach the native menu before a replacement picture")
+            t.check(recorder.calls.isEmpty)
+        }
+
+        t.suite("App: Desk pointer events: desktop worker secondary Control and primary AX share qualified FIFO delivery") {
+            let worker = SkinThreadExecutor(name: "Desk secondary pointer worker test")
+            var created: DeskWidgetWindowController?
+            defer {
+                if let created {
+                    created.close(deactivate: false)
+                    t.check(AppSelfTest.spin(timeout: 10) { created.isClosed })
+                }
+                worker.stop()
+            }
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, executor: worker, text: pointerSource)
+            created = widget
+            var menus = 0
+            widget.view.contextMenuPresenterForTesting = { menu, _ in
+                menus += 1
+                t.equal(menu.items.map(\.title), [StudioText[.removeWidgetFromDesktop]], "the actual component menu stays reachable")
+            }
+            t.equal(widget.view.accessibilityParts.count, 2, "right-only and empty-secondary Text expose no primary AX button")
+            let first = widget.latestPresented?.scene.generation ?? 0
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            t.check(recorder.calls.isEmpty, "secondary actions wait for release")
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                recorder.calls.count == 2 && (widget.latestPresented?.scene.generation ?? 0) > first
+            })
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1"])
+            let second = widget.latestPresented?.scene.generation ?? 0
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control])
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                recorder.calls.count == 4 && (widget.latestPresented?.scene.generation ?? 0) > second
+            })
+            t.equal(recorder.calls, ["copy:1", "open:https://example.com/1", "copy:2", "open:https://example.com/2"],
+                    "releasing Control before mouse-up preserves the initially selected secondary event")
+            let third = widget.latestPresented?.scene.generation ?? 0
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control])
+            t.check(AppSelfTest.spin(timeout: 10) {
+                recorder.calls.count == 5 && (widget.latestPresented?.scene.generation ?? 0) > third
+            })
+            t.equal(recorder.calls.last, "copy:primary", "adding Control at release cannot change a primary press")
+            guard let child = widget.view.accessibilityParts.first else { throw Failure.fixture }
+            t.check(child.accessibilityPerformPress())
+            t.check(AppSelfTest.spin(timeout: 10) { recorder.calls.count == 6 })
+            t.equal(recorder.calls.last, "copy:primary", "AX Press always activates the primary handler")
+            t.check(recorder.mainThreads.allSatisfy { $0 })
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 280, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 280, y: 20), in: widget)
+            t.equal(menus, 1, "missing right handler opens the component menu at the original press boundary")
+            t.equal(recorder.calls.count, 6)
+        }
+
+        t.suite("App: Desk pointer events: desktop secondary cross-leaf drag nil cancellation empty and Option menu routing") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: pointerSource)
+            var menus = 0
+            widget.view.contextMenuPresenterForTesting = { _, _ in menus += 1 }
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 100, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.rightMouseDragged, at: NSPoint(x: 100, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control])
+            try pointerMouse(.leftMouseDragged, at: NSPoint(x: 100, y: 20), in: widget)
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            var drained = false
+            widget.executor.async { DispatchQueue.main.async { drained = true } }
+            t.check(AppSelfTest.spin(timeout: 10) { drained })
+            t.check(recorder.calls.isEmpty, "cross-leaf release and both secondary drag paths cancel without primary leakage")
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control, .option])
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            t.equal(menus, 3, "Option at press or release reaches the menu exactly once, including Control+Option")
+            let generation = widget.latestPresented?.scene.generation ?? 0
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 200, y: 20), in: widget)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 200, y: 20), in: widget)
+            t.check(AppSelfTest.spin(timeout: 10) { (widget.latestPresented?.scene.generation ?? 0) > generation })
+            t.equal(menus, 3, "an empty right handler consumes the click instead of falling through to the menu")
+            guard let token = widget.issueClickToken() else { throw Failure.fixture }
+            widget.owner.secondaryPress(at: SkinPoint(x: 20, y: 20), expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+            widget.owner.secondaryRelease(at: nil, expectedGeneration: nil)
+            widget.sendSecondaryRelease(at: SkinPoint(x: 20, y: 20))
+            drained = false
+            widget.executor.async { DispatchQueue.main.async { drained = true } }
+            t.check(AppSelfTest.spin(timeout: 10) { drained })
+            t.check(recorder.calls.isEmpty)
+            widget.view.isHidden = true
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            widget.view.isHidden = false
+            t.equal(menus, 3, "an invisible view exposes neither secondary actions nor a menu")
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            widget.handleUnavailable("invalidEnvironment", session: widget.sessionID, epoch: widget.destinationEpoch)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            t.equal(menus, 4, "same-epoch Option release remains a native menu when the program becomes unavailable")
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            try pointerMouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: widget, flags: [.control])
+            try pointerMouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: widget)
+            t.equal(menus, 6, "an unavailable widget retains the original native Remove menu")
+            t.check(recorder.calls.isEmpty)
+        }
+
+        t.suite("App: Desk pointer events: desktop secondary epoch close and delayed batch guards reject stale activation") {
+            let recorder = ActionRecorder(), widget = try actionFixture(t, recorder: recorder, text: pointerSource)
+            var menus = 0
+            widget.view.contextMenuPresenterForTesting = { _, _ in menus += 1 }
+            try pointerMouse(.rightMouseDown, at: NSPoint(x: 20, y: 20), in: widget)
+            guard let token = widget.issueClickToken() else { throw Failure.fixture }
+            widget.owner.secondaryPress(at: SkinPoint(x: 20, y: 20), expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+            var effects: [ProgramEffect]?
+            widget.owner.secondaryRelease(at: SkinPoint(x: 20, y: 20), token: token) { _, value in effects = value }
+            guard let effects else { throw Failure.fixture }
+            let dark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            widget.window.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch != token.epoch)
+            try pointerMouse(.rightMouseUp, at: NSPoint(x: 20, y: 20), in: widget, flags: [.option])
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.equal(menus, 0, "a stale press cannot adopt a new destination to open a menu")
+            t.check(recorder.calls.isEmpty)
+            widget.close(deactivate: false)
+            widget.handleEffects(effects, token: token, issuedToken: token)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.check(recorder.calls.isEmpty)
+        }
     }
 
     private static func accessibilityTests(_ t: AppTestRunner) {
