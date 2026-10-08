@@ -15,8 +15,8 @@ import Foundation
 // Folder diagnostics (DK86xx) check a whole widget folder held in memory: the fixture's file, the package, and
 // `//== folder-file: Name` sections (each a file of the folder, its text up to the next section),
 // `//== asset: path WxH` (a PNG of that size), `//== link: path -> destination` and `//== folder-generate: kind`
-// (`manyFiles`, `largeFolder`). Those written after `//== negative` belong to the corrected folder, which otherwise
-// has the same folder files and assets (never the links or generated files).
+// (`manyFiles`, `largeFolder`, `unreadableSource`). Those written after `//== negative` belong to the corrected
+// folder, which otherwise has the same folder files and assets (never the links or generated failures/files).
 
 struct DeskDiagnosticFixture {
     var path: String
@@ -348,7 +348,7 @@ func deskPNG(width: Int, height: Int) -> Data {
 
 /// The folder a folder fixture describes, with `text` as the fixture's own file.
 func deskFixtureFolder(_ fixture: DeskDiagnosticFixture, text: String, negative: Bool,
-                       edited: [String: String] = [:]) -> InMemoryPackageSource {
+                       edited: [String: String] = [:]) -> PackageFileSource {
     var source = InMemoryPackageSource()
     var texts: [(String, String)] = [(fixture.fileName, text)]
     if let package = fixture.package, fixture.fileName != "package.desk" { texts.append(("package.desk", package)) }
@@ -368,11 +368,15 @@ func deskFixtureFolder(_ fixture: DeskDiagnosticFixture, text: String, negative:
         default:
             break
         }
+        if fixture.folderGenerate == "unreadableSource" {
+            return DeskPackageReadFailureSource(source: source,
+                                                failures: [fixture.fileName: .cannotRead(fixture.fileName)])
+        }
     }
     return source
 }
 
-func deskCheckFixtureFolder(_ source: InMemoryPackageSource, _ fixture: DeskDiagnosticFixture) -> CheckedDeskPackage {
+func deskCheckFixtureFolder(_ source: PackageFileSource, _ fixture: DeskDiagnosticFixture) -> CheckedDeskPackage {
     var context = deskFixtureContext(fixture, package: nil)
     context.resources = nil
     let package = (try? PackageLoader.load(source)) ?? DeskPackage()

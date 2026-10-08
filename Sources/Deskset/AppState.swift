@@ -1,4 +1,5 @@
 import DesksetCore
+import DeskLanguage
 import Foundation
 
 /// Per-config window settings (Rainmeter keeps these in Rainmeter.ini; see
@@ -115,20 +116,27 @@ struct SkinState: Codable, Equatable {
 struct DeskWidgetSourceState: Codable, Equatable {
     let id: UUID
     let entry: String
+    let packageID: UUID?
+    var directoryID: UUID { packageID ?? id }
     var unknownKeys: [String: JSONValue] = [:]
 
-    init(id: UUID, entry: String) { self.id = id; self.entry = entry }
-    private enum CodingKeys: String, CodingKey, CaseIterable { case id, entry }
+    init(id: UUID, entry: String, packageID: UUID? = nil) {
+        self.id = id; self.entry = entry; self.packageID = packageID
+    }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case id, entry, packageID }
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         entry = try c.decode(String.self, forKey: .entry)
+        // A damaged optional field must not make the enclosing sources dictionary lose its other members.
+        packageID = (try? c.decodeIfPresent(UUID.self, forKey: .packageID)) ?? nil
         unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(entry, forKey: .entry)
+        try c.encodeIfPresent(packageID, forKey: .packageID)
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
     }
@@ -357,20 +365,51 @@ final class AppState {
     /// The disk state is committed before memory changes. A failed save cannot leave an active or half-registered
     /// Desk source, and this path does not change the legacy debounced writes or INI directory.
     func registerDeskInstallation(source: DeskWidgetSourceState, instance: DeskWidgetInstanceState) throws {
+        try registerDeskInstallation(sources: [source], instances: [instance])
+    }
+
+    /// One new package directory and all of its initial inactive instances are registered together. A standalone
+    /// source keeps the existing single-source contract; an installed directory cannot be extended in place.
+    func registerDeskInstallation(sources: [DeskWidgetSourceState], instances: [DeskWidgetInstanceState]) throws {
         precondition(Thread.isMainThread)
-        let sourceKey = source.id.uuidString.lowercased(), instanceKey = instance.id.uuidString.lowercased()
-        guard data.deskWidgets.sources[sourceKey] == nil, data.deskWidgets.instances[instanceKey] == nil else {
+        guard let first = sources.first, !instances.isEmpty,
+              first.packageID != nil || sources.count == 1 else {
+            throw DeskInstallationFailure.invalidRelation
+        }
+        let directoryID = first.directoryID, directory = directoryID.uuidString.lowercased()
+        let sourceIDs = Set(sources.map(\.id)), instanceIDs = Set(instances.map(\.id))
+        guard sourceIDs.count == sources.count, instanceIDs.count == instances.count,
+              sourceIDs.allSatisfy({ data.deskWidgets.sources[$0.uuidString.lowercased()] == nil }),
+              instanceIDs.allSatisfy({ data.deskWidgets.instances[$0.uuidString.lowercased()] == nil }),
+              !data.deskWidgets.sources.values.contains(where: { $0.directoryID == directoryID }) else {
             throw DeskInstallationFailure.duplicateIdentity
         }
-        let parts = source.entry.split(separator: "/", omittingEmptySubsequences: false)
-        guard instance.sourceID == source.id, !instance.active, parts.count == 2, parts[0] == sourceKey,
-              !parts[1].isEmpty, parts[1] != ".", parts[1] != "..", !parts[1].contains("\\"),
-              !source.entry.contains("\0"), parts[1].lowercased().hasSuffix(".desk") else {
+        var members = Set<String>()
+        for source in sources {
+            let parts = source.entry.split(separator: "/", omittingEmptySubsequences: false)
+            guard source.packageID == first.packageID, source.directoryID == directoryID,
+                  parts.count == 2, parts[0] == directory,
+                  !parts[1].isEmpty, parts[1] != ".", parts[1] != "..", !parts[1].contains("\\"),
+                  !source.entry.contains("\0"), parts[1].lowercased().hasSuffix(".desk") else {
+                throw DeskInstallationFailure.invalidRelation
+            }
+            let name = String(parts[1])
+            if source.packageID != nil {
+                guard !DeskPackagePath.isPackageFile(name), !DeskPackagePath.isIgnoredName(name) else {
+                    throw DeskInstallationFailure.invalidRelation
+                }
+            }
+            guard members.insert(DeskPackagePath.foldedKey(name)).inserted else {
+                throw DeskInstallationFailure.duplicateIdentity
+            }
+        }
+        guard instances.allSatisfy({ !$0.active && sourceIDs.contains($0.sourceID) }),
+              Set(instances.map(\.sourceID)) == sourceIDs else {
             throw DeskInstallationFailure.invalidRelation
         }
         var next = data
-        next.deskWidgets.sources[sourceKey] = source
-        next.deskWidgets.instances[instanceKey] = instance
+        for source in sources { next.deskWidgets.sources[source.id.uuidString.lowercased()] = source }
+        for instance in instances { next.deskWidgets.instances[instance.id.uuidString.lowercased()] = instance }
         try write(next)
         data = next
     }

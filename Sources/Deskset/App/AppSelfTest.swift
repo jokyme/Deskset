@@ -101,6 +101,7 @@ enum AppSelfTest {
         DeskProgramOptionsPanelSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)
         DeskWidgetInstallationSelfTests.run(t)
+        DeskPackageStateSelfTests.run(t)
         DeskCodePresentationSelfTests.run(t)
         DeskCodeEditingSelfTests.run(t)
         DeskElementInspectorSelfTests.run(t)

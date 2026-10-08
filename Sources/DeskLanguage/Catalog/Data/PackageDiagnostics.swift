@@ -92,5 +92,13 @@ extension CatalogData {
                 #"这个文件夹里没有组件用到 `{path}`，分享时它仍会被一起打包。"#),
             placeholders: ["path": .code]
         ),
+        DiagnosticSpec(
+            id: .packageFileUnreadable, severity: .error,
+            trigger: #"a discovered widget or package file cannot be read"#,
+            template: LocalizedText(
+                #"The file `{path}` could not be read."#,
+                #"无法读取文件 `{path}`。"#),
+            placeholders: ["path": .code]
+        ),
     ]
 }
