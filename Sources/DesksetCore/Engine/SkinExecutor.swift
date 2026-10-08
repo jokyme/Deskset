@@ -313,11 +313,16 @@ public final class SkinExecutorPark: @unchecked Sendable {
 /// reference once the executor has let go, and the skin, its measures and meters would be released there — off the
 /// executor, where an InputText prompt would close its window and FrostedGlass release its backdrop window.
 public struct SkinHop: @unchecked Sendable {
-    private weak var skin: Skin?
+    /// Copied into queued work without reading the weak skin on the posting thread.
+    private struct Target {
+        weak var skin: Skin?
+    }
+
+    private let target: Target
     private let executor: SkinExecutor
 
     init(skin: Skin, executor: SkinExecutor) {
-        self.skin = skin
+        target = Target(skin: skin)
         self.executor = executor
     }
 
@@ -325,9 +330,10 @@ public struct SkinHop: @unchecked Sendable {
     /// otherwise `dropped` runs there instead. `dropped` is for what must not be left behind when nobody takes the
     /// result, such as a temporary file the background work saved; it must not touch the skin.
     public func post(_ work: @escaping () -> Void, orElse dropped: (() -> Void)? = nil) {
-        let hop = self
+        // The hop owns its destination, but queued work must not keep its own executor alive through the hop.
+        let target = self.target
         executor.async {
-            guard let skin = hop.skin else {
+            guard let skin = target.skin else {
                 dropped?()
                 return
             }

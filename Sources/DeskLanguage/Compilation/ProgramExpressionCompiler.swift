@@ -1,0 +1,952 @@
+import Foundation
+import DesksetCore
+
+/// Lower the existing checked identities and scalar types. No runtime name lookup or source evaluation is used.
+struct ProgramExpressionCompiler {
+    private(set) var checked: CheckedFile
+    let catalog: DeskCatalog
+    private var translationCompiler: ProgramTranslationCompiler?
+    private var slots: [NodeID: Int] = [:]
+    private var initializers: [NodeID: PositionedNode] = [:]
+    private var assignmentTypes: [Int: DeskType] = [:]
+    private var options: [String: OptionFacts] = [:]
+    private var localEnums: [String: String] = [:]
+    private var userOnlyOptions = Set<String>()
+    private var count = 0
+    private var loweringStyle = false
+    private var loweringStyleFont = false
+    private var loweringCondition = false
+    private var styleReads = 0
+
+    init(checked: CheckedFile, catalog: DeskCatalog, translations: ProgramTranslationCompiler? = nil) {
+        self.checked = checked
+        self.catalog = catalog
+        translationCompiler = translations
+    }
+
+    var translations: ProgramTranslations { translationCompiler?.translations ?? ProgramTranslations() }
+    var expressionCount: Int { count }
+
+    /// Charge selector nodes and duplicated tint conditions before constructing the bounded background tree.
+    mutating func reserveBackgroundExpressions(_ amount: Int, at node: PositionedNode) throws {
+        let maximum = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
+        guard amount >= 0, amount <= maximum - count else {
+            throw issue(.resourceLimit, node, "Shared program background expression limit exceeded")
+        }
+        count += amount
+    }
+
+    mutating func registerOptions(_ values: [String: OptionFacts]) throws {
+        options = values
+        localEnums.removeAll(keepingCapacity: true)
+        userOnlyOptions = Set(checked.requirements.commands.compactMap(\.scriptOption))
+        for name in values.keys.sorted() {
+            guard let facts = values[name], facts.name == name, facts.scope == .widget else {
+                throw issue(.invalidCheckedModel, checked.tree.rootNode, "Local option identities do not match their declarations")
+            }
+            if let type = facts.localEnum {
+                guard facts.type == .enumeration(type), localEnums[type] == nil else {
+                    throw issue(.invalidCheckedModel, checked.tree.rootNode, "Local option enum identities must be distinct")
+                }
+                localEnums[type] = name
+            }
+        }
+    }
+
+    mutating func accountOptionNode(_ node: PositionedNode) throws {
+        count += 1
+        guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+            throw issue(.resourceLimit, node, "Shared option and expression limit exceeded")
+        }
+    }
+
+    /// A descriptor uses the checked constant, not the current value of any runtime input.
+    mutating func optionNumber(_ node: PositionedNode) throws -> ProgramNumber {
+        let value = try lower(node, depth: 1, displayConditionals: false)
+        switch value {
+        case .number(let number): return ProgramNumber(number, dimension: .plain)
+        case .quantity(let number): return number
+        default: throw issue(.unsupported, node, "Numeric option metadata requires a checked canonical constant")
+        }
+    }
+
+    mutating func optionTitle(_ text: String, key: String, at node: PositionedNode) throws -> ProgramExpression {
+        try accountOptionNode(node)
+        return try translationCompiler?.optionTitle(text, key: key, at: node, in: checked) ?? .string(text)
+    }
+
+    mutating func clickAssignment(_ syntax: AssignmentSyntax) throws -> ProgramAction {
+        if syntax.target.path.count == 1 { return .assign(try assignment(syntax)) }
+        let path = syntax.target.path
+        guard syntax.isPlainAssignment, path.count == 2, path[0] == "options", let facts = options[path[1]],
+              checked.symbols[checked.tree.id(of: syntax.target.node)] == .option(facts.node, file: checked.tree.file) else {
+            throw issue(.unsupported, syntax.target.node, "Only checked local option and session variable assignments are implemented")
+        }
+        guard !userOnlyOptions.contains(facts.name) else {
+            throw issue(.unsupported, syntax.target.node, "This option can only be changed in the Options panel")
+        }
+        if facts.localEnum != nil, syntax.value.node.kind == .implicitMemberExpr {
+            // The checker defers an open option's bare case without publishing a RHS type or symbol.
+            // Its final declaration and exact case membership provide the receiver context instead.
+            return .assignOption(name: facts.name, value: try optionCase(syntax.value.node, facts: facts, allowsAbsentReceipt: true))
+        }
+        guard checked.types[checked.tree.id(of: syntax.value.node)]?.type == facts.type else {
+            throw issue(.invalidCheckedModel, syntax.value.node, "Checked option assignment type does not match its declaration")
+        }
+        return .assignOption(name: facts.name, value: try lower(syntax.value.node, depth: 1, displayConditionals: false))
+    }
+
+    mutating func optionCase(_ node: PositionedNode, facts: OptionFacts, allowsAbsentReceipt: Bool) throws -> ProgramExpression {
+        try accountOptionNode(node)
+        if let paren = ParenExprSyntax(node) {
+            let identity = checked.tree.id(of: node)
+            guard checked.types[identity]?.type == facts.type, checked.symbols[identity] == nil,
+                  checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+                throw issue(.invalidCheckedModel, node, "Local option case parentheses have inconsistent receipts")
+            }
+            return try optionCase(paren.value.node, facts: facts, allowsAbsentReceipt: allowsAbsentReceipt)
+        }
+        guard let type = facts.localEnum, facts.type == .enumeration(type), localEnums[type] == facts.name,
+              let name = ImplicitMemberExprSyntax(node)?.name.token.name ?? MemberExprSyntax(node)?.name.token.name,
+              facts.choices.contains(name), ImplicitMemberExprSyntax(node)?.arguments == nil,
+              MemberExprSyntax(node).map({ IdentifierExprSyntax($0.base.node)?.name == type }) ?? true else {
+            throw issue(.invalidCheckedModel, node, "Local option case does not belong to its checked nominal enum")
+        }
+        let identity = checked.tree.id(of: node)
+        guard (allowsAbsentReceipt && checked.types[identity] == nil || checked.types[identity]?.type == facts.type),
+              (allowsAbsentReceipt && checked.symbols[identity] == nil || checked.symbols[identity] == .enumCase(type: type, case: name)),
+              checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "Local option case has inconsistent checked receipts")
+        }
+        return .localCase(option: facts.name, name: name)
+    }
+
+    mutating func nameKey(_ node: PositionedNode) throws -> String? {
+        guard checked.types[checked.tree.id(of: node)]?.type == .string,
+              let string = StringLiteralSyntax(node), string.literalValue != nil else {
+            throw issue(.invalidCheckedModel, node, "Widget name requires its checked literal String")
+        }
+        return try translationCompiler?.key(for: string, in: checked, allowed: true)
+    }
+
+    mutating func declarations(_ declarations: [DeclarationSyntax]) throws -> [ProgramDeclaration] {
+        guard declarations.count <= ProgramLimits.maximumExpressions else {
+            throw issue(.resourceLimit, checked.tree.rootNode, "Shared program declaration limit exceeded")
+        }
+        slots = Dictionary(uniqueKeysWithValues: declarations.enumerated().map { (checked.tree.id(of: $0.element.node), $0.offset) })
+        initializers = Dictionary(uniqueKeysWithValues: declarations.map { (checked.tree.id(of: $0.node), $0.initializer.node) })
+        assignmentTypes.removeAll(keepingCapacity: true)
+        return try declarations.enumerated().map { index, declaration in
+            let kind: ProgramDeclaration.Kind
+            switch declaration.keyword.token.text {
+            case "variable": kind = .variable
+            case "computed": kind = .computed
+            default: throw issue(.unsupported, declaration.node, "Saved declarations require the shared persistence runtime")
+            }
+            guard let type = checked.declarationTypes[checked.tree.id(of: declaration.node)]?.type else {
+                throw issue(.invalidCheckedModel, declaration.node, "Missing checked declaration type")
+            }
+            guard supportedType(type) else {
+                throw issue(.unsupported, declaration.node, "Only String/SymbolName, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle declarations are implemented")
+            }
+            if kind == .variable { assignmentTypes[index] = type }
+            return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
+                                      initial: try lower(declaration.initializer.node, depth: 1))
+        }
+    }
+
+    mutating func assignment(_ syntax: AssignmentSyntax) throws -> ProgramAssignment {
+        guard syntax.isPlainAssignment, syntax.target.path.count == 1,
+              case .declaration(let identity)? = checked.symbols[checked.tree.id(of: syntax.target.node)],
+              let index = slots[identity], let expected = assignmentTypes[index] else {
+            throw issue(.unsupported, syntax.target.node, "Only plain assignments to checked session variables are implemented")
+        }
+        guard let actual = checked.types[checked.tree.id(of: syntax.value.node)]?.type, actual == expected else {
+            throw issue(.invalidCheckedModel, syntax.value.node, "Checked assignment type does not match its declaration")
+        }
+        return ProgramAssignment(declaration: index, value: try lower(syntax.value.node, depth: 1))
+    }
+
+    /// Keep the operands separate: a missing or nonpositive total produces an empty track at projection time.
+    mutating func rangedValue(value: PositionedNode, total: PositionedNode?, component: String) throws -> (value: ProgramExpression, total: ProgramExpression?) {
+        guard let type = checked.types[checked.tree.id(of: value)]?.type,
+              let dimension = numberDimension(type) else {
+            throw issue(.unsupported, value, "\(component) requires a checked plain/Percent/Bytes/Duration/Length/Angle expression")
+        }
+        let expression = try lower(value, depth: 1)
+        if let total {
+            guard checked.types[checked.tree.id(of: total)]?.type == type else {
+                throw issue(.invalidCheckedModel, total, "\(component) total must have the checked value dimension")
+            }
+            return (expression, try lower(total, depth: 1))
+        }
+        if dimension == .plain || dimension == .percent { return (expression, nil) }
+        // A range member is relative to its data owner. Bytes alone never implies memory.total.
+        var visited = Set<NodeID>()
+        try validateMemoryRange(value, visited: &visited, depth: 1)
+        count += 1
+        guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+            throw issue(.resourceLimit, value, "Shared program expression limit exceeded")
+        }
+        return (expression, .systemProperty(.memoryTotal))
+    }
+
+    private func validateMemoryRange(_ node: PositionedNode, visited: inout Set<NodeID>, depth: Int) throws {
+        guard depth <= min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+            throw issue(.resourceLimit, node, "Shared program reference depth exceeded")
+        }
+        let identity = checked.tree.id(of: node)
+        guard let type = checked.types[identity], type.type == .bytes, type.displayBase == 1024,
+              type.range == .member("total"), visited.insert(identity).inserted else {
+            throw issue(.unsupported, node, "Progress needs an explicit total or a proven memory field range")
+        }
+        if let paren = ParenExprSyntax(node) {
+            try validateMemoryRange(paren.value.node, visited: &visited, depth: depth + 1)
+            return
+        }
+        if IdentifierExprSyntax(node) != nil,
+           case .declaration(let declaration)? = checked.symbols[identity],
+           slots[declaration] != nil, let initializer = initializers[declaration] {
+            try validateMemoryRange(initializer, visited: &visited, depth: depth + 1)
+            return
+        }
+        guard MemberExprSyntax(node) != nil,
+              let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: node),
+              property == .memoryUsed || property == .memoryFree,
+              catalog.member(path: property.rawValue)?.range == .member("total"),
+              let namespace = catalog.namespace(named: "memory"), namespace.permission == nil,
+              let total = catalog.member(path: "memory.total"),
+              validateSystemPropertyContract(property: .memoryTotal, member: total) else {
+            throw issue(.unsupported, node, "Progress automatic total requires the checked memory owner/member contract")
+        }
+    }
+
+    mutating func actionString(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked action argument type")
+        }
+        guard type == .string else {
+            throw issue(.unsupported, node, "Open requires a checked String expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
+    /// Symbol names are string values, never a display conversion of numbers, dates or Booleans.
+    mutating func symbolName(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked symbol-name type")
+        }
+        guard type == .string || type == .symbolName else {
+            throw issue(.unsupported, node, "Icon requires a checked String or SymbolName expression")
+        }
+        return try lower(node, depth: 1, displayConditionals: false)
+    }
+
+    mutating func copyText(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked copy argument type")
+        }
+        guard type == .string || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil else {
+            throw issue(.unsupported, node, "Copy supports String, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle display values")
+        }
+        return try displayed(node, depth: 1, translateLiterals: false)
+    }
+
+    mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
+        try displayed(node, depth: 1, translateLiterals: true)
+    }
+
+    /// A style keeps its definition tree receipts; translation tables and expression accounting remain shared.
+    mutating func text(_ node: PositionedNode, source: CheckedFile, style: Bool = false) throws -> ProgramExpression {
+        let previous = checked
+        let previousStyle = loweringStyle
+        checked = source
+        loweringStyle = style
+        defer { checked = previous; loweringStyle = previousStyle }
+        return try text(node)
+    }
+
+    func supportsDisplayType(_ type: DeskType) -> Bool {
+        type == .string || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil
+    }
+
+    /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
+    mutating func condition(_ node: PositionedNode) throws -> ProgramExpression {
+        let identity = checked.tree.id(of: node)
+        guard checked.types[identity]?.type == .bool,
+              checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "A condition requires its checked Bool type")
+        }
+        let previous = loweringCondition
+        loweringCondition = true
+        defer { loweringCondition = previous }
+        return try lower(node, depth: 1, displayConditionals: false)
+    }
+
+    mutating func condition(_ node: PositionedNode, source: CheckedFile, style: Bool) throws -> ProgramExpression {
+        let previous = checked
+        let previousStyle = loweringStyle
+        checked = source
+        loweringStyle = style
+        defer { checked = previous; loweringStyle = previousStyle }
+        return try condition(node)
+    }
+
+    mutating func allConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
+        guard var result = values.first else { return nil }
+        for value in values.dropFirst() {
+            count += 1
+            guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
+            }
+            result = .and(result, value)
+        }
+        return result
+    }
+
+    mutating func hiddenConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
+        guard var result = values.first else { return nil }
+        for value in values.dropFirst() {
+            count += 1
+            guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
+            }
+            result = .or(result, value)
+        }
+        return result
+    }
+
+    private mutating func displayed(_ node: PositionedNode, depth: Int, translateLiterals: Bool) throws -> ProgramExpression {
+        let type = checked.types[checked.tree.id(of: node)]?.type
+        guard type == .string || type == .bool || type == .date || type.flatMap(numberDimension) != nil || type.flatMap(localOption) != nil else {
+            throw issue(.unsupported, node, "Text requires String, Bool, Date or plain/Percent/Bytes/Duration/Length/Angle; other value formatting is not implemented")
+        }
+        let value = try lower(node, depth: depth, translateLiterals: translateLiterals)
+        if let type, numberDimension(type) != nil { return .formatNumber(value, try numberFormat(at: node, type: type, options: [])) }
+        if type == .bool || type.flatMap(localOption) != nil { return .concatenate([value]) }
+        return type == .date ? .formatDate(value, try defaultDateFormat(at: node)) : value
+    }
+
+    mutating func fontSize(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked font-size type")
+        }
+        guard type == .plainNumber || type == .length else {
+            throw issue(.unsupported, node, "Font size requires a checked Plain or Length expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
+    mutating func fontSize(_ node: PositionedNode, source: CheckedFile, style: Bool) throws -> ProgramExpression {
+        let previous = checked
+        let previousStyle = loweringStyle
+        let previousFont = loweringStyleFont
+        checked = source
+        loweringStyle = style
+        loweringStyleFont = style
+        defer { checked = previous; loweringStyle = previousStyle; loweringStyleFont = previousFont }
+        return try fontSize(node)
+    }
+
+    mutating func gaugeAngle(_ node: PositionedNode) throws -> ProgramExpression {
+        guard checked.types[checked.tree.id(of: node)]?.type == .angle else {
+            throw issue(.unsupported, node, "Gauge angles require a checked Angle expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
+    mutating func gaugeThickness(_ node: PositionedNode) throws -> ProgramExpression {
+        guard let type = checked.types[checked.tree.id(of: node)]?.type,
+              type == .plainNumber || type == .length else {
+            throw issue(.unsupported, node, "Gauge thickness requires a checked Plain or Length expression")
+        }
+        return try lower(node, depth: 1)
+    }
+
+    private mutating func lower(_ node: PositionedNode, depth: Int, displayConditionals: Bool = true,
+                                translateLiterals: Bool = false) throws -> ProgramExpression {
+        count += 1
+        guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+            throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
+        }
+        guard depth <= min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+            throw issue(.resourceLimit, node, "Shared program expression depth exceeded")
+        }
+        guard let type = checked.types[checked.tree.id(of: node)]?.type else {
+            throw issue(.invalidCheckedModel, node, "Missing checked expression type")
+        }
+        guard supportedType(type) else {
+            throw issue(.unsupported, node, "Only String/SymbolName, Bool, Date and plain/Percent/Bytes/Duration/Length/Angle expressions are implemented")
+        }
+        let identity = checked.tree.id(of: node)
+        let coercion = checked.numericCoercions[identity]
+        try validateBatteryDetailsRead(node, identity: identity, type: type, coercion: coercion)
+        if checked.canonicalNumericValues[identity] != nil,
+           let source = try? unparenthesized(node), let member = MemberExprSyntax(source),
+           IdentifierExprSyntax(member.base.node)?.name == "options" {
+            throw issue(.invalidCheckedModel, node, "Live option values cannot have constant receipts")
+        }
+        if checked.canonicalNumericValues[identity] != nil || coercion != nil {
+            let source = try unparenthesized(node)
+            let symbol = checked.symbols[checked.tree.id(of: source)]
+            if MemberExprSyntax(source) != nil,
+               symbol == .builtIn(.member(namespace: "battery", name: "present")) ||
+               symbol == .builtIn(.member(namespace: "battery", name: "timeRemaining")) {
+                throw issue(.invalidCheckedModel, node, "Live battery fields cannot have constant or numeric conversion receipts")
+            }
+        }
+        if coercion != nil && type != .plainNumber {
+            throw issue(.invalidCheckedModel, node, "A percent-as-fraction use must have final plain type")
+        }
+        // Validate the original supported subtree before folding the checker's actual constant. A constant
+        // conditional must not hide an unsupported branch, and no variable initializer is inferred here.
+        let readsBefore = styleReads
+        let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth,
+                                 displayConditionals: displayConditionals, translateLiterals: translateLiterals)
+        if loweringStyle || loweringCondition {
+            switch raw {
+            case .timeNow:
+                guard type == .date else { throw issue(.invalidCheckedModel, node, "A style or condition clock read requires its checked Date type") }
+                styleReads += 1
+            case .appearanceDark:
+                guard type == .bool else { throw issue(.invalidCheckedModel, node, "A style or condition appearance read requires its checked Bool type") }
+                styleReads += 1
+            case .option, .systemProperty: styleReads += 1
+            case .declaration where loweringCondition: styleReads += 1
+            default: break
+            }
+            guard checked.canonicalNumericValues[identity] == nil || styleReads == readsBefore else {
+                throw issue(.invalidCheckedModel, node, "Live style or condition expressions cannot have constant receipts")
+            }
+        }
+        if let canonical = checked.canonicalNumericValues[identity] {
+            guard let dimension = numberDimension(type), canonical.isFinite else {
+                throw issue(.invalidCheckedModel, node, "Invalid checked canonical numeric constant")
+            }
+            return try quantity(canonical, dimension: dimension, at: node)
+        }
+        if coercion == .percentAsFraction {
+            // The receipt identifies one original Percent use. Existing Percent/Percent division yields Plain;
+            // Percent-times-Bytes has no receipt and keeps the shared runtime's percentage algebra unchanged.
+            return .divide(raw, .quantity(ProgramNumber(100, dimension: .percent)))
+        }
+        return raw
+    }
+
+    private mutating func lowerValue(_ node: PositionedNode, type: DeskType, depth: Int,
+                                     displayConditionals: Bool, translateLiterals: Bool) throws -> ProgramExpression {
+        if let value = StringLiteralSyntax(node) {
+            let key = try translationCompiler?.key(for: value, in: checked, allowed: translateLiterals)
+            if let text = value.literalValue {
+                guard text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
+                    throw issue(.resourceLimit, node, "Shared program text limit exceeded")
+                }
+                return key.map { .localized(key: $0, values: []) } ?? .string(text)
+            }
+            var parts: [ProgramExpression] = [], values: [ProgramExpression] = []
+            for segment in value.segments {
+                switch segment {
+                case .text(_, let cooked): parts.append(.string(cooked))
+                case .foreign(let foreign): throw issue(.unsupported, foreign, "Foreign string interpolation is not implemented")
+                case .interpolation(let interpolation):
+                    let expression = try lower(interpolation.value.node, depth: depth + 1)
+                    let type = checked.types[checked.tree.id(of: interpolation.value.node)]?.type
+                    if let type, numberDimension(type) != nil {
+                        let format = try numberFormat(at: interpolation.value.node, type: type, options: interpolation.formatOptions)
+                        var formatted = ProgramExpression.formatNumber(expression, format)
+                        if let missing = interpolation.formatOptions.first(where: { $0.label.name == "missing" }),
+                           let literal = StringLiteralSyntax(missing.value.node) {
+                            // Authored fallback words share the outer display's translation context; automatic
+                            // missing marks remain the formatter's own text. Both branches use the captured inputs.
+                            if try translationCompiler?.key(for: literal, in: checked, allowed: translateLiterals) != nil {
+                                let fallback = try lower(missing.value.node, depth: depth + 1, translateLiterals: translateLiterals)
+                                count += 2
+                                guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                                    throw issue(.resourceLimit, missing.node, "Shared program expression limit exceeded")
+                                }
+                                formatted = .conditional(.isMissing(expression), then: fallback, otherwise: formatted)
+                            }
+                        }
+                        parts.append(formatted); values.append(formatted)
+                    } else if type == .date {
+                        guard interpolation.formatOptions.count <= 1 else {
+                            throw issue(.unsupported, interpolation.node, "Only the Date format option is implemented")
+                        }
+                        let format: ProgramDateFormat
+                        if let option = interpolation.formatOptions.first {
+                            guard option.label.name == "format",
+                                  let spec = catalog.formatOptions.first(where: { $0.label == "format" && $0.appliesTo.contains(.date) }),
+                                  spec.type == .oneOf([.string, .enumeration("DatePreset")]), spec.range == nil else {
+                                throw issue(.unsupported, option.node, "Unsupported Date format option or catalog lowering")
+                            }
+                            format = try dateFormat(option.value.node)
+                        } else { format = try defaultDateFormat(at: interpolation.value.node) }
+                        let formatted = ProgramExpression.formatDate(expression, format)
+                        parts.append(formatted); values.append(formatted)
+                    } else {
+                        guard interpolation.formatOptions.isEmpty, type == .string || type == .bool || type.flatMap(localOption) != nil else {
+                            throw issue(.unsupported, interpolation.node, "Only unformatted String/Bool and formatted Date interpolation are implemented")
+                        }
+                        let displayed = type.flatMap(localOption) == nil ? expression : ProgramExpression.concatenate([expression])
+                        parts.append(displayed); values.append(displayed)
+                    }
+                }
+            }
+            return key.map { .localized(key: $0, values: values) } ?? .concatenate(parts)
+        }
+        if let value = BoolLiteralSyntax(node) { return .boolean(value.value) }
+        if let literal = NumberLiteralSyntax(node) {
+            guard let recordedType = checked.types[checked.tree.id(of: node)]?.type, let dimension = numberDimension(recordedType),
+                  literal.value?.isFinite == true,
+                  let canonical = checked.canonicalNumericValues[checked.tree.id(of: node)], canonical.isFinite else {
+                throw issue(.invalidCheckedModel, node, "Numeric literal requires a final checked canonical value")
+            }
+            if dimension == .angle {
+                let factor: Double
+                if let spelling = literal.unit {
+                    switch spelling.text {
+                    case "deg", "°": factor = 1
+                    case "rad": factor = 180 / Double.pi
+                    default: throw issue(.unsupported, node, "Unsupported Angle unit")
+                    }
+                    guard let unit = catalog.unit(spelling: spelling.text), unit.dimension == .angle,
+                          unit.factor == factor, unit.offset == 0, !unit.adoptsBase else {
+                        throw issue(.unsupported, node, "Unsupported Angle unit catalog contract")
+                    }
+                } else { factor = 1 }
+                guard let written = literal.value, literal.unitAfterSpace == nil,
+                      canonical == written * factor else {
+                    throw issue(.invalidCheckedModel, node, "Angle literal requires its exact canonical degree receipt")
+                }
+            }
+            if let spelling = literal.unit, let unit = catalog.units.first(where: { $0.spelling == spelling.text }) {
+                let natural = numberDimension(.number(unit.dimension))
+                guard spelling.status == .known, natural != nil, unit.factor.isFinite, unit.offset == 0,
+                      natural == dimension || natural == .percent && dimension == .plain && checked.numericCoercions[checked.tree.id(of: node)] == .percentAsFraction else {
+                    throw issue(.unsupported, node, "Unsupported numeric unit catalog contract")
+                }
+            } else if literal.unit != nil { throw issue(.unsupported, node, "Unknown numeric unit catalog contract") }
+            return try quantity(canonical, dimension: dimension, at: node)
+        }
+        if let value = ParenExprSyntax(node) {
+            if loweringStyle {
+                let identity = checked.tree.id(of: node), inner = checked.tree.id(of: value.value.node)
+                let adoptedLength = loweringStyleFont && checked.types[identity]?.type == .length &&
+                    checked.types[inner]?.type == .plainNumber && checked.canonicalNumericValues[identity]?.isFinite == true &&
+                    checked.canonicalNumericValues[identity] == checked.canonicalNumericValues[inner] &&
+                    checked.numericCoercions[inner] == nil
+                guard checked.types[identity]?.type == checked.types[inner]?.type || adoptedLength,
+                      checked.symbols[identity] == nil,
+                      checked.canonicalNumericValues[identity] == checked.canonicalNumericValues[inner],
+                      checked.numericCoercions[identity] == nil else {
+                    throw issue(.invalidCheckedModel, node, "Style parentheses do not preserve their checked expression receipts")
+                }
+            }
+            return try lower(value.value.node, depth: depth + 1, displayConditionals: displayConditionals,
+                             translateLiterals: translateLiterals)
+        }
+        if IdentifierExprSyntax(node) != nil {
+            guard !loweringStyle else {
+                throw issue(.unsupported, node, "Styles cannot read widget declarations")
+            }
+            guard case .declaration(let identity)? = checked.symbols[checked.tree.id(of: node)], let slot = slots[identity] else {
+                throw issue(.unsupported, node, "Only checked widget declarations can be read by this program slice")
+            }
+            return .declaration(slot)
+        }
+        if let owner = localOption(type), let facts = options[owner],
+           ImplicitMemberExprSyntax(node) != nil || MemberExprSyntax(node).map({ IdentifierExprSyntax($0.base.node)?.name == facts.localEnum }) == true {
+            return try optionCase(node, facts: facts, allowsAbsentReceipt: false)
+        }
+        if let value = MemberExprSyntax(node) {
+            let identity = checked.tree.id(of: node)
+            if IdentifierExprSyntax(value.base.node)?.name == "options" {
+                guard let facts = options[value.name.token.name], type == facts.type,
+                      checked.symbols[identity] == .option(facts.node, file: checked.tree.file),
+                      checked.types[identity]?.displayBase == facts.displayBase else {
+                    throw issue(.invalidCheckedModel, node, "Option read has no matching local declaration receipt")
+                }
+                return .option(facts.name)
+            }
+            if value.name.token.name == "isMissing" {
+                guard type == .bool, let receiver = checked.types[checked.tree.id(of: value.base.node)]?.type,
+                      supportedType(receiver), let spec = catalog.member("isMissing", of: receiver, call: false),
+                      spec.kind == .field, spec.type == .bool, spec.signatures.isEmpty,
+                      spec.lowering == .derived("Any.isMissing"), spec.cadence == .ofRecord,
+                      spec.readsSynchronously, spec.permission == nil, !spec.settable, !spec.userInitiatedOnly else {
+                    throw issue(.unsupported, node, "Unsupported checked isMissing member contract")
+                }
+                return .isMissing(try lower(value.base.node, depth: depth + 1))
+            }
+            if checked.symbols[identity] == .builtIn(.member(namespace: "time", name: "now")) {
+                guard checked.dataUses.contains(where: { $0.reference == identity && $0.nodePath == "time" && $0.memberPath == "time.now" && $0.arguments.isEmpty && $0.instanceScope.isEmpty }),
+                      let member = catalog.member(path: "time.now"), member.kind == .field, member.type == .date,
+                      member.cadence == .clock, member.readsSynchronously, member.permission == nil,
+                      catalog.namespace(named: "time")?.permission == nil, !member.settable,
+                      case .native(let kernel, let options, let field) = member.lowering,
+                      kernel == "clock", options.isEmpty, field == nil else {
+                    throw issue(.unsupported, node, "Unsupported time.now catalog or checked data identity")
+                }
+                return .timeNow
+            }
+            if checked.symbols[identity] == .builtIn(.member(namespace: "system", name: "dark")) {
+                guard checked.dataUses.contains(where: { $0.reference == identity && $0.nodePath == "system" && $0.memberPath == "system.dark" && $0.arguments.isEmpty && $0.instanceScope.isEmpty }),
+                      let member = catalog.member(path: "system.dark"), member.kind == .field, member.type == .bool,
+                      member.cadence == .event, member.readsSynchronously, member.permission == nil,
+                      catalog.namespace(named: "system")?.permission == nil, !member.settable,
+                      case .native(let kernel, let options, let field) = member.lowering,
+                      kernel == "appearance", options.isEmpty, field == "dark" else {
+                    throw issue(.unsupported, node, "Unsupported system.dark catalog or checked data identity")
+                }
+                return .appearanceDark
+            }
+            if let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: node) {
+                return .systemProperty(property)
+            }
+            throw issue(.unsupported, node, "Only checked system.dark, time.now and supported system data inputs are implemented")
+        }
+        if let call = CallExprSyntax(node), let member = MemberExprSyntax(call.callee.node) {
+            // The current checker records type-member calls by checked receiver/result types, not Symbol.
+            let arguments = call.arguments.arguments
+            if member.name.token.name == "ifMissing" {
+                guard let receiver = checked.types[checked.tree.id(of: member.base.node)]?.type, supportedType(receiver), type == receiver,
+                      arguments.count == 1, arguments[0].label == nil,
+                      checked.types[checked.tree.id(of: arguments[0].value.node)]?.type == receiver,
+                      let spec = catalog.member("ifMissing", of: receiver, call: true), spec.kind == .function,
+                      spec.type == .typeVar(0), spec.cadence == .ofRecord, spec.readsSynchronously,
+                      spec.permission == nil, !spec.settable, !spec.userInitiatedOnly,
+                      spec.lowering == .derived("Any.ifMissing()"), spec.signatures.count == 1,
+                      spec.signatures[0].result == .receiver, spec.signatures[0].params.count == 1,
+                      spec.signatures[0].params[0].label == nil, spec.signatures[0].params[0].type == .typeVar(0),
+                      spec.signatures[0].params[0].required, !spec.signatures[0].params[0].variadic,
+                      spec.signatures[0].params[0].defaultValue == nil else {
+                    throw issue(.unsupported, node, "Unsupported checked ifMissing member contract")
+                }
+                return .ifMissing(try lower(member.base.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                           translateLiterals: translateLiterals),
+                                  try lower(arguments[0].value.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                            translateLiterals: translateLiterals))
+            }
+            guard member.name.token.name == "in", type == .date,
+                  checked.types[checked.tree.id(of: member.base.node)]?.type == .date,
+                  arguments.count == 1, arguments[0].label == nil,
+                  checked.types[checked.tree.id(of: arguments[0].value.node)]?.type == .string,
+                  let zone = StringLiteralSyntax(arguments[0].value.node)?.literalValue,
+                  TimeZone(identifier: zone) != nil,
+                  let spec = catalog.member("in", of: .date, call: true), spec.kind == .function,
+                  spec.type == .date, spec.cadence == .ofRecord, spec.readsSynchronously,
+                  spec.permission == nil, !spec.settable, !spec.userInitiatedOnly,
+                  spec.lowering == .derived("Date.in()"), spec.signatures.count == 1,
+                  spec.signatures[0].result == .fixed(.date), spec.signatures[0].params.count == 1,
+                  spec.signatures[0].params[0].label == nil, spec.signatures[0].params[0].type == .string,
+                  spec.signatures[0].params[0].required, !spec.signatures[0].params[0].variadic,
+                  spec.signatures[0].params[0].defaultValue == nil else {
+                throw issue(.unsupported, node, "Only the checked Date.in(literal time zone) member is implemented")
+            }
+            return .dateIn(try lower(member.base.node, depth: depth + 1), timeZone: zone)
+        }
+        if let value = PrefixExprSyntax(node) {
+            let child = try lower(value.operand.node, depth: depth + 1)
+            if value.operator.token.text == "not" { return .not(child) }
+            if value.operator.token.text == "-" { return .negate(child) }
+            throw issue(.unsupported, node, "Unsupported scalar prefix operator")
+        }
+        if let value = BinaryExprSyntax(node) {
+            if ["+", "-", "*", "/", "%", "<", "<=", ">", ">="].contains(value.operator.token.text) {
+                let left = checked.types[checked.tree.id(of: value.left.node)]?.type,
+                    right = checked.types[checked.tree.id(of: value.right.node)]?.type
+                guard let left, let right, supportedType(left), supportedType(right),
+                      (numberDimension(left) != nil || left == .date), (numberDimension(right) != nil || right == .date),
+                      !["<", "<=", ">", ">="].contains(value.operator.token.text) || numberDimension(left) != nil && numberDimension(right) != nil else {
+                    throw issue(.unsupported, node, "Arithmetic requires supported checked numeric/Date operands; Date ordering is not implemented")
+                }
+            }
+            let left = try lower(value.left.node, depth: depth + 1), right = try lower(value.right.node, depth: depth + 1)
+            switch value.operator.token.text {
+            case "and": return .and(left, right)
+            case "or": return .or(left, right)
+            case "==": return .equal(left, right)
+            case "!=": return .notEqual(left, right)
+            case "+": return .add(left, right)
+            case "-": return .subtract(left, right)
+            case "*": return .multiply(left, right)
+            case "/": return .divide(left, right)
+            case "%": return .remainder(left, right)
+            case "<": return .less(left, right)
+            case "<=": return .lessOrEqual(left, right)
+            case ">": return .greater(left, right)
+            case ">=": return .greaterOrEqual(left, right)
+            default: throw issue(.unsupported, node, "Unsupported scalar operator: \(value.operator.token.text)")
+            }
+        }
+        if let value = TernaryExprSyntax(node) {
+            if type == .string && displayConditionals {
+                // The checker marks display-position conditionals String: each selected branch is displayed
+                // independently, including a direct data member's catalog default. Numeric conditionals stay numeric.
+                return .conditional(try lower(value.condition.node, depth: depth + 1),
+                                    then: try displayed(value.then.node, depth: depth + 1, translateLiterals: translateLiterals),
+                                    otherwise: try displayed(value.otherwise.node, depth: depth + 1, translateLiterals: translateLiterals))
+            }
+            return .conditional(try lower(value.condition.node, depth: depth + 1),
+                                then: try lower(value.then.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                                translateLiterals: translateLiterals),
+                                otherwise: try lower(value.otherwise.node, depth: depth + 1, displayConditionals: displayConditionals,
+                                                     translateLiterals: translateLiterals))
+        }
+        throw issue(.unsupported, node, "Unsupported scalar expression: \(node.kind.rawValue)")
+    }
+
+    private func supportedType(_ type: DeskType) -> Bool {
+        type == .string || type == .symbolName || type == .bool || type == .date || numberDimension(type) != nil || localOption(type) != nil
+    }
+
+    private func localOption(_ type: DeskType) -> String? {
+        guard case .enumeration(let name) = type else { return nil }
+        return localEnums[name]
+    }
+
+    private func numberDimension(_ type: DeskType) -> ProgramNumberDimension? {
+        switch type {
+        case .plainNumber: return .plain
+        case .percent: return .percent
+        case .bytes: return .bytes
+        case .duration: return .duration
+        case .length: return .length
+        case .angle: return .angle
+        default: return nil
+        }
+    }
+
+    private func quantity(_ value: Double, dimension: ProgramNumberDimension, at node: PositionedNode) throws -> ProgramExpression {
+        let base = checked.types[checked.tree.id(of: node)]?.displayBase
+        guard dimension == .bytes ? (base == nil || base == 1000 || base == 1024) : base == nil else {
+            throw issue(.invalidCheckedModel, node, "Invalid checked numeric display base")
+        }
+        return dimension == .plain ? .number(value) : .quantity(ProgramNumber(value, dimension: dimension, displayBase: base))
+    }
+
+    private func numberFormat(at node: PositionedNode, type: DeskType, options: [FormatOptionSyntax]) throws -> ProgramNumberFormat {
+        guard let dimension = numberDimension(type), let rule = catalog.typeFormats.first(where: { $0.type == type }),
+              rule.decimals == (dimension == .percent || dimension == .angle ? 0 : nil),
+              rule.style == (dimension == .duration ? .style(".full") : nil),
+              catalog.typeFormats.contains(where: { $0.type == .any && $0.decimals == nil && $0.style == nil }) else {
+            throw issue(.unsupported, node, "Unsupported catalog numeric or missing default format")
+        }
+        var decimals: Int?, missing = "–", labels = Set<String>()
+        var unit: ProgramNumberFormat.ByteUnit?, unitStyle: ProgramNumberFormat.UnitStyle?, durationStyle: ProgramNumberFormat.DurationStyle?
+        if dimension == .duration { durationStyle = try defaultDurationStyle(at: node) }
+        for option in options {
+            let label = option.label.name
+            guard labels.insert(label).inserted else { throw issue(.unsupported, option.node, "Duplicate number format option") }
+            switch label {
+            case "decimals":
+                guard dimension != .duration else {
+                    throw issue(.unsupported, option.node, "Duration decimals are not implemented")
+                }
+                guard let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.anyNumber] }),
+                      spec.type == .plainNumber, spec.range == 0...10,
+                      checked.types[checked.tree.id(of: option.value.node)]?.type == .plainNumber,
+                      let literal = NumberLiteralSyntax(option.value.node), literal.unit == nil,
+                      let n = literal.value, n.isFinite, (0...10).contains(n), n.rounded(.towardZero) == n else {
+                    throw issue(.unsupported, option.node, "decimals requires the catalog's literal integer 0...10 contract")
+                }
+                decimals = Int(n)
+            case "missing":
+                guard let spec = catalog.formatOptions.first(where: { $0.label == label && $0.appliesTo == [.any] }),
+                      spec.type == .string, spec.range == nil,
+                      checked.types[checked.tree.id(of: option.value.node)]?.type == .string,
+                      let text = StringLiteralSyntax(option.value.node)?.literalValue,
+                      text.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
+                    throw issue(.unsupported, option.node, "missing requires the catalog's literal String contract")
+                }
+                missing = text
+            case "unit", "unitStyle", "style":
+                let enumName = label == "unit" ? "ByteUnit" : label == "unitStyle" ? "UnitStyle" : "DurationStyle"
+                guard (label == "style" ? dimension == .duration : dimension == .bytes || label == "unitStyle" && dimension == .angle),
+                      let spec = catalog.formatOptions.first(where: { $0.label == label && $0.type == .enumeration(enumName) }),
+                      spec.appliesTo.contains(type), spec.range == nil,
+                      checked.types[checked.tree.id(of: option.value.node)]?.type == .enumeration(enumName),
+                      case .enumCase(let recordedEnum, let name)? = checked.symbols[checked.tree.id(of: option.value.node)],
+                      recordedEnum == enumName, catalog.enumeration(enumName)?.enumCase(named: name) != nil else {
+                    throw issue(.unsupported, option.node, "Unit/style option requires its checked catalog enum case")
+                }
+                if label == "unit" {
+                    guard let value = ProgramNumberFormat.ByteUnit(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported ByteUnit case") }
+                    unit = value
+                } else if label == "unitStyle" {
+                    guard let value = ProgramNumberFormat.UnitStyle(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported UnitStyle case") }
+                    unitStyle = value
+                } else {
+                    guard let value = ProgramNumberFormat.DurationStyle(rawValue: name) else { throw issue(.unsupported, option.node, "Unsupported DurationStyle case") }
+                    durationStyle = value
+                }
+            default: throw issue(.unsupported, option.node, "Unsupported numeric format option: \(label)")
+            }
+        }
+        return ProgramNumberFormat(decimals: decimals, missing: missing, unit: unit, unitStyle: unitStyle, durationStyle: durationStyle)
+    }
+
+    private func unparenthesized(_ node: PositionedNode) throws -> PositionedNode {
+        var value = node, depth = 1
+        while let paren = ParenExprSyntax(value) {
+            guard depth < min(ProgramLimits.maximumExpressionDepth, catalog.limits.maximumExpressionNesting) else {
+                throw issue(.resourceLimit, node, "Shared program display-source depth exceeded")
+            }
+            value = paren.value.node
+            depth += 1
+        }
+        return value
+    }
+
+    private func defaultDurationStyle(at node: PositionedNode) throws -> ProgramNumberFormat.DurationStyle? {
+        let value = try unparenthesized(node)
+        // A display default belongs to a direct member, not to a scalar's initializer or its arithmetic history.
+        let identity = checked.tree.id(of: value)
+        guard MemberExprSyntax(value) != nil,
+              let property = try systemProperty(for: checked.symbols[identity], identity: identity, at: value),
+              let member = catalog.member(path: property.rawValue), member.type == .duration else { return nil }
+        guard case .style(let spelling)? = member.defaultFormat, spelling.hasPrefix("."),
+              let style = ProgramNumberFormat.DurationStyle(rawValue: String(spelling.dropFirst())),
+              catalog.enumeration("DurationStyle")?.enumCase(named: style.rawValue) != nil else {
+            throw issue(.unsupported, value, "Unsupported catalog member Duration default format")
+        }
+        return style
+    }
+
+    private func defaultDateFormat(at node: PositionedNode) throws -> ProgramDateFormat {
+        guard let value = catalog.member(path: "time.now")?.defaultFormat ?? catalog.typeFormats.first(where: { $0.type == .date })?.style else {
+            throw issue(.unsupported, node, "Missing catalog default Date format")
+        }
+        let format: ProgramDateFormat
+        switch value {
+        case .style(let name):
+            guard name.hasPrefix("."), let preset = ProgramDateFormat.Preset(rawValue: String(name.dropFirst())),
+                  catalog.enumeration("DatePreset")?.enumCase(named: preset.rawValue) != nil else {
+                throw issue(.unsupported, node, "Unsupported catalog default Date preset")
+            }
+            format = .preset(preset)
+        case .pattern(let pattern): format = .pattern(pattern)
+        }
+        return try supported(format, at: node)
+    }
+
+    private func dateFormat(_ node: PositionedNode) throws -> ProgramDateFormat {
+        if let literal = StringLiteralSyntax(node)?.literalValue { return try supported(.pattern(literal), at: node) }
+        if case .enumCase(let type, let name)? = checked.symbols[checked.tree.id(of: node)], type == "DatePreset",
+           let preset = ProgramDateFormat.Preset(rawValue: name), catalog.enumeration(type)?.enumCase(named: name) != nil {
+            return .preset(preset)
+        }
+        throw issue(.unsupported, node, "Date format must be a supported literal Unicode pattern or checked preset")
+    }
+
+    private func supported(_ format: ProgramDateFormat, at node: PositionedNode) throws -> ProgramDateFormat {
+        do { _ = try format.precision; return format }
+        catch { throw issue(.unsupported, node, "Unsupported date pattern or subsecond display precision") }
+    }
+
+    private func systemProperty(for symbol: Symbol?, identity: NodeID, at node: PositionedNode) throws -> ProgramSystemProperty? {
+        guard case .builtIn(.member(let namespace, let name))? = symbol else { return nil }
+        let fullPath = "\(namespace).\(name)"
+        guard let property = ProgramSystemProperty(rawValue: fullPath) else { return nil }
+        if property == .batteryHealth || property == .batteryCycles {
+            guard let syntax = MemberExprSyntax(node), syntax.name.token.name == name,
+                  IdentifierExprSyntax(syntax.base.node)?.name == namespace,
+                  checked.symbols[checked.tree.id(of: syntax.base.node)] == .builtIn(.namespace(namespace)) else {
+                throw issue(.invalidCheckedModel, node, "Checked battery details require their actual namespace/member source")
+            }
+        }
+        guard checked.dataUses.contains(where: {
+            $0.reference == identity && $0.nodePath == namespace && $0.memberPath == fullPath && $0.arguments.isEmpty && $0.instanceScope.isEmpty
+        }) else {
+            throw issue(.unsupported, node, "Unsupported checked data use for \(fullPath)")
+        }
+        guard let member = catalog.member(path: fullPath),
+              catalog.namespace(named: namespace)?.permission == nil,
+              validateSystemPropertyContract(property: property, member: member) else {
+            throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
+        }
+        if loweringStyle || loweringCondition || property == .batteryHealth || property == .batteryCycles {
+            let fraction = checked.numericCoercions[identity] == .percentAsFraction
+            guard fraction ? member.type == .percent && checked.types[identity]?.type == .plainNumber :
+                checked.types[identity]?.type == member.type else {
+                throw issue(.invalidCheckedModel, node, "Checked data type does not match its catalog member")
+            }
+        } else if property == .batteryPresent || property == .batteryTimeRemaining {
+            guard checked.types[identity]?.type == member.type else {
+                throw issue(.invalidCheckedModel, node, "Checked battery field type does not match its catalog member")
+            }
+        }
+        return property
+    }
+
+    /// Live fields and transparent wrappers cannot acquire a constant receipt. A real Percent use may still
+    /// carry the checker's percent-as-fraction conversion; the observed cycle count has no such conversion.
+    private func validateBatteryDetailsRead(_ node: PositionedNode, identity: NodeID, type: DeskType,
+                                           coercion: NumericCoercion?) throws {
+        let source = try unparenthesized(node)
+        guard let syntax = MemberExprSyntax(source), IdentifierExprSyntax(syntax.base.node)?.name == "battery",
+              syntax.name.token.name == "health" || syntax.name.token.name == "cycles" else { return }
+        let sourceID = checked.tree.id(of: source)
+        let expected: DeskType = syntax.name.token.name == "health" ? .percent : .plainNumber
+        let fraction = expected == .percent && coercion == .percentAsFraction && type == .plainNumber
+        guard checked.symbols[sourceID] == .builtIn(.member(namespace: "battery", name: syntax.name.token.name)),
+              checked.symbols[checked.tree.id(of: syntax.base.node)] == .builtIn(.namespace("battery")),
+              identity == sourceID || checked.symbols[identity] == nil,
+              type == expected && coercion == nil || fraction,
+              checked.canonicalNumericValues[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "Live battery details require exact checked types and no constant receipts")
+        }
+    }
+
+    private func validateSystemPropertyContract(property: ProgramSystemProperty, member: MemberSpec) -> Bool {
+        guard member.kind == .field, member.permission == nil, !member.settable else { return false }
+        switch property {
+        case .cpuUsage:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .periodic(seconds: 1) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("CPU", ["Processor": "0"])
+        case .cpuCoreCount:
+            return member.type == .plainNumber && member.cadence == .once && member.readsSynchronously &&
+                member.lowering == CatalogData.nativeKernel("cpuInfo", field: "coreCount")
+        case .memoryUsed:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory")
+        case .memoryTotal:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .once && member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory", ["Total": "1"])
+        case .memoryFree:
+            return member.type == .bytes && member.displayBase == 1024 && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == CatalogData.measureKernel("PhysicalMemory", ["InvertMeasure": "1"])
+        case .memoryUsage:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .periodic(seconds: 2) && !member.readsSynchronously &&
+                member.lowering == .derived("memory.used / memory.total * 100%")
+        case .batteryLevel:
+            return member.type == .percent && member.range == .fixed(0...100) && member.cadence == .eventAndPeriodic(seconds: 60) && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Percent"])
+        case .batteryCharging:
+            return member.type == .bool && member.cadence == .event && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Status"])
+        case .batteryPluggedIn:
+            return member.type == .bool && member.cadence == .event && !member.readsSynchronously &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "ACLine"])
+        case .batteryPresent:
+            return member.type == .bool && member.range == .none && member.displayBase == nil && member.defaultFormat == nil &&
+                member.cadence == .once && member.readsSynchronously && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.lowering == CatalogData.nativeKernel("battery", field: "present")
+        case .batteryTimeRemaining:
+            return member.type == .duration && member.range == .none && member.displayBase == nil && member.defaultFormat == .style(".short") &&
+                member.cadence == .periodic(seconds: 60) && !member.readsSynchronously && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Lifetime"])
+        case .batteryHealth, .batteryCycles:
+            let health = property == .batteryHealth
+            return member.name == (health ? "health" : "cycles") && member.type == (health ? .percent : .plainNumber) &&
+                member.range == (health ? .fixed(0...100) : .observed) && member.displayBase == nil && member.defaultFormat == nil &&
+                member.maxCount == nil && member.settableTwin == nil && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.cadence == .periodic(seconds: 3_600) && !member.readsSynchronously &&
+                member.lowering == CatalogData.nativeKernel("battery", field: health ? "health" : "cycles")
+        }
+    }
+
+    private func issue(_ kind: DeskCompilationIssue.Kind, _ node: PositionedNode, _ message: String) -> DeskCompilationIssue {
+        DeskCompilationIssue(kind: kind, file: checked.tree.file, range: node.textRange, message: message)
+    }
+}

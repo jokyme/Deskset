@@ -282,7 +282,7 @@ final class StudioPartPage {
         case .noteLink(let item):
             // A position worked out from other values: its line in the code.
             if item == "layout.calculated" || item == "shows.words" { window.showInCode(nil) }
-        case .percent, .hoverSwatch, .thumbnail, .textSize, .suggestion: break
+        case .percent, .slider, .hoverSwatch, .thumbnail, .textSize, .suggestion: break
         }
     }
 

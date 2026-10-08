@@ -248,4 +248,156 @@ func runDeskParserTests(_ t: TestRunner) {
         // Every grammar slot the parser names is a display-name id.
         t.check(SyntaxSlot.allCases.allSatisfy { $0.rawValue.hasPrefix("slot:") })
     }
+
+    t.suite("Desk: parser — direct child lookup preserves positions and identity") {
+        let prefix = Token(kind: .identifier, text: "甲😀", leadingTrivia: [.newline(.crlf)], trailingTrivia: [.spaces(2)])
+        let nested = SyntaxNode(kind: .identifierExpr, children: [.token(Token(kind: .identifier, text: "inside"))])
+        let recovery = SyntaxNode(kind: .unexpected, children: [.node(nested)])
+        let empty = SyntaxNode(kind: .callee, children: [])
+        let missing = SyntaxNode(kind: .numberLiteral, children: [.token(.missing(.number))])
+        let present = SyntaxNode(kind: .numberLiteral,
+                                 children: [.token(Token(kind: .number, text: "13", leadingTrivia: [.spaces(1)]))])
+        let parent = PositionedNode(node: SyntaxNode(kind: .block, children: [
+            .token(prefix), .node(recovery), .token(.missing(.comma)), .node(empty), .node(missing), .node(present),
+        ]), offset: 17)
+        t.equal(prefix.utf8Length, 11, "CRLF, Unicode and trailing trivia all count in UTF-8 bytes")
+        t.check(parent.firstChild(.unexpected)?.node === recovery, "recovery nodes remain selectable")
+        t.equal(parent.firstChild(.unexpected)?.offset, 28)
+        t.check(parent.firstChild(.callee)?.node === empty, "empty direct nodes remain selectable")
+        t.equal(parent.firstChild(.callee)?.range, 34..<34)
+        t.check(parent.firstChild(.numberLiteral)?.node === missing, "the first same-kind node wins even if missing")
+        t.equal(parent.firstChild(.numberLiteral)?.range, 34..<34)
+        t.equal(parent.firstChild(.identifierExpr)?.kind, nil, "a matching descendant is not a direct child")
+        t.equal(parent.firstChild(.argumentClause)?.kind, nil)
+        let repeated = PositionedNode(node: SyntaxNode(kind: .block, children: [
+            .token(prefix), .node(present), .node(missing),
+        ]), offset: 17)
+        t.check(repeated.firstChild(.numberLiteral)?.node === present, "the existing first node is returned, not copied")
+        t.equal(repeated.firstChild(.numberLiteral)?.range, 28..<31)
+        t.equal(repeated.firstChild(.numberLiteral)?.textRange, 29..<31)
+        t.equal(PositionedNode(node: empty, offset: 17).firstChild(.callee)?.kind, nil)
+        let tokenOnly = PositionedNode(node: SyntaxNode(kind: .block, children: [.token(prefix)]), offset: 17)
+        t.equal(tokenOnly.firstChild(.identifierExpr)?.kind, nil)
+
+        let source = "widget {\r\n    Text(\"甲😀\").font(13)\r\n    Text(\"second\")\r\n}\r\n"
+        let tree = deskParse(source)
+        let version = tree.version
+        guard let widget = tree.rootNode.firstChild(.widgetBlock), let block = widget.firstChild(.block),
+              let call = block.firstChild(.callStmt), let modifier = call.firstChild(.modifierApp),
+              let clause = modifier.firstChild(.argumentClause), let argument = clause.firstChild(.argument),
+              let number = argument.firstChild(.numberLiteral) else {
+            t.check(false, "the parsed direct-child slots remain available")
+            return
+        }
+        t.equal(tree.diagnostics.map(\.description), [])
+        t.check(call.node === block.childNodes.first?.node, "the first parsed call keeps its node identity")
+        t.equal(CallStmtSyntax(call)?.callee.path, ["Text"])
+        let start = "widget {\r\n    Text(\"甲😀\").font(".utf8.count
+        t.equal(number.offset, start)
+        t.equal(number.textRange, start..<(start + 2))
+        let id = tree.id(of: number)
+        t.equal(id, NodeID(kind: .numberLiteral, utf8Start: start, treeVersion: version, utf8End: start + 2))
+        t.check(tree.resolve(id)?.node === number.node)
+        t.equal(tree.resolve(id)?.range, number.range)
+        t.equal(tree.quickResolve(id)?.range, number.range)
+        t.equal(block.firstChild(.numberLiteral)?.kind, nil, "parsed lookups also stop at direct children")
+        t.equal(tree.version, version)
+        let other = deskParse(source)
+        t.check(other.version > version)
+        t.equal(other.resolve(id)?.kind, nil, "lookup does not weaken the source version boundary")
+    }
+
+    t.suite("Desk: parser — canonical expression references and types") {
+        func nodes(_ tree: SyntaxTree, kind: SyntaxKind) -> [PositionedNode] {
+            var found: [PositionedNode] = []
+            var stack = [tree.rootNode]
+            while let node = stack.popLast() {
+                if node.kind == kind { found.append(node) }
+                stack.append(contentsOf: node.childNodes.reversed())
+            }
+            return found
+        }
+        func verify(_ tree: SyntaxTree, _ selected: [PositionedNode]) {
+            let table = DeskNodeTable(tree: tree)
+            let ids = selected.map(tree.id)
+            t.equal(Set(ids).count, selected.count, "these legal nested expressions have distinct canonical keys")
+            for node in selected {
+                let id = tree.id(of: node)
+                t.equal(node.quickTextRange, node.textRange)
+                t.equal(id.utf8Start, node.textRange.lowerBound)
+                t.equal(id.utf8End, node.textRange.upperBound)
+                t.equal(tree.resolve(id)?.range, node.range, "resolve must return this node, not its enclosing expression")
+                t.equal(tree.quickResolve(id)?.range, node.range)
+                let indexes = table.indexes(of: id)
+                t.equal(indexes.count, 1)
+                if let index = indexes.first {
+                    t.equal(table.id(index), id)
+                    t.equal(table.entries[index].positioned.range, node.range)
+                }
+            }
+        }
+
+        let prefix = "widget {\n    computed result = ("
+        let text = prefix + "1 / 0 < 1)\n    Text(\"{result}\")\n}\n"
+        let checked = deskCheck(text)
+        let tree = checked.tree
+        t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        let binary = nodes(tree, kind: .binaryExpr)
+        let start = prefix.utf8.count
+        t.equal(binary.map(\.textRange), [start..<(start + 9), start..<(start + 5)])
+        t.equal(binary.map { checked.types[tree.id(of: $0)]?.type }, [.bool, .number(.plain)])
+        verify(tree, binary)
+        if let outer = binary.first, let inner = binary.last, binary.count == 2 {
+            let outerID = tree.id(of: outer), innerID = tree.id(of: inner)
+            let legacy = NodeID(kind: .binaryExpr, utf8Start: start, treeVersion: tree.version)
+            t.equal(legacy.utf8End, nil)
+            t.equal(legacy.description, "binaryExpr@\(start)#\(tree.version)")
+            t.equal(innerID.description, "binaryExpr@\(start)..<\(start + 5)#\(tree.version)")
+            t.equal(Set([legacy, innerID, outerID]).count, 3, "nil is a distinct key, never an equality wildcard")
+            t.equal(tree.resolve(legacy)?.range, outer.range, "the old start-only locator keeps its outermost behavior")
+            t.equal(tree.quickResolve(legacy)?.range, outer.range)
+            t.equal(DeskNodeTable(tree: tree).indexes(of: legacy), [])
+            t.equal(checked.types[legacy], nil)
+            let absent = NodeID(kind: .binaryExpr, utf8Start: start, treeVersion: tree.version, utf8End: start + 6)
+            t.check(tree.resolve(absent) == nil && tree.quickResolve(absent) == nil)
+            t.equal(DeskNodeTable(tree: tree).indexes(of: absent), [])
+            let otherVersion = NodeID(kind: innerID.kind, utf8Start: innerID.utf8Start,
+                                      treeVersion: tree.version + 1, utf8End: start + 5)
+            t.check(innerID != otherVersion)
+            t.check(tree.resolve(otherVersion) == nil && tree.quickResolve(otherVersion) == nil)
+        }
+        let declarations = nodes(tree, kind: .declaration)
+        t.equal(declarations.count, 1)
+        if let declaration = declarations.first {
+            t.equal(tree.id(of: declaration), NodeID(kind: .declaration, utf8Start: declaration.textRange.lowerBound,
+                                                    treeVersion: tree.version))
+            t.equal(tree.id(of: declaration).utf8End, nil, "non-expression keys keep the three-part contract")
+        }
+
+        // Real catalog value members and methods. Each nested member/call must keep its own metadata and locator.
+        let chains: [(String, SyntaxKind, [String], [DeskType])] = [
+            ("system.name.trimmed.length", .memberExpr,
+             ["system.name.trimmed.length", "system.name.trimmed", "system.name"], [.number(.plain), .string, .string]),
+            (#"time.now.in("UTC").in("UTC")"#, .callExpr,
+             [#"time.now.in("UTC").in("UTC")"#, #"time.now.in("UTC")"#], [.date, .date]),
+        ]
+        for (expression, kind, spans, types) in chains {
+            let prefix = "widget {\n    computed value = "
+            let checked = deskCheck(prefix + expression + "\n    Text(\"{value}\")\n}\n")
+            t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [], expression)
+            let chain = nodes(checked.tree, kind: kind)
+            t.equal(chain.map(\.textRange), spans.map { prefix.utf8.count..<(prefix.utf8.count + $0.utf8.count) })
+            t.equal(chain.map { checked.types[checked.tree.id(of: $0)]?.type }, types.map(Optional.some))
+            verify(checked.tree, chain)
+        }
+
+        let broken = deskParse("widget { computed result = 1 / }")
+        t.equal(broken.diagnostics.filter { $0.severity == .error }.map(\.id), [.missingOperand])
+        let incomplete = nodes(broken, kind: .binaryExpr)
+        t.equal(incomplete.count, 1)
+        verify(broken, incomplete)
+        let number = nodes(broken, kind: .numberLiteral)
+        t.equal(number.count, 1)
+        verify(broken, number)
+    }
 }

@@ -10,8 +10,10 @@ enum CodeEditorSelfTests {
         openTests(t)
         layoutTests(t)
         commitTests(t)
+        sourceGuardTests(t)
         lineEndingTests(t)
         caretTests(t)
+        selectionBridgeTests(t)
         silentAPITests(t)
         reloadTests(t)
         undoTests(t)
@@ -380,6 +382,225 @@ enum CodeEditorSelfTests {
         }
     }
 
+    // MARK: Source guards
+
+    static func sourceGuardTests(_ t: AppTestRunner) {
+        t.suite("App: code editor source guard checks original bytes without changing editor state") {
+            let f = try makeFixture(t)
+            let e = f.editor
+            e.idleCommitDelay = 600
+            e.typedTextDelay = 600
+            e.caretRestDelay = 600
+            e.requiresUnchangedSourceForAutomaticCommit = true
+            var typed: [String?] = []
+            var selections: [NSRange] = []
+            var errors = 0, conflicts = 0, decodes = 0, reads = 0
+            e.onTypedText = { _, text in typed.append(text) }
+            e.onUserSelection = { _, range, _ in selections.append(range) }
+            e.onReadError = { _, _ in errors += 1 }
+            e.onDiskConflict = { _ in conflicts += 1; return .keepEdits }
+            e.decodeDocument = { data, _ in decodes += 1; return CodeDocument(data: data) }
+            var bytes = Data(mainText.utf8)
+            var readable = true
+            e.readData = { _ in
+                reads += 1
+                guard readable else { throw CocoaError(.fileReadNoPermission) }
+                return bytes
+            }
+            type(e, "x", at: 0)
+            e.textView.setSelectedRange(NSRange(location: 2, length: 3))
+            let text = e.text, revision = e.textRevision, selection = e.textView.selectedRange()
+            let origin = e.scrollView.contentView.bounds.origin
+            let idleDate = e.idleCommitDate, typedDate = e.typedTextDate
+            let undo = e.textView.undoManager
+            let undoCount = undo?.groupingLevel
+            let canUndo = undo?.canUndo, canRedo = undo?.canRedo
+            let files = e.files, reloads = e.filesReadAgain, steps = e.stepsFollowed
+
+            t.equal(e.checkSourceUnchanged(for: f.main), .unchanged, "dirty text still starts from the same bytes")
+            bytes.append(contentsOf: "\r\n; external".utf8)
+            t.equal(e.checkSourceUnchanged(for: f.main), .changed)
+            readable = false
+            t.equal(e.checkSourceUnchanged(for: f.main), .unavailable)
+            let unopened = f.main.deletingLastPathComponent().appendingPathComponent("Unopened.desk")
+            try Data("widget {}".utf8).write(to: unopened)
+            t.equal(e.checkSourceUnchanged(for: unopened), .unavailable, "existing files are not opened by a check")
+            t.equal(reads, 3, "only opened buffers read their current source")
+            t.equal(e.text, text)
+            t.equal(e.textRevision, revision)
+            t.equal(e.textView.selectedRange(), selection)
+            t.equal(e.scrollView.contentView.bounds.origin, origin)
+            t.equal(e.currentFile, f.main)
+            t.equal(e.files, files)
+            t.equal(e.document(for: f.main)?.text, mainText)
+            t.check(e.isDirty && e.hasUncommittedChanges)
+            t.check(e.textView.undoManager === undo)
+            t.equal(undo?.groupingLevel, undoCount)
+            t.equal(undo?.canUndo, canUndo)
+            t.equal(undo?.canRedo, canRedo)
+            t.equal(e.idleCommitDate, idleDate)
+            t.equal(e.typedTextDate, typedDate)
+            t.equal(e.filesReadAgain, reloads)
+            t.equal(e.stepsFollowed, steps)
+            t.check(typed.isEmpty && selections.isEmpty && f.recorder.carets.isEmpty)
+            t.check(f.recorder.commits.isEmpty)
+            t.equal(errors, 0)
+            t.equal(conflicts, 0)
+            t.equal(decodes, 0, "a source comparison never decodes")
+            t.equal(try Data(contentsOf: f.main), Data(mainText.utf8), "no bytes were written")
+
+            t.check(e.fireCaretRest(), "the source check kept the pending selection report")
+            t.equal(selections, [selection])
+            t.check(e.fireTypedText(), "the typed-text debounce remains pending")
+            t.equal(typed, [text])
+            readable = true
+            bytes = Data(mainText.utf8)
+            t.check(e.fireIdleCommit(), "the idle debounce remains pending")
+            t.equal(f.recorder.commits.count, 1, "unchanged source permits the automatic commit")
+            t.check(!e.isDirty)
+            t.equal(conflicts, 0)
+        }
+
+        t.suite("App: code editor source guard retains the original base across a dirty reload") {
+            let f = try makeFixture(t)
+            let e = f.editor
+            e.idleCommitDelay = 600
+            e.requiresUnchangedSourceForAutomaticCommit = true
+            var conflicts = 0
+            e.onDiskConflict = { _ in conflicts += 1; return .keepEdits }
+            type(e, "typed ", at: 0)
+            let typed = e.text
+            let external = mainText + "\r\n; edited elsewhere"
+            try Data(external.utf8).write(to: f.main)
+            e.reloadFromDisk(keepCaret: true)
+            t.equal(e.text, typed)
+            t.equal(e.document(for: f.main)?.text, external, "reload refreshed the clean document")
+            t.check(e.isDirty)
+            t.equal(e.checkSourceUnchanged(for: f.main), .changed, "the original base was not replaced by reload")
+            t.check(!e.commitNow(), "the refreshed document cannot authorize an automatic overwrite")
+            t.equal(conflicts, 0)
+            t.equal(f.recorder.commits.count, 0)
+            try Data(mainText.utf8).write(to: f.main)
+            t.equal(e.checkSourceUnchanged(for: f.main), .unchanged, "the original bytes still match")
+            try Data(external.utf8).write(to: f.main)
+            e.show(file: f.include)
+            let revision = e.textRevision, selection = e.textView.selectedRange()
+            t.equal(e.checkSourceUnchanged(for: f.main), .changed, "a stashed dirty buffer is checked too")
+            t.equal(e.currentFile, f.include)
+            t.equal(e.textRevision, revision)
+            t.equal(e.textView.selectedRange(), selection)
+            t.equal(e.text, includeText)
+            t.check(e.isDirty(f.main))
+            t.equal(conflicts, 0)
+            t.equal(f.recorder.commits.count, 0)
+            t.equal(try String(contentsOf: f.main, encoding: .utf8), external)
+        }
+
+        t.suite("App: code editor source guard reports unavailable without an original byte snapshot") {
+            let bytes = Data("[A]\nText=Caf".utf8) + Data([0xE9]) + Data("\n".utf8)
+            let f = try makeFixture(t, mainBytes: bytes)
+            let e = f.editor
+            t.equal(e.document(for: f.main)?.encoding, .windows1252)
+            let before = e.text, after = e.text + "Emoji=😀\n"
+            // A followed in-memory edit can have no known bytes and no representation in the old encoding.
+            t.check(e.follow(CodeFollowingSelfTests.step(before, after, file: f.main, encoding: .windows1252)))
+            t.check(e.document(for: f.main)?.data == nil)
+            var reads = 0
+            e.readData = { _ in reads += 1; return bytes }
+            t.equal(e.checkSourceUnchanged(for: f.main), .unavailable)
+            t.equal(reads, 0, "no source read can recover the unknown base")
+            t.equal(e.text, after)
+            t.check(!e.isDirty)
+            e.requiresUnchangedSourceForAutomaticCommit = true
+            type(e, "x", at: 0)
+            t.check(!e.commitNow())
+            t.equal(f.recorder.commits.count, 0)
+            t.check(e.isDirty)
+        }
+
+        t.suite("App: code editor source guard blocks automatic conflicts and preserves explicit saves") {
+            let f = try makeFixture(t)
+            let e = f.editor
+            e.idleCommitDelay = 600
+            e.requiresUnchangedSourceForAutomaticCommit = true
+            let window = offscreenWindow(with: e)
+            let field = NSTextField(string: "")
+            window.contentView?.addSubview(field)
+            defer { e.removeFromSuperview(); window.close() }
+            t.check(window.makeFirstResponder(e.textView))
+            var conflicts = 0, errors = 0
+            var choice = CodeEditorView.DiskConflictChoice.keepEdits
+            e.onDiskConflict = { _ in conflicts += 1; return choice }
+            e.onReadError = { _, _ in errors += 1 }
+            type(e, "typed ", at: 0)
+            let external = mainText + "\r\n; external"
+            try Data(external.utf8).write(to: f.main)
+            t.check(e.fireIdleCommit())
+            t.check(e.isDirty)
+            t.equal(f.recorder.commits.count, 0, "idle cannot save before a checked visual edit")
+            t.equal(conflicts, 0, "idle does not ask the resolver")
+            t.check(window.makeFirstResponder(field))
+            t.equal(f.recorder.commits.count, 0, "blur cannot save before a checked visual edit")
+            t.equal(conflicts, 0, "blur does not ask the resolver")
+            t.equal(try String(contentsOf: f.main, encoding: .utf8), external)
+
+            e.readData = { _ in throw CocoaError(.fileReadNoPermission) }
+            t.check(window.makeFirstResponder(e.textView))
+            type(e, "more ", at: 0)
+            let typed = e.text
+            t.check(e.fireIdleCommit())
+            t.check(window.makeFirstResponder(field))
+            t.equal(f.recorder.commits.count, 0, "unreadable source also blocks both automatic triggers")
+            t.equal(conflicts, 0)
+            t.equal(errors, 0, "the guard is a quiet comparison")
+            t.check(e.isDirty)
+            t.equal(e.text, typed)
+
+            e.readData = { try Data(contentsOf: $0) }
+            t.check(window.makeFirstResponder(e.textView))
+            guard let save = keyEvent("s", .command, window: window) else {
+                return t.check(false, "a command-S event")
+            }
+            t.check(window.contentView?.performKeyEquivalent(with: save) == true)
+            t.equal(conflicts, 1, "explicit save keeps the existing conflict choice")
+            t.equal(f.recorder.commits.count, 1)
+            t.equal(try String(contentsOf: f.main, encoding: .utf8), typed)
+            t.check(!e.isDirty)
+
+            type(e, "discard ", at: 0)
+            try Data(external.utf8).write(to: f.main)
+            choice = .takeDisk
+            t.check(e.commitNow(explicit: true), "the explicit close path can take the disk version")
+            t.equal(conflicts, 2)
+            t.equal(f.recorder.commits.count, 1, "taking disk does not write")
+            t.equal(e.text, external)
+            t.check(!e.isDirty)
+        }
+
+        t.suite("App: code editor source guard is opt-in for existing hosts") {
+            let f = try makeFixture(t)
+            let e = f.editor
+            e.idleCommitDelay = 600
+            t.check(!e.requiresUnchangedSourceForAutomaticCommit)
+            var conflicts = 0
+            e.onDiskConflict = { _ in conflicts += 1; return .keepEdits }
+            type(e, "old host ", at: 0)
+            try Data((mainText + "\r\n; external").utf8).write(to: f.main)
+            t.check(e.fireIdleCommit())
+            t.equal(conflicts, 1, "the original automatic conflict callback still runs")
+            t.equal(f.recorder.commits.count, 1)
+            t.check(!e.isDirty)
+            t.equal(try String(contentsOf: f.main, encoding: .utf8), e.text)
+            e.readData = { _ in throw CocoaError(.fileReadNoPermission) }
+            type(e, "again ", at: 0)
+            t.check(e.fireIdleCommit(), "the previous unreadable-source fallback remains the default")
+            t.equal(f.recorder.commits.count, 2)
+            t.equal(conflicts, 1)
+            t.check(!e.isDirty)
+            t.equal(try String(contentsOf: f.main, encoding: .utf8), e.text)
+        }
+    }
+
     // MARK: Line endings
 
     static func lineEndingTests(_ t: AppTestRunner) {
@@ -477,6 +698,160 @@ enum CodeEditorSelfTests {
             e.textView.setSelectedRange(NSRange(location: 0, length: 0))
             let count = r.carets.count
             t.check(AppSelfTest.spin(timeout: 10) { r.carets.count == count + 1 }, "reported by the timer")
+        }
+    }
+
+    // MARK: Selection bridge
+
+    static func selectionBridgeTests(_ t: AppTestRunner) {
+        t.suite("App: code editor selection bridge reports user ranges within the same nil section") {
+            let source = "widget {\n    Text(\"😀\")\n    Text(\"two\")\n}\n"
+            let f = try makeFixture(t, mainBytes: Data(source.utf8))
+            let e = f.editor
+            e.idleCommitDelay = 600
+            e.caretRestDelay = 600
+            var reports: [(url: URL, range: NSRange, revision: Int)] = []
+            e.onUserSelection = { reports.append(($0, $1, $2)) }
+            t.check(e.caretSection == nil)
+            t.check(!e.fireCaretRest(), "opening is silent")
+            let first = (e.text as NSString).range(of: "Text")
+            e.textView.setSelectedRange(first)
+            t.check(reports.isEmpty, "the same caret-rest debounce is reused")
+            t.check(e.fireCaretRest())
+            t.equal(reports.map(\.url), [f.main])
+            t.equal(reports.map(\.range), [first])
+            t.equal(reports.map(\.revision), [e.textRevision])
+            t.equal(f.recorder.carets.count, 1)
+            t.check(f.recorder.carets.last?.section == nil)
+
+            type(e, "Label")
+            let typedRange = e.textView.selectedRange(), typedRevision = e.textRevision
+            t.check(e.fireCaretRest())
+            t.equal(reports.map(\.range), [first, typedRange], "typing in the same nil section still reports a range")
+            t.equal(reports.last?.revision, typedRevision)
+            t.check(typedRevision > (reports.first?.revision ?? Int.max))
+            t.equal(f.recorder.carets.count, 1, "the old section callback keeps its typing suppression")
+
+            let second = (e.text as NSString).range(of: "two")
+            e.textView.setSelectedRange(NSRange(location: 0, length: 0))
+            e.textView.setSelectedRange(second)
+            t.check(e.fireCaretRest())
+            t.equal(reports.count, 3, "several moves settle into one report")
+            t.equal(reports.last?.range, second)
+            t.equal(reports.last?.revision, typedRevision, "selection-only changes do not advance text revisions")
+            e.reveal(line: 2, in: f.main, select: true)
+            t.check(!e.fireCaretRest(), "the existing line reveal stays silent")
+            t.equal(reports.count, 3)
+            t.equal(f.recorder.commits.count, 0)
+        }
+
+        t.suite("App: code editor selection bridge ignores stale section reports after observer reentry") {
+            let f = try makeFixture(t)
+            let e = f.editor
+            let include = f.include
+            e.idleCommitDelay = 600
+            e.caretRestDelay = 600
+            var ranges: [NSRange] = []
+            e.onUserSelection = { [weak e] _, range, _ in
+                ranges.append(range)
+                e?.show(file: include)
+            }
+            e.textView.setSelectedRange(NSRange(location: line(e, 13).location, length: 0))
+            t.check(e.fireCaretRest())
+            t.equal(ranges.count, 1)
+            t.equal(e.currentFile, f.include)
+            t.equal(f.recorder.carets.count, 0, "the old file's section is not reported after a switch")
+            t.check(!e.fireCaretRest(), "the API switch is silent")
+
+            e.onUserSelection = { [weak e] _, range, _ in
+                ranges.append(range)
+                if let e { type(e, "x") }
+            }
+            e.textView.setSelectedRange(NSRange(location: 2, length: 0))
+            let before = e.textRevision
+            t.check(e.fireCaretRest())
+            t.check(e.textRevision > before)
+            t.equal(f.recorder.carets.count, 0, "the old revision's section is not reported after an edit")
+            e.onUserSelection = nil
+            t.check(e.fireCaretRest(), "the new user edit kept its own pending caret report")
+            t.equal(f.recorder.carets.count, 1)
+            t.equal(f.recorder.carets.last?.url, f.include)
+
+            let target = NSRange(location: line(e, 4).location, length: 4)
+            e.onUserSelection = { [weak e] _, _, _ in _ = e?.reveal(range: target, in: include) }
+            e.textView.setSelectedRange(NSRange(location: 1, length: 0))
+            t.check(e.fireCaretRest())
+            t.equal(e.textView.selectedRange(), target)
+            t.equal(f.recorder.carets.count, 1, "a range reveal cannot be followed by the previous section")
+            t.check(!e.fireCaretRest(), "the observer's API reveal does not loop")
+        }
+
+        t.suite("App: code editor selection bridge reveals exact valid ranges silently") {
+            let source = "widget {\r\n    Text(\"😀\")\r\n}\r\n"
+            let f = try makeFixture(t, mainBytes: Data(source.utf8))
+            let e = f.editor
+            e.caretRestDelay = 600
+            let window = offscreenWindow(with: e)
+            let field = NSTextField(string: "")
+            window.contentView?.addSubview(field)
+            defer { e.removeFromSuperview(); window.close() }
+            t.check(window.makeFirstResponder(field))
+            let responder = window.firstResponder
+            var reports = 0, reads = 0, errors = 0
+            e.onUserSelection = { _, _, _ in reports += 1 }
+            e.onReadError = { _, _ in errors += 1 }
+            e.readData = { _ in reads += 1; throw CocoaError(.fileReadNoPermission) }
+            e.textView.setSelectedRange(NSRange(location: 2, length: 0))
+            let call = (source as NSString).range(of: "Text")
+            let caret = NSRange(location: call.location, length: 0)
+            let revision = e.textRevision
+            t.check(e.reveal(range: caret, in: f.main))
+            t.equal(e.textView.selectedRange(), caret, "the caret is at the call, beyond the line's indentation")
+            t.check(!e.fireCaretRest(), "the previous user's debounce was cancelled")
+            t.equal(reports, 0)
+            t.equal(f.recorder.carets.count, 0)
+            t.equal(e.textRevision, revision)
+            t.check(window.firstResponder === responder, "revealing a source range does not take focus")
+            let emoji = (source as NSString).range(of: "😀")
+            t.check(e.reveal(range: emoji, in: f.main))
+            t.equal(e.textView.selectedRange(), emoji)
+            let end = NSRange(location: source.utf16.count, length: 0)
+            t.check(e.reveal(range: end, in: f.main), "an EOF caret is valid")
+            t.equal(e.textView.selectedRange(), end)
+
+            let invalid = [NSRange(location: NSNotFound, length: 0), NSRange(location: -1, length: 1),
+                           NSRange(location: 0, length: -1), NSRange(location: Int.max - 1, length: 3),
+                           NSRange(location: source.utf16.count + 1, length: 0),
+                           NSRange(location: source.utf16.count, length: 1),
+                           NSRange(location: emoji.location + 1, length: 0),
+                           NSRange(location: emoji.location, length: 1)]
+            for range in invalid {
+                t.check(!e.reveal(range: range, in: f.main), "rejected \(range)")
+                t.equal(e.textView.selectedRange(), end, "a rejected range does not clamp or move the caret")
+                t.equal(e.textRevision, revision)
+            }
+            let unopened = f.main.deletingLastPathComponent().appendingPathComponent("Unopened.desk")
+            try Data(source.utf8).write(to: unopened)
+            t.check(!e.reveal(range: .init(location: 0, length: 0), in: unopened))
+            t.equal(e.files, [f.main, f.include], "range reveal cannot open a file")
+            t.check(!e.reveal(range: NSRange(location: includeText.utf16.count + 1, length: 0), in: f.include))
+            t.equal(e.currentFile, f.main, "an invalid range cannot switch to another open file")
+            let includeRange = (includeText as NSString).range(of: "Size")
+            t.check(e.reveal(range: includeRange, in: f.include))
+            t.equal(e.currentFile, f.include)
+            t.equal(e.textView.selectedRange(), includeRange, "a valid range can reveal another already open buffer")
+            t.check(!e.fireCaretRest())
+            t.equal(reports, 0)
+            t.equal(f.recorder.carets.count, 0)
+            t.equal(f.recorder.commits.count, 0)
+            t.equal(reads, 0)
+            t.equal(errors, 0)
+            t.check(window.firstResponder === responder)
+            t.check(e.textView.undoManager?.canUndo == false, "revealing selections adds no undo step")
+
+            let empty = try makeFixture(t, mainBytes: Data())
+            t.check(empty.editor.reveal(range: NSRange(location: 0, length: 0), in: empty.main))
+            t.equal(empty.editor.textView.selectedRange(), NSRange(location: 0, length: 0))
         }
     }
 

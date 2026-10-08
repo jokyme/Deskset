@@ -1,6 +1,6 @@
 import Foundation
 
-// Built-in measure types. System readings come from `skin.system` (SystemDataSource).
+// Built-in measure types. System readings come from `sectionContext.system` (SystemDataSource).
 // Clean-room implementation of the public manual pages /manual/measures/<type>/ and /manual/plugins/power/.
 
 // MARK: - Calc
@@ -39,7 +39,7 @@ public final class CalcMeasure: Measure {
             // section variables are not resolved yet (`[Meter:X]` read at load) is checked at the first update.
             if compiled == nil && !source.isEmpty && !loggedCompileError && !awaitsSectionVariables("Formula") {
                 loggedCompileError = true
-                skin.log("[\(name)] invalid Formula: \(source)", level: .error)
+                sectionContext.log("[\(name)] invalid Formula: \(source)", level: .error)
             }
         }
         let limit = 2_147_483_647.0
@@ -58,19 +58,19 @@ public final class CalcMeasure: Measure {
     public override func computeValue() -> Double {
         guard let compiled else { return 0 }
         if usesRandom && (updateRandom || randomValue == nil) { randomValue = nextRandom() }
-        let counter = Double(skin.counter)
+        let counter = Double(sectionContext.counter)
         do {
             lastResult = try compiled.evaluate { identifier in
                 switch identifier.lowercased() {
                 case "counter": return counter
                 case "random": return self.randomValue ?? 0
-                default: return self.skin.formulaValue(of: identifier, from: self)
+                default: return self.sectionContext.formulaValue(of: identifier, from: self)
                 }
             }
         } catch {
             if !loggedEvaluationError {
                 loggedEvaluationError = true
-                skin.log("[\(name)] cannot evaluate Formula: \(error)", level: .error)
+                sectionContext.log("[\(name)] cannot evaluate Formula: \(error)", level: .error)
             }
         }
         return lastResult
@@ -79,8 +79,8 @@ public final class CalcMeasure: Measure {
     private func nextRandom() -> Double {
         let lo = min(lowBound, highBound)
         let hi = max(lowBound, highBound)
-        guard uniqueRandom, hi - lo <= 65_535 else { return Double(skin.random.int(in: Int(lo)...Int(hi))) }
-        if uniquePool.isEmpty { uniquePool = skin.random.shuffled(Array(stride(from: lo, through: hi, by: 1))) }
+        guard uniqueRandom, hi - lo <= 65_535 else { return Double(sectionContext.random.int(in: Int(lo)...Int(hi))) }
+        if uniquePool.isEmpty { uniquePool = sectionContext.random.shuffled(Array(stride(from: lo, through: hi, by: 1))) }
         return uniquePool.popLast() ?? lo
     }
 }
@@ -91,7 +91,7 @@ public final class TimeMeasure: Measure {
     private var format = TimeFormatting.defaultFormat
     private var hasFormatOption = false
     /// The skin's time zone until the options are read (`TimeZone=` or local, see `readMeasureOptions`).
-    private lazy var timeZone = skin.skinClock.timeZone()
+    private lazy var timeZone = sectionContext.skinClock.timeZone()
     private var locale = TimeFormatting.defaultLocale
     private var timeStampText = ""
     private var timeStampFormat: String?
@@ -107,8 +107,8 @@ public final class TimeMeasure: Measure {
         let tz = option("TimeZone").map { raw -> String in
             OptionValue.number(raw).map { NumberFormatting.plain($0) } ?? raw
         }
-        let clock = skin.skinClock
-        let systemLocale = skin.locale
+        let clock = sectionContext.skinClock
+        let systemLocale = sectionContext.locale
         timeZone = TimeFormatting.timeZone(forOption: tz, daylightSavingTime: bool("DaylightSavingTime", true),
                                            at: clock.now(), localTimeZone: clock.timeZone())
         locale = TimeFormatting.locale(fromOption: option("FormatLocale"), local: systemLocale)
@@ -119,8 +119,8 @@ public final class TimeMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let clock = skin.skinClock
-        let systemLocale = skin.locale
+        let clock = sectionContext.skinClock
+        let systemLocale = sectionContext.locale
         if timeStampText.isEmpty {
             timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
         } else if let parsed = TimeFormatting.parseTimeStamp(timeStampText, format: timeStampFormat,
@@ -131,7 +131,7 @@ public final class TimeMeasure: Measure {
         } else {
             if !loggedTimeStampError {
                 loggedTimeStampError = true
-                skin.log("[\(name)] TimeStamp \"\(timeStampText)\" does not match TimeStampFormat", level: .error)
+                sectionContext.log("[\(name)] TimeStamp \"\(timeStampText)\" does not match TimeStampFormat", level: .error)
             }
             timestamp = 0
         }
@@ -162,7 +162,7 @@ public final class UptimeMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let seconds = secondsValue ?? skin.system.uptime()
+        let seconds = secondsValue ?? sectionContext.system.uptime()
         rawString = UptimeFormatting.format(seconds: seconds, format: format, addDaysToHours: addDaysToHours)
         return seconds
     }
@@ -184,7 +184,7 @@ public final class CPUMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        skin.system.cpuUsage(processor: processor)
+        sectionContext.system.cpuUsage(processor: processor)
     }
 }
 
@@ -217,8 +217,17 @@ public final class MemoryMeasure: Measure {
         }
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        switch type {
+        case "physicalmemory": kind = .physical
+        case "swapmemory": kind = .swap
+        default: kind = .total
+        }
+    }
+
     private func amounts() -> (total: Double, used: Double) {
-        let m = skin.system.memoryStatus()
+        let m = sectionContext.system.memoryStatus()
         switch kind {
         case .physical: return (m.physicalTotal, m.physicalUsed)
         case .swap: return (m.physicalTotal + m.swapTotal, m.physicalUsed + m.swapUsed)
@@ -281,6 +290,15 @@ public final class NetMeasure: Measure {
         }
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        switch type {
+        case "netin": direction = .incoming
+        case "netout": direction = .outgoing
+        default: direction = .total
+        }
+    }
+
     override var tracksValueRange: Bool { speedOption == nil }
     override var rangeOptionScale: Double { useBits ? 1 : 1.0 / 8 }
     public override var automaticMaxValue: Double { speedOption.map { useBits ? $0 * 8 : $0 } ?? 1 }
@@ -297,10 +315,10 @@ public final class NetMeasure: Measure {
         if let s = speedOption, !(s > 0) { speedOption = nil }
 
         let raw = string("Interface", "Best").trimmingCharacters(in: .whitespaces)
-        let names = skin.system.networkInterfaces()
+        let names = sectionContext.system.networkInterfaces()
         let resolved: String?
         if raw.isEmpty || raw.caseInsensitiveCompare("Best") == .orderedSame {
-            resolved = skin.system.bestNetworkInterface()
+            resolved = sectionContext.system.bestNetworkInterface()
         } else if let index = Int(raw) {
             if index == 0 {
                 resolved = nil
@@ -321,10 +339,10 @@ public final class NetMeasure: Measure {
     private func fallback(_ raw: String) -> String? {
         if !loggedInterfaceFallback {
             loggedInterfaceFallback = true
-            skin.log("[\(name)] Interface=\(raw) does not exist on this Mac; using the active interface",
+            sectionContext.log("[\(name)] Interface=\(raw) does not exist on this Mac; using the active interface",
                      level: .notice)
         }
-        return skin.system.bestNetworkInterface()
+        return sectionContext.system.bestNetworkInterface()
     }
 
     private func pick(_ c: NetworkCounters) -> Double {
@@ -336,10 +354,10 @@ public final class NetMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let bytes = pick(skin.system.networkCounters(interface: interfaceName))
+        let bytes = pick(sectionContext.system.networkCounters(interface: interfaceName))
         let factor = useBits ? 8.0 : 1.0
         if cumulative { return bytes * factor }
-        let now = skin.clock()
+        let now = sectionContext.clock()
         defer { previous = (bytes, now) }
         guard let previous, now > previous.time else { return 0 }
         let delta = bytes - previous.bytes
@@ -376,7 +394,7 @@ public final class FreeDiskSpaceMeasure: Measure {
     private var lastTotal: Double?
 
     public override var automaticMaxValue: Double {
-        max(lastTotal ?? skin.system.diskSpace(path: path)?.total ?? 1, 1)
+        max(lastTotal ?? sectionContext.system.diskSpace(path: path)?.total ?? 1, 1)
     }
     override var allowsMaxValueOption: Bool { false }
     /// Before the first reading of `MacAvailable=1` a String meter keeps one line of height, as it will with the value.
@@ -412,7 +430,7 @@ public final class FreeDiskSpaceMeasure: Measure {
 
     public override func computeValue() -> Double {
         awaitingReading = false
-        let info = skin.system.volumeInfo(path: path)
+        let info = sectionContext.system.volumeInfo(path: path)
         if typeMode {
             let type: (Double, String)
             switch info?.kind {
@@ -432,14 +450,14 @@ public final class FreeDiskSpaceMeasure: Measure {
             lastTotal = 0
             return 0
         }
-        guard let space = skin.system.diskSpace(path: path) else {
+        guard let space = sectionContext.system.diskSpace(path: path) else {
             lastTotal = 0
             return 0
         }
         lastTotal = space.total
         if totalMode { return space.total }
         guard availableMode else { return space.free }
-        guard let available = skin.system.availableDiskSpace(path: path) else {
+        guard let available = sectionContext.system.availableDiskSpace(path: path) else {
             // The first reading is still being made (a network volume, or a local one that took longer than the app
             // waits): −1 and an empty string, which a skin shows as loading. The number is not inverted or averaged.
             awaitingReading = true
@@ -569,7 +587,7 @@ public final class ProcessMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        processName.isEmpty ? -1 : (skin.system.isProcessRunning(processName) ? 1 : -1)
+        processName.isEmpty ? -1 : (sectionContext.system.isProcessRunning(processName) ? 1 : -1)
     }
 }
 
@@ -623,13 +641,13 @@ public final class SysInfoMeasure: Measure {
             rawString = ""
             return 0
         }
-        let result = engineValue() ?? skin.system.sysInfo(type: infoType, data: infoData) ?? fallbackValue()
+        let result = engineValue() ?? sectionContext.system.sysInfo(type: infoType, data: infoData) ?? fallbackValue()
         guard let result else {
             if SysInfoMeasure.documentedTypes.contains(infoType) {
                 unanswered = true
-                skin.addIssue("SysInfoType=\(infoType) is not supported on macOS")
+                sectionContext.addIssue("SysInfoType=\(infoType) is not supported on macOS")
             } else {
-                skin.logOnce("[\(name)] SysInfoType=\(infoType) is not a SysInfo type", level: .warning)
+                sectionContext.logOnce("[\(name)] SysInfoType=\(infoType) is not a SysInfo type", level: .warning)
             }
             rawString = ""
             return 0
@@ -650,11 +668,11 @@ public final class SysInfoMeasure: Measure {
         case "NUM_MONITORS", "SCREEN_SIZE", "SCREEN_WIDTH", "SCREEN_HEIGHT", "VIRTUAL_SCREEN_TOP",
              "VIRTUAL_SCREEN_LEFT", "VIRTUAL_SCREEN_WIDTH", "VIRTUAL_SCREEN_HEIGHT", "WORK_AREA", "WORK_AREA_TOP",
              "WORK_AREA_LEFT", "WORK_AREA_WIDTH", "WORK_AREA_HEIGHT":
-            return monitorValue(skin.currentEnvironment().screens)
+            return monitorValue(sectionContext.currentEnvironment().screens)
         case "TIMEZONE_ISDST", "TIMEZONE_BIAS", "TIMEZONE_STANDARD_BIAS", "TIMEZONE_DAYLIGHT_BIAS",
              "TIMEZONE_STANDARD_NAME", "TIMEZONE_DAYLIGHT_NAME":
-            return SysInfoMeasure.timeZoneValue(infoType, zone: skin.skinClock.timeZone(), at: skin.skinClock.now(),
-                                                locale: skin.locale)
+            return SysInfoMeasure.timeZoneValue(infoType, zone: sectionContext.skinClock.timeZone(), at: sectionContext.skinClock.now(),
+                                                locale: sectionContext.locale)
         default:
             return nil
         }
@@ -770,7 +788,7 @@ public final class PowerPluginMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let battery = skin.system.battery()
+        let battery = sectionContext.system.battery()
         rawString = nil   // only Lifetime has a string of its own (PowerState may change with !SetOption)
         switch state {
         case "ACLINE":
@@ -798,7 +816,7 @@ public final class PowerPluginMeasure: Measure {
             let seconds = min(minutes, 1e7) * 60
             let date = Date(timeIntervalSince1970: seconds)
             rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current,
-                                              systemLocale: skin.locale)
+                                              systemLocale: sectionContext.locale)
             return seconds
         case "HZ":
             return cpuHertz()
@@ -813,8 +831,8 @@ public final class PowerPluginMeasure: Measure {
 extension PowerPluginMeasure {
     /// The rated frequency, else the sensors' current clock of the faster CPU cluster; 0 when neither is known.
     func cpuHertz() -> Double {
-        if let rated = skin.system.cpuFrequency() { return rated }
-        if let mhz = HardwareSensors.source(for: skin)?.sensorValue(SensorKeys.frequencyCPU) { return mhz * 1_000_000 }
+        if let rated = sectionContext.system.cpuFrequency() { return rated }
+        if let mhz = HardwareSensors.source(for: sectionContext.system)?.sensorValue(SensorKeys.frequencyCPU) { return mhz * 1_000_000 }
         return 0
     }
 }
@@ -833,4 +851,68 @@ public final class UnsupportedMeasure: Measure {
     }
 
     public override func execute(command: String) {}
+}
+
+/// Only qualified final kernels may use the nonrequired context initializer. Match the already selected class,
+/// rather than its name, so a registry override keeps its own required initializer and dynamic behavior.
+func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, section: IniSection,
+                               context: any SectionContext, type: String) -> Measure? {
+    switch ObjectIdentifier(selectedClass) {
+    case ObjectIdentifier(CPUMeasure.self):
+        return CPUMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(StringMeasure.self):
+        return StringMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MemoryMeasure.self):
+        return MemoryMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(NetMeasure.self):
+        return NetMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(CalcMeasure.self):
+        return CalcMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(LoopMeasure.self):
+        return LoopMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(TimeMeasure.self):
+        return TimeMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(UptimeMeasure.self):
+        return UptimeMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FreeDiskSpaceMeasure.self):
+        return FreeDiskSpaceMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(ProcessMeasure.self):
+        return ProcessMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(SysInfoMeasure.self):
+        return SysInfoMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(PowerPluginMeasure.self):
+        return PowerPluginMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RegistryMeasure.self):
+        return RegistryMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(WebParserMeasure.self):
+        return WebParserMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(ActionTimerMeasure.self):
+        return ActionTimerMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RunCommandMeasure.self):
+        return RunCommandMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(CoreTempMeasure.self):
+        return CoreTempMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(SpeedFanMeasure.self):
+        return SpeedFanMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MSIAfterburnerMeasure.self):
+        return MSIAfterburnerMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(WindowMessageMeasure.self):
+        return WindowMessageMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(VirtualDesktopsMeasure.self):
+        return VirtualDesktopsMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(QuoteMeasure.self):
+        return QuoteMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FolderInfoMeasure.self):
+        return FolderInfoMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FileViewMeasure.self):
+        return FileViewMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(PingMeasure.self):
+        return PingMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MacSensorsMeasure.self):
+        return MacSensorsMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(RecycleManagerMeasure.self):
+        return RecycleManagerMeasure(name: name, section: section, context: context, type: type)
+    default:
+        return nil
+    }
 }

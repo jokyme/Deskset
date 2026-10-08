@@ -152,8 +152,8 @@ extension CatalogData {
         enumeration("GaugeShape", [
             c("ring", "Ring", "圆环", keywords: ["donut", "circle"], rank: 60), c("arc", "Arc", "弧", keywords: ["semicircle"]),
             c("pie", "Pie", "饼", keywords: ["Solid"]), c("needle", "Needle", "指针", keywords: ["Rotator", "hand", "dial"]),
-        ], "The shape of a gauge; a ring starts at 0 and sweeps 360, an arc starts at −135 and sweeps 270",
-            "仪表的形状；圆环从 0 转 360 度，弧从 −135 转 270 度", "Gauge(cpu.usage, shape: .arc)",
+        ], "Gauge shape; rings and pies start at 0 and sweep 360, arcs and needles start at −135 and sweep 270; rings and arcs have rounded ends",
+            "仪表的形状；圆环和饼从 0 转 360 度，弧和指针从 −135 转 270 度；圆环和弧使用圆头端点", "Gauge(cpu.usage, shape: .arc)",
             rm: [meter("Roundline", "Solid")]),
         enumeration("GraphShape", [
             c("line", "Line", "曲线", rank: 60), c("area", "Area", "面积", rank: 50),

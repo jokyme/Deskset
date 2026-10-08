@@ -59,19 +59,10 @@ public struct SkinEditTarget: Equatable {
 extension SkinSection {
     /// Where the current raw value of `key` comes from (nil: the option is not set, its default applies).
     public func optionOrigin(_ key: String) -> OptionOrigin? {
-        let lower = key.lowercased()
-        var ownRemoved = false
-        if let v = overrides[lower] {
-            if !v.isEmpty { return .setOption }
-            ownRemoved = true
-        }
-        if !ownRemoved, own.entries.contains(where: { $0.key.lowercased() == lower }) {
-            return .own(skin.sources.location(section: name, key: lower))
-        }
-        for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
-            return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
-        }
-        return nil
+        optionStack.optionOrigin(key, sectionName: name,
+                                 styleValues: { self.sectionContext.styleValues(named: $0) },
+                                 styleName: { self.sectionContext.styleSection(named: $0)?.name },
+                                 location: { self.sectionContext.sources.location(section: $0, key: $1) })
     }
 
     /// Every option that currently has a value: the section's own options in file order, then options inherited
@@ -84,7 +75,7 @@ extension SkinSection {
         }
         for e in own.entries { add(e.key) }
         for style in styles {
-            for e in skin.styleSection(named: style)?.entries ?? [] { add(e.key) }
+            for e in sectionContext.styleSection(named: style)?.entries ?? [] { add(e.key) }
         }
         for key in overrides.keys.sorted() { add(key) }
 
@@ -93,15 +84,15 @@ extension SkinSection {
             let lower = key.lowercased()
             let winningStyle: String? = { if case .style(let s, _) = origin { return s.lowercased() } else { return nil } }()
             let shadowed = styles.reversed().compactMap { style -> String? in
-                guard skin.styleValues(named: style)?[lower] != nil, style.lowercased() != winningStyle else { return nil }
-                return skin.styleSection(named: style)?.name ?? style
+                guard sectionContext.styleValues(named: style)?[lower] != nil, style.lowercased() != winningStyle else { return nil }
+                return sectionContext.styleSection(named: style)?.name ?? style
             }
             // Section variables are resolved also for sections without DynamicVariables: the engine resolves them
             // once when the options are read (see `SkinSection.resolvesSectionVariables`), so the current value is
             // what the skin shows, not the raw `[Meter:X]`.
             let resolved = lower.contains("action")
-                ? skin.resolveStandardVariables(raw, in: self)
-                : skin.resolve(raw, in: self, sectionVariables: true)
+                ? sectionContext.resolveStandardVariables(raw, in: self)
+                : sectionContext.resolve(raw, in: self, sectionVariables: true)
             return InspectedOption(key: key, raw: raw, resolved: resolved, origin: origin, shadowedStyles: shadowed,
                                    variables: SkinInspection.referencedVariables(in: raw))
         }

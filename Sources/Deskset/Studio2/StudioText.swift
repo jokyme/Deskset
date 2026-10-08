@@ -122,6 +122,81 @@ enum StudioText {
         case interactTip = "preview.interact.tip"
         case backToLive = "preview.backToLive"
         case previewOnly = "preview.popover.title"
+        case deskPreviewChecking = "desk.preview.checking"
+        case deskPreviewStatic = "desk.preview.static"
+        case deskPreviewEmpty = "desk.preview.empty"
+        case deskPreviewUnavailable = "desk.preview.unavailable"
+        case deskPreviewTooLarge = "desk.preview.tooLarge"
+        case deskPreviewInvalidText = "desk.preview.invalidText"
+        case deskImageOutside = "desk.image.outside"
+        case deskImageUnreadable = "desk.image.unreadable"
+        case deskImageAmbiguous = "desk.image.ambiguous"
+        case deskImageChanged = "desk.image.changed"
+        case deskImageTooLarge = "desk.image.tooLarge"
+        case deskImageInvalid = "desk.image.invalid"
+        case deskImagePreparationFailed = "desk.image.preparationFailed"
+        case deskImageRefreshFailed = "desk.image.refreshFailed"
+        case removeWidgetFromDesktop = "widget.remove"
+        case deskWidgetUnavailable = "widget.unavailable"
+        case deskWidgetInstallationFailed = "widget.installFailed"
+        case deskWidgetPreparationFailed = "widget.prepareFailed"
+        case deskWidgetInvalidFile = "widget.invalidFile"
+        case deskOpenPackageFolder = "desk.package.openFolder"
+        case deskPackageFolderMessage = "desk.package.folderMessage"
+        case deskPackageChooseWidget = "desk.package.chooseWidget"
+        case deskPackageChooseMessage = "desk.package.chooseMessage"
+        case deskPackageOpen = "desk.package.open"
+        case deskPackageNoWidgets = "desk.package.noWidgets"
+        case deskPackageInvalidFiles = "desk.package.invalidFiles"
+        case deskPackageUnreadable = "desk.package.unreadable"
+        case deskPackageChanged = "desk.package.changed"
+        case deskPackageSaveFailed = "desk.package.saveFailed"
+        case deskPackageUnsupported = "desk.package.unsupported"
+        case deskPackageNameConflict = "desk.package.nameConflict"
+        case deskPackageCollision = "desk.package.collision"
+        case deskPackageOperationFailed = "desk.package.operationFailed"
+        case deskInstalledWidgets = "desk.package.installedWidgets"
+        case deskNoInstalledWidgets = "desk.package.noInstalledWidgets"
+        case deskActionCopyFailed = "desk.action.copyFailed"
+        case deskActionOpenFailed = "desk.action.openFailed"
+        case deskActionMissingValue = "desk.action.missingValue"
+        case deskActionRecordsCount = "desk.action.recordsCount"
+        case deskActionRecordsEmpty = "desk.action.recordsEmpty"
+        case deskActionPreviewNotice = "desk.action.previewNotice"
+        case deskOptions = "desk.options.open"
+        case deskOptionsRestore = "desk.options.restore"
+        case deskOptionsMoreStyles = "desk.options.moreStyles"
+        case deskOptionsSaveFailed = "desk.options.saveFailed"
+        case deskOptionsClosingSaveFailed = "desk.options.closingSaveFailed"
+        case deskOptionsChangeFailed = "desk.options.changeFailed"
+        case deskOptionsRecovered = "desk.options.recovered"
+        case deskOptionsPreview = "desk.options.preview"
+        case deskOptionsInvalidNumber = "desk.options.invalidNumber"
+        case deskInspectorReadOnly = "desk.inspector.readOnly"
+        case deskInspectorExpression = "desk.inspector.expression"
+        case deskInspectorConditional = "desk.inspector.conditional"
+        case deskInspectorMixedCorners = "desk.inspector.mixedCorners"
+        case deskInspectorFullRadius = "desk.inspector.fullRadius"
+        case deskInspectorUnsupported = "desk.inspector.unsupported"
+        case deskInspectorInvalidRadius = "desk.inspector.invalidRadius"
+        case deskInspectorUnavailable = "desk.inspector.unavailable"
+        case deskInspectorSelectElement = "desk.inspector.selectElement"
+        case deskInspectorDiskChanged = "desk.inspector.diskChanged"
+        case deskInspectorSourceUnavailable = "desk.inspector.sourceUnavailable"
+        case deskInspectorEditRejected = "desk.inspector.editRejected"
+        case deskInspectorWidth = "desk.inspector.width"
+        case deskInspectorHeight = "desk.inspector.height"
+        case deskInspectorSizing = "desk.inspector.sizing"
+        case deskInspectorFixed = "desk.inspector.fixed"
+        case deskInspectorFill = "desk.inspector.fill"
+        case deskInspectorInherited = "desk.inspector.inherited"
+        case deskInspectorContainerAligned = "desk.inspector.containerAligned"
+        case deskInspectorInvalidSize = "desk.inspector.invalidSize"
+        case deskInspectorInvalidFontSize = "desk.inspector.invalidFontSize"
+        case deskInspectorInvalidPosition = "desk.inspector.invalidPosition"
+        case deskInspectorInvalidText = "desk.inspector.invalidText"
+        case deskInspectorPresetSize = "desk.inspector.presetSize"
+        case deskInspectorFontPreset = "desk.inspector.fontPreset"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -148,6 +223,7 @@ enum StudioText {
         case previewingNoData = "capsule.previewing.noData"
         case previewingTime = "capsule.previewing.time"
         case wouldOpen = "capsule.wouldOpen"
+        case wouldCopy = "capsule.wouldCopy"
         case wouldOpenWidget = "capsule.wouldOpenWidget"
         case wouldCloseWidget = "capsule.wouldCloseWidget"
         case wouldSaveSetting = "capsule.wouldSaveSetting"
@@ -495,6 +571,7 @@ enum StudioText {
         case statusEditing = "code.status.editing"
         case statusLine = "code.status.line"
         case fix = "code.fix"
+        case completeNamed = "code.complete.named"
         case stepTyping = "step.typing"
         case stepFix = "step.fix"
         case stepRefresh = "step.refresh"
@@ -711,6 +788,99 @@ enum StudioText {
                        "不离开 Studio，在组件里悬停和点按；点按会像在桌面上一样生效"),
         .backToLive: ("Back to Live", "回到实时"),
         .previewOnly: ("Preview only", "只是预览"),
+        .deskPreviewChecking: ("Checking the current document…", "正在检查当前文档…"),
+        .deskPreviewStatic: ("Preview · this document is not running on the desktop", "预览 · 此文档未在桌面运行"),
+        .deskPreviewEmpty: ("No visible content", "没有可见内容"),
+        .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
+        .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",
+                               "排版或字体超出了预览每边 16,384 像素的上限。"),
+        .deskPreviewInvalidText: ("Text content or style is invalid. Check the text, color and font; font size must be finite and greater than zero.",
+                                 "文字内容或样式无效。请检查文字、颜色与字体；字号必须为大于 0 的有限数值。"),
+        .deskImageOutside: ("Image must stay inside the widget folder: %@", "图片必须位于小组件文件夹内：%@"),
+        .deskImageUnreadable: ("Cannot read a regular image in the widget folder: %@", "无法读取小组件文件夹内的图片文件：%@"),
+        .deskImageAmbiguous: ("Image path has clashing case or Unicode spellings: %@", "图片路径的大小写或 Unicode 拼写存在冲突：%@"),
+        .deskImageChanged: ("Image changed while being read: %@", "读取期间图片已更改：%@"),
+        .deskImageTooLarge: ("Referenced images exceed the widget’s size or file limit: %@", "引用的图片超出了小组件的大小或文件数量上限：%@"),
+        .deskImageInvalid: ("Image is too large or cannot be decoded: %@", "图片过大或无法解码：%@"),
+        .deskImagePreparationFailed: ("Cannot prepare images: %@", "无法准备图片：%@"),
+        .deskImageRefreshFailed: ("Images could not be refreshed. Reopen the document to try again.", "无法刷新图片。请重新打开文档后再试。"),
+        .removeWidgetFromDesktop: ("Remove from Desktop", "从桌面移除"),
+        .deskWidgetUnavailable: ("Widget unavailable", "小组件不可用"),
+        .deskWidgetInstallationFailed: ("Cannot place on desktop: %@", "无法放到桌面：%@"),
+        .deskWidgetPreparationFailed: ("Cannot prepare widget resources.", "无法准备小组件资源。"),
+        .deskWidgetInvalidFile: ("Only .desk files can be placed on the desktop.", "只有 .desk 文件可以放到桌面。"),
+        .deskOpenPackageFolder: ("Open Widget Folder…", "打开小组件文件夹…"),
+        .deskPackageFolderMessage: ("Choose a folder containing Desk widgets and their resources.", "选择包含 Desk 小组件及其资源的文件夹。"),
+        .deskPackageChooseWidget: ("Choose a widget to edit", "选择要编辑的小组件"),
+        .deskPackageChooseMessage: ("Placing a widget on the desktop also installs the other widgets in this folder. They can be opened from Installed Widgets.",
+                                    "放到桌面时，会一同安装文件夹内的其他小组件。你可以从“已安装的小组件”中打开它们。"),
+        .deskPackageOpen: ("Open", "打开"),
+        .deskPackageNoWidgets: ("This folder has no readable .desk widgets at its top level.", "这个文件夹的顶层没有可读取的 .desk 小组件。"),
+        .deskPackageInvalidFiles: ("The widget file or folder is invalid or unavailable. Check its files and names.",
+                                   "小组件文件或文件夹无效或不可用，请检查文件及其名称。"),
+        .deskPackageUnreadable: ("Cannot read the widget file or folder.", "无法读取小组件文件或文件夹。"),
+        .deskPackageChanged: ("The widget file or folder changed. Reload the file or reopen the folder before continuing.",
+                              "小组件文件或文件夹已更改，请重新载入文件或重新打开文件夹后再继续。"),
+        .deskPackageSaveFailed: ("Cannot save the widget file or folder.", "无法存储小组件文件或文件夹。"),
+        .deskPackageUnsupported: ("Cannot prepare this widget. Open the document to check its problems.",
+                                  "无法准备此小组件，请打开文档查看问题。"),
+        .deskPackageNameConflict: ("The widget folder has conflicting file or folder names.",
+                                   "小组件文件夹中的文件或文件夹名称存在冲突。"),
+        .deskPackageCollision: ("The installation folder already exists. It was not replaced.",
+                                "安装文件夹已存在，未将其替换。"),
+        .deskPackageOperationFailed: ("The file operation could not be completed.", "无法完成文件操作。"),
+        .deskInstalledWidgets: ("Installed Widgets", "已安装的小组件"),
+        .deskNoInstalledWidgets: ("No Desk widgets installed", "尚未安装 Desk 小组件"),
+        .deskActionCopyFailed: ("Cannot copy this text to the clipboard.", "无法将这段文字复制到剪贴板。"),
+        .deskActionOpenFailed: ("Cannot open this target: %@", "无法打开此目标：%@"),
+        .deskActionMissingValue: ("The click action needs an available text value. Check its data or provide a fallback.",
+                                  "点击动作需要可用的文字值。请检查数据或提供回退值。"),
+        .deskActionRecordsCount: ("Actions (%d)", "动作（%d）"),
+        .deskActionRecordsEmpty: ("Click the preview to see what it would do.", "点击预览，查看它会执行什么动作。"),
+        .deskActionPreviewNotice: ("Preview only · actions are recorded here; nothing is copied or opened.",
+                                  "只是预览 · 这里仅记录动作，不会复制文字或打开目标。"),
+        .deskOptions: ("Options…", "选项…"),
+        .deskOptionsRestore: ("Restore Defaults", "恢复默认"),
+        .deskOptionsMoreStyles: ("More Styles…", "更多样式…"),
+        .deskOptionsSaveFailed: ("These changes could not be saved. Keep this panel open and try closing it again.",
+                                 "无法保存这些改动。请保留此面板，稍后再次关闭以重试。"),
+        .deskOptionsClosingSaveFailed: ("The latest options could not be saved. They are kept until the app quits; open Options to retry.",
+                                        "无法保存最新选项。改动会保留到退出应用前，请打开“选项”重试。"),
+        .deskOptionsChangeFailed: ("This change could not be applied. The previous settings are still in use.",
+                                   "无法应用此改动，仍在使用之前的设置。"),
+        .deskOptionsRecovered: ("Some saved settings no longer match this widget and were restored to their defaults.",
+                                "部分已保存的设置不再适用于此小组件，已恢复默认值。"),
+        .deskOptionsPreview: ("Changes apply only to this preview.", "改动仅用于此预览。"),
+        .deskOptionsInvalidNumber: ("Enter a number within this control’s range.", "请输入此控件范围内的数值。"),
+        .deskInspectorReadOnly: ("Edit this value in the code.", "请在代码中编辑此值。"),
+        .deskInspectorExpression: ("Expression", "表达式"),
+        .deskInspectorConditional: ("Conditional or repeated element", "条件或循环中的元素"),
+        .deskInspectorMixedCorners: ("Corners are set separately", "圆角已分别设置"),
+        .deskInspectorFullRadius: ("Automatic corners (.full)", "自动圆角（.full）"),
+        .deskInspectorUnsupported: ("Properties for this component are not available yet.", "此组件暂不提供属性编辑。"),
+        .deskInspectorInvalidRadius: ("Enter a finite, nonnegative corner radius.", "请输入有限且非负的圆角数值。"),
+        .deskInspectorUnavailable: ("This value is missing or has not passed checking.", "此值未明确给出或未通过检查。"),
+        .deskInspectorSelectElement: ("Select an element in the code or canvas to edit its properties.",
+                                     "在代码或画布中选择一个元素以编辑属性。"),
+        .deskInspectorDiskChanged: ("The file changed outside this window. Save or reload before editing its properties.",
+                                   "文件已在外部更改，请先保存或重新载入，再编辑属性。"),
+        .deskInspectorSourceUnavailable: ("The source file could not be read. Check it before editing its properties.",
+                                         "无法读取源文件，请检查文件后再编辑属性。"),
+        .deskInspectorEditRejected: ("This value can no longer be applied. Select the element again.",
+                                    "当前修改已失效，请重新选择元素。"),
+        .deskInspectorWidth: ("Width", "宽度"),
+        .deskInspectorHeight: ("Height", "高度"),
+        .deskInspectorSizing: ("Sizing", "尺寸方式"),
+        .deskInspectorFixed: ("Fixed · enter a number", "固定 · 输入数值"),
+        .deskInspectorFill: ("Fill available space", "撑满可用空间"),
+        .deskInspectorInherited: ("Inherited or default text style", "继承或默认文字样式"),
+        .deskInspectorContainerAligned: ("Follows the container’s alignment", "按容器对齐"),
+        .deskInspectorInvalidSize: ("Enter a finite, nonnegative size.", "请输入有限且非负的尺寸。"),
+        .deskInspectorInvalidFontSize: ("Enter a finite text size greater than zero.", "请输入有限且大于零的字号。"),
+        .deskInspectorInvalidPosition: ("Enter a finite coordinate.", "请输入有限坐标。"),
+        .deskInspectorInvalidText: ("Enter text within the widget’s length limit.", "请输入符合小组件长度限制的文字。"),
+        .deskInspectorPresetSize: ("The widget’s preset sets this root size.", "小组件的尺寸预设决定根元素的大小。"),
+        .deskInspectorFontPreset: ("Text size comes from a text preset.", "字号由文字预设决定。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),
@@ -737,6 +907,7 @@ enum StudioText {
         .previewingNoData: ("no data", "没有数据"),
         .previewingTime: ("the time %@", "时间 %@"),
         .wouldOpen: ("Would open %@", "会打开 %@"),
+        .wouldCopy: ("Would copy %@", "会复制 %@"),
         .wouldOpenWidget: ("Would open another widget", "会打开另一个小组件"),
         .wouldCloseWidget: ("Would close a widget", "会关掉一个小组件"),
         .wouldSaveSetting: ("Would save a setting to its file", "会把一个设置存进文件"),
@@ -1080,6 +1251,7 @@ enum StudioText {
         .statusEditing: ("Editing · saved when you pause", "正在编辑 · 停下来就存储"),
         .statusLine: ("Line %d", "第 %d 行"),
         .fix: ("Fix", "改正"),
+        .completeNamed: ("Complete %@", "补全 %@"),
         .stepTyping: ("Typing", "输入"),
         .stepFix: ("Fix %@", "改正 %@"),
         .stepRefresh: ("Refresh", "刷新"),

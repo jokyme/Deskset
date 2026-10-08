@@ -472,7 +472,7 @@ final class StudioWidgetPage {
             refresh()
         case .textSize(let step): scaleText(step)
         case .undo, .topUndo: session?.undoStack.undo()
-        case .suggestion, .number, .crumb, .scopeLink, .scopeHover, .tokenData, .example, .hoverItem, .filter: break
+        case .suggestion, .number, .slider, .crumb, .scopeLink, .scopeHover, .tokenData, .example, .hoverItem, .filter: break
         }
     }
 

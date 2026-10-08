@@ -67,7 +67,10 @@ final class RenderData {
             // Its covers go to the render's cache folder (`RenderCommand.run`), also those of a cover job that
             // finishes after the render: never to the app's cache, where writing one deletes the app's own cover.
             center.coverFolderOverride = MediaUICache.folder("NowPlaying")
-            if let virtual { center.clock = { virtual.uptime } }
+            if let virtual {
+                center.clock = { virtual.uptime }
+                center.worker.runsInline = true
+            }
             NowPlayingCenter.current = center
             restores.append { NowPlayingCenter.current = .shared }
             virtual?.background.setFake(.service, for: .nowPlaying)
@@ -87,7 +90,10 @@ final class RenderData {
                 let c = VirtualWeatherClock(now: virtual.wallClock)
                 clock = c
                 // The service's clock follows virtual time: what it scheduled runs when that time comes.
-                virtual.background.addSettleHook { c.advance(to: virtual.wallClock) }
+                virtual.background.addSettleHook { [weak virtual] in
+                    guard let virtual else { return }
+                    c.advance(to: virtual.wallClock)
+                }
             }
             WeatherService.install(WeatherWiring.fixtureEnvironment(weather, timeZone: { skinClock.timeZone() },
                                                                     clock: clock, locale: locale))

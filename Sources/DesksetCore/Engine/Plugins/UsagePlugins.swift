@@ -63,7 +63,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             newSpec = PerfCounters.spec(category: category, counter: counter)
             if newSpec == nil {
                 report("counter", "UsageMonitor [\(name)]: counter \"\(category)\\\(counter)\" is not available on macOS; the value is 0")
-                skin.addIssue("UsageMonitor counter \(category)\\\(counter) is not available on macOS")
+                sectionContext.addIssue("UsageMonitor counter \(category)\\\(counter) is not available on macOS")
             }
         } else if !alias.isEmpty {
             let pair: (String, String)?
@@ -89,7 +89,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             report("gpu", "UsageMonitor [\(name)]: GPU memory per process is not available on macOS; the value is 0")
         } else if let s = newSpec, s.field == .gpuUtilization {
             // The whole GPU's usage is one instance, "GPU" (no per-process GPU time on macOS).
-            let sensors = HardwareSensors.source(for: skin)
+            let sensors = HardwareSensors.source(for: sectionContext.system)
             if sensors == nil || (sensors?.gpuUtilization() == nil && sensors?.sensorPending(SensorKeys.gpuUsage) == false) {
                 report("gpu", "UsageMonitor [\(name)]: GPU usage is not available here; the value is 0")
             }
@@ -132,7 +132,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         }
         let values: [PerfValue]
         if spec.needsProcesses || spec.usesCores {
-            let read = ProcessSampler.readSamples(for: skin, details: spec.needsDetails)
+            let read = ProcessSampler.readSamples(for: sectionContext.system, details: spec.needsDetails)
             let samples = read.samples
             guard let latest = samples.latest else {
                 rawString = cachedResult.1
@@ -179,8 +179,8 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
     }
 
     private func context(snapshot: ProcessSnapshot?, cores: [CoreTicks]) -> PerfCounters.Context {
-        PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin), snapshot: snapshot,
-                             cores: cores, time: skin.clock())
+        PerfCounters.Context(system: sectionContext.system, sensors: HardwareSensors.source(for: sectionContext.system), snapshot: snapshot,
+                             cores: cores, time: sectionContext.clock())
     }
 
     static func values(_ spec: PerfCounterSpec, previous: ProcessSnapshot?, latest: ProcessSnapshot,
@@ -338,7 +338,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }
 
@@ -383,9 +383,9 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         let newSpec = PerfCounters.spec(category: object, counter: counter)
         if newSpec == nil && !reported {
             reported = true
-            skin.log("PerfMon [\(name)]: counter \"\(object)\\\(counter)\" is not available on macOS; the value is 0",
+            sectionContext.log("PerfMon [\(name)]: counter \"\(object)\\\(counter)\" is not available on macOS; the value is 0",
                      level: .notice)
-            skin.addIssue("PerfMon counter \(object)\\\(counter) is not available on macOS")
+            sectionContext.addIssue("PerfMon counter \(object)\\\(counter) is not available on macOS")
         }
         if newSpec != spec {
             spec = newSpec
@@ -412,14 +412,14 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         let mode: PerfCounters.Mode = difference ? .rawDelta : .raw
         let values: [PerfValue]
         if spec.needsProcesses {
-            guard let latest = ProcessSampler.samples(for: skin, details: spec.needsDetails).latest else {
+            guard let latest = ProcessSampler.samples(for: sectionContext.system, details: spec.needsDetails).latest else {
                 return lastValue
             }
             if let lastSnapshot, lastSnapshot.serial == latest.serial { return lastValue }
             if spec.isProcessField {
                 values = PerfCounters.processValues(spec, old: lastSnapshot, new: latest, mode: mode, rollup: false)
             } else {
-                let ctx = PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin),
+                let ctx = PerfCounters.Context(system: sectionContext.system, sensors: HardwareSensors.source(for: sectionContext.system),
                                                snapshot: latest, cores: latest.cores, time: latest.time)
                 let reading = PerfCounters.rawReading(spec, ctx)
                 values = PerfCounters.values(spec, old: lastReading, new: reading, mode: mode)
@@ -427,9 +427,9 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
             }
             lastSnapshot = latest
         } else {
-            let ctx = PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin),
+            let ctx = PerfCounters.Context(system: sectionContext.system, sensors: HardwareSensors.source(for: sectionContext.system),
                                            snapshot: nil, cores: spec.usesCores ? ProcessorTicks.read() : [],
-                                           time: skin.clock())
+                                           time: sectionContext.clock())
             let reading = PerfCounters.rawReading(spec, ctx)
             values = PerfCounters.values(spec, old: lastReading, new: reading, mode: mode)
             lastReading = reading
@@ -496,7 +496,7 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
 
     /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
     var clock: () -> TimeInterval {
-        get { clockOverride ?? skin.clock }
+        get { clockOverride ?? sectionContext.clock }
         set { clockOverride = newValue }
     }
     private var clockOverride: (() -> TimeInterval)?
@@ -510,7 +510,7 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         let now = clock()
         let elapsed = lastUpdate.map { min(max(now - $0, 0), 3600) }
         lastUpdate = now
-        let samples = ProcessSampler.samples(for: skin)
+        let samples = ProcessSampler.samples(for: sectionContext.system)
         if let latest = samples.latest, lastSnapshot?.serial != latest.serial {
             // The first value uses the sampler's own previous sample, so it does not wait for a second update.
             if let base = lastSnapshot ?? samples.previous {

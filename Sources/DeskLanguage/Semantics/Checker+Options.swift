@@ -528,6 +528,7 @@ extension Checker {
         var names: [(String, Range<Int>)] = []
         var qualified: String?
         var labels: [PositionedNode] = []
+        var values: [PositionedNode] = []
         var unusable = false
         for element in ListLiteralSyntax(unchecked: choicesNode).elements {
             var value = element.node
@@ -551,6 +552,7 @@ extension Checker {
                 labels.append(args[1].value.node)
                 value = args[0].value.node
             }
+            values.append(value)
             switch value.kind {
             case .implicitMemberExpr:
                 kinds.insert("case")
@@ -623,8 +625,8 @@ extension Checker {
                     reportDefaultMismatch(option, def: BoundValue(param: control.signatures[0].params[2], node: def.value.node, argument: def, val: v),
                                           expected: option.val.type)
                 } else if let s = v.stringLiteral, kind == "string",
-                          !ListLiteralSyntax(unchecked: choicesNode).elements.contains(where: { StringLiteralSyntax($0.node)?.literalValue == s }) {
-                    reportDefaultNotAChoice(def.value.node, choicesNode: choicesNode)
+                          !values.contains(where: { StringLiteralSyntax($0)?.literalValue == s }) {
+                    reportDefaultNotAChoice(def.value.node, firstChoice: values.first)
                 }
             }
             return
@@ -666,13 +668,13 @@ extension Checker {
             if node.kind == .implicitMemberExpr {
                 let name = ImplicitMemberExprSyntax(unchecked: node).name.token.name
                 if !option.choices.contains(name) {
-                    reportDefaultNotAChoice(node, choicesNode: choicesNode)
+                    reportDefaultNotAChoice(node, firstChoice: values.first)
                 }
                 symbols[id(node)] = .enumCase(type: option.val.type.enumID ?? "Color", case: name)
             } else {
                 let v = inferValue(node, context, expected: option.val.type)
                 if !v.error, let name = v.implicitName, !option.choices.contains(name) {
-                    reportDefaultNotAChoice(node, choicesNode: choicesNode)
+                    reportDefaultNotAChoice(node, firstChoice: values.first)
                 } else if !v.error, v.implicitName == nil {
                     reportDefaultMismatch(option, def: BoundValue(param: control.signatures[0].params[2], node: node, argument: def, val: v),
                                           expected: option.val.type)
@@ -710,11 +712,11 @@ extension Checker {
                                             "actual": .type(v.type)])
     }
 
-    func reportDefaultNotAChoice(_ node: PositionedNode, choicesNode: PositionedNode) {
+    func reportDefaultNotAChoice(_ node: PositionedNode, firstChoice: PositionedNode?) {
         let r = range(node)
         var fixIts: [FixIt] = []
-        if let first = ListLiteralSyntax(unchecked: choicesNode).elements.first {
-            fixIts.append(fix("useFirstChoice", [edit(r, text(first.node))]))
+        if let firstChoice {
+            fixIts.append(fix("useFirstChoice", [edit(r, text(firstChoice))]))
         }
         report(.pickerDefaultNotAChoice, r, ["value": .code(text(node))], fixIts: fixIts)
     }

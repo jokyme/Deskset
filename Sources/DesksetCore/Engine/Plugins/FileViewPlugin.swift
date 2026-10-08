@@ -10,7 +10,33 @@ import Foundation
 /// effects (`SideEffects.writeFile`), so a sandboxed instance keeps the file in its copy and records the write.
 /// Without a renderer, Icon measures are empty.
 public enum FileViewIcons {
-    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)?
+    /// A replacement service has its own serial lane. Requests captured by the previous installation can finish
+    /// there without holding up a new service (for example, a synthetic renderer in an isolated virtual run).
+    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)? {
+        get { snapshot()?.draw }
+        set {
+            let next = newValue.map { Installation(draw: $0) }
+            lock.lock()
+            let previous = installation
+            installation = next
+            lock.unlock()
+            // A captured provider may run arbitrary cleanup when released; never release it under our lock.
+            withExtendedLifetime(previous) {}
+        }
+    }
+
+    fileprivate struct Installation {
+        let draw: (String, Int, String) -> Data?
+        let queue = DispatchQueue(label: "Deskset.FileViewIcons", qos: .utility)
+    }
+    private static let lock = NSLock()
+    private static var installation: Installation?
+
+    fileprivate static func snapshot() -> Installation? {
+        lock.lock()
+        defer { lock.unlock() }
+        return installation
+    }
 
     /// Most links and aliases followed from one item: a longer chain is taken for a loop.
     static let maxLinkHops = 16
@@ -173,6 +199,12 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         rawString = ""
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        parentResolver = { [unowned context] in context.measure(named: $0) as? FileViewMeasure }
+        rawString = ""
+    }
+
     public func skinWillClose() { closed = true }
 
     // MARK: Options
@@ -194,7 +226,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     private func readParentOptions(_ raw: String) {
         // "#Variables# can be used in the parent Path option, [SectionVariables] cannot".
-        pathOption = skin.resolveStandardVariables(raw, in: self)
+        pathOption = sectionContext.resolveStandardVariables(raw, in: self)
         var o = ParentOptions()
         o.recursive = min(max(int("Recursive", 0), 0), 2)
         o.count = min(max(int("Count", 1), 1), 10_000)
@@ -237,7 +269,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     private func configuredFolder() -> String {
         let p = pathOption.trimmingCharacters(in: .whitespaces)
         if p.isEmpty { return "/Volumes/" }
-        return folderPath(PluginPaths.resolve(p, skin: skin))
+        return folderPath(PluginPaths.resolve(p, relativeTo: sectionContext.directory.path))
     }
 
     private func folderPath(_ p: String) -> String { p.hasSuffix("/") ? p : p + "/" }
@@ -323,7 +355,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
                 return 0
             }
             rawString = FileViewMeasure.dateFormatter.string(from: date)
-            return TimeFormatting.measureValue(for: date, timeZone: skin.skinClock.timeZone())
+            return TimeFormatting.measureValue(for: date, timeZone: sectionContext.skinClock.timeZone())
         case .filePath:
             rawString = item.isDotDot ? parentFolder(of: listing.folder) ?? item.path : item.path
             return 0
@@ -349,13 +381,13 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     // MARK: Icons
 
     private func iconDestination() -> String {
-        if iconPath.isEmpty { return skin.directory.appendingPathComponent("icon\(index).ico").path }
-        return PluginPaths.resolve(iconPath, skin: skin)
+        if iconPath.isEmpty { return sectionContext.directory.appendingPathComponent("icon\(index).ico").path }
+        return PluginPaths.resolve(iconPath, relativeTo: sectionContext.directory.path)
     }
 
     /// The icon file path once it is written (written on a background queue; the value updates when done).
     private func icon(for item: Item) -> String {
-        guard let renderer = FileViewIcons.renderer else {
+        guard let installation = FileViewIcons.snapshot() else {
             report("icon", "FileView [\(name)]: file icons are not available")
             return ""
         }
@@ -369,14 +401,14 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         let size = iconSize
         // The file goes where the skin's side effects say, taken here on the skin's thread: the destination itself, or
         // a recording's copy of it (the write recorded), which is then the path the skin sees.
-        let effects = skin.sideEffects
+        let effects = sectionContext.sideEffects
         let target = effects.destination(forWriting: URL(fileURLWithPath: destination))
         let pathExtension = (destination as NSString).pathExtension
         // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
         // saved.
-        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.iconQueue, fixture: false,
+        let job = BackgroundJob(.fileViewIcon, subject: source, on: installation.queue, fixture: false,
                                 scripted: { $0.failureMessage == nil }) { () -> Bool in
-            guard let data = renderer(source, size, pathExtension) else { return false }
+            guard let data = installation.draw(source, size, pathExtension) else { return false }
             do {
                 try effects.writeFile(data, to: target, makingFolder: true)
                 return true
@@ -384,7 +416,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
                 return false
             }
         }
-        skin.startBackground(job) { [weak self] ok in
+        sectionContext.startBackground(job) { [weak self] ok in
             guard let self, !self.closed, self.iconGeneration == generation else { return }
             if ok {
                 self.lastIcon = (source, size, destination, target.path)
@@ -405,11 +437,11 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         let generation = readGeneration
         let options = parentOptions
         // A folder the skin removed or renamed in a recording's sandbox reads as it is there (see FolderInfo).
-        let readFolder = skin.readablePath(folder)
+        let readFolder = sectionContext.readablePath(folder)
         let job = BackgroundJob(.fileViewListing, subject: folder, on: PluginIO.queue, fixture: true, reads: folder) {
             FileViewMeasure.list(folder: readFolder, options: options)
         }
-        skin.startBackground(job) { [weak self] result in
+        sectionContext.startBackground(job) { [weak self] result in
             guard let self, self.readGeneration == generation else { return }
             self.reading = false
             guard !self.closed else { return }
@@ -429,7 +461,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         offset = min(offset, max(listing.items.count - 1, 0))
         publishAsyncResult(number: Double(listing.items.count), string: listing.folder)
         refreshChildren()
-        if !finishAction.isEmpty { skin.execute(finishAction, from: self) }
+        if !finishAction.isEmpty { sectionContext.execute(finishAction, from: self) }
     }
 
     private func refreshChildren() {
@@ -598,7 +630,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
             // The manual's "!CommandMeasure … Update after changing options": `#Variables#` of Path are resolved again,
             // so `[!SetVariable Dir …][!CommandMeasure Parent Update]` works without DynamicVariables.
             if parentName == nil {
-                pathOption = skin.resolveStandardVariables((rawOption("Path") ?? "").trimmingCharacters(in: .whitespaces),
+                pathOption = sectionContext.resolveStandardVariables((rawOption("Path") ?? "").trimmingCharacters(in: .whitespaces),
                                                            in: self)
             }
             // A Path changed with !SetOption / !SetVariable is read; otherwise the folder navigated to is re-read.
@@ -628,9 +660,9 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
             guard let up = parentFolder(of: current) else { return }
             navigate(to: up)
         case "contextmenu":
-            reveal(argument.isEmpty ? (currentFolder ?? configuredFolder()) : PluginPaths.resolve(argument, skin: skin))
+            reveal(argument.isEmpty ? (currentFolder ?? configuredFolder()) : PluginPaths.resolve(argument, relativeTo: sectionContext.directory.path))
         case "properties":
-            showInfo(argument.isEmpty ? (currentFolder ?? configuredFolder()) : PluginPaths.resolve(argument, skin: skin))
+            showInfo(argument.isEmpty ? (currentFolder ?? configuredFolder()) : PluginPaths.resolve(argument, relativeTo: sectionContext.directory.path))
         default:
             super.execute(command: command)
         }
@@ -662,19 +694,19 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     private func open(_ item: Item) {
         let path = item.isDotDot ? (parentFolder(of: parent?.listing.folder ?? "") ?? item.path) : item.path
-        skin.host?.skin(skin, execute: path, arguments: [])
+        serviceHost?.skin(skin, execute: path, arguments: [])
     }
 
     private func reveal(_ item: Item) { reveal(item.path) }
     private func showInfo(_ item: Item) { showInfo(item.path) }
 
     private func reveal(_ path: String) {
-        skin.sideEffects.launch("/usr/bin/open", ["-R", path], completion: nil)
+        sectionContext.sideEffects.launch("/usr/bin/open", ["-R", path], completion: nil)
     }
 
     private func showInfo(_ path: String) {
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        skin.sideEffects.launch("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
+        sectionContext.sideEffects.launch("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
                                                        "-e", "activate",
                                                        "-e", "open information window of (POSIX file \"\(escaped)\" as alias)",
                                                        "-e", "end tell"], completion: nil)
@@ -682,6 +714,6 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }

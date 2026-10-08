@@ -27,8 +27,8 @@ struct DeskNodeTable: Sendable {
     let entries: [Entry]
     /// The indexes of the file's top-level nodes, in order (a file of stray braces has thousands).
     let topLevel: [Int]
-    /// Node indexes by the checker's key. Nested nodes of one kind may start at the same place (`a.b.c`), so a key
-    /// may name several; outermost first.
+    /// Node indexes by the checker's key. Canonical expression keys include their text ends; recovery nodes with
+    /// identical spans or non-expression start-only keys may still name several nodes, outermost first.
     let byID: [NodeID: [Int]]
 
     init(tree: SyntaxTree) {
@@ -82,7 +82,14 @@ struct DeskNodeTable: Sendable {
         var byID: [NodeID: [Int]] = [:]
         byID.reserveCapacity(entries.count)
         for (i, entry) in entries.enumerated() {
-            byID[NodeID(kind: entry.kind, utf8Start: entry.textStart, treeVersion: tree.version), default: []].append(i)
+            let id: NodeID
+            if entry.kind.isExpression {
+                id = NodeID(kind: entry.kind, utf8Start: entry.textStart, treeVersion: tree.version,
+                            utf8End: entry.textRange.upperBound)
+            } else {
+                id = NodeID(kind: entry.kind, utf8Start: entry.textStart, treeVersion: tree.version)
+            }
+            byID[id, default: []].append(i)
         }
         self.entries = entries
         self.byID = byID
@@ -122,7 +129,12 @@ struct DeskNodeTable: Sendable {
     }
 
     func id(_ index: Int) -> NodeID {
-        NodeID(kind: entries[index].kind, utf8Start: entries[index].textStart, treeVersion: version)
+        let entry = entries[index]
+        if entry.kind.isExpression {
+            return NodeID(kind: entry.kind, utf8Start: entry.textStart, treeVersion: version,
+                          utf8End: entry.textRange.upperBound)
+        }
+        return NodeID(kind: entry.kind, utf8Start: entry.textStart, treeVersion: version)
     }
 
     /// The indexes of the node's enclosing nodes, innermost first.

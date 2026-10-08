@@ -188,6 +188,16 @@ public struct VariableResolver {
                             fullSyntax: true, rescanValues: true).run(text)
     }
 
+    /// Resolves a preplanned source against this call's live lookups. No resolver or result is retained by it.
+    package func resolve(_ template: Template) -> String {
+        let plan = template.standard
+        guard plan.hasHash || plan.hasBracket || (eventLookup != nil && plan.hasDollar) else {
+            return template.source
+        }
+        return VarExpansion(variableLookup: variableLookup, sectionLookup: sectionLookup, eventLookup: eventLookup,
+                            fullSyntax: true, rescanValues: true).run(template)
+    }
+
     /// Resolves only the standard `#Var#` form (recursively through variable values), leaving the escape
     /// `#*Var*#`, the nesting forms (`[#Var]`, `[&Measure]`, `[\x…]`, `[$…]`), section variables and event
     /// variables exactly as written.
@@ -202,6 +212,13 @@ public struct VariableResolver {
         guard text.utf8.contains(VarByte.hash) else { return text }
         return VarExpansion(variableLookup: variableLookup, sectionLookup: nil, eventLookup: nil,
                             fullSyntax: false, rescanValues: true).run(text)
+    }
+
+    /// The option-read stage of the same template. Escapes and non-standard syntax keep their original timing.
+    package func resolveStandardVariables(_ template: Template) -> String {
+        guard template.standard.hasHash else { return template.source }
+        return VarExpansion(variableLookup: variableLookup, sectionLookup: nil, eventLookup: nil,
+                            fullSyntax: false, rescanValues: true).run(template)
     }
 
     /// Turns the ordered `[Variables]` entries (after @Include merging) into the final variable table

@@ -9,6 +9,8 @@ import Foundation
 struct AppliedModifier {
     var name: String
     var node: PositionedNode
+    /// Captured in the defining tree; a package style is later expanded by a different widget checker.
+    let id: NodeID
     var spec: ModifierSpec
     /// (facet, value node, fixed value text, hard)
     var facets: [(FacetID, NodeID, String?, Bool)]
@@ -168,8 +170,32 @@ extension Checker {
     func checkComponentValues(_ spec: ComponentSpec, _ bound: BoundCall, call: CallStmtSyntax, element: ElementNode) {
         switch spec.kind {
         case .progress, .gauge:
-            guard let value = bound.value("value"), bound.value("total") == nil, !value.val.error, value.val.open == nil else { return }
+            guard let value = bound.value("value"), !value.val.error else { return }
+            if let total = bound.value("total") {
+                guard total.param.sameAs == value.param.name, !total.val.error,
+                      value.val.isNumber, total.val.isNumber, !value.val.isJson, !total.val.isJson else { return }
+                var v = value.val, maximum = total.val
+                // SameAs carries the value's dimension and byte base through both inline operands and open declarations.
+                if let slot = v.open {
+                    recordUse(slot, of: maximum, total.node, description: LocalizedText("used with \(spec.name)'s total", "与 \(spec.name) 的满格值一起使用"))
+                }
+                if let slot = maximum.open {
+                    recordUse(slot, of: v, value.node, description: LocalizedText("used with \(spec.name)'s value", "与 \(spec.name) 的进度值一起使用"))
+                }
+                guard !hasOpenDimension(v), !hasOpenDimension(maximum) else { return }
+                adoptPair(&v, value.node, &maximum, total.node, operation: .compare)
+                if !v.error, !maximum.error, v.dimension != maximum.dimension {
+                    report(.unitMismatch, range(total.node), ["op": .text(LocalizedText("use together", "一起使用")),
+                                                             "a": .type(v.type), "b": .type(maximum.type)])
+                }
+                return
+            }
+            guard value.val.open == nil else { return }
             let v = value.val
+            if spec.kind == .progress, NumberLiteralSyntax(value.node) != nil,
+               v.dimension == .plain, let number = v.plainLiteral, number > 1 {
+                reportFractionOver1(value.node, what: .name("component:\(spec.name)"), value: number)
+            }
             let known: Bool
             if v.isJson { known = false }
             else if v.dimension == .percent { known = true }
@@ -494,7 +520,7 @@ extension Checker {
         }
         if spec.name == "hidden", bound.values.isEmpty { facets.append(("hidden", nodeID, "true", true)) }
         let first = bound.values.first { $0.param.label == nil }.map { text($0.node) }
-        return AppliedModifier(name: spec.name, node: modifier.node, spec: spec, facets: facets, condition: condition,
+        return AppliedModifier(name: spec.name, node: modifier.node, id: nodeID, spec: spec, facets: facets, condition: condition,
                                state: state, firstArgument: first, file: file)
     }
 
@@ -1046,11 +1072,10 @@ extension Checker {
                      styleCalls: [(style: String, condition: NodeID?, node: PositionedNode)]) {
         var candidates: [FacetID: [Candidate]] = [:]
         var position = 0
-        func add(_ a: AppliedModifier, level: Int, extra: CandidateCondition?, origin: CandidateOrigin) {
+        func add(_ a: AppliedModifier, level: Int, extra: [CandidateCondition], origin: CandidateOrigin) {
             guard !duplicateDropped.contains(a.node.range.lowerBound) else { return }
             if let kind = element.kind, !a.spec.appliesTo.contains(kind) { return }
-            var conditions: [CandidateCondition] = []
-            if let extra { conditions.append(extra) }
+            var conditions = extra
             if let s = a.state { conditions.append(s) }
             if let c = a.condition { conditions.append(.expr(c)) }
             let condition: CandidateCondition? = conditions.isEmpty ? nil : conditions.count == 1 ? conditions[0] : .all(conditions)
@@ -1064,13 +1089,14 @@ extension Checker {
         var anyApplied = false
         for call in styleCalls {
             let before = position
-            let condition = call.condition.map { CandidateCondition.expr($0) }
-            expandStyle(call.style, visited: []) { a, styleName in
-                add(a, level: 2, extra: condition, origin: .style(styleName, id(a.node), file: a.file))
+            let conditions = call.condition.map { [CandidateCondition.expr($0)] } ?? []
+            expandStyle(call.style, visited: []) { a, styleName, includeConditions in
+                add(a, level: 2, extra: conditions + includeConditions.map(CandidateCondition.expr),
+                    origin: .style(styleName, a.id, file: a.file))
             }
             var expanded = 0
             var droppedInStyle = false
-            expandStyle(call.style, visited: []) { a, _ in
+            expandStyle(call.style, visited: []) { a, _, _ in
                 expanded += 1
                 if duplicateDropped.contains(a.node.range.lowerBound) { droppedInStyle = true }
             }
@@ -1081,8 +1107,8 @@ extension Checker {
             }
             anyApplied = anyApplied || position > before
         }
-        for a in own { add(a, level: 3, extra: nil, origin: .own(id(a.node))) }
-        for source in states { for a in source { add(a, level: 3, extra: nil, origin: .own(id(a.node))) } }
+        for a in own { add(a, level: 3, extra: [], origin: .own(a.id)) }
+        for source in states { for a in source { add(a, level: 3, extra: [], origin: .own(a.id)) } }
         for (facet, list) in candidates {
             candidates[facet] = list.sorted { $0.sortKey > $1.sortKey }
         }
@@ -1091,18 +1117,17 @@ extension Checker {
     }
 
     /// Calls `visit` for every applied modifier of a style, included styles first (D98).
-    func expandStyle(_ name: String, visited: Set<String>, _ visit: (AppliedModifier, String) -> Void) {
+    /// Conditions follow the include path from outside in, without replacing the modifier's own condition.
+    func expandStyle(_ name: String, visited: Set<String>, includeConditions: [NodeID] = [],
+                     _ visit: (AppliedModifier, String, [NodeID]) -> Void) {
         guard let style = styles[name], !visited.contains(name) else { return }
         var seen = visited
         seen.insert(name)
-        for include in style.includes { expandStyle(include.style, visited: seen) { a, s in
-            var copy = a
-            if let c = include.condition {
-                copy.condition = copy.condition ?? c
-            }
-            visit(copy, s)
-        } }
-        for a in style.applied { visit(a, name) }
+        for include in style.includes {
+            let conditions = includeConditions + (include.condition.map { [$0] } ?? [])
+            expandStyle(include.style, visited: seen, includeConditions: conditions, visit)
+        }
+        for a in style.applied { visit(a, name, includeConditions) }
     }
 
     func styleHasState(_ name: String, visited: Set<String>) -> Bool {

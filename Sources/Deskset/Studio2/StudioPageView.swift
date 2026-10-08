@@ -9,6 +9,8 @@ enum StudioPageEvent: Equatable {
     case toggle(item: String, on: Bool)
     /// A percentage moved (`done`: the gesture ended).
     case percent(item: String, value: Double, done: Bool)
+    /// A canonical numeric value moved, without a percentage conversion.
+    case slider(item: String, value: Double, done: Bool)
     /// A swatch was clicked (the color popover opens on it).
     case swatch(item: String, swatch: String)
     /// The pointer is on a swatch (nil: it left).
@@ -54,6 +56,10 @@ final class StudioPageView: NSView {
     var onEvent: ((StudioPageEvent) -> Void)?
     private(set) var page: StudioPage?
     let searchField = NSSearchField()
+    /// Small element-only hosts can omit the global Studio search while keeping the same property rows.
+    var showsSearch = true {
+        didSet { searchField.isHidden = !showsSearch; needsLayout = true }
+    }
     let titleLabel = NSTextField(labelWithString: "")
     let subtitleLabel = NSTextField(wrappingLabelWithString: "")
     private var headings: [String: NSTextField] = [:]
@@ -296,6 +302,7 @@ final class StudioPageView: NSView {
         case .segment(let i): onEvent?(.segment(item: id, index: i))
         case .toggle(let on): onEvent?(.toggle(item: id, on: on))
         case .percent(let v, let done): onEvent?(.percent(item: id, value: v, done: done))
+        case .slider(let v, let done): onEvent?(.slider(item: id, value: v, done: done))
         case .swatch: onEvent?(.swatch(item: id, swatch: id))
         case .number(let part, let change): onEvent?(.number(item: id, part: part, change: change))
         case .hover(let inside): onEvent?(.hoverItem(item: id, inside: inside))
@@ -339,8 +346,10 @@ final class StudioPageView: NSView {
         let inner = max(width - 2 * m, 40)
         var y: CGFloat = 10
         func put(_ v: NSView, _ r: NSRect) { if place { v.frame = r } }
-        put(searchField, NSRect(x: m, y: y, width: inner, height: 28))
-        y += 28 + 16
+        if showsSearch {
+            put(searchField, NSRect(x: m, y: y, width: inner, height: 28))
+            y += 28 + 16
+        }
         guard let page else { return y }
         let tight = page.tight
         if !page.crumbs.isEmpty {
@@ -445,7 +454,7 @@ final class StudioPageView: NSView {
 /// to change it (`StudioScrubArea`).
 final class StudioRowView: NSView, StudioPageItemView {
     enum Event {
-        case choose(Int), segment(Int), toggle(Bool), percent(Double, Bool), swatch
+        case choose(Int), segment(Int), toggle(Bool), percent(Double, Bool), slider(Double, Bool), swatch
         case number(part: Int, StudioNumberChange)
         case hover(Bool)
     }
@@ -507,7 +516,7 @@ final class StudioRowView: NSView, StudioPageItemView {
     func accepts(_ control: StudioPage.Control) -> Bool {
         switch (row.control, control) {
         case (.popup, .popup), (.segmented, .segmented), (.toggle, .toggle), (.percent, .percent), (.color, .color),
-             (.text, .text), (.number, .number), (.colorLabel, .colorLabel):
+             (.text, .text), (.number, .number), (.slider, .slider), (.stepper, .stepper), (.colorLabel, .colorLabel):
             return true
         case (.pair(let a), .pair(let b)):
             guard a.count == b.count, let pair = controlView as? StudioPairView else { return false }
@@ -523,7 +532,9 @@ final class StudioRowView: NSView, StudioPageItemView {
     }
 
     /// The number box of a number row (the self-tests type into it).
-    var numberBox: StudioNumberBox? { controlView as? StudioNumberBox }
+    var numberBox: StudioNumberBox? {
+        (controlView as? StudioNumberBox) ?? (controlView as? StudioNumericStepper)?.numberBox
+    }
 
     private func makeControl(_ control: StudioPage.Control) -> NSView {
         switch control {
@@ -563,6 +574,14 @@ final class StudioRowView: NSView, StudioPageItemView {
                 self?.percentLabel.stringValue = "\(Int((s.doubleValue * 100).rounded())) %"
                 self?.onEvent?(.percent(s.doubleValue, done))
             }
+            return s
+        case .slider:
+            let s = StudioNumericSlider()
+            s.onChange = { [weak self] value, done in self?.onEvent?(.slider(value, done)) }
+            return s
+        case .stepper:
+            let s = StudioNumericStepper()
+            s.onChange = { [weak self] change in self?.onEvent?(.number(part: 0, change)) }
             return s
         case .color:
             let s = StudioSwatchView(swatch: StudioPage.Swatch(id: "", kind: .color, label: ""), showsLabel: false)
@@ -604,6 +623,7 @@ final class StudioRowView: NSView, StudioPageItemView {
 
     func update(_ kind: StudioPage.Kind) {
         guard case .row(let row) = kind else { return }
+        let previous = self.row
         self.row = row
         label.stringValue = row.label
         label.toolTip = row.tooltip
@@ -622,15 +642,11 @@ final class StudioRowView: NSView, StudioPageItemView {
         switch row.control {
         case .popup(let popup):
             guard let p = controlView as? NSPopUpButton else { break }
-            let menu = NSMenu()
-            menu.autoenablesItems = false
-            for item in popup.items {
-                if item.isHeading {
-                    menu.addItem(StudioPageView.heading(item.title))
-                    continue
-                }
-                let m = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
-                m.isEnabled = item.enabled
+            let keepsMenu: Bool
+            if case .popup(let old) = previous.control {
+                keepsMenu = old.items == popup.items && old.fonts == popup.fonts && p.numberOfItems == popup.items.count
+            } else { keepsMenu = false }
+            func styleMenuItem(_ menuItem: NSMenuItem, _ item: StudioPage.MenuItem) {
                 var attributes: [NSAttributedString.Key: Any] = [.font: StudioPageStyle.valueFont]
                 if popup.fonts, let face = item.face { attributes[.font] = StudioFontMenu.font(face, size: 13) }
                 let title = NSMutableAttributedString(string: item.title, attributes: attributes)
@@ -638,11 +654,30 @@ final class StudioRowView: NSView, StudioPageItemView {
                     title.append(NSAttributedString(string: "  " + item.detail, attributes: [
                         .font: StudioPageStyle.noteFont, .foregroundColor: NSColor.secondaryLabelColor]))
                 }
-                m.attributedTitle = title
-                if let symbol = item.symbol { m.image = StudioPageStyle.symbol(symbol, size: 11, weight: .semibold) }
-                menu.addItem(m)
+                menuItem.attributedTitle = title
+                menuItem.image = item.symbol.flatMap { StudioPageStyle.symbol($0, size: 11, weight: .semibold) }
             }
-            p.menu = menu
+            if !keepsMenu {
+                // An unrelated row's update must not replace a menu while AppKit is tracking it.
+                p.menu?.cancelTracking()
+                let menu = NSMenu()
+                menu.autoenablesItems = false
+                for item in popup.items {
+                    if item.isHeading {
+                        menu.addItem(StudioPageView.heading(item.title))
+                        continue
+                    }
+                    let m = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+                    m.isEnabled = item.enabled
+                    styleMenuItem(m, item)
+                    menu.addItem(m)
+                }
+                p.menu = menu
+            } else if case .popup(let old) = previous.control, let selected = old.selected,
+                      selected != popup.selected, popup.items.indices.contains(selected),
+                      let item = p.item(at: selected) {
+                styleMenuItem(item, popup.items[selected])
+            }
             if let s = popup.selected, s < popup.items.count {
                 // Headings are items too: the index counts them.
                 p.selectItem(at: s)
@@ -683,13 +718,17 @@ final class StudioRowView: NSView, StudioPageItemView {
             (controlView as? NSSlider)?.doubleValue = value
             percentLabel.stringValue = "\(Int((value * 100).rounded())) %"
             percentLabel.isHidden = false
+        case .slider(let value):
+            (controlView as? StudioNumericSlider)?.show(value, label: row.label)
+        case .stepper(let number):
+            (controlView as? StudioNumericStepper)?.show(number, label: row.label)
         case .color(let swatch):
             (controlView as? StudioSwatchView)?.swatch = swatch
         case .text(let text):
             (controlView as? NSTextField)?.stringValue = text
         case .number(let n):
             (controlView as? StudioNumberBox)?.show(n)
-            scrubArea.isHidden = row.label.isEmpty
+            scrubArea.isHidden = row.label.isEmpty || n.isText
             scrubArea.toolTip = StudioText[.scrubTip]
             if n.steppers {
                 if steppers == nil {
@@ -817,6 +856,8 @@ final class StudioRowView: NSView, StudioPageItemView {
             percentLabel.frame = NSRect(x: right - pw, y: (h - 15) / 2, width: pw, height: 15)
             percentLabel.alignment = .right
             controlView.frame = NSRect(x: x, y: (h - 20) / 2, width: max(right - pw - 6 - x, 40), height: 20)
+        case .slider, .stepper:
+            controlView.frame = NSRect(x: x, y: (h - controlHeight) / 2, width: max(right - x, 40), height: controlHeight)
         case .color:
             controlView.frame = NSRect(x: x, y: (h - 24) / 2, width: 24, height: 24)
         case .text:

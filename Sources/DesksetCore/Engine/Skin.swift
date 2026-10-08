@@ -331,7 +331,6 @@ public final class Skin {
         return try body()
     }
 
-    private var sizeComputed = false
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []
 
@@ -370,8 +369,8 @@ public final class Skin {
     private var pendingWakeAction = false
     /// Work done since the outermost update or action started: bangs run plus meters / measures updated by bangs.
     private var burstWork = 0
-    /// `!UpdateMeter` / `!UpdateMeterGroup` ran: meter frames are recomputed once, lazily (see `layoutIfPending`).
-    private var layoutPending = false
+    /// Owns relative placement, provisional geometry and lazy layout on this skin's executor.
+    private let layoutDriver = LayoutDriver()
     /// `!Delay` continuations waiting to run, by number; `close()` cancels them.
     private var pendingDelays: [Int: SkinScheduledWork] = [:]
     private var lastDelayID = 0
@@ -513,7 +512,7 @@ public final class Skin {
         rainmeterSection = root
         readSettings(root)
         optionsLoaded = false
-        meterFramesReady = false
+        layoutDriver.resetFrameReadiness()
         root.readOptionsIfNeeded()
         for m in measures { m.readOptionsIfNeeded() }
         // A meter may already have been read by a provisional layout (`ensureMeterGeometry`, asked for by a script's
@@ -749,7 +748,8 @@ public final class Skin {
                 log("[\(section.name)] Measure=\(rawType) is not a valid measure type", level: .warning)
             }
         }
-        let measure = cls.init(name: section.name, section: section, skin: self, type: effectiveType)
+        let measure = makeContextBuiltinMeasure(cls, name: section.name, section: section, context: self, type: effectiveType)
+            ?? cls.init(name: section.name, section: section, skin: self, type: effectiveType)
         if invalidType { (measure as? UnsupportedMeasure)?.isMacDifference = false }
         return measure
     }
@@ -815,17 +815,7 @@ public final class Skin {
             if closed { return }
         }
         // Meters update and lay out in file order, so `[PreviousMeter:X]` and `r`/`R` see fresh values.
-        resolveContainers()
-        var needsSecondPass = false
-        var placement = LayoutState()
-        for m in meters {
-            if m.consumeUpdateTick() { updateMeterNow(m) }
-            if closed { return }
-            if placement.place(m) { needsSecondPass = true }
-        }
-        meterFramesReady = true
-        if needsSecondPass { layoutMeters() }
-        layoutPending = false
+        guard layoutDriver.updateMeterPass(in: self, updateMeter: updateMeterNow) else { return }
         updateCount += 1
         updateSize()
         if updateCount == 1, !settings.onRefreshAction.isEmpty {
@@ -858,9 +848,9 @@ public final class Skin {
     private func updateMetersNow(_ list: [Meter]) {
         for m in list {
             updateMeterNow(m)
-            layoutPending = true
+            layoutDriver.markPending()
         }
-        layoutPending = true
+        layoutDriver.markPending()
     }
 
     /// A measure updated by a bang (`!UpdateMeasure`, `!UpdateMeasureGroup`): options re-read when needed.
@@ -875,9 +865,7 @@ public final class Skin {
         assertOwned()
         beginWork()
         defer { endWork() }
-        layoutPending = false
-        resolveContainers()
-        layoutMeters()
+        layoutDriver.layout(in: self)
         updateSize()
     }
 
@@ -895,90 +883,14 @@ public final class Skin {
     /// every provisional frame. Rainmeter does not document when meter geometry becomes available; this is a
     /// judgment call (docs/compat/engine.md, "Meter geometry before the first update").
     func ensureMeterGeometry() {
-        guard !meterFramesReady, !closed else { return }
-        // Set first: a meter option read below that asks for geometry again (`[OtherMeter:X]` in a dynamic meter)
-        // gets the frames as they are instead of recursing.
-        meterFramesReady = true
-        if !optionsLoaded {
-            for m in meters where m.needsOptionRead { m.readOptionsIfNeeded() }
-        }
-        for m in meters { m.prepareProvisionalLayout() }
-        resolveContainers()
-        layoutMeters()
+        layoutDriver.ensureMeterGeometry(in: self)
     }
-
-    /// Set once meter frames have been computed (by a layout, the first update's meter pass, or
-    /// `ensureMeterGeometry`); before that every frame is zero.
-    private var meterFramesReady = false
 
     /// `!UpdateMeter` only marks the layout as stale; it is recomputed once when a meter section variable
     /// (`[Meter:W]`) is read, at the end of the outermost action, or by the next `!Redraw` / update — instead of
     /// after every one of `[!UpdateMeter A][!UpdateMeter B]…` (each layout measures every String meter's text).
     private func layoutIfPending() {
-        if layoutPending { layout() }
-    }
-
-    /// Relative positioning state while walking the meters in file order (see `Meter` for the Container rules).
-    private struct LayoutState {
-        var previous: Meter?
-        var previousContent: [ObjectIdentifier: Meter] = [:]
-        var placed: Set<ObjectIdentifier> = []
-
-        /// Places `m`; returns true when it is content of a container that comes later in the file (so its
-        /// position used the container's previous frame and needs a second pass).
-        mutating func place(_ m: Meter) -> Bool {
-            var stale = false
-            if let c = m.container {
-                let key = ObjectIdentifier(c)
-                m.layout(after: previousContent[key], in: c)
-                previousContent[key] = m
-                stale = !placed.contains(key)
-            } else {
-                m.layout(after: previous)
-                previous = m
-            }
-            placed.insert(ObjectIdentifier(m))
-            return stale
-        }
-    }
-
-    private func layoutMeters() {
-        meterFramesReady = true
-        var needsSecondPass = false
-        var state = LayoutState()
-        for m in meters where state.place(m) { needsSecondPass = true }
-        if needsSecondPass {
-            state = LayoutState()
-            for m in meters { _ = state.place(m) }
-        }
-    }
-
-    /// Validates `Container=` options (no self reference, no nesting) and marks the containers.
-    private func resolveContainers() {
-        var anyContainer = false
-        for m in meters where !m.containerName.isEmpty {
-            anyContainer = true
-            break
-        }
-        guard anyContainer || meters.contains(where: { $0.container != nil || $0.isContainer }) else { return }
-        // Set once each, not reset and set again: the skin's snapshot follows every change of them.
-        var containers: Set<ObjectIdentifier> = []
-        defer { for m in meters { m.isContainer = containers.contains(ObjectIdentifier(m)) } }
-        for m in meters {
-            guard !m.containerName.isEmpty else {
-                m.container = nil
-                continue
-            }
-            if let target = meter(named: m.containerName), target !== m, target.containerName.isEmpty {
-                m.container = target
-                containers.insert(ObjectIdentifier(target))
-            } else {
-                m.container = nil
-                // An authoring error (Rainmeter rejects it too): a log line, not a compatibility issue.
-                logOnce("Container=\(m.containerName) on [\(m.name)] is invalid (missing, itself, or nested)",
-                        level: .warning)
-            }
-        }
+        layoutDriver.layoutIfPending { self.layout() }
     }
 
     /// Computes the window size from the meters (and the background). Without `DynamicWindowSize` it is computed
@@ -987,25 +899,11 @@ public final class Skin {
     /// would otherwise size the window from meters that have not been updated yet (every String meter still empty),
     /// and the skin would stay cut off.
     private func updateSize(force: Bool = false) {
-        guard force || !sizeComputed || settings.dynamicWindowSize else { return }
-        // Also for `!MoveMeter` ("the size of the skin window is re-evaluated"): during the first update the end of
-        // that update computes it.
-        guard updateCount > 0 else { return }
-        sizeComputed = true
-        var w = 0.0, h = 0.0
-        // Content meters are clipped to their container, so only the container counts.
-        for meter in meters where !meter.hidden && meter.container == nil {
-            w = max(w, meter.frame.maxX)
-            h = max(h, meter.frame.maxY)
-        }
-        // BackgroundMode=0 draws the image at its own size — after ImageCrop / ImageRotate (and EXIF orientation when
-        // asked for) — so the window is at least that big.
-        if let size = backgroundImageSize() {
-            w = max(w, size.width)
-            h = max(h, size.height)
-        }
-        width = Skin.side(settings.skinWidth ?? w)
-        height = Skin.side(settings.skinHeight ?? h)
+        guard let size = layoutDriver.windowSize(in: self, force: force, backgroundSize: {
+            self.backgroundImageSize()
+        }) else { return }
+        width = size.width
+        height = size.height
     }
 
     /// The size a `BackgroundMode=0` image is drawn at (nil without one, or when the image cannot be read).
@@ -1024,27 +922,14 @@ public final class Skin {
     /// origin: a meter at a negative X or Y gives a negative `x` / `y` (the part the desktop cuts off). Empty content
     /// is the zero rectangle at the origin.
     public func contentBounds() -> SkinRect {
-        var minX = Double.infinity, minY = Double.infinity, maxX = -Double.infinity, maxY = -Double.infinity
-        func add(_ x: Double, _ y: Double, _ right: Double, _ bottom: Double) {
-            guard x.isFinite, y.isFinite, right.isFinite, bottom.isFinite else { return }
-            minX = min(minX, x)
-            minY = min(minY, y)
-            maxX = max(maxX, right)
-            maxY = max(maxY, bottom)
-        }
-        for meter in meters where !meter.hidden && meter.container == nil {
-            add(meter.frame.x, meter.frame.y, meter.frame.maxX, meter.frame.maxY)
-        }
-        if let size = backgroundImageSize() { add(0, 0, size.width, size.height) }
-        guard minX <= maxX, minY <= maxY else { return SkinRect() }
-        return SkinRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        layoutDriver.contentBounds(in: self, backgroundSize: { self.backgroundImageSize() })
     }
 
     /// The window size the engine gives content with these bounds: from the origin to their right and bottom edges
     /// (whatever lies left of or above the origin is cut off), unless `SkinWidth` / `SkinHeight` fix it.
     public func size(for bounds: SkinRect) -> SkinSize {
-        SkinSize(width: Skin.side(settings.skinWidth ?? max(bounds.maxX, 0)),
-                 height: Skin.side(settings.skinHeight ?? max(bounds.maxY, 0)))
+        RainmeterLayout.windowSize(extent: SkinSize(width: max(bounds.maxX, 0), height: max(bounds.maxY, 0)),
+                                   background: nil, fixedWidth: settings.skinWidth, fixedHeight: settings.skinHeight)
     }
 
     /// Largest skin width / height in points. Judgment (the manual gives no limit): larger than any screen, small
@@ -1053,7 +938,7 @@ public final class Skin {
 
     /// A skin side: non-finite → 1, otherwise within 1…`maxSide`.
     static func side(_ v: Double) -> Double {
-        v.isFinite ? v.clamped(1, maxSide) : 1
+        RainmeterLayout.side(v)
     }
 
     public func redraw() {
@@ -1657,23 +1542,6 @@ public final class Skin {
         }
     }
 
-    /// Bangs the engine performs itself. Their `Config` argument (found with `BangCatalog`) routes them to another
-    /// skin through the host, or to every skin for `*`.
-    private static let localBangs: Set<String> = [
-        "setoption", "setoptiongroup", "setvariable", "writekeyvalue",
-        "update", "redraw",
-        "updatemeter", "updatemetergroup", "updatemeasure", "updatemeasuregroup", "movemeter",
-        "showmeter", "hidemeter", "togglemeter", "showmetergroup", "hidemetergroup", "togglemetergroup",
-        "enablemeasure", "disablemeasure", "togglemeasure",
-        "enablemeasuregroup", "disablemeasuregroup", "togglemeasuregroup",
-        "pausemeasure", "unpausemeasure", "togglepausemeasure",
-        "pausemeasuregroup", "unpausemeasuregroup", "togglepausemeasuregroup",
-        "commandmeasure", "pluginbang",
-        "disablemouseaction", "clearmouseaction", "enablemouseaction", "togglemouseaction",
-        "disablemouseactiongroup", "clearmouseactiongroup", "enablemouseactiongroup", "togglemouseactiongroup",
-        "log",
-    ]
-
     /// Performs one bang (arguments already resolved).
     ///
     /// Config argument (manual: "valid values are the config name of a currently loaded skin to be acted upon or
@@ -1700,71 +1568,47 @@ public final class Skin {
     /// `literalArguments`: indices of arguments written in `"""magic quotes"""`, which are "treated strictly
     /// literal" — no `(formula)` evaluation for `!SetVariable` / `!WriteKeyValue` / `!SetOption` values.
     func perform(_ bang: Bang, from section: SkinSection?, literalArguments: Set<Int>) {
-        guard Skin.localBangs.contains(bang.name) else {
-            if bang.name != "delay" { forwardToHost(bang) }
-            return
-        }
-        var args = bang.args
-        if let definition = BangCatalog.definition(for: bang.name), let configIndex = definition.configParameterIndex {
-            let target = definition.configArgument(in: args)
-            if args.count > configIndex { args = Array(args.prefix(configIndex)) }
-            if let target, !isOwnConfig(target) {
-                let local = Bang(name: bang.name, args: args)
-                if target == "*" {
-                    performLocally(local, from: section, literal: literalArguments)
-                    host?.skin(self, forward: local, toConfig: "*")
-                } else {
-                    host?.skin(self, forward: local, toConfig: target)
-                }
-                return
-            }
-        }
-        performLocally(Bang(name: bang.name, args: args), from: section, literal: literalArguments)
+        ActionExecutor.perform(bang, literalArguments: literalArguments, on: self)
     }
 
-    private func isOwnConfig(_ name: String) -> Bool {
-        let normalized = name.replacingOccurrences(of: "/", with: "\\")
-        return normalized.caseInsensitiveCompare(config) == .orderedSame
+    func handleHostAction(_ bang: Bang) { forwardToHost(bang) }
+
+    func forwardAction(_ bang: Bang, toConfig config: String) {
+        // Read after the local action: it may replace or release the host, or close the skin.
+        host?.skin(self, forward: bang, toConfig: config)
     }
 
-    private func performLocally(_ bang: Bang, from section: SkinSection?, literal: Set<Int> = []) {
-        let a = bang.args
-        func arg(_ i: Int) -> String { i < a.count ? a[i] : "" }
-        /// Argument `i` as a value: formulas evaluated unless magic-quoted.
-        func valueArg(_ i: Int, _ evaluate: (String) -> String) -> String {
-            literal.contains(i) ? arg(i) : evaluate(arg(i))
+    func performLocalAction(_ action: ResolvedLocalAction) {
+        func valueArg(_ value: ActionValue, _ evaluate: (String) -> String) -> String {
+            value.isLiteral ? value.text : evaluate(value.text)
         }
 
-        switch bang.name {
-        case "setoption":
-            if let s = self.section(named: arg(0)) {
-                setOption(s, key: arg(1), value: Skin.readsMeasureNames(arg(1)) ? arg(2) : valueArg(2, bangFormulaValue))
+        switch action {
+        case .setOption(.name(let name), let key, let value):
+            if let s = self.section(named: name) {
+                setOption(s, key: key, value: Skin.readsMeasureNames(key) ? value.text : valueArg(value, bangFormulaValue))
             } else {
-                log("!SetOption: section [\(arg(0))] not found", level: .warning)
+                log("!SetOption: section [\(name)] not found", level: .warning)
             }
-        case "setoptiongroup":
-            let v = Skin.readsMeasureNames(arg(1)) ? arg(2) : valueArg(2, bangFormulaValue)
-            for s in sections(inGroup: arg(0)) { setOption(s, key: arg(1), value: v) }
-        case "setvariable":
-            setVariable(arg(0), valueArg(1, evaluatedValue))
-        case "writekeyvalue":
-            writeKeyValue(section: arg(0), key: arg(1), value: valueArg(2, evaluatedValue), file: arg(3))
-        case "update":
+        case .setOption(.group(let group), let key, let value):
+            let v = Skin.readsMeasureNames(key) ? value.text : valueArg(value, bangFormulaValue)
+            for s in sections(inGroup: group) { setOption(s, key: key, value: v) }
+        case .setVariable(let name, let value):
+            setVariable(name, valueArg(value, evaluatedValue))
+        case .writeKeyValue(let section, let key, let value, let file):
+            writeKeyValue(section: section, key: key, value: valueArg(value, evaluatedValue), file: file)
+        case .update:
             update()
-        case "redraw":
+        case .redraw:
             redraw()
-        case "updatemeter":
-            updateMetersNow(meters(matching: arg(0)))
-        case "updatemetergroup":
-            updateMetersNow(meters.filter { $0.isInGroup(arg(0)) })
-        case "updatemeasure":
-            measures(matching: arg(0)).forEach(updateMeasureNow)
-        case "updatemeasuregroup":
-            measures.filter { $0.isInGroup(arg(0)) }.forEach(updateMeasureNow)
-        case "movemeter":
-            if let m = meter(named: arg(2)) {
-                m.overrides["x"] = arg(0).trimmingCharacters(in: .whitespaces)
-                m.overrides["y"] = arg(1).trimmingCharacters(in: .whitespaces)
+        case .updateMeter(let selection):
+            updateMetersNow(meters(matching: selection))
+        case .updateMeasure(let selection):
+            measures(matching: selection).forEach(updateMeasureNow)
+        case .moveMeter(let name, let x, let y):
+            if let m = meter(named: name) {
+                m.overrides["x"] = x.trimmingCharacters(in: .whitespaces)
+                m.overrides["y"] = y.trimmingCharacters(in: .whitespaces)
                 m.needsOptionRead = true
                 m.readOptionsIfNeeded()
                 layout()
@@ -1772,62 +1616,47 @@ public final class Skin {
                 updateSize(force: true)
                 needsDisplay()
             } else {
-                log("!MoveMeter: meter [\(arg(2))] not found", level: .warning)
+                log("!MoveMeter: meter [\(name)] not found", level: .warning)
             }
-        case "showmeter": meters(matching: arg(0)).forEach { $0.setHidden(false) }
-        case "hidemeter": meters(matching: arg(0)).forEach { $0.setHidden(true) }
-        case "togglemeter": meters(matching: arg(0)).forEach { $0.setHidden(!$0.hidden) }
-        case "showmetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(false) }
-        case "hidemetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(true) }
-        case "togglemetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(!$0.hidden) }
-        case "enablemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(false) }
-        case "disablemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(true) }
-        case "togglemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(!$0.disabled) }
-        case "enablemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(false) }
-        case "disablemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(true) }
-        case "togglemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(!$0.disabled) }
-        case "pausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(true) }
-        case "unpausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(false) }
-        case "togglepausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(!$0.paused) }
-        case "pausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(true) }
-        case "unpausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(false) }
-        case "togglepausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(!$0.paused) }
-        case "commandmeasure":
-            commandMeasure(arg(0), arg(1))
-        case "pluginbang":
-            // Deprecated form of !CommandMeasure; also written as one argument "Measure Arguments".
-            if a.count >= 2 {
-                commandMeasure(arg(0), arg(1))
-            } else {
-                let parts = arg(0).trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
-                commandMeasure(parts.first.map(String.init) ?? "", parts.count > 1 ? String(parts[1]) : "")
+        case .meterHidden(let change, let selection):
+            meters(matching: selection).forEach {
+                switch change {
+                case .set(let hidden): $0.setHidden(hidden)
+                case .toggle: $0.setHidden(!$0.hidden)
+                }
             }
-        case "disablemouseaction", "clearmouseaction", "enablemouseaction", "togglemouseaction":
+        case .measureDisabled(let change, let selection):
+            measures(matching: selection).forEach {
+                switch change {
+                case .set(let disabled): $0.setDisabled(disabled)
+                case .toggle: $0.setDisabled(!$0.disabled)
+                }
+            }
+        case .measurePaused(let change, let selection):
+            measures(matching: selection).forEach {
+                switch change {
+                case .set(let paused): $0.setPaused(paused)
+                case .toggle: $0.setPaused(!$0.paused)
+                }
+            }
+        case .commandMeasure(let name, let command):
+            commandMeasure(name, command)
+        case .mouseAction(let operation, .name(let rawName), let actions):
             let targets: [SkinSection]
-            let name = arg(0).trimmingCharacters(in: .whitespaces)
+            let name = rawName.trimmingCharacters(in: .whitespaces)
             if name == "*" {
                 targets = meters
             } else if let s = self.section(named: name), s is Meter || s is RainmeterSection {
                 targets = [s]
             } else {
-                log("!\(bang.name): meter [\(name)] not found", level: .warning)
+                log("!\(operation.rawValue): meter [\(name)] not found", level: .warning)
                 targets = []
             }
-            setMouseActions(bang.name, targets: targets, actions: arg(1))
-        case "disablemouseactiongroup", "clearmouseactiongroup", "enablemouseactiongroup", "togglemouseactiongroup":
-            setMouseActions(String(bang.name.dropLast("group".count)), targets: meters.filter { $0.isInGroup(arg(1)) },
-                            actions: arg(0))
-        case "log":
-            let level: SkinLogLevel
-            switch arg(1).trimmingCharacters(in: .whitespaces).lowercased() {
-            case "warning": level = .warning
-            case "error": level = .error
-            case "debug": level = .debug
-            default: level = .notice
-            }
-            log(arg(0), level: level)
-        default:
-            forwardToHost(bang)
+            setMouseActions(operation, targets: targets, actions: actions)
+        case .mouseAction(let operation, .group(let group), let actions):
+            setMouseActions(operation, targets: meters.filter { $0.isInGroup(group) }, actions: actions)
+        case .log(let message, let level):
+            log(message, level: level)
         }
     }
 
@@ -1941,16 +1770,16 @@ public final class Skin {
         }
     }
 
-    private func setMouseActions(_ bangName: String, targets: [SkinSection], actions: String) {
+    private func setMouseActions(_ operation: ActionMouseOperation, targets: [SkinSection], actions: String) {
         let kinds = BangCatalog.mouseActions(in: actions).compactMap(MouseEventKind.init(rawValue:))
-        if kinds.isEmpty { log("!\(bangName): no valid mouse action in \"\(actions)\"", level: .warning) }
+        if kinds.isEmpty { log("!\(operation.rawValue): no valid mouse action in \"\(actions)\"", level: .warning) }
         for target in targets {
             for kind in kinds {
-                switch bangName {
-                case "disablemouseaction": target.setMouseActionState(kind, .disabled)
-                case "clearmouseaction": target.setMouseActionState(kind, .cleared)
-                case "enablemouseaction": target.setMouseActionState(kind, .enabled)
-                default: target.toggleMouseActionState(kind)
+                switch operation {
+                case .disable: target.setMouseActionState(kind, .disabled)
+                case .clear: target.setMouseActionState(kind, .cleared)
+                case .enable: target.setMouseActionState(kind, .enabled)
+                case .toggle: target.toggleMouseActionState(kind)
                 }
             }
         }
@@ -1958,6 +1787,20 @@ public final class Skin {
 
     private func sections(inGroup group: String) -> [SkinSection] {
         (measures as [SkinSection] + meters as [SkinSection]).filter { $0.isInGroup(group) }
+    }
+
+    private func meters(matching selection: ActionSelection) -> [Meter] {
+        switch selection {
+        case .name(let name): return meters(matching: name)
+        case .group(let group): return meters.filter { $0.isInGroup(group) }
+        }
+    }
+
+    private func measures(matching selection: ActionSelection) -> [Measure] {
+        switch selection {
+        case .name(let name): return measures(matching: name)
+        case .group(let group): return measures.filter { $0.isInGroup(group) }
+        }
     }
 
     private func meters(matching name: String) -> [Meter] {
@@ -2531,7 +2374,7 @@ extension Skin {
 
     /// Meter frames are computed again before the next read of a meter's position or size (a patch reads its sections
     /// in file order, and a later one may use an earlier one's new place).
-    func markLayoutPending() { layoutPending = true }
+    func markLayoutPending() { layoutDriver.markPending() }
 
     /// Lays the skin out after a patch and sizes the window again (the new text may make it larger or smaller, as a
     /// reload would) — once a preview showing now ends — then asks the host to draw.
@@ -2568,3 +2411,5 @@ extension Skin {
         variables[key] = value
     }
 }
+
+extension Skin: ActionTarget {}

@@ -23,7 +23,7 @@ enum WeatherWiring {
 
     /// Skins in skin windows are live, and so is the Studio's own instance of the widget it edits (`LiveSkinHost`);
     /// previews, thumbnails, `--render` and the Manage window's dry runs are not.
-    static func isLive(_ skin: Skin) -> Bool { skin.host is LiveSkinHost }
+    static func isLive(_ skin: Skin) -> Bool { skin.serviceHost is LiveSkinHost }
 
     /// `Units=Auto`: the macOS Temperature setting (System Settings ▸ General ▸ Language & Region), else the region's
     /// unit for weather — the same answer as `#MACTEMPERATUREUNIT#` (`MacRegionalSettings.temperatureUnit`); the other

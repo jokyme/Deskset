@@ -1,5 +1,7 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
+import DesksetRuntime
 
 /// Draws a skin window's picture into a bitmap of its own, which the skin's frame producer presents as the contents of
 /// its window's content layer (`SkinFrameProducer`, `LayerContentProvider`).
@@ -15,11 +17,17 @@ import DesksetCore
 /// Turntable: 19 % of a core drawn in full, 14 % with `draw(_:)`, 6–7 % with kept pictures), and the ones that redraw
 /// once a second save their static faces too (Studio VU at rest: 1.5 % → 0.7 %; System L 1.5 % → 1.1 %), for a few MB.
 final class SkinBitmapDrawing {
-    /// One step of the drawing: the base (glass hit areas and background, `id` the skin) or a top-level meter (a
-    /// container with its content), and the generation it was drawn at.
+    /// One step of the captured drawing: the base or a top-level element, including its container composition.
     struct Item: Equatable {
-        let id: ObjectIdentifier
-        let generation: Int
+        enum ID: Hashable { case base, element(ElementID) }
+        struct Revision: Equatable {
+            let id: ElementID
+            let generation: Int
+        }
+        let id: ID
+        let drawing: [DrawItem]
+        let dependencies: [ImageDependency]
+        let revisions: [Revision]
     }
 
     /// A picture of consecutive items, the size of the whole skin, and the image files it was drawn from (a file
@@ -45,32 +53,23 @@ final class SkinBitmapDrawing {
     private var bitmaps: [CGContext] = []
     private var nextBitmap = 0
     private var runs: [Run] = []
-    /// Each item's generation at the previous frame: an item that kept it is unchanged.
-    private var previous: [ObjectIdentifier: Int] = [:]
+    /// Captured inputs at the previous frame: unchanged revisions, drawing values and resource observations can
+    /// be kept. Revisions preserve the existing run partition even when an update resolves to identical pixels.
+    private var previous: [Item.ID: Item] = [:]
     /// What every picture depends on besides the items (see `resetKey`).
     private var drawnFor: ResetKey?
-    private var baseGeneration = 0
-    private var lastBase: Base?
     private var reportedDifference = false
 
     /// What a picture was drawn for: another skin (a refresh), size, scale, colour space, appearance or fonts.
     private struct ResetKey: Equatable {
-        let skin: ObjectIdentifier
+        let context: ObjectIdentifier
         let width: Int
         let height: Int
         let scale: CGFloat
+        let origin: SkinPoint
         /// Compared as color spaces (`CFEqual`), not by name: a display's own profile has none.
         let space: CGColorSpace
-        let appearance: String
-        let fonts: Int
-    }
-
-    /// What the base (glass hit areas and background) is drawn from besides image files: the glass, and the skin's
-    /// size, which the background fills or stretches over (a skin larger than its window changes it, not the window).
-    private struct Base: Equatable {
-        let glass: [GlassRegion]
-        let width: Double
-        let height: Double
+        let environment: EnvironmentStamp
     }
 
     /// What the last frame did (tests): runs copied, runs drawn into a new picture, items drawn directly.
@@ -81,7 +80,6 @@ final class SkinBitmapDrawing {
     func releaseKept() {
         runs = []
         previous = [:]
-        lastBase = nil
         bitmaps = []
         drawnFor = nil
     }
@@ -93,17 +91,53 @@ final class SkinBitmapDrawing {
     /// Frames that differed from a full drawing (`verifies`; tests).
     private(set) var differences = 0
 
+    /// One owner-confined bitmap frame. The context holds graphics caches, never a live engine owner.
+    struct Capture {
+        let scene: WidgetScene
+        let context: SkinRenderContext
+        let cycle: Int
+        let size: CGSize
+        let source: String
+        var origin = SkinPoint()
+    }
+
+    static func capture(_ skin: Skin, size: CGSize, scale: CGFloat, appearance: String) -> Capture {
+        let context = SkinRenderContext.of(skin)
+        let environment = AppSceneEnvironment(scale: Double(scale),
+                                              appearance: skin.host?.environment(for: skin).appearance ?? .light,
+                                              appearanceName: appearance)
+        let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+        return Capture(scene: scene, context: context, cycle: skin.updateCount, size: size, source: skin.config)
+    }
+
     /// The skin as it is now, `size` points at `scale` pixels per point; nil for an empty size.
     func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
-        let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
-        guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
-        let key = ResetKey(skin: ObjectIdentifier(skin), width: w, height: h, scale: scale, space: space,
-                           appearance: appearance, fonts: Fonts.generation)
+        picture(Self.capture(skin, size: size, scale: scale, appearance: appearance), scale: scale, space: space)
+    }
+
+    func picture(_ frame: Capture, scale: CGFloat, space: CGColorSpace,
+                 beforeDrawing: ((CGContext) -> Bool)? = nil) -> CGImage? {
+        picture(scene: frame.scene, context: frame.context, cycle: frame.cycle, size: frame.size,
+                scale: scale, space: space, source: frame.source, origin: frame.origin, beforeDrawing: beforeDrawing)
+    }
+
+    /// Draws and keeps only captured values. The context contains graphics caches, with no live engine objects.
+    func picture(scene: WidgetScene, context: SkinRenderContext, cycle: Int, size: CGSize, scale: CGFloat,
+                 space: CGColorSpace, source: String = "", origin: SkinPoint = SkinPoint(),
+                 beforeDrawing: ((CGContext) -> Bool)? = nil) -> CGImage? {
+        guard size.width.isFinite, size.height.isFinite, scale.isFinite,
+              origin.x.isFinite, origin.y.isFinite,
+              size.width > 0, size.height > 0, scale > 0 else { return nil }
+        let pixelWidth = (size.width * scale).rounded(.up), pixelHeight = (size.height * scale).rounded(.up)
+        guard pixelWidth.isFinite, pixelHeight.isFinite, pixelWidth > 0, pixelHeight > 0,
+              pixelWidth <= 16384, pixelHeight <= 16384 else { return nil }
+        let w = Int(pixelWidth), h = Int(pixelHeight)
+        let key = ResetKey(context: ObjectIdentifier(context), width: w, height: h, scale: scale, origin: origin, space: space,
+                           environment: scene.environment)
         if key != drawnFor {
             drawnFor = key
             runs = []
             previous = [:]
-            lastBase = nil
             bitmaps = [SkinBitmapDrawing.makeContext(w, h, space), SkinBitmapDrawing.makeContext(w, h, space)]
                 .compactMap { $0 }
         }
@@ -112,16 +146,28 @@ final class SkinBitmapDrawing {
         guard bitmaps.count == 2 else { return nil }
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
-        let meters = SkinRenderer.topLevelMeters(skin)
-        let base = Base(glass: skin.glassRegions, width: skin.width, height: skin.height)
-        if base != lastBase {
-            lastBase = base
-            baseGeneration &+= 1
+        if let beforeDrawing {
+            // Image qualification sees the same destination mapping as the actual leaf, before any old picture
+            // is reused. Legacy owners do not install this callback and retain their original failure behavior.
+            ctx.saveGState()
+            ctx.translateBy(x: 0, y: CGFloat(h))
+            ctx.scaleBy(x: scale, y: -scale)
+            ctx.translateBy(x: -origin.x, y: -origin.y)
+            let ready = beforeDrawing(ctx)
+            ctx.restoreGState()
+            guard ready else { return nil }
         }
-        var items = [Item(id: ObjectIdentifier(skin), generation: baseGeneration)]
-        for m in meters { items.append(Item(id: ObjectIdentifier(m), generation: SkinBitmapDrawing.generation(of: m, in: skin))) }
-        let stable = items.map { previous[$0.id] == $0.generation }
-        previous = Dictionary(items.map { ($0.id, $0.generation) }, uniquingKeysWith: { a, _ in a })
+        let topLevel = scene.topLevelElements
+        let drawingRuns = scene.drawingRuns
+        var items = [Item(id: .base, drawing: scene.background, dependencies: scene.backgroundImageDependencies, revisions: [])]
+        for (index, element) in topLevel.enumerated() {
+            let children = element.isContainer ? scene.elements.filter { $0.container == element.id } : []
+            items.append(Item(id: .element(element.id), drawing: drawingRuns[index + 1],
+                              dependencies: element.imageDependencies + children.filter { $0.visibility == .visible }.flatMap(\.imageDependencies),
+                              revisions: ([element] + children).map { Item.Revision(id: $0.id, generation: $0.drawGeneration) }))
+        }
+        let stable = items.map { previous[$0.id] == $0 }
+        previous = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
         var kept: [Run] = []
         var stats = (copied: 0, made: 0, drawn: 0)
@@ -130,7 +176,7 @@ final class SkinBitmapDrawing {
         func drawDirectly(_ range: Range<Int>) {
             if !started { ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)) }
             started = true
-            draw(items: range, meters, skin, into: ctx, height: h, scale: scale)
+            SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: ctx, height: h, scale: scale, origin: origin)
             stats.drawn += range.count
         }
         func place(_ image: CGImage) {
@@ -155,7 +201,7 @@ final class SkinBitmapDrawing {
                       let picture = SkinBitmapDrawing.makeContext(w, h, space) {
                 let range = index..<end
                 let files = Images.recordingFiles {
-                    draw(items: range, meters, skin, into: picture, height: h, scale: scale)
+                    SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: picture, height: h, scale: scale, origin: origin)
                 }
                 if let image = picture.makeImage() {
                     place(image)
@@ -173,23 +219,8 @@ final class SkinBitmapDrawing {
         runs = kept
         lastStats = stats
         let image = ctx.makeImage()
-        if SkinBitmapDrawing.verifies, stats.copied > 0, let image { verify(image, skin, meters, w, h, scale, space) }
+        if SkinBitmapDrawing.verifies, stats.copied > 0, let image { verify(image, scene, context, cycle, w, h, scale, space, origin: origin, source: source) }
         return image
-    }
-
-    /// A meter's generation, with what its drawing reads when drawn (`Meter.hashDrawInputs`); a container's covers
-    /// its content too.
-    static func generation(of meter: Meter, in skin: Skin) -> Int {
-        var hasher = Hasher()
-        hasher.combine(meter.drawGeneration)
-        meter.hashDrawInputs(into: &hasher)
-        guard meter.isContainer else { return hasher.finalize() }
-        for m in SkinRenderer.content(of: meter, in: skin) {
-            hasher.combine(ObjectIdentifier(m))
-            hasher.combine(m.drawGeneration)
-            m.hashDrawInputs(into: &hasher)
-        }
-        return hasher.finalize()
     }
 
     static func makeContext(_ w: Int, _ h: Int, _ space: CGColorSpace) -> CGContext? {
@@ -197,27 +228,19 @@ final class SkinBitmapDrawing {
                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
     }
 
-    /// Draws items `range` (0 is the base, n the meter n − 1) in skin coordinates: top-left origin, points.
-    private func draw(items range: Range<Int>, _ meters: [Meter], _ skin: Skin, into ctx: CGContext, height: Int,
-                      scale: CGFloat) {
-        SkinBitmapDrawing.draw(items: range, meters, skin, into: ctx, height: height, scale: scale)
-    }
-
-    static func draw(items range: Range<Int>, _ meters: [Meter], _ skin: Skin, into ctx: CGContext, height: Int,
-                     scale: CGFloat) {
+    /// Draws captured runs (0 is the base) in skin coordinates: top-left origin, points.
+    static func draw(items range: Range<Int>, _ runs: [[DrawItem]], context: SkinRenderContext, cycle: Int,
+                     into ctx: CGContext, height: Int, scale: CGFloat, origin: SkinPoint = SkinPoint()) {
         ctx.saveGState()
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: scale, y: -scale)
+        ctx.translateBy(x: -origin.x, y: -origin.y)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-        let context = SkinRenderContext.of(skin)
+        let target = DrawTarget.prepareOwnedBitmap(ctx, glass: .hitArea)
         for i in range {
-            // The glass itself is behind the view (`SkinGlassViews`): here it only catches the mouse.
-            if i == 0 {
-                SkinRenderer.drawBase(skin, in: ctx, glass: .window)
-            } else {
-                SkinRenderer.drawTopLevel(meters[i - 1], of: skin, in: ctx, context)
-            }
+            // Real glass is behind the content layer; these values only catch its mouse input.
+            DesksetDraw.DrawExecutor.draw(runs[i], in: ctx, context: context.drawing, cycle: cycle, target: target)
         }
         NSGraphicsContext.restoreGraphicsState()
         ctx.restoreGState()
@@ -237,26 +260,36 @@ final class SkinBitmapDrawing {
     }
 
     /// Compares `image` with the skin drawn in full (see `tolerance`).
-    private func verify(_ image: CGImage, _ skin: Skin, _ meters: [Meter], _ w: Int, _ h: Int, _ scale: CGFloat,
-                        _ space: CGColorSpace) {
-        guard let full = SkinBitmapDrawing.fullDrawing(of: skin, w, h, scale: scale, space: space),
+    private func verify(_ image: CGImage, _ scene: WidgetScene, _ context: SkinRenderContext, _ cycle: Int,
+                        _ w: Int, _ h: Int, _ scale: CGFloat, _ space: CGColorSpace, origin: SkinPoint, source: String) {
+        guard let full = SkinBitmapDrawing.fullDrawing(scene: scene, context: context, cycle: cycle,
+                                                       w, h, scale: scale, space: space, origin: origin),
               let found = SkinBitmapDrawing.difference(image, full) else { return }
         guard found.worst > SkinBitmapDrawing.tolerance else { return }
         differences += 1
         if !reportedDifference {
             reportedDifference = true
             Log.write("Kept pictures differ from a full drawing by \(found.worst) at pixel \(found.x),\(found.y)",
-                      level: .warning, source: skin.config)
+                      level: .warning, source: source)
         }
     }
 
     /// The skin drawn in full into a new bitmap of `w`×`h` pixels, as a picture draws it (glass as the window's hit
-    /// areas); nil when the bitmap cannot be made.
+    /// areas); nil when the bitmap cannot be made. Engine access ends at projection.
     static func fullDrawing(of skin: Skin, _ w: Int, _ h: Int, scale: CGFloat, space: CGColorSpace) -> CGContext? {
-        guard let ctx = makeContext(w, h, space) else { return nil }
+        let context = SkinRenderContext.of(skin)
+        let scene = context.sceneProjector.project(skin, environment: AppSceneEnvironment(
+            scale: Double(scale), appearance: skin.host?.environment(for: skin).appearance ?? .light,
+            appearanceName: NSAppearance.currentDrawing().name.rawValue), glassSource: .published)
+        return fullDrawing(scene: scene, context: context, cycle: skin.updateCount, w, h, scale: scale, space: space)
+    }
+
+    static func fullDrawing(scene: WidgetScene, context: SkinRenderContext, cycle: Int, _ w: Int, _ h: Int,
+                            scale: CGFloat, space: CGColorSpace, origin: SkinPoint = SkinPoint()) -> CGContext? {
+        guard origin.x.isFinite, origin.y.isFinite, let ctx = makeContext(w, h, space) else { return nil }
         ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-        let meters = SkinRenderer.topLevelMeters(skin)
-        draw(items: 0..<(meters.count + 1), meters, skin, into: ctx, height: h, scale: scale)
+        let runs = scene.drawingRuns
+        draw(items: 0..<runs.count, runs, context: context, cycle: cycle, into: ctx, height: h, scale: scale, origin: origin)
         return ctx
     }
 
@@ -333,8 +366,98 @@ final class SkinFrameProducer {
     /// The pictures, with the ones kept of meters that did not change.
     let drawing = SkinBitmapDrawing()
     let provider: ContentProvider?
+    let contentMode: SkinFrameContentMode
+    /// The first successful load's selection, not an observed frame rate or a transferable writer permission.
+    /// contentMode retains the automatic intent so a replacement runtime resolves its own loaded settings.
+    private(set) var loadedAutomaticBackend: SkinLayerFrameBackend?
+    /// Requests only cross to main. Main parks the real executor before installing the finished owner root.
+    var requestLayerInstallation: (() -> Void)?
+    var requestScenePatch: ((SkinScenePatch) -> Void)?
+    var publishLayerHitMap: ((SkinHitMap, UInt64, UInt64) -> Void)?
+    var requestNativeCompletion: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
+    var requestNativeStopRelease: ((SkinNativeStage) -> Void)?
+    var requestNativePublicationFinished: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
+    var requestNativeRollback: ((SkinNativeStage, SkinNativeStageFailure) -> Void)?
+    var requestNativeFrames: (() -> Void)?
+    private(set) var nativeFrameFailure: SkinNativeStageFailure?
+    private var failedNativeEpoch: SkinNativeStage.Epoch?
+    private var pendingNativeStage: SkinNativeStage?
+    /// The slot remains occupied until owner release AND main detach have been acknowledged.
+    var hasNativeStage: Bool { pendingNativeStage != nil }
+    var hasNativeFrameOwner: Bool { pendingNativeStage?.nativeFramesReady == true }
+    private var pendingScenePatch: SkinScenePatch?
+    private var panelGeneration: UInt64 = 0
+    private var presentationGeneration: UInt64 = 0
+    private var presentedSize: CGSize?
+    private var presentedGlass: [GlassRegion]?
+    private var presentedToolTipAreas: [SkinRect]?
+    private var hostAcknowledgedGeneration: UInt64 = 0
+    private var releaseAfterWriter = false
+    private var explicitlyHidden = false
+    /// Owner-only notification lets teardown wait for a claimed tree writer without parking either thread.
+    var writerReleased: (() -> Void)?
+    var hasLayerWriter: Bool { pendingScenePatch != nil }
+    private(set) var layerRuntime: LayerRuntime?
+    private(set) var layerInstalled = false
+    private(set) var layerFailure: LayerFailure?
+    private(set) var lastLayerDrawWasOnSkinThread = false
+    enum LayerFailure: Equatable {
+        case missingProfile, invalidDestination, unsupportedProvider, staleDestination, installDeclined
+        case rendering(String)
+    }
+    enum LayerInstallation { case installed, staleDestination, declined, notReady }
+    private struct LayerDestination {
+        let size: CGSize
+        let scale: CGFloat
+        let space: CGColorSpace
+        let appearance: String
+    }
+    private var layerDestination: LayerDestination?
+    private var actualSpace: CGColorSpace?
+    private var layerInstallRequested = false
     /// The skin, as long as the runtime has it.
     private let skin: () -> Skin?
+    private let bitmapCapture: ((CGFloat, String) -> SkinBitmapDrawing.Capture?)?
+    private let bitmapValidation: ((SkinBitmapDrawing.Capture, CGContext) -> Bool)?
+    enum BitmapResult { case presented(SkinBitmapDrawing.Capture), failed }
+    /// Synchronous on the producer's owner, after presentation or a failed bitmap. Callers capture owners weakly.
+    var bitmapResult: ((BitmapResult) -> Void)?
+    /// Opt-in immutable Main delivery. Without it, bitmap owners keep their direct presentation contract.
+    var requestBitmapDelivery: ((SkinBitmapRequest) -> Void)?
+    /// Captured on Main by the destination, then set only on this producer's owner. Drawing never consults the
+    /// global AppKit glass capability or creates native views on the owner thread.
+    var bitmapCompositionSupportsSystemGlass = false {
+        didSet { if oldValue != bitmapCompositionSupportsSystemGlass { preparedBitmap = nil } }
+    }
+    private(set) var bitmapCompositionFailure: SkinBitmapComposer.Failure?
+    /// Owner-only preparation, bound to the exact capture and destination used before a Desk transaction commits.
+    /// The producer keeps just the latest preparation; exporting it transfers its pixels to the existing delivery.
+    final class PreparedBitmap {
+        let capture: SkinBitmapDrawing.Capture
+        let composition: SkinBitmapComposition
+        fileprivate let space: CGColorSpace
+        fileprivate let appearance: String
+        fileprivate let panelGeneration: UInt64
+        fileprivate let lifecycle: UInt64
+
+        fileprivate init(capture: SkinBitmapDrawing.Capture, composition: SkinBitmapComposition,
+                         space: CGColorSpace, appearance: String, panelGeneration: UInt64, lifecycle: UInt64) {
+            self.capture = capture; self.composition = composition; self.space = space
+            self.appearance = appearance; self.panelGeneration = panelGeneration; self.lifecycle = lifecycle
+        }
+    }
+    private var preparedBitmap: PreparedBitmap?
+    private struct PendingBitmap {
+        let delivery: SkinBitmapDelivery
+        let capture: SkinBitmapDrawing.Capture
+        let began: TimeInterval
+        let forShowing: Bool
+    }
+    private var pendingBitmap: PendingBitmap?
+    private var pendingBitmapInvalidation: SkinBitmapInvalidation?
+    private var bitmapSerial: UInt64 = 0
+    private var bitmapLifecycle: UInt64 = 0
+    var hasBitmapDelivery: Bool { pendingBitmap != nil }
     private let workActivity: SkinWorkWatchdog.Activity?
 
     /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
@@ -379,7 +502,8 @@ final class SkinFrameProducer {
     private(set) var framesDrawn = 0
     /// Turns that ended with a frame wanted but not drawn because the window could not be seen (tests).
     private(set) var framesSkipped = 0
-    /// Seconds spent drawing frames, in all and the longest frame (tests and measurements; on the executor).
+    /// Elapsed frame work, total and longest (on the executor). Layer handoff adds its bounded wait; this is not CPU.
+    /// A claimed main transaction can finish later; its complete presentation latency is recorded by the ack.
     private(set) var drawingTime: TimeInterval = 0
     private(set) var longestFrame: TimeInterval = 0
     /// What `FrameTimingLog` reports next: when each frame was presented, and the longest drawing, since the last report.
@@ -392,14 +516,49 @@ final class SkinFrameProducer {
     static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     /// `provider` nil: a runtime without a window (tests), which draws nothing.
-    init(provider: ContentProvider?, skin: @escaping () -> Skin?, workActivity: SkinWorkWatchdog.Activity? = nil) {
+    init(provider: ContentProvider?, skin: @escaping () -> Skin?, contentMode: SkinFrameContentMode = .bitmap,
+         workActivity: SkinWorkWatchdog.Activity? = nil) {
         self.provider = provider
         self.skin = skin
+        bitmapCapture = nil
+        bitmapValidation = nil
+        self.contentMode = contentMode
         self.workActivity = workActivity
+    }
+
+    /// The independent compatibility owner currently supports bitmap presentation only. Layer paths still require
+    /// their original Skin preparation and writer lifecycle; this initializer cannot select either of them.
+    init(provider: ContentProvider?, bitmapCapture: @escaping (CGFloat, String) -> SkinBitmapDrawing.Capture?,
+         bitmapValidation: ((SkinBitmapDrawing.Capture, CGContext) -> Bool)? = nil) {
+        self.provider = provider
+        skin = { nil }
+        self.bitmapCapture = bitmapCapture
+        self.bitmapValidation = bitmapValidation
+        contentMode = .bitmap
+        workActivity = nil
     }
 
     deinit {
         turn.current?.remove(self)
+    }
+
+    /// Called on the owner after successful Skin.load, before its first update. SkinSettings already normalized
+    /// every negative Update to -1 and every nonnegative one to at least 16 ms. No later sample changes the backend.
+    func selectLoadedBackend(updateMilliseconds: Int) {
+        guard loadedAutomaticBackend == nil,
+              case let .layers(partition, _, .automatic(bytes)) = contentMode else { return }
+        precondition(skin()?.executor.isCurrent == true)
+        if updateMilliseconds >= 0 && updateMilliseconds < 100 { loadedAutomaticBackend = .c }
+        else if partition == .single { loadedAutomaticBackend = .nativeSingle(maximumCallbackBitmapBytes: bytes) }
+        else { loadedAutomaticBackend = .nativeComponents(maximumCallbackBitmapBytes: bytes) }
+    }
+
+    private var shouldRequestNativeFrames: Bool {
+        guard contentMode.requestsNativeFrames else { return false }
+        if case .layers(_, _, .automatic) = contentMode {
+            return loadedAutomaticBackend != nil && loadedAutomaticBackend != .c
+        }
+        return true
     }
 
     /// Starts drawing at the end of `executor`'s turns, with the other producers of its run loop (`SkinFrameTurn`).
@@ -427,11 +586,156 @@ final class SkinFrameProducer {
 
     /// The skin closed: no more frames.
     func stop() {
+        cancelBitmapDelivery()
         isStopped = true
+        let endedNativeStage = stopNativeStage()
         needsFrame = false
         turn.access { current in
             current?.remove(self)
             current = nil
+        }
+        layerInstallRequested = false
+        if let patch = pendingScenePatch {
+            _ = patch.content.reclaim(.invalidated)
+            finishScenePatch(patch)
+        }
+        if pendingScenePatch == nil, let layerRuntime, layerRuntime.state != .closed {
+            do { try layerRuntime.beginClose() }
+            catch { layerFailure = .rendering(String(describing: error)) }
+        }
+        if endedNativeStage { writerReleased?() }
+    }
+
+    /// A Desk bitmap failed or closed. It must not leave an earlier scene visible or reuse its pictures on recovery.
+    /// Layer publication and legacy owners keep their own existing release and last-good-frame contracts.
+    func clearBitmapContents() {
+        precondition(contentMode == .bitmap)
+        cancelBitmapDelivery()
+        needsFrame = false
+        drawnForShowing = false
+        drawing.releaseKept()
+        if requestBitmapDelivery != nil { requestBitmapClear() }
+        else { provider?.releaseContents() }
+        contentsReleased = true
+    }
+
+    /// Owner only. A claimed frame keeps its capture until Main finishes; no owner work waits for that ACK.
+    private func cancelBitmapDelivery(cancelClear: Bool = true) {
+        preparedBitmap = nil
+        guard requestBitmapDelivery != nil else { return }
+        bitmapLifecycle &+= 1
+        if let pendingBitmap, pendingBitmap.delivery.cancel() { self.pendingBitmap = nil }
+        if cancelClear {
+            pendingBitmapInvalidation?.cancel()
+            pendingBitmapInvalidation = nil
+        }
+    }
+
+    /// Only opt-in native bitmap delivery needs this precommit preparation. Independent/legacy owners retain
+    /// their direct picture path. All drawing and qualification happens here once, before state or effects commit.
+    func prepareBitmapContent(_ capture: SkinBitmapDrawing.Capture) throws -> PreparedBitmap? {
+        guard requestBitmapDelivery != nil, SkinBitmapComposer.needsComposition(capture.scene) else { return nil }
+        guard !isStopped, actualSpace?.model == .rgb,
+              capture.scene.environment.scale == Double(scale),
+              capture.scene.environment.appearance.name == appearance else {
+            throw SkinBitmapComposer.Failure.invalidDestination
+        }
+        // The screen retains its own immutable pixels. Old drawing scratch/runs need not coexist with the new
+        // compositor's scratch and independent crops; this does not release any accepted provider content.
+        drawing.releaseKept()
+        let (scale, space, appearance, panelGeneration, lifecycle, systemGlass) =
+            (self.scale, self.space, self.appearance, self.panelGeneration, bitmapLifecycle, bitmapCompositionSupportsSystemGlass)
+        var result: PreparedBitmap?
+        do {
+            try Self.withAppearanceThrowing(appearance) {
+                let validate = bitmapValidation.map { validate in { ctx in validate(capture, ctx) } }
+                let composition = try SkinBitmapComposer.make(capture, scale: scale, space: space,
+                    systemGlass: systemGlass, beforeDrawing: validate)
+                result = PreparedBitmap(capture: capture, composition: composition, space: space,
+                    appearance: appearance, panelGeneration: panelGeneration, lifecycle: lifecycle)
+            }
+            guard let result, isCurrent(result) else { throw SkinBitmapComposer.Failure.invalidDestination }
+            bitmapCompositionFailure = nil
+            return result
+        } catch let failure as SkinBitmapComposer.Failure {
+            bitmapCompositionFailure = failure
+            throw failure
+        }
+    }
+
+    /// Install only after all candidate checks succeed. Nil replaces a previous glass preparation when the new
+    /// scene uses ordinary bitmap drawing. No state or external effect is published by this operation.
+    func commitPreparedBitmap(_ prepared: PreparedBitmap?) {
+        preparedBitmap = prepared.flatMap { isCurrent($0) ? $0 : nil }
+    }
+
+    private func isCurrent(_ prepared: PreparedBitmap) -> Bool {
+        !isStopped && requestBitmapDelivery != nil && prepared.panelGeneration == panelGeneration
+            && prepared.lifecycle == bitmapLifecycle && prepared.appearance == appearance
+            && prepared.composition.scale == scale && CFEqual(prepared.space, space)
+            && prepared.composition.systemGlass == bitmapCompositionSupportsSystemGlass
+    }
+
+    private func takePreparedBitmap(for capture: SkinBitmapDrawing.Capture) -> SkinBitmapComposition? {
+        guard let prepared = preparedBitmap else { return nil }
+        preparedBitmap = nil
+        guard isCurrent(prepared),
+              prepared.capture.context === capture.context, prepared.capture.cycle == capture.cycle,
+              prepared.capture.scene == capture.scene, prepared.capture.size == capture.size,
+              prepared.capture.origin == capture.origin else { return nil }
+        return prepared.composition
+    }
+
+    private func requestBitmapClear() {
+        guard let requestBitmapDelivery else { return }
+        pendingBitmapInvalidation?.cancel()
+        bitmapSerial &+= 1
+        let clear = SkinBitmapInvalidation(panelGeneration: panelGeneration, serial: bitmapSerial,
+                                          lifecycle: bitmapLifecycle)
+        pendingBitmapInvalidation = clear
+        requestBitmapDelivery(.clear(clear))
+    }
+
+    /// FIFO ACK after the Main transaction. Serial identity permits redraw of the same scene generation after
+    /// releasing pixels; an invalidated or stopped delivery never advances owner presentation metadata.
+    func finishBitmapDelivery(_ delivery: SkinBitmapDelivery) {
+        precondition(executor?.isCurrent == true)
+        guard let pending = pendingBitmap, pending.delivery === delivery else { return }
+        let accepted: Bool
+        switch delivery.state {
+        case .pending, .applying: return
+        case .finished(let value): accepted = value
+        case .cancelled: accepted = false
+        }
+        pendingBitmap = nil
+        let forShowing = pending.forShowing
+        defer {
+            if !isStopped, needsFrame {
+                executor?.async { [weak self] in
+                    guard let self else { return }
+                    if forShowing && (framesDrawn == 0 || contentsReleased) { drawFirstFrame() }
+                    else { runLoopTurn(.beforeWaiting) }
+                }
+            }
+        }
+        guard !isStopped, delivery.lifecycle == bitmapLifecycle,
+              delivery.panelGeneration == panelGeneration else { return }
+        if accepted {
+            recordPresented(began: pending.began, source: pending.capture.source)
+            if pending.forShowing && !isOrderedIn { drawnForShowing = true }
+            bitmapResult?(.presented(pending.capture))
+        } else {
+            setNeedsFrame()
+        }
+    }
+
+    func finishBitmapInvalidation(_ invalidation: SkinBitmapInvalidation) {
+        precondition(executor?.isCurrent == true)
+        guard pendingBitmapInvalidation === invalidation else { return }
+        switch invalidation.state {
+        case .pending, .applying: return
+        case .finished(accepted: false): return // Keep the clear owed, but retry only when new facts arrive.
+        case .finished(accepted: true), .cancelled: pendingBitmapInvalidation = nil
         }
     }
 
@@ -441,6 +745,9 @@ final class SkinFrameProducer {
     /// The skin redrew: a frame at the end of the turn, if the window can be seen then.
     func setNeedsFrame() {
         guard !isStopped else { return }
+        // A ready persistent native owner samples the new frame before deciding whether its host is unchanged.
+        // Old explicit stages retain their source-cycle cancellation rule.
+        if pendingNativeStage?.nativeFramesReady != true { cancelNativeStage() }
         if !needsFrame { askedAt = ProcessInfo.processInfo.systemUptime }
         needsFrame = true
     }
@@ -448,7 +755,22 @@ final class SkinFrameProducer {
     /// The window's facts, as the runtime's window model took them.
     func take(_ facts: SkinWindowFacts?) {
         guard let facts, !isStopped else { return }
+        let destinationChanged = panelGeneration != facts.panelGeneration || actualSpace != facts.colorSpace
+            || (facts.scale > 0 && facts.scale.isFinite && facts.scale != scale) || facts.appearance != appearance
+        let hadBitmapDelivery = pendingBitmap != nil
+        let hadBitmapInvalidation = pendingBitmapInvalidation != nil
+        if destinationChanged { cancelBitmapDelivery() }
+        explicitlyHidden = facts.settings.hidden
+        if explicitlyHidden { cancelNativeStage() }
         var redraw = false
+        if panelGeneration != facts.panelGeneration {
+            panelGeneration = facts.panelGeneration
+            if contentMode.usesLayers { redraw = true }
+        }
+        if actualSpace != facts.colorSpace {
+            actualSpace = facts.colorSpace
+            if contentMode.usesLayers { redraw = true }
+        }
         if facts.scale != scale, facts.scale > 0, facts.scale.isFinite {
             scale = facts.scale
             provider?.setScale(scale)
@@ -472,8 +794,11 @@ final class SkinFrameProducer {
         }
         isOrderedIn = facts.isOrderedIn
         isUnoccluded = facts.isVisible
+        if requestBitmapDelivery != nil, hadBitmapInvalidation,
+           destinationChanged || pendingBitmapInvalidation?.state == .finished(accepted: false) { requestBitmapClear() }
         // Before the first frame there is nothing to draw again: the skin's first redraw asks for it.
-        if redraw && framesDrawn > 0 { setNeedsFrame() }
+        if redraw && (framesDrawn > 0 || contentMode.usesLayers || hadBitmapDelivery) { setNeedsFrame() }
+        if destinationChanged, requestBitmapDelivery != nil, framesDrawn > 0 || hadBitmapDelivery { setNeedsFrame() }
         let seen = canBeSeen
         if seen != toldVisible {
             toldVisible = seen
@@ -496,12 +821,27 @@ final class SkinFrameProducer {
     /// Lets go of what a window that cannot be seen does not need (tests call it at once).
     func releaseUnseen() {
         guard !isStopped, !canBeSeen else { return }
+        let hadBitmapDelivery = pendingBitmap != nil
+        let owedBitmapFrame = hadBitmapDelivery && !contentsReleased
+        cancelBitmapDelivery(cancelClear: false)
+        if owedBitmapFrame { setNeedsFrame() }
+        cancelNativeStage()
         if drawing.keepsPictures {
             drawing.releaseKept()
             releases.pictures += 1
         }
-        if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
-            provider.releaseContents()
+        if !isOrderedIn && (framesDrawn > 0 || hadBitmapDelivery) && !contentsReleased, let provider {
+            guard pendingScenePatch == nil, layerRuntime?.nativePublicationHoldsWriter != true else {
+                releaseAfterWriter = true
+                return
+            }
+            if let layerRuntime {
+                do { try layerRuntime.setVisible(false) }
+                catch { layerFailure = .rendering(String(describing: error)); return }
+                (provider as? LayerContentProvider)?.releaseLayerFrame()
+            }
+            if requestBitmapDelivery != nil { requestBitmapClear() }
+            else { provider.releaseContents() }
             contentsReleased = true
             releases.contents += 1
         }
@@ -513,7 +853,7 @@ final class SkinFrameProducer {
     func drawFirstFrame() {
         guard framesDrawn == 0 || contentsReleased, !isStopped else { return }
         let before = framesDrawn
-        draw()
+        draw(forShowing: true)
         if framesDrawn > before { drawnForShowing = true }
     }
 
@@ -535,7 +875,10 @@ final class SkinFrameProducer {
 
     private func drawIfSeen() {
         guard needsFrame else { return }
-        guard canBeSeen else {
+        // Layer resize/glass no longer posts ahead of the frame. A failed Loading frame must be able to recover
+        // before orderIn; ordinary unseen/hidden live skins still do no drawing.
+        let loading = contentMode.usesLayers && !layerInstalled && framesDrawn == 0 && !explicitlyHidden
+        guard canBeSeen || loading else {
             framesSkipped += 1
             return
         }
@@ -543,12 +886,31 @@ final class SkinFrameProducer {
     }
 
     /// Draws the skin as it is now and presents it; a picture that cannot be made keeps the last one on screen.
-    private func draw() {
-        needsFrame = false
-        guard let provider, let skin = skin() else { return }
+    private func draw(forShowing: Bool = false) {
+        // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
+        guard pendingScenePatch == nil, pendingBitmap == nil else { return }
+        let nativeStage: SkinNativeStage?
+        if let stage = pendingNativeStage, stage.nativeFramesReady,
+           layerRuntime?.nativePublicationHoldsWriter == true, !stage.hasPublicationRollback,
+           !stage.hasOwnerRelease, !stage.request.isCancelled {
+            nativeStage = stage
+        } else {
+            nativeStage = nil
+        }
+        if nativeStage == nil, layerRuntime?.nativePublicationHoldsWriter == true {
+            cancelNativeStage()
+            return // Keep needsFrame and host debt. Only the matching Main rollback ack permits new C writes.
+        }
+        if nativeStage == nil {
+            cancelNativeStage()
+            needsFrame = false
+        }
+        guard let provider else { return }
+        let skin = skin()
+        guard skin != nil || bitmapCapture != nil else { return }
         workActivity?.begin(.drawing)
         defer { workActivity?.end() }
-        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        let size = skin.map { SkinRuntime.windowSize(width: $0.width, height: $0.height) }
         let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
         let began = ProcessInfo.processInfo.systemUptime
         defer {
@@ -556,13 +918,80 @@ final class SkinFrameProducer {
             drawingTime += took
             longestFrame = max(longestFrame, took)
         }
-        var picture: CGImage?
-        // The drawing appearance AppKit set while the view drew.
-        SkinFrameProducer.withAppearance(appearance) {
-            picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: appearance)
+        if let nativeStage, let skin, let size {
+            drawNativeFrame(nativeStage, skin: skin, size: size, began: began)
+            return
         }
-        guard let picture else { return }
-        provider.present(SkinFrame(image: picture, scale: scale))
+        var content: SkinBitmapContent?
+        if case let .layers(partition, budget, _) = contentMode {
+            guard let skin, let size else { return }
+            drawLayerContent(skin, size: size, partition: partition, budget: budget, began: began)
+            return
+        }
+        // The drawing appearance AppKit set while the view drew. Both owners use this same bitmap path.
+        var source = ""
+        var captured: SkinBitmapDrawing.Capture?
+        bitmapCompositionFailure = nil
+        SkinFrameProducer.withAppearance(appearance) {
+            let capture: SkinBitmapDrawing.Capture?
+            if let skin, let size {
+                capture = SkinBitmapDrawing.capture(skin, size: size, scale: scale, appearance: appearance)
+            } else {
+                capture = bitmapCapture?(scale, appearance)
+            }
+            guard let capture else { return }
+            captured = capture
+            source = capture.source
+            let validate = bitmapValidation.map { validate in
+                { ctx in validate(capture, ctx) }
+            }
+            if requestBitmapDelivery != nil, SkinBitmapComposer.needsComposition(capture.scene) {
+                drawing.releaseKept()
+                if let prepared = takePreparedBitmap(for: capture) {
+                    content = .composition(prepared)
+                    return
+                }
+                do {
+                    content = .composition(try SkinBitmapComposer.make(capture, scale: scale, space: space,
+                        systemGlass: bitmapCompositionSupportsSystemGlass, beforeDrawing: validate))
+                } catch let failure as SkinBitmapComposer.Failure {
+                    bitmapCompositionFailure = failure
+                    Log.write("Native bitmap composition declined: \(failure)", level: .warning, source: source)
+                } catch {
+                    Log.write("Native bitmap composition failed: \(error)", level: .warning, source: source)
+                }
+            } else if let image = drawing.picture(capture, scale: scale, space: space, beforeDrawing: validate) {
+                content = .bitmap(SkinFrame(image: image, scale: scale))
+            }
+        }
+        guard let content else {
+            if requestBitmapDelivery != nil {
+                cancelBitmapDelivery()
+                drawing.releaseKept()
+                requestBitmapClear()
+                contentsReleased = true
+            }
+            bitmapResult?(.failed)
+            return
+        }
+        if let requestBitmapDelivery, let captured {
+            pendingBitmapInvalidation?.cancel()
+            pendingBitmapInvalidation = nil
+            bitmapSerial &+= 1
+            let delivery = SkinBitmapDelivery(content: content, scene: captured.scene, origin: captured.origin,
+                space: space, appearance: appearance, panelGeneration: panelGeneration,
+                serial: bitmapSerial, lifecycle: bitmapLifecycle)
+            pendingBitmap = PendingBitmap(delivery: delivery, capture: captured, began: began, forShowing: forShowing)
+            requestBitmapDelivery(.frame(delivery))
+            return
+        }
+        guard case .bitmap(let frame) = content else { return }
+        provider.present(frame)
+        recordPresented(began: began, source: source)
+        if let captured { bitmapResult?(.presented(captured)) }
+    }
+
+    private func recordPresented(began: TimeInterval, source: String) {
         framesDrawn += 1
         drewThisTurn = true
         drawnForShowing = false
@@ -571,9 +1000,503 @@ final class SkinFrameProducer {
             let now = ProcessInfo.processInfo.systemUptime
             timing.note(presentedAt: now, drawing: now - began)
             if let report = timing.report(at: now, every: FrameTimingLog.period) {
-                Log.write("Frames: \(report)", source: skin.config)
+                Log.write("Frames: \(report)", source: source)
             }
         }
+    }
+
+    private func drawLayerContent(_ skin: Skin, size: CGSize, partition: LayerRuntime.Partition, budget: Int, began: TimeInterval) {
+        guard let executor, executor.isCurrent, provider is LayerContentProvider else {
+            layerFailure = .unsupportedProvider
+            return
+        }
+        guard (provider as? LayerContentProvider)?.acceptsLayerFrames == true else {
+            layerFailure = .installDeclined
+            return
+        }
+        guard let space = actualSpace else { layerFailure = .missingProfile; return }
+        let w = (size.width * scale).rounded(.up), h = (size.height * scale).rounded(.up)
+        guard size.width.isFinite, size.height.isFinite, scale.isFinite, scale > 0,
+              w.isFinite, h.isFinite, w > 0, h > 0,
+              w <= CGFloat(Rasterizer.maximumDimension), h <= CGFloat(Rasterizer.maximumDimension),
+              let window = InkBounds.DeviceRect(minX: 0, minY: 0, maxX: Int(w), maxY: Int(h)) else {
+            layerFailure = .invalidDestination
+            return
+        }
+        do {
+            if layerRuntime == nil { layerRuntime = try LayerRuntime(executor: executor, maximumOwnedBitmapBytes: budget) }
+            guard let layerRuntime else { return }
+            if layerRuntime.state == .hidden { try layerRuntime.setVisible(true) }
+            let context = SkinRenderContext.of(skin)
+            let environment = AppSceneEnvironment(scale: Double(scale),
+                appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: appearance)
+            var preparation: LayerRuntime.Preparation?
+            var capturedScene: WidgetScene?
+            try SkinFrameProducer.withAppearanceThrowing(appearance) {
+                let prepared = try prepareLayerScene(skin, context: context, environment: environment, space: space)
+                let scene = prepared.scene
+                capturedScene = scene
+                preparation = try layerRuntime.prepare(prepared, in: window, scale: scale, colorSpace: space,
+                    partition: partition, context: context.drawing, cycle: skin.updateCount, glass: .hitArea,
+                    forcePresentation: !layerInstalled || size != presentedSize || scene.glass != presentedGlass
+                        || scene.hitMap.toolTipAreas != presentedToolTipAreas)
+            }
+            guard let scene = capturedScene else { return }
+            let (generation, overflow) = presentationGeneration.addingReportingOverflow(1)
+            guard !overflow else { throw LayerRuntime.Failure.sequenceOverflow }
+            presentationGeneration = generation
+            layerDestination = LayerDestination(size: size, scale: scale, space: space, appearance: appearance)
+            let frame: LayerRuntime.Frame
+            switch preparation ?? .suppressed {
+            case .ready(let prepared):
+                let needsMain = !layerInstalled || size != presentedSize || scene.glass != presentedGlass
+                    || scene.hitMap.toolTipAreas != presentedToolTipAreas
+                if needsMain {
+                    let patch = SkinScenePatch(content: try layerRuntime.transfer(prepared),
+                        panelGeneration: panelGeneration, generation: generation, size: size, began: began,
+                        glass: scene.glass, hitMap: scene.hitMap)
+                    pendingScenePatch = patch
+                    if let requestScenePatch { requestScenePatch(patch) }
+                    else { _ = patch.content.reclaim(.invalidated) }
+                    if !Thread.isMainThread { _ = patch.content.waitForMain() }
+                    else if patch.content.state == .pending { _ = patch.content.reclaim(.invalidated) }
+                    finishScenePatch(patch)
+                    return
+                }
+                frame = try layerRuntime.commit(prepared)
+                lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+            case .unchanged(let completed): frame = completed
+            case .suppressed: return
+            }
+            presentedSize = size
+            presentedGlass = scene.glass
+            presentedToolTipAreas = scene.hitMap.toolTipAreas
+            layerFailure = nil
+            let wasReleased = contentsReleased
+            if layerInstalled, let provider = provider as? LayerContentProvider,
+               provider.presentedLayerRoot(layerRuntime.root, frame: frame) {
+                publishLayerHitMap?(scene.hitMap, generation, panelGeneration)
+                recordPresented(began: began, source: skin.config)
+                if wasReleased { requestLayerInstallation?() }
+                if shouldRequestNativeFrames { requestNativeFrames?() }
+            } else if !layerInstallRequested {
+                layerInstallRequested = true
+                requestLayerInstallation?()
+            }
+        } catch {
+            layerFailure = .rendering(String(describing: error))
+        }
+    }
+
+    /// Shared pure preparation: C and native frames use the same canonical mapping, actual space and scene.
+    private func prepareLayerScene(_ skin: Skin, context: SkinRenderContext, environment: AppSceneEnvironment,
+                                   space: CGColorSpace) throws -> SceneInkCandidates {
+        let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+        guard let bitmap = SkinBitmapDrawing.makeContext(1, 1, space) else {
+            throw Rasterizer.Failure.resourceFailure("Cannot prepare the owned destination mapping")
+        }
+        bitmap.translateBy(x: 0, y: 1)
+        bitmap.scaleBy(x: scale, y: -scale)
+        let target = DrawTarget.prepareOwnedBitmap(bitmap, glass: .hitArea)
+        guard target.userToDevice == CGAffineTransform(scaleX: scale, y: scale),
+              target.colorSpace.map({ CFEqual($0, space) }) == true else { throw Rasterizer.Failure.invalidMapping }
+        return ScenePreparer.prepare(scene, context: context.drawing, target: target)
+    }
+
+    /// Only the explicit native backend asks for an attachment. No default/C/Main shadow scene or E allocation.
+    func automaticNativeFrameRequest() -> SkinNativeStageRequest? {
+        guard contentMode.requestsNativeFrames else { return nil }
+        let automatic: Bool
+        if case .layers(_, _, .automatic) = contentMode {
+            automatic = true
+            guard let loadedAutomaticBackend else { nativeFrameFailure = .notReady; return nil }
+            guard loadedAutomaticBackend != .c else { return nil }
+        } else { automatic = false }
+        guard let budget = contentMode.nativeFrameBudget, var partition = contentMode.nativeFramePartition else {
+            nativeFrameFailure = .unsupportedMode
+            return nil
+        }
+        guard let worker = executor as? SkinThreadExecutor, worker.isOnThread, !Thread.isMainThread else {
+            nativeFrameFailure = .unsupportedExecutor
+            return nil
+        }
+        guard
+              !isStopped, !explicitlyHidden, !needsFrame, !hasNativeStage, !hasLayerWriter,
+              layerInstalled, let destination = layerDestination, let actualSpace else { return nil }
+        if automatic, layerRuntime?.currentFrame?.contents.isEmpty == true { return nil }
+        if partition == .acceptedComponents {
+            guard let frame = layerRuntime?.currentFrame,
+                  let mode = try? LayerContentBuilder.validateGeometry(frame.plan) else {
+                nativeFrameFailure = .notReady
+                return nil
+            }
+            switch mode {
+            case .components where frame.fallback == nil: break
+            case .single where automatic && frame.fallback != nil:
+                // Unknown ink stays the accepted typed Single C fallback, never an approved component plan.
+                partition = .single
+            default:
+                // Explicit components keep their original refusal; only automatic can follow a real Single fallback.
+                nativeFrameFailure = .notReady
+                return nil
+            }
+        }
+        if let failedNativeEpoch,
+           failedNativeEpoch.panelGeneration == panelGeneration, failedNativeEpoch.size == destination.size,
+           failedNativeEpoch.scale == scale, failedNativeEpoch.appearance == appearance,
+           CFEqual(failedNativeEpoch.colorSpace, actualSpace) { return nil }
+        return SkinNativeStageRequest(maximumCallbackBitmapBytes: budget, nativePartition: partition,
+                                      continuesFrames: true, completion: { _ in })
+    }
+
+    func rejectAutomaticNativeFrames(_ request: SkinNativeStageRequest, failure: SkinNativeStageFailure) {
+        precondition(executor?.isCurrent == true)
+        guard request.continuesFrames else { return }
+        nativeFrameFailure = failure
+        if case .rendering = failure, let destination = layerDestination, let actualSpace {
+            failedNativeEpoch = SkinNativeStage.Epoch(panelGeneration: panelGeneration, size: destination.size,
+                scale: scale, colorSpace: actualSpace, appearance: appearance, presentationGeneration: presentationGeneration)
+        }
+    }
+
+    /// The Main result is consumed once on the owner before ordinary native drawing can start.
+    func enableNativeFrames(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard !stage.nativeFramesReady else { return }
+        guard stage.request.continuesFrames, nativeStageIsCurrent(stage), let layerRuntime, let skin = skin() else {
+            if pendingNativeStage === stage { cancelNativeStage() }
+            return
+        }
+        do {
+            try layerRuntime.enableNativeFrames(stage.attachment, cycle: skin.updateCount)
+            stage.nativeFramesReady = true
+            nativeFrameFailure = nil
+        } catch { requestNativeRollback?(stage, .rendering(String(describing: error))) }
+    }
+
+    /// Ordinary native commits never touch C or host values. Host changes wait for matching Main rollback first.
+    private func drawNativeFrame(_ stage: SkinNativeStage, skin: Skin, size: CGSize, began: TimeInterval) {
+        guard let worker = executor as? SkinThreadExecutor, worker.isOnThread, !Thread.isMainThread,
+              let layerRuntime, let actualSpace, !isStopped, !explicitlyHidden else {
+            cancelNativeStage()
+            return
+        }
+        guard stage.epoch.panelGeneration == panelGeneration, stage.epoch.size == size,
+              stage.epoch.scale == scale, stage.epoch.appearance == appearance,
+              CFEqual(stage.epoch.colorSpace, actualSpace) else { cancelNativeStage(); return }
+        do {
+            let context = SkinRenderContext.of(skin)
+            let environment = AppSceneEnvironment(scale: Double(scale),
+                appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: appearance)
+            var native: LayerRuntime.NativeFrame?
+            try Self.withAppearanceThrowing(appearance) {
+                let prepared = try prepareLayerScene(skin, context: context, environment: environment, space: actualSpace)
+                guard prepared.scene.glass == stage.attachment.sourceGlass,
+                      prepared.scene.hitMap == stage.attachment.sourceHitMap else {
+                    throw LayerRuntime.NativeStageFailure.staleSource
+                }
+                native = try layerRuntime.displayNativeFrame(stage.attachment, prepared: prepared,
+                    context: context.drawing, cycle: skin.updateCount, glass: .hitArea)
+            }
+            guard native != nil else { return }
+            needsFrame = false
+            layerFailure = nil
+            lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+            recordPresented(began: began, source: skin.config)
+        } catch LayerRuntime.NativeStageFailure.staleSource {
+            cancelNativeStage()
+        } catch {
+            let failure = SkinNativeStageFailure.rendering(String(describing: error))
+            nativeFrameFailure = failure
+            failedNativeEpoch = stage.epoch
+            if !stage.rollbackQueued {
+                stage.rollbackQueued = true
+                requestNativeRollback?(stage, failure)
+            }
+        }
+    }
+
+    /// Acknowledgment is always processed on the actual owner, including after close. Duplicate/late acks are inert.
+    func finishScenePatch(_ patch: SkinScenePatch) {
+        precondition(executor?.isCurrent == true)
+        if patch.panelGeneration == panelGeneration, patch.generation > hostAcknowledgedGeneration {
+            switch patch.hostAcknowledgment {
+            case .none: break
+            case .controls, .complete:
+                hostAcknowledgedGeneration = patch.generation
+                presentedSize = patch.size
+                presentedGlass = patch.glass
+                if patch.hostAcknowledgment == .complete { presentedToolTipAreas = patch.hitMap.toolTipAreas }
+            }
+        }
+        guard pendingScenePatch?.content === patch.content, let layerRuntime else { return }
+        do {
+            guard let result = try layerRuntime.finish(patch.content, commitReclaimed: !isStopped) else { return }
+            pendingScenePatch = nil
+            switch result {
+            case .submitted(let frame):
+                lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+                layerFailure = nil
+                if patch.content.state == .appliedByMain {
+                    layerInstalled = true
+                    layerInstallRequested = false
+                    if !isStopped { recordPresented(began: patch.began, source: skin()?.config ?? "") }
+                } else if !isStopped {
+                    // A reclaimed first frame still requires main attachment; a late patch only updates glass/size.
+                    if layerInstalled, let provider = provider as? LayerContentProvider,
+                       provider.presentedLayerRoot(layerRuntime.root, frame: frame) {
+                        recordPresented(began: patch.began, source: skin()?.config ?? "")
+                    } else if !layerInstallRequested {
+                        layerInstallRequested = true
+                        requestLayerInstallation?()
+                    }
+                }
+            case .suppressed:
+                if !isStopped { layerFailure = .staleDestination; setNeedsFrame() }
+            case .unchanged: break
+            }
+            if isStopped, layerRuntime.state != .closed { try layerRuntime.beginClose() }
+            else if needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
+            writerReleased?()
+            if !isStopped, !needsFrame, shouldRequestNativeFrames { requestNativeFrames?() }
+            if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
+        } catch { layerFailure = .rendering(String(describing: error)) }
+    }
+
+    /// Main, with a real exclusive lease. Readiness is checked against the CURRENT window, not a queued request's
+    /// old panel or facts sequence. Moving the same provider to another panel cannot install for the old destination.
+    func installLayerContent(for facts: SkinWindowFacts, size: CGSize) -> LayerInstallation {
+        guard Thread.isMainThread, let executor, executor.isCurrent, !isStopped,
+              let provider = provider as? LayerContentProvider, let layerRuntime, let frame = layerRuntime.currentFrame,
+              let destination = layerDestination, pendingScenePatch == nil else { return .notReady }
+        guard let space = facts.colorSpace, CFEqual(destination.space, space), destination.scale == facts.scale,
+              destination.appearance == facts.appearance, destination.size == size else {
+            layerFailure = .staleDestination
+            layerInstallRequested = false
+            setNeedsFrame()
+            return .staleDestination
+        }
+        if layerInstalled {
+            return provider.hasLayerFrame ? .installed : .declined
+        }
+        guard provider.installLayerRoot(layerRuntime.root, frame: frame, executor: executor) else {
+            layerFailure = .installDeclined
+            layerInstallRequested = false
+            return .declined
+        }
+        layerInstalled = true
+        layerInstallRequested = false
+        layerFailure = nil
+        // This is the main attachment acknowledgment, not additional drawing time or worker CPU work. The actual
+        // drawing duration is accounted by draw() on its owner; waiting for installation is not counted there.
+        recordPresented(began: ProcessInfo.processInfo.systemUptime, source: skin()?.config ?? "")
+        drawnForShowing = true
+        return .installed
+    }
+
+    /// Called only for an explicit request, on the physical worker after C acceptance. Reuses the accepted scene
+    /// provenance; bitmap/Main paths cannot allocate an E owner, and ordinary C frames never call this method.
+    func prepareNativeStage(_ request: SkinNativeStageRequest) throws -> SkinNativeStage {
+        guard contentMode.usesLayers else { throw SkinNativeStageFailure.unsupportedMode }
+        guard let executor = executor as? SkinThreadExecutor, executor.isCurrent, executor.isOnThread,
+              !Thread.isMainThread else { throw SkinNativeStageFailure.unsupportedExecutor }
+        guard pendingNativeStage == nil else { throw SkinNativeStageFailure.busy }
+        guard !isStopped, !explicitlyHidden, !needsFrame, layerInstalled, pendingScenePatch == nil,
+              let provider = provider as? LayerContentProvider, provider.hasLayerFrame,
+              let layerRuntime, let destination = layerDestination, let actualSpace, let skin = skin(),
+              destination.scale == scale, destination.appearance == appearance,
+              CFEqual(destination.space, actualSpace) else { throw SkinNativeStageFailure.notReady }
+        let attachment: LayerRuntime.NativeStage
+        do {
+            attachment = try layerRuntime.prepareNativeStage(maximumCallbackBitmapBytes: request.maximumCallbackBitmapBytes,
+                                                             cycle: skin.updateCount, supportsFrames: request.continuesFrames,
+                                                             partition: request.nativePartition)
+        } catch LayerRuntime.NativeStageFailure.busy { throw SkinNativeStageFailure.busy }
+        catch LayerRuntime.NativeStageFailure.notReady { throw SkinNativeStageFailure.notReady }
+        let stage = SkinNativeStage(attachment: attachment, provider: provider,
+            epoch: SkinNativeStage.Epoch(panelGeneration: panelGeneration, size: destination.size,
+                scale: destination.scale, colorSpace: actualSpace, appearance: destination.appearance,
+                presentationGeneration: presentationGeneration), request: request)
+        pendingNativeStage = stage
+        return stage
+    }
+
+    /// Main only inside an actual exclusive lease; both the captured scene and CURRENT host facts must still match.
+    func attachNativeStage(_ stage: SkinNativeStage, facts: SkinWindowFacts, size: CGSize) -> Bool {
+        precondition(Thread.isMainThread && executor?.isCurrent == true)
+        guard nativeStageIsCurrent(stage), stage.epoch.matches(facts, size: size), let executor, let layerRuntime,
+              stage.provider.attachNativeStage(stage.attachment, executor: executor) else { return false }
+        do { try layerRuntime.attachedNativeStage(stage.attachment); return true }
+        catch { return false }
+    }
+
+    func nativeStageIsCurrent(_ stage: SkinNativeStage) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, !stage.request.isCancelled, !isStopped, !explicitlyHidden, !needsFrame,
+              !stage.hasOwnerRelease, !stage.hasPublicationRollback,
+              pendingScenePatch == nil, layerInstalled, stage.provider.hasLayerFrame,
+              stage.epoch.panelGeneration == panelGeneration,
+              stage.epoch.presentationGeneration == presentationGeneration,
+              let destination = layerDestination, let actualSpace, let skin = skin(),
+              destination.size == stage.epoch.size, destination.scale == stage.epoch.scale,
+              destination.appearance == stage.epoch.appearance, CFEqual(actualSpace, stage.epoch.colorSpace),
+              layerRuntime?.nativeStageIsCurrent(stage.attachment, cycle: skin.updateCount) == true else { return false }
+        return true
+    }
+
+    /// The attachment ack queues this next physical worker transaction. Unexpected native callbacks remain strict
+    /// failures, distinct from C presentation failures; no image is installed or C statistic incremented here.
+    func displayNativeStage(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, !stage.completionQueued else { return }
+        let result: SkinNativeStageResult
+        do {
+            guard let executor = executor as? SkinThreadExecutor, executor.isOnThread, !Thread.isMainThread else {
+                throw SkinNativeStageFailure.unsupportedExecutor
+            }
+            guard nativeStageIsCurrent(stage), let layerRuntime, let skin = skin() else {
+                throw SkinNativeStageFailure.cancelled
+            }
+            var observation: ELayerContent.Observation?
+            try Self.withAppearanceThrowing(stage.epoch.appearance) {
+                observation = try layerRuntime.displayNativeStage(stage.attachment, cycle: skin.updateCount)
+            }
+            guard let observation else { throw SkinNativeStageFailure.notReady }
+            result = .success(SkinNativeStageObservation(sourceSequence: stage.attachment.sourceSequence,
+                native: observation, drewOnPhysicalOwner: executor.isOnThread && SkinThreadExecutor.isSkinThread))
+        } catch let failure as SkinNativeStageFailure { result = .failure(failure) }
+        catch { result = .failure(.rendering(String(describing: error))) }
+        queueNativeCompletion(stage, result)
+    }
+
+    private func cancelNativeStage() {
+        guard let stage = pendingNativeStage else { return }
+        stage.request.cancel()
+        if stage.request.publishesContent, layerRuntime?.nativePublicationHoldsWriter == true {
+            guard !stage.rollbackQueued else { return }
+            stage.rollbackQueued = true
+            requestNativeRollback?(stage, .cancelled)
+            return
+        }
+        queueNativeCompletion(stage, .failure(.cancelled))
+    }
+
+    /// Main calls through authentic owner access before its host switch. This freezes only C tree mutation;
+    /// subsequent logic turns still coalesce needsFrame, without preparing/exporting another C ScenePatch.
+    func beginNativePublication(_ stage: SkinNativeStage) throws {
+        precondition(Thread.isMainThread && executor?.isCurrent == true)
+        guard nativeStageIsCurrent(stage), stage.request.publishesContent, !stage.hasPublicationRollback,
+              let layerRuntime else { throw SkinNativeStageFailure.cancelled }
+        try layerRuntime.beginNativePublication(stage.attachment)
+    }
+
+    /// The physical owner acknowledges a committed Main publication, never a hidden ready snapshot.
+    func acknowledgeNativePublication(_ stage: SkinNativeStage, observation: SkinNativeStageObservation) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.wasPublished, !stage.hasOwnerRelease else { return }
+        do {
+            guard !isStopped, !stage.hasPublicationRollback, !stage.request.isCancelled, !needsFrame,
+                  let layerRuntime else { throw SkinNativeStageFailure.cancelled }
+            try layerRuntime.acknowledgeNativePublication(stage.attachment)
+            let current = stage.attachment.callbackReport.observation
+            if let failure = current.failure { throw failure }
+            guard current.callbacks == observation.native.callbacks else {
+                throw SkinNativeStageFailure.rendering("Native callback count changed before publication acknowledgment")
+            }
+            requestNativePublicationFinished?(stage, .success(SkinNativeStageObservation(
+                sourceSequence: observation.sourceSequence, native: current,
+                drewOnPhysicalOwner: observation.drewOnPhysicalOwner, published: true)))
+        } catch let failure as SkinNativeStageFailure { requestNativeRollback?(stage, failure) }
+        catch { requestNativeRollback?(stage, .rendering(String(describing: error))) }
+    }
+
+    /// Acknowledgment is cleanup authority for this identity, even if its old panel/profile is no longer current.
+    /// Main has already selected the frozen C frame. Release E before resuming preparation of the latest scene.
+    func rolledBackNativePublication(_ stage: SkinNativeStage) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.hasPublicationRollback else { return stage.hasOwnerRelease }
+        if stage.request.continuesFrames {
+            if let failure = stage.publicationFailure {
+                nativeFrameFailure = failure
+                if case .rendering = failure { failedNativeEpoch = stage.epoch }
+            }
+            // The fallback is the original C anchor, not the last native scene. After rollback the owner must
+            // render the latest values, including Update=-1 skins that will receive no timer-driven request.
+            if !isStopped { setNeedsFrame() }
+        }
+        guard releaseNativeStage(stage) else { return false }
+        if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
+        if !isStopped, needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
+        return true
+    }
+
+    private func queueNativeCompletion(_ stage: SkinNativeStage, _ result: SkinNativeStageResult) {
+        guard pendingNativeStage === stage, !stage.completionQueued else { return }
+        stage.completionQueued = true
+        requestNativeCompletion?(stage, result)
+    }
+
+    /// Release the E owner/captured recipe first; retain only the bounded attachment envelope until main detach.
+    @discardableResult
+    func releaseNativeStage(_ stage: SkinNativeStage, permanentStop: Bool = false) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage else { return stage.hasOwnerRelease }
+        if stage.hasOwnerRelease { return true }
+        do {
+            guard let layerRuntime, try layerRuntime.releaseNativeStage(stage.attachment,
+                rollbackAcknowledged: stage.hasPublicationRollback, permanentStop: permanentStop) else {
+                throw LayerRuntime.NativeStageFailure.staleSource
+            }
+            stage.recordOwnerRelease(permanentStop: false)
+            return true
+        } catch {
+            // Never fabricate an owner-release ack or detach a still-owned native root after cleanup failure.
+            Log.write("Native staging owner release failed: \(error)", level: .error, source: skin()?.config ?? "")
+            return false
+        }
+    }
+
+    /// Exception for permanent stop only: no successful backing can be consumed afterwards. Release on the real
+    /// owner now, before a synchronous app termination can stop that worker ahead of a queued main completion.
+    /// C retains its own normal fade/teardown contract. Non-stop cancellation keeps completion-before-release.
+    private func stopNativeStage() -> Bool {
+        guard let stage = pendingNativeStage else { return false }
+        stage.request.cancel()
+        guard releaseNativeStage(stage, permanentStop: true) else { return false }
+        stage.recordOwnerRelease(permanentStop: true)
+        pendingNativeStage = nil
+        requestNativeStopRelease?(stage)
+        return true
+    }
+
+    func detachedNativeStage(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.hasOwnerRelease else { return }
+        pendingNativeStage = nil
+        writerReleased?()
+        if !isStopped, !needsFrame, shouldRequestNativeFrames { requestNativeFrames?() }
+    }
+
+    /// Owner cleanup is queued only when main has finished displaying/fading the old frame. Its acknowledgment
+    /// permits main to remove the root even if the executor stops immediately after this work item.
+    func retireLayerContent() -> Bool {
+        precondition(executor?.isCurrent == true)
+        stop()
+        guard pendingScenePatch == nil, pendingNativeStage == nil else { return false }
+        if let layerRuntime {
+            do { try layerRuntime.close() }
+            catch { layerFailure = .rendering(String(describing: error)); return false }
+        }
+        layerRuntime = nil
+        layerDestination = nil
+        layerInstalled = false
+        return true
+    }
+
+    private static func withAppearanceThrowing(_ name: String, _ body: () throws -> Void) throws {
+        var failure: Error?
+        withAppearance(name) { do { try body() } catch { failure = error } }
+        if let failure { throw failure }
     }
 
     /// Runs `body` with the appearance named `name` as the thread's drawing appearance.

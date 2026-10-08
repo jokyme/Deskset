@@ -26,6 +26,9 @@ enum MainMenu {
         add(appMenu, to: main)
 
         let file = NSMenu(title: "File")
+        file.addItem(app.deskPackages.openFolderMenuItem())
+        file.addItem(app.deskPackages.installedMenuItem())
+        file.addItem(.separator())
         file.addItem(item("Save", #selector(InspectorWindowController.saveSkinCode(_:)), key: "s"))
         file.addItem(.separator())
         file.addItem(item("Close", #selector(NSWindow.performClose(_:)), key: "w"))

@@ -4,6 +4,7 @@ import DesksetCore
 /// `Deskset --self-test [filter]`: checks of the app layer (DesksetSelfTest links only DesksetCore). Suites are named
 /// "App: …"; skin windows are created headless (never shown), files go to temporary folders, the user's state and
 /// log are not touched. Uses the fixtures in TestSkins/App and DefaultSkins when run from the repository.
+/// Only an exact `App: layer performance: …` filter opts into the separate real-window measurement fixture.
 enum AppSelfTest {
     static func run(filter: String?) -> Int32 {
         let t = AppTestRunner(filter: filter)
@@ -22,6 +23,7 @@ enum AppSelfTest {
         // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
         // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
         MediaUICache.root = t.temporaryDirectory("caches")
+        if LayerPerformanceMeasurements.runIfRequested(t, filter: filter) { return t.finish() }
         // Suites copy the repository's skins before running them in an app: skins write their own files.
         let shipped = DefaultSkinsSelfTests.fingerprint()
         geometryTests(t)
@@ -53,9 +55,13 @@ enum AppSelfTest {
         wiringTests(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
+        SectionHostSelfTests.run(t)
+        ServiceHostLookupSelfTests.run(t)
+        ActionCatalogSelfTests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
+        TickSchedulerSelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)
@@ -64,7 +70,78 @@ enum AppSelfTest {
         SkinWorkWatchdogSelfTests.run(t)
         EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        DrawFontSelfTests.run(t)
+        DeskFontCatalogSelfTests.run(t)
+        DeskSymbolCatalogSelfTests.run(t)
+        IconDrawingSelfTests.run(t)
+        DeskProgramIconResourceSelfTests.run(t)
+        DeskIconPreviewSelfTests.run(t)
+        DeskConditionalHostSelfTests.run(t)
+        DeskConditionalPreviewSelfTests.run(t)
+        DeskViewIfHostSelfTests.run(t)
+        DeskViewIfPreviewSelfTests.run(t)
+        DeskContainerClickHostSelfTests.run(t)
+        DeskContainerClickWindowSelfTests.run(t)
+        DeskContainerClickPreviewSelfTests.run(t)
+        DeskProgramTooltipSelfTests.run(t)
+        DeskTooltipIntegrationSelfTests.run(t)
+        DeskProgramMenuSelfTests.run(t)
+        DeskMenuIntegrationSelfTests.run(t)
+        DeskMenuWindowSelfTests.run(t)
+        DeskLocalizationIntegrationSelfTests.run(t)
+        DeskProgramLocalizationPreviewSelfTests.run(t)
+        DeskStylePreviewSelfTests.run(t)
+        DeskDynamicStylePreviewSelfTests.run(t)
+        DeskConditionalStylePreviewSelfTests.run(t)
+        DeskConditionalBackgroundPreviewSelfTests.run(t)
+        DeskTextLineLimitSelfTests.run(t)
+        BatteryDetailsServiceSelfTests.run(t)
+        DeskBatteryDetailsSelfTests.run(t)
+        DeskOptionsIntegrationSelfTests.run(t)
+        DeskProgramOptionsPanelSelfTests.run(t)
+        DeskCodeDocumentSelfTests.run(t)
+        DeskWidgetInstallationSelfTests.run(t)
+        DeskPackageStateSelfTests.run(t)
+        DeskPackageCaptureSelfTests.run(t)
+        DeskPackageResourceSelfTests.run(t)
+        DeskPackageStagingSelfTests.run(t)
+        DeskPackageActivationSelfTests.run(t)
+        DeskPackageEditorSelfTests.run(t)
+        DeskPackageFlowSelfTests.run(t)
+        DeskCodePresentationSelfTests.run(t)
+        DeskCodeEditingSelfTests.run(t)
+        DeskElementInspectorSelfTests.run(t)
+        DeskCodeCompletionSelfTests.run(t)
+        DeskProgramDrawingSelfTests.run(t)
+        DeskProgramPreviewSelfTests.run(t)
+        TextDrawSelfTests.run(t)
+        DrawImageSelfTests.run(t)
+        ImageDrawValueSelfTests.run(t)
+        GraphDrawValueSelfTests.run(t)
+        ShapeDrawValueSelfTests.run(t)
+        InkBoundsSelfTests.run(t)
+        ScenePreparerSelfTests.run(t)
+        RectangleClosureSelfTests.run(t)
+        RectangleComplementSelfTests.run(t)
+        OffscreenRendererSelfTests.run(t)
+        ComponentGeometrySelfTests.run(t)
+        PixelComparisonSelfTests.run(t)
+        LayerContentSelfTests.run(t)
+        ELayerContentSelfTests.run(t)
+        LayerRuntimeSelfTests.run(t)
+        InkEscapeObservationSelfTests.run(t)
+        ClippedRecipeInkSelfTests.run(t)
+        AppSceneEnvironmentSelfTests.run(t)
+        SceneDrawingSelfTests.run(t)
+        RainmeterProgramSelfTests.run(t)
+        SceneBitmapSelfTests.run(t)
+        #if DEBUG
+        SpriteDrawSelfTests.run(t)
+        #endif
         SkinDrawingSelfTests.run(t)
+        SkinBitmapCompositionSelfTests.run(t)
+        SkinBitmapPreparationSelfTests.run(t)
+        SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
@@ -76,6 +153,7 @@ enum AppSelfTest {
         InspectorInPlaceSelfTests.run(t)
         StudioDesktopFollowSelfTests.run(t)
         CodeFollowingSelfTests.run(t)
+        DeskWidgetWindowSelfTests.run(t)
         CanvasPlanesSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
         FriendlySidebarSelfTests.run(t)
@@ -93,6 +171,8 @@ enum AppSelfTest {
         PluginSideEffectsSelfTests.run(t)
         #if DEBUG
         LegacyRenderSelfTests.run(t)
+        StationeryLayerContentSelfTests.run(t)
+        CorpusLayerContentSelfTests.run(t)
         #endif
         // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
         // busier, and the renders' checks of what services deliver within one interval are timed in real time.
@@ -642,12 +722,48 @@ enum AppSelfTest {
             t.equal(charging, BatteryStatus(percent: 50, isCharging: true, isPluggedIn: true, minutesRemaining: nil))
             let draining = SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 3000, kIOPSMaxCapacityKey: 4000,
                                                         kIOPSPowerSourceStateKey: kIOPSBatteryPowerValue,
-                                                        kIOPSTimeToEmptyKey: 125])
+                                                        kIOPSTimeToEmptyKey: 125, kIOPSTimeToFullChargeKey: 45])
             t.equal(draining, BatteryStatus(percent: 75, isCharging: false, isPluggedIn: false, minutesRemaining: 125))
             let calculating = SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 10, kIOPSTimeToEmptyKey: -1])
             t.equal(calculating.minutesRemaining, nil)
             t.close(calculating.percent, 10)
             t.close(SystemMonitor.batteryStatus([kIOPSCurrentCapacityKey: 500, kIOPSMaxCapacityKey: 0]).percent, 0)
+
+            let oldInitializer = BatteryStatus(percent: 50, isCharging: false, isPluggedIn: false, minutesRemaining: 90)
+            t.equal(oldInitializer.minutesRemaining, 90, "the existing initializer keeps discharge minutes")
+            t.equal(oldInitializer.minutesUntilFull, nil, "the additive charge estimate defaults to nil")
+            t.equal(charging.minutesUntilFull, nil, "charging without an estimate stays unknown")
+
+            var chargeDescription: [String: Any] = [kIOPSCurrentCapacityKey: 50, kIOPSMaxCapacityKey: 100,
+                                                    kIOPSIsChargingKey: true,
+                                                    kIOPSPowerSourceStateKey: kIOPSACPowerValue,
+                                                    kIOPSTimeToEmptyKey: 30,
+                                                    kIOPSTimeToFullChargeKey: 45]
+            t.equal(SystemMonitor.batteryStatus(chargeDescription),
+                    BatteryStatus(percent: 50, isCharging: true, isPluggedIn: true, minutesUntilFull: 45),
+                    "one source dictionary supplies charge minutes without changing discharge semantics")
+            chargeDescription[kIOPSTimeToFullChargeKey] = 0
+            t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, 0,
+                    "an explicit zero estimate is valid while charging")
+            let invalidEstimates: [Any] = [-1, -20, Double.nan, Double.infinity, -Double.infinity, "45", true, NSNull()]
+            for invalid in invalidEstimates {
+                chargeDescription[kIOPSTimeToFullChargeKey] = invalid
+                t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil,
+                        "calculating, negative, nonfinite or non-number estimate is missing: \(invalid)")
+            }
+            chargeDescription[kIOPSTimeToFullChargeKey] = nil
+            t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil, "a missing key stays unknown")
+
+            chargeDescription[kIOPSCurrentCapacityKey] = 100
+            chargeDescription[kIOPSIsChargingKey] = false
+            let full = SystemMonitor.batteryStatus(chargeDescription)
+            t.equal(full, BatteryStatus(percent: 100, isCharging: false, isPluggedIn: true),
+                    "full capacity does not invent a zero charge estimate")
+            for estimate in [0, 45] {
+                chargeDescription[kIOPSTimeToFullChargeKey] = estimate
+                t.equal(SystemMonitor.batteryStatus(chargeDescription).minutesUntilFull, nil,
+                        "a charge estimate is ignored when the battery is not charging")
+            }
         }
 
         t.suite("App: SysInfo timestamps and names") {

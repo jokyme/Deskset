@@ -281,6 +281,23 @@ final class Checker {
     var reportedKeys = Set<String>()
     var symbols: [NodeID: Symbol] = [:]
     var types: [NodeID: SemType] = [:]
+    // Numeric facts are captured by the original inference/adoption branches and completed after settling.
+    // This is not another inference pass: no scopes, overloads, actions or diagnostics are replayed.
+    var numericValues: [NodeID: Val] = [:]
+    var numericNodes: [NodeID: PositionedNode] = [:]
+    var numericSlots: [NodeID: Int] = [:]
+    var numericBaseSources: [NodeID: [NodeID]] = [:]
+    var numericCoercions: [NodeID: NumericCoercion] = [:]
+    var canonicalNumericValues: [NodeID: Double] = [:]
+    // Only numeric comparisons, +/−/% and assignments whose original inference met an open slot. These retain the
+    // original values/nodes, so settling can finish the same algebra/coercion without inferring the AST again.
+    enum DeferredNumericUse {
+        case arithmetic(PositionedToken, PositionedNode, PositionedNode, PositionedNode, Val, Val)
+        case comparison(PositionedNode, PositionedNode, PositionedNode, Val, Val)
+        case assignment(PositionedNode, Val, Val, DiagnosticArgument, ExprContext)
+    }
+    var deferredNumericUses: [DeferredNumericUse] = []
+    var openSlotsSettled = false
     var elementFacts: [NodeID: ElementFacts] = [:]
     var dataUses: [DataUse] = []
     var dependencies: [NodeID: Set<DepKey>] = [:]
@@ -481,6 +498,8 @@ final class Checker {
         checked.loopIdentities = loopIdentities
         checked.assets = assetUses
         checked.folderPending = folderPending
+        checked.canonicalNumericValues = canonicalNumericValues
+        checked.numericCoercions = numericCoercions
         for decl in declOrder where !decl.poisoned {
             guard let val = decl.val, !val.error, val.type != .any else { continue }
             checked.declarationTypes[decl.id] = SemType(type: val.type, displayBase: val.base, range: val.range)
@@ -540,7 +559,11 @@ final class Checker {
     // MARK: - Positions and text
 
     func id(_ node: PositionedNode) -> NodeID {
-        NodeID(kind: node.kind, utf8Start: textStart(node), treeVersion: tree.version)
+        if node.kind.isExpression {
+            let range = node.quickTextRange
+            return NodeID(kind: node.kind, utf8Start: range.lowerBound, treeVersion: tree.version, utf8End: range.upperBound)
+        }
+        return NodeID(kind: node.kind, utf8Start: textStart(node), treeVersion: tree.version)
     }
 
     /// Start of the first present token's text (fast: stops at that token).
@@ -696,6 +719,8 @@ enum FolderChecks {
         result.loopIdentities = checked.loopIdentities
         result.assets = checked.assets
         result.declarationTypes = checked.declarationTypes
+        result.canonicalNumericValues = checked.canonicalNumericValues
+        result.numericCoercions = checked.numericCoercions
         return result
     }
 }

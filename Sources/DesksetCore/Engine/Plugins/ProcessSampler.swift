@@ -359,18 +359,18 @@ final class ProcessSampler: @unchecked Sendable {
         return subscribers.values.contains(true)
     }
 
-    /// The samples `skin`'s measures read: its system's own (`ProcessSampleSource`), else the shared sampler's
+    /// The samples measures read: their system's own (`ProcessSampleSource`), else the shared sampler's
     /// (`details` as in `samples(details:)`).
-    static func samples(for skin: Skin,
+    static func samples(for system: SystemDataSource,
                         details: Bool = false) -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?) {
-        readSamples(for: skin, details: details).samples
+        readSamples(for: system, details: details).samples
     }
 
     /// `samples(for:details:)`, and whether they are the shared sampler's (`shared`): only those have the serials
     /// that results shared between the measures of every skin are keyed by (a skin's own samples count their own).
-    static func readSamples(for skin: Skin, details: Bool = false)
+    static func readSamples(for system: SystemDataSource, details: Bool = false)
         -> (samples: (previous: ProcessSnapshot?, latest: ProcessSnapshot?), shared: Bool) {
-        if let own = (skin.system as? ProcessSampleSource)?.processSamples() { return (own, false) }
+        if let own = (system as? ProcessSampleSource)?.processSamples() { return (own, false) }
         return (shared.samples(details: details), true)
     }
 

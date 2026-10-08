@@ -4,6 +4,7 @@
  */
 #include "deskset_lua.h"
 
+#include <limits.h>
 #include <math.h>
 #include <pthread.h>
 #include <setjmp.h>
@@ -358,10 +359,49 @@ static struct tm *source_localtime(const deskset_lua_time_source *src, time_t t,
     return out;
 }
 
-/* mktime in the source's zone: the fields read as UTC (timegm normalises them as mktime does), then moved by the
-   zone's offset at that instant, looked up twice for times near a change of offset. `isdst` is not used: the zone
-   decides. */
+/* Match Darwin mktime's candidate order for an automatic isdst hint. A fold has two matches, and the first one
+   found by the full-range binary search can change even within that fold. Narrowing the initial range or always
+   choosing an earlier/later occurrence would change the result. This follows time2sub's search in Apple's
+   stdtime/FreeBSD/localtime.c (public domain, Arthur David Olson):
+   https://github.com/apple-oss-distributions/Libc/blob/main/stdtime/FreeBSD/localtime.c
+   The normalized civil fields are represented by `wall`, so comparisons need no process-local time conversion. */
+static int source_find_time(const deskset_lua_time_source *src, time_t wall, time_t *result) {
+    _Static_assert(sizeof(time_t) == sizeof(int64_t) && (time_t)-1 < 0, "Darwin uses a signed 64-bit time_t");
+    time_t low = INT64_MIN, high = INT64_MAX;
+    for (size_t step = 0; step < sizeof(time_t) * CHAR_BIT + 1; ++step) {
+        time_t candidate = low / 2 + high / 2; /* No overflow, with the same rounding as native mktime. */
+        if (candidate < low) candidate = low;
+        if (candidate > high) candidate = high;
+        int is_dst, direction;
+        char name[64];
+        long offset = src->zone(src->context, (double)candidate, &is_dst, name, sizeof(name));
+        time_t civil;
+        if (__builtin_add_overflow(candidate, (time_t)offset, &civil)) {
+            direction = offset > 0 ? 1 : -1;
+        } else {
+            direction = (civil > wall) - (civil < wall);
+        }
+        if (direction == 0) { *result = candidate; return 1; }
+        if (candidate == low) {
+            if (candidate == INT64_MAX) return 0;
+            low = ++candidate;
+        } else if (candidate == high) {
+            if (candidate == INT64_MIN) return 0;
+            high = --candidate;
+        }
+        if (low > high) return 0;
+        if (direction > 0) high = candidate;
+        else low = candidate;
+    }
+    return 0;
+}
+
+/* mktime in the source's zone: normalise civil fields as UTC. An automatic hint searches for the same candidate
+   as native mktime, retrying as standard time for a gap. An explicit hint chooses the standard/daylight offset,
+   looked up twice near a change. Keep the hint before timegm overwrites the struct. */
 static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
+    int requested_is_dst = ts->tm_isdst;
+    time_t original_seconds = ts->tm_sec;
     int is_dst = 0;
     char name[64];
     time_t wall, first;
@@ -369,9 +409,31 @@ static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
     ts->tm_isdst = 0;
     wall = timegm(ts);
     if (wall == (time_t)(-1)) return wall;
-    offset = src->zone(src->context, (double)wall, &is_dst, name, sizeof(name));
+    if (requested_is_dst < 0) {
+        time_t found;
+        if (original_seconds < 0 || original_seconds >= 60) {
+            /* Native mktime first searches with excess seconds held aside, then adds them to the match. In a
+               fold this can differ from searching the fully normalized fields. Pre-epoch dates use second 59
+               as the anchor. If the anchor is in a gap, retry the normalized fields below, as native does. */
+            time_t anchor, saved = original_seconds;
+            struct tm fields;
+            if (!__builtin_sub_overflow(wall, original_seconds, &anchor) && gmtime_r(&anchor, &fields) != NULL
+                && fields.tm_year >= 0) {
+                if (fields.tm_year < 1970 - 1900) { anchor += 59; saved -= 59; }
+                if (source_find_time(src, anchor, &found) && !__builtin_add_overflow(found, saved, &found))
+                    return found;
+            }
+        }
+        if (source_find_time(src, wall, &found)) return found;
+        requested_is_dst = 0;
+    }
+    offset = requested_is_dst >= 0 && src->offset_for_isdst
+        ? src->offset_for_isdst(src->context, (double)wall, requested_is_dst)
+        : src->zone(src->context, (double)wall, &is_dst, name, sizeof(name));
     first = wall - (time_t)offset;
-    offset = src->zone(src->context, (double)first, &is_dst, name, sizeof(name));
+    offset = requested_is_dst >= 0 && src->offset_for_isdst
+        ? src->offset_for_isdst(src->context, (double)first, requested_is_dst)
+        : src->zone(src->context, (double)first, &is_dst, name, sizeof(name));
     return wall - (time_t)offset;
 }
 

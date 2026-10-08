@@ -1,4 +1,5 @@
 import AppKit
+import DeskLanguage
 import DesksetCore
 import UniformTypeIdentifiers
 
@@ -7,21 +8,85 @@ import UniformTypeIdentifiers
 /// "Deskset (built-in)" chosen in Settings ▸ Editor such files never go to the Launch Services default (on many Macs an
 /// IDE the user never chose for skins): they get this window, the same code editor as the skin editor's code pane —
 /// highlighting, find, encoding and line endings kept byte for byte, commits after a pause, on ⌘S, when the window
-/// stops being key and when it closes — without a canvas. A change made on disk meanwhile is picked up when the window
+/// stops being key and when it closes. Desk documents also show their checked program as a local preview.
+/// A change made on disk meanwhile is picked up when the window
 /// becomes key (a clean buffer) or asked about before it is written over (see `CodeEditorView.onDiskConflict`).
-final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
+final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+    struct PackageContext {
+        let root: URL
+        let identity: DeskPackageCapture.Identity
+        let member: DeskFileID
+
+        func matches(_ input: DeskCodePackageInput) -> Bool {
+            DeskPackagePath.sameBytes(root.path, input.capture.root.path) &&
+                identity.device == input.capture.rootIdentity.device && identity.inode == input.capture.rootIdentity.inode &&
+                DeskPackagePath.sameBytes(member.path, input.member.path)
+        }
+    }
     let file: URL
+    let packageContext: PackageContext?
+    private let packageMemberIO: DeskPackageMemberIO?
     let codeView: CodeEditorView
     unowned let app: AppController
     /// Asked when the window closes with edits that could not be saved (self-tests answer it; nil: an alert).
     var closeChoice: (() -> InspectorWindowController.CloseChoice)?
+    /// Editing/checking only; a Desk document has no Skin or desktop copy.
+    private(set) var deskChecking: DeskCodeDocumentChecking?
+    private(set) var readError: String?
+    private(set) var deskDecorations: DeskCodeDecorations?
+    private(set) var deskPreview: DeskProgramPreviewController?
+    private(set) var deskInspector: StudioInspectorViewController?
+    private(set) var deskElementInspector: DeskElementInspector?
+    private var deskInspectorItem: NSSplitViewItem?
+    private var deskInspectorObservation: NSKeyValueObservation?
+    private(set) var activeStagedLease: DeskWidgetInstallation.Staged?
+    private var packagePlacement: UUID?
+    private var packageInstallation: DeskPackageInstallationRequest?
+    private var packageActivation: DeskWidgetActivation.Ticket?
+    private var hasClosed = false
+    private var previewObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
-    init(file: URL, app: AppController) throws {
+    /// A native list is bound to both the check and its original caret. Previewing entries never edits a buffer.
+    private struct DeskCompletionSession {
+        let snapshot: DeskSnapshot
+        let selection: NSRange
+        let range: NSRange
+        let items: [DeskCompletionItem]
+        let titles: [String]
+    }
+    private var deskCompletion: DeskCompletionSession?
+
+    init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil,
+         previewClock: SkinClock = .live, previewExecutor: SkinExecutor = MainSkinExecutor.shared,
+         previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
+         previewPreferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
+         previewColors: @escaping (NSAppearance) throws -> MacAppearance.ProgramValues = MacAppearance.programValues(for:),
+         previewSystem: SystemDataSource = SystemMonitor.shared,
+         package: DeskCodePackageInput? = nil) throws {
         self.file = file.standardizedFileURL
         self.app = app
+        if let package {
+            guard self.file == package.file else { throw DeskPackageMemberIO.Failure.invalidMember }
+            packageContext = PackageContext(root: package.capture.root, identity: package.capture.rootIdentity, member: package.member)
+            packageMemberIO = try DeskPackageMemberIO(capture: package.capture, member: package.member)
+        } else { packageContext = nil; packageMemberIO = nil }
         codeView = CodeEditorView(frame: NSRect(x: 0, y: 0, width: 760, height: 580))
         codeView.setFontSize(CGFloat(app.state.editor.codeFontSize))
-        try codeView.open(files: [self.file], current: self.file)
+        if self.file.pathExtension.lowercased() == "desk" {
+            codeView.decodeDocument = DeskCodeDocumentChecking.document(from:file:)
+            codeView.requiresUnchangedSourceForAutomaticCommit = true
+        }
+        if let package, let packageMemberIO {
+            let editor = codeView
+            editor.readData = { file in
+                guard file == package.file else { throw DeskPackageMemberIO.Failure.invalidMember }
+                return package.memberBytes
+            }
+            defer { editor.readData = packageMemberIO.read }
+            try editor.open(files: [self.file], current: self.file)
+        } else {
+            try codeView.open(files: [self.file], current: self.file)
+        }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 580),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -37,6 +102,149 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = codeView
         super.init(window: window)
         window.delegate = self
+        if self.file.pathExtension.lowercased() == "desk" {
+            let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
+            let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue, package: package)
+            deskChecking = checking
+            let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
+                checking?.imageResources(for: snapshot) ?? .pending
+            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale,
+               preferredLanguages: previewPreferredLanguages, colors: previewColors,
+               system: previewSystem, presentsOptions: app.presentsWindows) { [weak self] snapshot in
+                guard let self, self.readError == nil else { return false }
+                return self.deskChecking?.isCurrent(snapshot) == true
+            }
+            deskPreview = preview
+            preview.onMoreStyles = { [weak self] in self?.reveal(line: nil) }
+            let codeController = NSViewController()
+            codeController.view = codeView
+            let split = NSSplitViewController()
+            split.splitView.isVertical = true
+            let codeItem = NSSplitViewItem(viewController: codeController)
+            let previewItem = NSSplitViewItem(viewController: preview)
+            codeItem.minimumThickness = 360
+            previewItem.minimumThickness = 280
+            split.addSplitViewItem(codeItem)
+            split.addSplitViewItem(previewItem)
+            let inspector = StudioInspectorViewController()
+            let inspectorItem: NSSplitViewItem
+            if #available(macOS 14.0, *) {
+                inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+            } else {
+                inspectorItem = NSSplitViewItem(viewController: inspector)
+            }
+            inspectorItem.minimumThickness = StudioWindowController.inspectorMinWidth
+            inspectorItem.maximumThickness = StudioWindowController.inspectorMaxWidth
+            inspectorItem.canCollapse = true
+            inspectorItem.isCollapsed = true
+            deskInspector = inspector
+            deskInspectorItem = inspectorItem
+            split.addSplitViewItem(inspectorItem)
+            window.contentViewController = split
+            _ = inspector.view
+            inspector.scrollView.contentInsets = .init(top: 0, left: 0, bottom: 0, right: 0)
+            inspector.pageView.showsSearch = false
+            inspector.onEscape = { [weak self] in self?.setDeskInspectorShown(false) }
+            deskInspectorObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
+                self?.deskInspectorVisibilityChanged()
+            }
+            preview.onSelectElement = { [weak self] snapshot, element in
+                self?.selectDeskElement(element, from: snapshot, reveal: true)
+            }
+            codeView.onUserSelection = { [weak self] file, _, revision in
+                guard let self, file == self.file, revision == self.codeView.textRevision else { return }
+                self.updateDeskInspectorSelection()
+            }
+            window.contentMinSize = NSSize(width: 700, height: 240)
+            window.setContentSize(NSSize(width: 1040, height: 580))
+            let toolbar = NSToolbar(identifier: "DesksetCodeFileToolbar")
+            toolbar.delegate = self
+            toolbar.displayMode = .iconAndLabel
+            window.toolbar = toolbar
+            codeView.onCompletionRange = { [weak self] in
+                self?.prepareDeskCompletion() ?? NSRange(location: NSNotFound, length: 0)
+            }
+            codeView.onCompletions = { [weak self] range in self?.deskCompletionWords(for: range) ?? [] }
+            codeView.onInsertCompletion = { [weak self] word, range, movement, isFinal in
+                self?.insertDeskCompletion(word, range: range, movement: movement, isFinal: isFinal)
+            }
+            let decorations = DeskCodeDecorations()
+            decorations.attach(to: codeView)
+            deskDecorations = decorations
+            checking.onSnapshot = { [weak self] snapshot in self?.showDeskCheck(snapshot) }
+            codeView.onReadError = { [weak self] _, error in
+                let message: String
+                if self?.packageContext != nil {
+                    guard let reason = DeskPackageFlow.message(for: error) else { return }
+                    message = reason
+                } else {
+                    message = error.localizedDescription
+                }
+                self?.deskCompletion = nil
+                self?.readError = message
+                self?.deskDecorations?.clear()
+                self?.showDeskInspectorEmpty(message: message)
+                if let self, let snapshot = self.deskChecking?.snapshot {
+                    self.deskPreview?.show(snapshot, readError: message)
+                }
+                self?.window?.subtitle = message
+                Log.write("Code editor: \(message)", level: .error)
+            }
+            if package != nil, let packageMemberIO {
+                let updateCheck = codeView.onTextRevision
+                codeView.onTextRevision = { [weak self] url, revision, text in
+                    self?.packageInstallation?.cancel()
+                    self?.packageActivation?.cancel()
+                    updateCheck?(url, revision, text)
+                }
+                checking.onPackageFailure = { [weak self] error in
+                    guard let self, !self.hasClosed else { return }
+                    self.codeView.onReadError?(self.file, error)
+                }
+                codeView.onCommit = { [weak self] url, text in
+                    guard let self, !self.hasClosed,
+                          let bytes = self.codeView.document(for: url)?.data(for: text) else { return false }
+                    do { try packageMemberIO.write(bytes, to: url) }
+                    catch { self.codeView.onReadError?(url, error); return false }
+                    // Let the editor update its real disk base before refreshing sibling/package inputs.
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, !self.hasClosed, self.packagePlacement == nil, !self.app.isTerminating else { return }
+                        self.deskChecking?.refreshPackage()
+                    }
+                    return true
+                }
+                codeView.onTypedText = { [weak self] _, text in
+                    guard let self, text != nil, !self.hasClosed, self.packagePlacement == nil else { return }
+                    self.deskChecking?.refreshPackage()
+                }
+            }
+            showDeskCheck(checking.snapshot)
+            let workspace = NSWorkspace.shared.notificationCenter
+            let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifySystemWake()
+            }
+            previewObservers.append((workspace, wake))
+            let center = NotificationCenter.default
+            let colors = center.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak preview] _ in
+                preview?.refreshEnvironment()
+            }
+            previewObservers.append((center, colors))
+            for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
+                         NSNotification.Name.NSSystemClockDidChange] {
+                let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak preview] _ in
+                    preview?.refreshDateInput()
+                }
+                previewObservers.append((center, token))
+            }
+            let power = center.addObserver(forName: .desksetPowerSourceDidChange, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifyPowerChange()
+            }
+            previewObservers.append((center, power))
+            let details = center.addObserver(forName: .desksetBatteryDetailsDidChange, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifyBatteryDetailsReady()
+            }
+            previewObservers.append((center, details))
+        }
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes
             app?.state.updateEditor { $0.codeFontSize = min(max(Double(size), range.lowerBound), range.upperBound) }
@@ -51,6 +259,19 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    deinit {
+        activeStagedLease?.discard()
+        for (center, token) in previewObservers { center.removeObserver(token) }
+    }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        deskPreview?.setVisible(window?.occlusionState.contains(.visible) == true)
+    }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        codeView.undoManager(for: codeView.textView)
+    }
+
     /// Shows `line` (1-based), caret at its start.
     func reveal(line: Int?) {
         guard let line, line > 0 else { return }
@@ -59,7 +280,18 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     /// Coming back to the window: the file as it is on disk now (a clean buffer takes it, keeping the caret).
     func windowDidBecomeKey(_ notification: Notification) {
+        if packageContext != nil {
+            guard !hasClosed, !app.isTerminating else { return }
+            deskChecking?.refreshPackage(reloadMember: true)
+            return
+        }
+        let revision = codeView.textRevision
+        readError = nil
         codeView.reloadFromDisk(keepCaret: true)
+        if let checking = deskChecking {
+            if readError == nil, codeView.textRevision == revision { checking.recheck() }
+            showDeskCheck(checking.snapshot)
+        }
     }
 
     /// Closing (or quitting) saves the edits; when that fails: Save (try again), Discard Changes, or Cancel.
@@ -98,7 +330,255 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        hasClosed = true
+        packagePlacement = nil
+        packageInstallation?.cancel()
+        packageInstallation = nil
+        packageActivation?.cancel()
+        packageActivation = nil
+        activeStagedLease?.discard()
+        activeStagedLease = nil
+        for (center, token) in previewObservers { center.removeObserver(token) }
+        previewObservers.removeAll()
+        deskCompletion = nil
+        deskInspectorObservation = nil
+        deskElementInspector = nil
+        deskInspector?.pageView.onEvent = nil
+        deskInspector?.onEscape = nil
+        codeView.onUserSelection = nil
+        codeView.onCompletionRange = nil
+        codeView.onCompletions = nil
+        codeView.onInsertCompletion = nil
+        deskPreview?.close()
+        deskChecking?.close()
+        deskDecorations?.detach()
         app.codeFileWindowDidClose(self)
+    }
+
+    /// Only the current finished check supplies cards, ranges and actions. Pending checks and failed reads clear
+    /// the previous display; the existing subtitle and document save/conflict behavior remain the same.
+    private func showDeskCheck(_ snapshot: DeskSnapshot) {
+        if packageContext != nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true { readError = nil }
+        deskCompletion = nil
+        deskPreview?.show(snapshot, readError: readError)
+        updateDeskInspectorSelection()
+        if readError == nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true {
+            deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
+                                  language: snapshot.options.messageLanguage,
+                                  actions: { diagnostic in
+                                      snapshot.codeActions(for: diagnostic).filter { $0.edit.changedFiles == [snapshot.file] }
+                                  }, onAction: { [weak self] action in
+                                      _ = self?.applyDeskAction(action, from: snapshot)
+                                  })
+        } else {
+            deskDecorations?.clear()
+        }
+        if let readError { window?.subtitle = readError }
+        else if snapshot.isChecked, let diagnostic = snapshot.diagnostics.first(where: \.isProblem) {
+            window?.subtitle = diagnostic.message
+        } else {
+            window?.subtitle = file.deletingLastPathComponent().path
+        }
+    }
+
+    /// A menu from an older check cannot modify the current buffer or read a sibling file.
+    @discardableResult
+    func applyDeskAction(_ action: DeskCodeAction, from snapshot: DeskSnapshot) -> Bool {
+        guard readError == nil, window != nil, let checking = deskChecking else { return false }
+        return checking.apply(action.edit, from: snapshot, actionName: action.title)
+    }
+
+    // MARK: Checked element inspector
+
+    var isDeskInspectorShown: Bool { deskInspectorItem?.isCollapsed == false }
+
+    func setDeskInspectorShown(_ shown: Bool) {
+        guard let item = deskInspectorItem, deskChecking != nil else { return }
+        if item.isCollapsed == shown { item.isCollapsed = !shown }
+        else { deskInspectorVisibilityChanged() }
+    }
+
+    @objc private func toggleDeskInspector(_ sender: Any?) { setDeskInspectorShown(!isDeskInspectorShown) }
+
+    private func deskInspectorVisibilityChanged() {
+        let shown = isDeskInspectorShown
+        deskPreview?.setInspecting(shown)
+        let minimum = shown ? 360 + 280 + StudioWindowController.inspectorMinWidth + 2 : 700
+        window?.contentMinSize = NSSize(width: minimum, height: 240)
+        if let window, window.contentLayoutRect.width < minimum {
+            window.setContentSize(NSSize(width: minimum, height: window.contentLayoutRect.height))
+        }
+        if shown { updateDeskInspectorSelection() }
+        else { showDeskInspectorEmpty() }
+        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Self.toolbarInspector }) {
+            item.toolTip = StudioText[shown ? .hideInspector : .showInspector]
+        }
+    }
+
+    private func updateDeskInspectorSelection() {
+        guard isDeskInspectorShown, readError == nil, let checking = deskChecking,
+              checking.snapshot.isChecked, checking.isCurrent(checking.snapshot) else {
+            showDeskInspectorEmpty(message: readError ?? StudioText[.deskPreviewChecking])
+            return
+        }
+        let snapshot = checking.snapshot, selection = codeView.textView.selectedRange()
+        let (end, overflow) = selection.location.addingReportingOverflow(selection.length)
+        guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
+              !overflow, end <= snapshot.index.utf16Count,
+              snapshot.index.clampedUTF16(selection.location) == selection.location,
+              snapshot.index.clampedUTF16(end) == end else { showDeskInspectorEmpty(); return }
+        let first = snapshot.elementAt(snapshot.index.position(utf16: selection.location))?.element
+        if selection.length > 0 {
+            let last = snapshot.elementAt(snapshot.index.position(utf16: max(selection.location, end - 1)))?.element
+            guard first == last else {
+                _ = deskPreview?.selectElement(nil, from: snapshot)
+                showDeskInspectorEmpty()
+                return
+            }
+        }
+        selectDeskElement(first, from: snapshot, reveal: false)
+    }
+
+    private func selectDeskElement(_ element: ElementRef?, from snapshot: DeskSnapshot, reveal: Bool) {
+        guard isDeskInspectorShown, readError == nil, deskChecking?.isCurrent(snapshot) == true,
+              snapshot.isChecked else { showDeskInspectorEmpty(); return }
+        if reveal {
+            let range = element.flatMap { snapshot.range(of: $0)?.callRange }
+            // API selection cancels old caret notifications without taking keyboard focus or making an edit.
+            let selection = range.map { NSRange(location: $0.start.offset, length: 0) }
+                ?? codeView.textView.selectedRange()
+            guard codeView.reveal(range: selection, in: file) else { showDeskInspectorEmpty(); return }
+        }
+        _ = deskPreview?.selectElement(element, from: snapshot)
+        guard let element, let inspector = DeskElementInspector(snapshot: snapshot, element: element) else {
+            showDeskInspectorEmpty()
+            return
+        }
+        deskElementInspector = inspector
+        showDeskInspectorPage(inspector)
+    }
+
+    private func showDeskInspectorEmpty(message: String? = nil) {
+        deskElementInspector = nil
+        deskInspector?.pageView.onEvent = nil
+        deskInspector?.show(StudioPage(id: "desk-inspector-empty", title: StudioText[.inspector],
+                                      subtitle: message ?? StudioText[.deskInspectorSelectElement]))
+    }
+
+    private func showDeskInspectorPage(_ inspector: DeskElementInspector, notice: String? = nil) {
+        var page = inspector.page
+        if let notice {
+            page.sections.append(.init(id: "desk-inspector-feedback", title: "", items: [
+                .init(id: "desk-inspector-feedback", kind: .note(.init(text: notice, link: nil,
+                                                                       symbol: "exclamationmark.triangle"))),
+            ]))
+        }
+        deskInspector?.show(page)
+        deskInspector?.pageView.onEvent = { [weak self] event in
+            _ = self?.applyDeskInspectorEvent(event, from: inspector)
+        }
+    }
+
+    /// The displayed page is a proposal bound to one selected element and one checked source snapshot.
+    @discardableResult
+    func applyDeskInspectorEvent(_ event: StudioPageEvent, from inspector: DeskElementInspector) -> Bool {
+        guard isDeskInspectorShown, readError == nil, let checking = deskChecking,
+              checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element,
+              deskElementInspector?.snapshot.generation == inspector.snapshot.generation,
+              let operation = inspector.operation(for: event) else { return false }
+        switch operation {
+        case .showInCode(let range):
+            guard codeView.reveal(range: NSRange(location: range.start.offset, length: range.length), in: file) else { return false }
+            window?.makeFirstResponder(codeView.textView)
+            return true
+        case .rejected(let message):
+            showDeskInspectorPage(inspector, notice: message)
+            return false
+        case .edit(let edit, let actionName):
+            let source = codeView.checkSourceUnchanged(for: file)
+            guard checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element else {
+                updateDeskInspectorSelection()
+                return false
+            }
+            switch source {
+            case .changed:
+                showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorDiskChanged])
+                return false
+            case .unavailable:
+                showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorSourceUnavailable])
+                return false
+            case .unchanged: break
+            }
+            guard checking.apply(edit, from: inspector.snapshot, actionName: actionName) else {
+                if checking.isCurrent(inspector.snapshot), deskElementInspector?.element == inspector.element {
+                    showDeskInspectorPage(inspector, notice: StudioText[.deskInspectorEditRejected])
+                } else { updateDeskInspectorSelection() }
+                return false
+            }
+            return true
+        }
+    }
+
+    // MARK: Native checked completions
+
+    private func prepareDeskCompletion() -> NSRange {
+        deskCompletion = nil
+        let absent = NSRange(location: NSNotFound, length: 0)
+        guard readError == nil, window != nil, let checking = deskChecking,
+              codeView.textView.isEditable, !codeView.textView.hasMarkedText() else { return absent }
+        let snapshot = checking.snapshot
+        let selection = codeView.textView.selectedRange()
+        guard snapshot.isChecked, checking.isCurrent(snapshot), selection.length == 0,
+              selection.location != NSNotFound, selection.location >= 0,
+              selection.location <= snapshot.index.utf16Count,
+              snapshot.index.clampedUTF16(selection.location) == selection.location else { return absent }
+        let list = snapshot.completions(at: snapshot.index.position(utf16: selection.location))
+        let start = list.context.range.start.offset, end = list.context.range.end.offset
+        guard !list.items.isEmpty, start >= 0, start <= selection.location, selection.location <= end,
+              end <= snapshot.index.utf16Count, snapshot.index.clampedUTF16(start) == start,
+              snapshot.index.clampedUTF16(end) == end else { return absent }
+        // AppKit completes the prefix before the caret; the accepted service edit still replaces the whole word.
+        let range = NSRange(location: start, length: selection.location - start)
+        var used: Set<String> = []
+        let titles = list.items.map { item -> String in
+            let base = item.label + " — " + item.detail.text(in: snapshot.options.messageLanguage)
+            var title = base, ordinal = 2
+            while !used.insert(title).inserted {
+                title = base + " (\(ordinal))"
+                ordinal += 1
+            }
+            return title
+        }
+        deskCompletion = DeskCompletionSession(snapshot: snapshot, selection: selection, range: range,
+                                              items: list.items, titles: titles)
+        return range
+    }
+
+    private func deskCompletionWords(for range: NSRange) -> [String] {
+        guard let session = deskCompletion, range == session.range, readError == nil,
+              codeView.textView.selectedRange() == session.selection, codeView.textView.isEditable,
+              !codeView.textView.hasMarkedText(), session.snapshot.isChecked,
+              deskChecking?.isCurrent(session.snapshot) == true else { deskCompletion = nil; return [] }
+        return session.titles
+    }
+
+    private func insertDeskCompletion(_ word: String, range: NSRange, movement: Int, isFinal: Bool) {
+        // Native keyboard navigation previews labels. Only a final selection may create one complete user edit;
+        // AppKit also sends a final insertion of the original text when the list is cancelled.
+        guard isFinal else { return }
+        defer { deskCompletion = nil }
+        guard movement != NSCancelTextMovement, let session = deskCompletion, range == session.range,
+              readError == nil, window != nil, codeView.textView.selectedRange() == session.selection,
+              !codeView.textView.hasMarkedText(), let checking = deskChecking,
+              let selected = session.titles.firstIndex(of: word), session.items.indices.contains(selected) else { return }
+        let item = session.items[selected]
+        // Use the catalog's plain fallback. Snippet markers never become document text; all extra edits address
+        // the same original buffer and are validated before normalization by the checker.
+        let edits = ([DeskTextEditU16(range: item.range, newText: item.plainText)] + item.additionalEdits).map { edit in
+            DeskTextEditU16(range: edit.range,
+                            newText: CodeTextView.convertingLineEndings(edit.newText, to: codeView.textView.lineEnding))
+        }
+        _ = checking.apply(edits, from: session.snapshot, actionName: StudioText.format(.completeNamed, item.label))
     }
 
     // MARK: Which files
@@ -108,7 +588,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     static let textExtensions: Set<String> = [
         "ini", "inc", "lua", "txt", "text", "cfg", "conf", "config", "json", "xml", "css", "js", "html", "htm", "md",
         "markdown", "nfo", "log", "csv", "tsv", "yaml", "yml", "toml", "bat", "cmd", "ps1", "ahk", "vbs", "sh", "py",
-        "rainmeter", "list", "dat",
+        "rainmeter", "list", "dat", "desk",
     ]
 
     /// Whether the built-in code editor can show `url`: a known text extension, a type macOS knows as plain text or
@@ -128,5 +608,213 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             return true
         }
         return !sample.contains(0)
+    }
+
+    // MARK: Place on Desktop
+
+    enum PlaceOnDesktopError: Error, Equatable {
+        case notDeskFile, documentNotChecked, saveFailed, cancelled
+    }
+
+    static let toolbarPlaceOnDesktop = NSToolbarItem.Identifier("codeFile.placeOnDesktop")
+    static let toolbarInspector = NSToolbarItem.Identifier("codeFile.inspector")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop, Self.toolbarInspector]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.toolbarPlaceOnDesktop, Self.toolbarInspector]
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if id == Self.toolbarInspector {
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = StudioText[.inspector]
+            item.paletteLabel = item.label
+            item.toolTip = StudioText[isDeskInspectorShown ? .hideInspector : .showInspector]
+            item.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: item.label)
+            item.target = self
+            item.action = #selector(toggleDeskInspector(_:))
+            return item
+        }
+        guard id == Self.toolbarPlaceOnDesktop else { return nil }
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.label = StudioText[.placeOnDesktop]
+        item.paletteLabel = item.label
+        item.toolTip = StudioText[.placeOnDesktop]
+        item.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: item.label)
+        item.target = self
+        item.action = #selector(placeOnDesktop(_:))
+        return item
+    }
+
+    @objc func placeOnDesktop(_ sender: Any? = nil) {
+        placeOnDesktop(sourceID: UUID(), instanceID: UUID(), completion: { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                self.showPlaceOnDesktopError(error)
+            }
+        })
+    }
+
+    func placeOnDesktop(sourceID: UUID = UUID(), instanceID: UUID = UUID(),
+                        prepareQueue: DispatchQueue = DispatchQueue.global(qos: .userInitiated),
+                        completion: ((Result<DeskWidgetWindowController, Error>) -> Void)? = nil) {
+        precondition(Thread.isMainThread)
+        if packageContext != nil {
+            placePackageOnDesktop(sourceID: sourceID, instanceID: instanceID, prepareQueue: prepareQueue, completion: completion)
+            return
+        }
+        guard file.pathExtension.lowercased() == "desk", let checking = deskChecking else {
+            completion?(.failure(PlaceOnDesktopError.notDeskFile))
+            return
+        }
+        if codeView.hasUncommittedChanges && !codeView.commitNow(explicit: true) {
+            completion?(.failure(PlaceOnDesktopError.saveFailed))
+            return
+        }
+
+        let snapshot = checking.snapshot
+        guard snapshot.isChecked, checking.isCurrent(snapshot) else {
+            completion?(.failure(PlaceOnDesktopError.documentNotChecked))
+            return
+        }
+
+        let widgetsRoot = app.widgetsDirectory
+        do {
+            let admitted = try DeskWidgetInstallation.admit(snapshot, file: file, current: checking.isCurrent)
+            prepareQueue.async { [weak self] in
+                var staged: DeskWidgetInstallation.Staged?
+                var prepError: Error?
+                do {
+                    staged = try DeskWidgetInstallation.prepare(admitted, sourceID: sourceID, instanceID: instanceID, root: widgetsRoot)
+                } catch {
+                    prepError = error
+                }
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let checking = self.deskChecking, checking.isCurrent(snapshot), self.window != nil else {
+                        // Contract: If editor window closes before install commit, discard staging
+                        staged?.discard()
+                        completion?(.failure(PlaceOnDesktopError.cancelled))
+                        return
+                    }
+
+                    if let prepError {
+                        completion?(.failure(prepError))
+                        return
+                    }
+
+                    guard let readyStaged = staged else {
+                        completion?(.failure(PlaceOnDesktopError.cancelled))
+                        return
+                    }
+
+                    self.activeStagedLease = readyStaged
+                    defer { self.activeStagedLease = nil }
+
+                    do {
+                        // Contract: Commit inactive state, then activate standalone window from installed entry
+                        let installed = try readyStaged.commit(to: self.app.state, current: checking.isCurrent)
+                        let controller = try self.app.activateDeskWidget(source: installed.source, instance: installed.instance)
+                        completion?(.success(controller))
+                    } catch {
+                        completion?(.failure(error))
+                    }
+                }
+            }
+        } catch {
+            completion?(.failure(error))
+        }
+    }
+
+    private func placePackageOnDesktop(sourceID: UUID, instanceID: UUID, prepareQueue: DispatchQueue,
+                                       completion: ((Result<DeskWidgetWindowController, Error>) -> Void)?) {
+        guard !hasClosed, !app.isTerminating, !app.deskPackages.isTerminating, let checking = deskChecking else {
+            completion?(.failure(PlaceOnDesktopError.cancelled)); return
+        }
+        packageInstallation?.cancel()
+        packageActivation?.cancel()
+        let requestID = UUID()
+        packagePlacement = requestID
+        if codeView.hasUncommittedChanges && !codeView.commitNow(explicit: true) {
+            packagePlacement = nil
+            completion?(.failure(PlaceOnDesktopError.saveFailed)); return
+        }
+        let revision = codeView.textRevision
+        checking.refreshPackage { [weak self] result in
+            guard let self else { completion?(.failure(PlaceOnDesktopError.cancelled)); return }
+            do {
+                let package = try result.get()
+                let snapshot = package.snapshot
+                guard self.packagePlacement == requestID, !self.hasClosed, !self.app.isTerminating,
+                      self.codeView.textRevision == revision, !self.codeView.hasUncommittedChanges,
+                      checking.isCurrent(snapshot),
+                      self.codeView.document(for: self.file)?.data(for: self.codeView.text) == package.input.memberBytes else {
+                    throw PlaceOnDesktopError.cancelled
+                }
+                let members = package.input.package.widgetFiles.map { member in
+                    DeskWidgetInstallation.PackageMemberIDs(file: member,
+                        sourceID: member == package.input.member ? sourceID : UUID(),
+                        instanceID: member == package.input.member ? instanceID : UUID())
+                }
+                let plan = DeskWidgetInstallation.PackagePlan(requestID: requestID, packageID: UUID(),
+                    selected: package.input.member, members: members)
+                let queue = DispatchQueue(label: "deskset.package.placement", target: prepareQueue)
+                self.packageInstallation = self.app.deskPackages.install(package, plan: plan, queue: queue,
+                    current: { [weak self] in
+                        guard let self else { return false }
+                        return !self.hasClosed && self.packagePlacement == requestID &&
+                            self.codeView.textRevision == revision && !self.codeView.hasUncommittedChanges &&
+                            checking.isCurrent(snapshot)
+                    }, completion: { [weak self] installed in
+                        guard let self else { completion?(.failure(PlaceOnDesktopError.cancelled)); return }
+                        do {
+                            let installed = try installed.get()
+                            // Registration is durable. A later edit or close retains the inactive package and
+                            // invalidates placement even if the worker has already committed its finish decision.
+                            guard !self.hasClosed, self.packagePlacement == requestID, !self.app.isTerminating,
+                                  !self.app.deskPackages.isTerminating,
+                                  self.codeView.textRevision == revision, !self.codeView.hasUncommittedChanges,
+                                  checking.isCurrent(snapshot) else { throw PlaceOnDesktopError.cancelled }
+                            self.packageActivation = self.app.activateDeskWidgetAsync(instanceID: installed.selectedInstanceID) {
+                                [weak self] result in
+                                self?.finishPackagePlacement(requestID)
+                                completion?(result)
+                            }
+                        } catch {
+                            let cancelled = self.hasClosed || self.packagePlacement != requestID || self.codeView.textRevision != revision
+                            self.finishPackagePlacement(requestID)
+                            completion?(.failure(cancelled ? PlaceOnDesktopError.cancelled : error))
+                        }
+                    })
+            } catch {
+                let cancelled = self.hasClosed || self.packagePlacement != requestID || self.codeView.textRevision != revision
+                self.finishPackagePlacement(requestID)
+                completion?(.failure(cancelled ? PlaceOnDesktopError.cancelled : error))
+            }
+        }
+    }
+
+    private func finishPackagePlacement(_ requestID: UUID) {
+        guard packagePlacement == requestID else { return }
+        packagePlacement = nil
+        packageInstallation = nil
+        packageActivation = nil
+    }
+
+    private func showPlaceOnDesktopError(_ error: Error) {
+        guard !hasClosed, !app.isTerminating, let message = DeskPackageFlow.message(for: error) else { return }
+        if app.presentsWindows, let window {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = StudioText[.placeOnDesktop]
+            alert.informativeText = message
+            alert.beginSheetModal(for: window)
+        } else {
+            Log.write("\(StudioText[.placeOnDesktop]): \(message)", level: .warning)
+        }
     }
 }
