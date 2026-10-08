@@ -77,10 +77,16 @@ enum DeskProgramResources {
             if let folder { try? FileManager.default.removeItem(at: folder) }
         }
 
+        /// A drawing owner consumes its already qualified package snapshot. It checks only those immutable
+        /// private images here; refreshing the original package is separate file-worker work.
+        func copiesUnchanged() -> Bool {
+            images.values.allSatisfy { Images.imageStamp(atPath: $0.path) == $0.stamp }
+        }
+
         /// Package validation reads the whole captured directory and belongs on a file worker, not Main or a
         /// drawing owner. Single-document inputs keep their existing referenced-source checks.
         func unchanged() -> Bool {
-            guard images.values.allSatisfy({ Images.imageStamp(atPath: $0.path) == $0.stamp }) else { return false }
+            guard copiesUnchanged() else { return false }
             if let capture {
                 do { try capture.validateUnchanged(); return true }
                 catch { return false }

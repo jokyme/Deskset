@@ -197,5 +197,23 @@ enum DeskPackageResourceSelfTests {
             t.check(!unchanged(second), "captured preparation uses whole membership")
             t.check(unchanged(legacy), "the pre-existing single-document entry checks its approved references")
         }
+
+        t.suite("App: Desk package resources: drawing checks only owned copies after whole-package qualification") {
+            let png = try encodedImage()
+            let folder = try root(t, files: [("image.png", png)])
+            let captured = try capture(folder), prepared = prepare(captured, ["image.png"])
+            defer { prepared.removeCopies() }
+            t.equal(prepared.failure, nil)
+            t.check(unchanged(prepared)); t.check(prepared.copiesUnchanged())
+            let owned = try image(prepared, "image.png")
+            try FileManager.default.removeItem(at: folder)
+            t.check(!unchanged(prepared), "explicit refresh still validates the entire original package")
+            t.check(prepared.copiesUnchanged(), "ordinary drawing does not reopen the now-absent package")
+            t.equal(try bytes(owned), png)
+            try (png + Data([0])).write(to: URL(fileURLWithPath: owned.path))
+            t.check(!prepared.copiesUnchanged(), "owned-copy damage remains a drawing failure")
+            prepared.removeCopies()
+            t.check(!prepared.copiesUnchanged(), "a released owner cannot reuse its removed private copy")
+        }
     }
 }

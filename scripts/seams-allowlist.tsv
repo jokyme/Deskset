@@ -39,7 +39,7 @@ mono.systemUptime	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Mana
 
 zone.localizedText	Sources/Deskset/App/CodeEditorSettings.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-background.mainHop	Sources/Deskset/App/DeskCodeDocumentChecking.swift	1	one explicitly opened Desk document's image preparation; current request/text/revision/service generation publishes on main, never a skin input
+background.mainHop	Sources/Deskset/App/DeskCodeDocumentChecking.swift	3	standalone image, full-package refresh and immutable image results publish only to the current Main-owned document generation
 effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner's 0700 temporary image directory, exact private copies and cleanup; user resources are read only
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
@@ -58,10 +58,10 @@ timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Se
 timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.global	Sources/Deskset/App/CodeFileWindowController.swift	1	staging and resource preparation off main thread before committing widget install; not a skin input
-background.mainHop	Sources/Deskset/App/CodeFileWindowController.swift	1	completion and UI presentation of staging result onto main thread; not a skin input
-background.queue	Sources/Deskset/App/CodeFileWindowController.swift	1	one explicitly opened Desk document checker; queue injected in tests, versioned results delivered on main; not a skin input
+background.mainHop	Sources/Deskset/App/CodeFileWindowController.swift	2	App document save refresh and install publication return to Main; current package request and saved revision reject stale results
+background.queue	Sources/Deskset/App/CodeFileWindowController.swift	2	injected document check queue and serial package installation queue keep file work off Main; tests hold their delivery
 event.KVO	Sources/Deskset/App/CodeFileWindowController.swift	1	window-owned inspector visibility switches preview selection mode; observer released on close, not a skin input
-random.UUID	Sources/Deskset/App/CodeFileWindowController.swift	2	default unique source and instance identifiers for standalone widget installation; not a skin input
+random.UUID	Sources/Deskset/App/CodeFileWindowController.swift	6	opaque source, instance, package and placement identities; no random widget values and no source-derived directory names
 zone.Locale.current	Sources/Deskset/App/CodeFileWindowController.swift	1	default preferred-language provider forwarded to the preview session; tests inject languages independently of regional formatting
 
 effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
@@ -203,7 +203,7 @@ random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a s
 wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 
-background.mainHop	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+background.mainHop	Sources/Deskset/AppController.swift	8	app lifecycle and package activation scheduling/publication/cancellation; Main guards request, source, language and active intent; cancellation cannot reenter a partial update, and quit replies follow worker cleanup acknowledgements
 effect.fileWrite	Sources/Deskset/AppController.swift	2	app files (state, log, caches); not a skin effect
 effect.terminate	Sources/Deskset/AppController.swift	2	app lifecycle, menus and single-instance handover; not a skin input
 effect.workspace	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
@@ -217,7 +217,7 @@ wait.runLoop	Sources/Deskset/AppController.swift	1	bounded termination run loop 
 wall.Date()	Sources/Deskset/AppController.swift	2	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
 wall.sinceNow	Sources/Deskset/AppController.swift	1	termination deadline budget calculation; not a skin input
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
-zone.Locale.current	Sources/Deskset/AppController.swift	4	default language and regional locale providers forwarded through installed-widget activation and reload; captured only on Main and injectable in verification
+zone.Locale.current	Sources/Deskset/AppController.swift	6	default language and regional locale providers forwarded through synchronous and asynchronous activation; captured only on Main and injectable in verification
 
 effect.fileWrite	Sources/Deskset/AppState.swift	4	app files (state, log, caches); not a skin effect
 timer.asyncAfter	Sources/Deskset/AppState.swift	1	state.json saving and ordering; not a skin input
@@ -736,3 +736,12 @@ random.UUID	Sources/Deskset/BatteryDetailsService.swift	1	opaque request identit
 timer.asyncAfter	Sources/Deskset/BatteryDetailsService.swift	3	bounded child exit observation, complete-output grace and nonblocking reap retries on the reader queue; timeout and cancellation fixtures cover cleanup
 timer.dispatchSource	Sources/Deskset/BatteryDetailsService.swift	1	monotonic ten-second profile-reader deadline; cancelled at completion, with shorter injected deadlines for fixed child fixtures
 wall.Date()	Sources/Deskset/BatteryDetailsService.swift	1	injected Unix clock selects the shared hourly metadata bucket; no second owner cache and no timer between demanded reads
+background.queue	Sources/Deskset/App/DeskCodeDocumentChecking.swift	1	serial package file worker targets the injected checker queue; capture and image qualification never run in the Main resource getter
+background.mainHop	Sources/Deskset/App/DeskPackageFlow.swift	2	captured folder selection and document construction return to Main; cancelled open requests cannot create a window
+background.queue	Sources/Deskset/App/DeskPackageInstallationRequest.swift	1	default serial installation file queue; injected queues qualify cancellation, failed state save and asynchronous quit drain
+background.mainHop	Sources/Deskset/App/DeskPackageInstallationRequest.swift	3	immutable publication, worker cleanup acknowledgement and failed preparation reach Main exactly once; mutable file lease remains on its queue
+background.global	Sources/Deskset/App/DeskWidgetInstallation.swift	1	fallback retirement of an abandoned package lease keeps recursive filesystem cleanup off Main; normal retirement stays on the originating serial worker
+random.UUID	Sources/Deskset/AppController.swift	3	opaque activation attempt and restoration batch identities reject obsolete worker results; never runtime random inputs
+background.queue	Sources/Deskset/App/DeskPackageFlow.swift	1	explicit folder capture and package loading run on one serial file queue; native picker and editor creation remain on Main
+background.queue	Sources/Deskset/AppController.swift	1	serial full-package activation preparation; injected preparation closure supplies held race and failure fixtures
+random.UUID	Sources/Deskset/App/DeskPackageMemberIO.swift	1	exclusive temporary filename for one bounded editor write; owned descriptor identity gates rename and cleanup

@@ -141,6 +141,22 @@ enum StudioText {
         case deskWidgetInstallationFailed = "widget.installFailed"
         case deskWidgetPreparationFailed = "widget.prepareFailed"
         case deskWidgetInvalidFile = "widget.invalidFile"
+        case deskOpenPackageFolder = "desk.package.openFolder"
+        case deskPackageFolderMessage = "desk.package.folderMessage"
+        case deskPackageChooseWidget = "desk.package.chooseWidget"
+        case deskPackageChooseMessage = "desk.package.chooseMessage"
+        case deskPackageOpen = "desk.package.open"
+        case deskPackageNoWidgets = "desk.package.noWidgets"
+        case deskPackageInvalidFiles = "desk.package.invalidFiles"
+        case deskPackageUnreadable = "desk.package.unreadable"
+        case deskPackageChanged = "desk.package.changed"
+        case deskPackageSaveFailed = "desk.package.saveFailed"
+        case deskPackageUnsupported = "desk.package.unsupported"
+        case deskPackageNameConflict = "desk.package.nameConflict"
+        case deskPackageCollision = "desk.package.collision"
+        case deskPackageOperationFailed = "desk.package.operationFailed"
+        case deskInstalledWidgets = "desk.package.installedWidgets"
+        case deskNoInstalledWidgets = "desk.package.noInstalledWidgets"
         case deskActionCopyFailed = "desk.action.copyFailed"
         case deskActionOpenFailed = "desk.action.openFailed"
         case deskActionMissingValue = "desk.action.missingValue"
@@ -793,6 +809,28 @@ enum StudioText {
         .deskWidgetInstallationFailed: ("Cannot place on desktop: %@", "无法放到桌面：%@"),
         .deskWidgetPreparationFailed: ("Cannot prepare widget resources.", "无法准备小组件资源。"),
         .deskWidgetInvalidFile: ("Only .desk files can be placed on the desktop.", "只有 .desk 文件可以放到桌面。"),
+        .deskOpenPackageFolder: ("Open Widget Folder…", "打开小组件文件夹…"),
+        .deskPackageFolderMessage: ("Choose a folder containing Desk widgets and their resources.", "选择包含 Desk 小组件及其资源的文件夹。"),
+        .deskPackageChooseWidget: ("Choose a widget to edit", "选择要编辑的小组件"),
+        .deskPackageChooseMessage: ("Placing a widget on the desktop also installs the other widgets in this folder. They can be opened from Installed Widgets.",
+                                    "放到桌面时，会一同安装文件夹内的其他小组件。你可以从“已安装的小组件”中打开它们。"),
+        .deskPackageOpen: ("Open", "打开"),
+        .deskPackageNoWidgets: ("This folder has no readable .desk widgets at its top level.", "这个文件夹的顶层没有可读取的 .desk 小组件。"),
+        .deskPackageInvalidFiles: ("The widget file or folder is invalid or unavailable. Check its files and names.",
+                                   "小组件文件或文件夹无效或不可用，请检查文件及其名称。"),
+        .deskPackageUnreadable: ("Cannot read the widget file or folder.", "无法读取小组件文件或文件夹。"),
+        .deskPackageChanged: ("The widget file or folder changed. Reload the file or reopen the folder before continuing.",
+                              "小组件文件或文件夹已更改，请重新载入文件或重新打开文件夹后再继续。"),
+        .deskPackageSaveFailed: ("Cannot save the widget file or folder.", "无法存储小组件文件或文件夹。"),
+        .deskPackageUnsupported: ("Cannot prepare this widget. Open the document to check its problems.",
+                                  "无法准备此小组件，请打开文档查看问题。"),
+        .deskPackageNameConflict: ("The widget folder has conflicting file or folder names.",
+                                   "小组件文件夹中的文件或文件夹名称存在冲突。"),
+        .deskPackageCollision: ("The installation folder already exists. It was not replaced.",
+                                "安装文件夹已存在，未将其替换。"),
+        .deskPackageOperationFailed: ("The file operation could not be completed.", "无法完成文件操作。"),
+        .deskInstalledWidgets: ("Installed Widgets", "已安装的小组件"),
+        .deskNoInstalledWidgets: ("No Desk widgets installed", "尚未安装 Desk 小组件"),
         .deskActionCopyFailed: ("Cannot copy this text to the clipboard.", "无法将这段文字复制到剪贴板。"),
         .deskActionOpenFailed: ("Cannot open this target: %@", "无法打开此目标：%@"),
         .deskActionMissingValue: ("The click action needs an available text value. Check its data or provide a fallback.",

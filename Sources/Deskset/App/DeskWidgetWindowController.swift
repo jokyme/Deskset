@@ -227,6 +227,16 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             guard let self, let app, !app.isTerminating, !self.deactivationRequested,
                   let current = app.state.deskInstance(instanceID), current.sourceID == sourceID,
                   current.active || !self.isStarted else { return }
+            if app.state.deskSource(sourceID)?.packageID != nil {
+                app.activateDeskWidgetAsync(instanceID: instanceID, preferredLanguages: languages, dateLocale: locale,
+                    requiresActive: self.isStarted) { result in
+                    if case .failure(let error) = result, (error as? DeskWidgetActivation.Failure) != .cancelled {
+                        Log.write(StudioText[.deskWidgetUnavailable] + ": " + String(describing: error),
+                                  level: .warning, source: entry)
+                    }
+                }
+                return
+            }
             do {
                 try app.activateDeskWidget(instanceID: instanceID, preferredLanguages: languages, dateLocale: locale)
             } catch {
@@ -295,7 +305,17 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                 try self.saveOptions(input)
             }, moreStyles: { [weak self] in
                 guard let self, self.sessionID == session, !self.isClosing else { return }
-                self.app.showCodeFile(self.directory.appendingPathComponent(URL(fileURLWithPath: self.source.entry).lastPathComponent), line: nil)
+                let member = URL(fileURLWithPath: self.source.entry).lastPathComponent
+                if self.source.packageID != nil {
+                    self.app.deskPackages.open(root: self.directory, member: DeskFileID(path: member)) { [weak self] result in
+                        guard let self, self.sessionID == session, !self.isClosing, !self.isClosed,
+                              !self.app.isTerminating, case .failure(let error) = result,
+                              let message = DeskPackageFlow.message(for: error) else { return }
+                        self.app.alert(StudioText[.deskOpenPackageFolder], message)
+                    }
+                } else {
+                    self.app.showCodeFile(self.directory.appendingPathComponent(member), line: nil)
+                }
             })
         options.onClosed = { [weak self, weak options] in
             guard let self, self.optionsSession === options else { return }
@@ -745,6 +765,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         precondition(Thread.isMainThread)
         if deactivate {
             deactivationRequested = true
+            app.cancelDeskWidgetActivation(instanceID: instance.id)
             app.state.updateDeskInstance(instance.id) { $0.active = false }
         }
         if isClosed {

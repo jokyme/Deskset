@@ -206,6 +206,13 @@ final class DeskProgramHost {
         var runtime: ProgramRuntime
         var input: Input
         var prepared: DeskProgramResources.Prepared?
+
+        /// Projection, deferred completion, bitmap delivery and actions consume the same qualified inputs.
+        /// Package refresh is file-worker work; the owner checks only its private picture generation.
+        private var resourcesUnchanged: Bool {
+            guard let prepared else { return true }
+            return prepared.capture == nil ? prepared.unchanged() : prepared.copiesUnchanged()
+        }
         var context: SkinRenderContext? = SkinRenderContext()
         var scene: WidgetScene?
         var viewport: CGRect?
@@ -280,7 +287,7 @@ final class DeskProgramHost {
             if options != nil { cancelProjection() }
             do {
                 guard destinationReady else { throw ProgramRuntimeError.invalidEnvironment }
-                guard prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                guard prepared?.failure == nil, resourcesUnchanged else { throw Failure.resources }
                 if let pending {
                     if activation == nil {
                         pending.deferredRefresh = true
@@ -332,7 +339,7 @@ final class DeskProgramHost {
             do {
                 guard destinationReady, self.input == input, self.context === context,
                       context.drawing.icons.fontGeneration == projection.fontGeneration,
-                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                      prepared?.failure == nil, resourcesUnchanged else { throw Failure.resources }
                 let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
                     let pixels = style.fontSize * (96.0 / 72.0) * input.environment.scale
                     guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else { throw Failure.extent }
@@ -406,7 +413,7 @@ final class DeskProgramHost {
                 // Composition uses the same resources and destination as the eventual delivery, before the
                 // candidate's assignments/options/effects become accepted. Drawing consumes these exact pixels.
                 guard context.drawing.icons.fontGeneration == projection.fontGeneration,
-                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                      prepared?.failure == nil, resourcesUnchanged else { throw Failure.resources }
                 frames.commitPreparedBitmap(bitmap)
                 context.iconResources.commitProjection()
                 pending = nil
@@ -446,7 +453,7 @@ final class DeskProgramHost {
             let declinedComposition = compositionFailure && userCandidate && hasAcceptedDestination(for: projection)
             let retainsOptions = projection.options != nil && !compositionFailure
             if (retainsOptions || declinedComposition), let scene,
-               prepared?.failure == nil, prepared?.unchanged() ?? true {
+               prepared?.failure == nil, resourcesUnchanged {
                 cancelProjection()
                 projection.context.drawing.icons.cancelFrame()
                 arm(after: clock.now())
@@ -494,7 +501,7 @@ final class DeskProgramHost {
             do {
                 guard input == projection.input, destinationReady,
                       projection.context.drawing.icons.fontGeneration == projection.fontGeneration,
-                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                      prepared?.failure == nil, resourcesUnchanged else { throw Failure.resources }
                 let batch = try result.get()
                 guard batch.entries.count == demands.count,
                       Set(batch.entries.map(\.demand)) == Set(demands) else { throw Failure.resources }
@@ -538,13 +545,13 @@ final class DeskProgramHost {
         func capture(scale: CGFloat, appearance: String) -> SkinBitmapDrawing.Capture? {
             guard !isClosed, state == .ready, let scene, let context, let viewport else { return nil }
             guard scene.environment.scale == Double(scale), scene.environment.appearance.name == appearance,
-                  prepared?.unchanged() ?? true else { fail(Failure.resources); return nil }
+                  resourcesUnchanged else { fail(Failure.resources); return nil }
             return SkinBitmapDrawing.Capture(scene: scene, context: context, cycle: cycle, size: viewport.size,
                 source: source, origin: SkinPoint(x: viewport.minX, y: viewport.minY))
         }
 
         func validate(_ capture: SkinBitmapDrawing.Capture, in ctx: CGContext) -> Bool {
-            guard !isClosed, prepared?.unchanged() ?? true else { return false }
+            guard !isClosed, resourcesUnchanged else { return false }
             let icons = capture.context.drawing.icons
             icons.beginFrame()
             let ready = DeskProgramImageValidation.validate(capture.scene.drawingItems, in: ctx,

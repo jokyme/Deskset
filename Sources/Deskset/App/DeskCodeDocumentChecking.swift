@@ -2,8 +2,36 @@ import AppKit
 import DeskLanguage
 import DesksetCore
 
-/// The checker of one explicitly opened Desk document. The main thread owns the service; only its pending checks
-/// run elsewhere. Only compiled literal images may read the widget folder; no sibling Desk text or Skin is loaded.
+/// Construct on a file worker. The loader reads only the capture's bytes, including every sibling and package
+/// text; the explicitly opened member is the sole buffer the checker may overlay.
+struct DeskCodePackageInput: Sendable {
+    let capture: DeskPackageCapture
+    let package: DeskPackage
+    let member: DeskFileID
+    let memberBytes: Data
+    var file: URL { capture.root.appendingPathComponent(member.path).standardizedFileURL }
+
+    init(capture: DeskPackageCapture, member: DeskFileID) throws {
+        guard DeskPackagePath.kind(of: member.path) == .widget,
+              let components = DeskPackagePath.safeComponents(member.path), components.count == 1,
+              DeskPackagePath.sameBytes(components[0], member.path),
+              let entry = capture.files.first(where: { DeskPackagePath.sameBytes($0.path, member.path) }) else {
+            throw DeskPackageMemberIO.Failure.invalidMember
+        }
+        self.capture = capture
+        self.member = member
+        memberBytes = entry.bytes
+        package = try PackageLoader.load(capture.source, limits: capture.limits)
+    }
+}
+
+struct DeskCodePackageSnapshot: Sendable {
+    let input: DeskCodePackageInput
+    let snapshot: DeskSnapshot
+}
+
+/// Main owns the service and publication. Standalone documents retain their explicit-image-only path; an
+/// explicitly selected package uses immutable sibling input and file-worker freshness, never Main bulk reads.
 final class DeskCodeDocumentChecking {
     let file: URL
     let fileID: DeskFileID
@@ -17,19 +45,53 @@ final class DeskCodeDocumentChecking {
     private var imageInput = DeskProgramResources.Input.ready([:])
     private(set) var snapshot: DeskSnapshot
     var onSnapshot: ((DeskSnapshot) -> Void)?
+    var onPackageFailure: ((Error) -> Void)?
 
-    init(file: URL, editor: CodeEditorView, checkingOn queue: DispatchQueue) {
+    private let packageRootIdentity: DeskPackageCapture.Identity?
+    private let packageQueue: DispatchQueue
+    private var packageInput: DeskCodePackageInput?
+    private var packageRequest: UInt64 = 0
+    private var captureRevision: UInt64 = 0
+    private var packageReading = false
+    private var packageReady = false
+    private var packageNeedsValidation = true
+    private var reloadingPackage = false
+    private var packageWork: Cancellation?
+    private var imageWork: Cancellation?
+    private var packageCompletion: ((Result<DeskCodePackageSnapshot, Error>) -> Void)?
+
+    private final class Cancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+        func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    }
+
+    private struct ImageFailure: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    init(file: URL, editor: CodeEditorView, checkingOn queue: DispatchQueue, package: DeskCodePackageInput? = nil) {
         precondition(Thread.isMainThread)
         self.file = file.standardizedFileURL
-        fileID = DeskFileID(path: file.lastPathComponent)
+        fileID = package?.member ?? DeskFileID(path: file.lastPathComponent)
         self.editor = editor
         checkQueue = queue
+        packageQueue = DispatchQueue(label: "deskset.document.package", target: queue)
+        packageInput = package
+        packageRootIdentity = package?.capture.rootIdentity
         var options = DeskServiceOptions()
         options.fonts = DeskFontCatalog()
         options.symbols = DeskSymbolCatalog()
         options.messageLanguage = Self.language
-        service = DeskLanguageService(openFile: fileID, files: [fileID: editor.text], options: options,
-                                      version: editor.textRevision)
+        if let package {
+            service = DeskLanguageService(package: package.package.settingText(editor.text, of: fileID),
+                                          openFile: fileID, options: options, version: editor.textRevision)
+        } else {
+            service = DeskLanguageService(openFile: fileID, files: [fileID: editor.text], options: options,
+                                          version: editor.textRevision)
+        }
         snapshot = service.snapshot
         prepareImages(for: snapshot)
         editor.onTextRevision = { [weak self] url, revision, text in
@@ -69,7 +131,7 @@ final class DeskCodeDocumentChecking {
 
     private func update(file url: URL, revision: Int, text: String) {
         precondition(Thread.isMainThread)
-        guard !closed, url.standardizedFileURL == file, let editor,
+        guard !closed, !reloadingPackage, url.standardizedFileURL == file, let editor,
               editor.currentFile == file, editor.textRevision == revision,
               editor.text.utf8.elementsEqual(text.utf8) else { return }
         let changed = DeskTextChange(range: 0..<service.text.utf16.count, text: text)
@@ -92,7 +154,7 @@ final class DeskCodeDocumentChecking {
     @discardableResult
     func publish(_ candidate: DeskSnapshot) -> Bool {
         precondition(Thread.isMainThread)
-        guard isCurrent(candidate) else { return false }
+        guard owns(candidate) else { return false }
         snapshot = candidate
         prepareImages(for: candidate)
         onSnapshot?(candidate)
@@ -102,9 +164,13 @@ final class DeskCodeDocumentChecking {
     /// Publication and user actions must agree on the exact current document, even after a same-text recheck.
     func isCurrent(_ candidate: DeskSnapshot) -> Bool {
         precondition(Thread.isMainThread)
+        return owns(candidate) && (packageInput == nil || packageReady)
+    }
+
+    private func owns(_ candidate: DeskSnapshot) -> Bool {
         guard !closed, let editor, editor.currentFile == file, candidate.file == fileID,
               candidate.version == editor.textRevision, candidate.text.utf8.elementsEqual(editor.text.utf8),
-              candidate.generation == service.snapshot.generation else { return false }
+              candidate === service.snapshot, candidate.generation == service.snapshot.generation else { return false }
         return true
     }
 
@@ -113,13 +179,18 @@ final class DeskCodeDocumentChecking {
     func imageResources(for candidate: DeskSnapshot) -> DeskProgramResources.Input {
         precondition(Thread.isMainThread)
         guard isCurrent(candidate), candidate.isChecked else { return .pending }
-        if let prepared, resourceGeneration == candidate.generation, prepared.failure == nil, !prepared.unchanged() {
+        if packageInput == nil, let prepared, resourceGeneration == candidate.generation,
+           prepared.failure == nil, !prepared.unchanged() {
             prepareImages(for: candidate)
         }
         return imageInput
     }
 
     private func prepareImages(for candidate: DeskSnapshot) {
+        if packageInput != nil {
+            preparePackageImages(for: candidate)
+            return
+        }
         precondition(Thread.isMainThread)
         prepared?.removeCopies()
         prepared = nil
@@ -154,6 +225,194 @@ final class DeskCodeDocumentChecking {
                 self.onSnapshot?(checked)
             }
         }
+    }
+
+    /// Refresh the whole explicitly selected package on its file worker. New typing may reuse the returned
+    /// capture, but resources and completion always belong to the latest buffer snapshot. An install caller also
+    /// checks its saved revision/bytes in this completion before admitting the package.
+    func refreshPackage(reloadMember: Bool = false,
+                        completion: ((Result<DeskCodePackageSnapshot, Error>) -> Void)? = nil) {
+        precondition(Thread.isMainThread)
+        guard !closed, let input = packageInput else {
+            completion?(.failure(DeskPackageCapture.Failure.cancelled))
+            return
+        }
+        let next = packageRequest.addingReportingOverflow(1)
+        guard !next.overflow else {
+            completion?(.failure(DeskPackageCapture.Failure.resourceLimit))
+            return
+        }
+        packageWork?.cancel()
+        let previousCompletion = packageCompletion
+        packageCompletion = completion
+        packageRequest = next.partialValue
+        let request = packageRequest, work = Cancellation()
+        packageWork = work
+        packageReading = true
+        packageNeedsValidation = true
+        invalidatePackageImages()
+        previousCompletion?(.failure(DeskPackageCapture.Failure.cancelled))
+        guard !closed, packageWork === work else { return }
+        onSnapshot?(snapshot)
+        guard !closed, packageWork === work else { return }
+        let identity = packageRootIdentity
+        packageQueue.async { [weak self] in
+            let result: Result<DeskCodePackageInput, Error>
+            do {
+                if work.isCancelled { throw DeskPackageCapture.Failure.cancelled }
+                let refreshed: DeskCodePackageInput
+                do {
+                    try input.capture.validateUnchanged(isCancelled: { work.isCancelled })
+                    refreshed = input
+                } catch {
+                    if work.isCancelled { throw DeskPackageCapture.Failure.cancelled }
+                    let capture = try DeskPackageCapture.read(root: input.capture.root, limits: input.capture.limits,
+                                                              isCancelled: { work.isCancelled })
+                    guard capture.rootIdentity.device == identity?.device,
+                          capture.rootIdentity.inode == identity?.inode else {
+                        throw DeskPackageCapture.Failure.changed("")
+                    }
+                    refreshed = try DeskCodePackageInput(capture: capture, member: input.member)
+                }
+                if work.isCancelled { throw DeskPackageCapture.Failure.cancelled }
+                result = .success(refreshed)
+            } catch { result = .failure(error) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.closed, self.packageRequest == request, self.packageWork === work,
+                      !work.isCancelled else { return }
+                switch result {
+                case .failure(let error): self.rejectPackage(error)
+                case .success(let refreshed): self.acceptPackage(refreshed, reloadMember: reloadMember, work: work)
+                }
+            }
+        }
+    }
+
+    private func acceptPackage(_ input: DeskCodePackageInput, reloadMember: Bool, work: Cancellation) {
+        guard let editor, editor.currentFile == file,
+              DeskPackagePath.sameBytes(input.file.path, file.path) else {
+            rejectPackage(DeskPackageMemberIO.Failure.invalidMember)
+            return
+        }
+        do {
+            // Keep the existing read/decode failure contract even when a dirty buffer could otherwise overlay
+            // newly invalid disk bytes. No buffer/base/undo or sibling state changes before this succeeds.
+            _ = try Self.document(from: input.memberBytes, file: file)
+        } catch { rejectPackage(error); return }
+        let revision = captureRevision.addingReportingOverflow(1)
+        guard !revision.overflow else { rejectPackage(DeskPackageCapture.Failure.resourceLimit); return }
+        if reloadMember {
+            let reader = editor.readData, commit = editor.onCommit
+            reloadingPackage = true
+            defer { editor.readData = reader; editor.onCommit = commit; reloadingPackage = false }
+            editor.readData = { url in
+                guard DeskPackagePath.sameBytes(url.standardizedFileURL.path, input.file.path) else {
+                    throw DeskPackageMemberIO.Failure.invalidMember
+                }
+                return input.memberBytes
+            }
+            // Host callbacks during reload must not commit against the temporary capture reader.
+            editor.onCommit = { _, _ in false }
+            editor.reloadFromDisk(keepCaret: true)
+        }
+        guard !closed, packageWork === work, !work.isCancelled else { return }
+        packageInput = input
+        captureRevision = revision.partialValue
+        packageReading = false
+        _ = service.setPackage(input.package)
+        // A clean reload may have changed the text; a dirty reload deliberately kept the original base/undo.
+        // Only this final service state is published, with the same package tree used by all receipts.
+        let change = DeskTextChange(range: 0..<service.text.utf16.count, text: editor.text)
+        let next = service.update(changes: [change], version: editor.textRevision, checkingOn: checkQueue,
+                                  deliverOn: .main) { [weak self] checked in _ = self?.publish(checked) }
+        publish(next)
+    }
+
+    private func invalidatePackageImages() {
+        imageWork?.cancel()
+        imageWork = nil
+        packageReady = false
+        imageInput = .pending
+        resourceGeneration = nil
+        prepared?.removeCopies()
+        prepared = nil
+    }
+
+    private func preparePackageImages(for candidate: DeskSnapshot) {
+        invalidatePackageImages()
+        guard let input = packageInput, candidate.isChecked, !packageReading else { return }
+        let next = resourceRequest.addingReportingOverflow(1)
+        guard !next.overflow else { rejectPackage(DeskPackageCapture.Failure.resourceLimit); return }
+        resourceRequest = next.partialValue
+        let request = resourceRequest, capture = captureRevision, refresh = packageRequest, work = Cancellation()
+        imageWork = work
+        let validateCapture = packageNeedsValidation
+        let expectedFile = file.path
+        let language: StudioLanguage = candidate.options.messageLanguage == .simplifiedChinese ? .chinese : .english
+        packageQueue.async { [weak self] in
+            var prepared: DeskProgramResources.Prepared?
+            let result: Result<DeskProgramResources.Prepared, Error>
+            do {
+                if work.isCancelled { throw DeskPackageCapture.Failure.cancelled }
+                guard DeskPackagePath.sameBytes(input.file.path, expectedFile) else {
+                    throw DeskPackageMemberIO.Failure.invalidMember
+                }
+                let sources = Desk.compile(candidate.checked, catalog: candidate.options.catalog,
+                                           package: candidate.package).imageSources
+                if work.isCancelled { throw DeskPackageCapture.Failure.cancelled }
+                let images = DeskProgramResources.prepare(capture: input.capture, literals: sources, language: language)
+                prepared = images
+                if let failure = images.failure { throw ImageFailure(message: failure) }
+                if validateCapture { try input.capture.validateUnchanged(isCancelled: { work.isCancelled }) }
+                guard !work.isCancelled else { throw DeskPackageCapture.Failure.cancelled }
+                guard images.copiesUnchanged() else { throw DeskPackageCapture.Failure.changed("") }
+                result = .success(images)
+            } catch {
+                prepared?.removeCopies()
+                result = .failure(error)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.closed, self.imageWork === work, !work.isCancelled,
+                      self.resourceRequest == request, self.captureRevision == capture,
+                      self.packageRequest == refresh, self.owns(candidate) else {
+                    if case .success(let images) = result { images.removeCopies() }
+                    return
+                }
+                self.imageWork = nil
+                switch result {
+                case .failure(let error): self.rejectPackage(error)
+                case .success(let images):
+                    self.prepared = images
+                    self.resourceGeneration = candidate.generation
+                    self.imageInput = .ready(images.images)
+                    self.packageReady = true
+                    self.packageNeedsValidation = false
+                    self.snapshot = candidate
+                    let completion = self.packageCompletion
+                    self.packageCompletion = nil
+                    self.onSnapshot?(candidate)
+                    if self.packageRequest == refresh, self.isCurrent(candidate) {
+                        completion?(.success(DeskCodePackageSnapshot(input: input, snapshot: candidate)))
+                    } else {
+                        completion?(.failure(DeskPackageCapture.Failure.cancelled))
+                    }
+                }
+            }
+        }
+    }
+
+    private func rejectPackage(_ error: Error) {
+        invalidatePackageImages()
+        packageWork?.cancel()
+        packageWork = nil
+        packageReading = false
+        packageNeedsValidation = true
+        imageInput = .failed(error.localizedDescription)
+        let completion = packageCompletion
+        packageCompletion = nil
+        onPackageFailure?(error)
+        if !closed { onSnapshot?(snapshot) }
+        completion?(.failure(error))
     }
 
     /// A standalone document accepts only a complete edit of the file it already opened.
@@ -225,11 +484,18 @@ final class DeskCodeDocumentChecking {
 
     func close() {
         precondition(Thread.isMainThread)
+        guard !closed else { return }
         closed = true
+        packageWork?.cancel()
+        imageWork?.cancel()
+        let completion = packageCompletion
+        packageCompletion = nil
         prepared?.removeCopies()
         prepared = nil
         imageInput = .pending
         editor?.onTextRevision = nil
         onSnapshot = nil
+        onPackageFailure = nil
+        completion?(.failure(DeskPackageCapture.Failure.cancelled))
     }
 }

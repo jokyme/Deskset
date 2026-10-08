@@ -73,6 +73,46 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) var codeFileWindows: [CodeFileWindowController] = []
     /// Standalone Desk widgets running in independent windows on the desktop, by instance ID.
     private(set) var deskWidgetWindows: [UUID: DeskWidgetWindowController] = [:]
+    private(set) lazy var deskPackages = DeskPackageFlow(app: self)
+    private let deskActivationQueue = DispatchQueue(label: "deskset.widget.prepare", qos: .userInitiated)
+    /// Injectable file-worker operation; its result still passes every Main identity/intent guard.
+    var prepareDeskWidgetActivation: DeskWidgetActivation.Preparation = { source, root, options, ticket in
+        try DeskWidgetActivation.prepare(source: source, widgetsRoot: root, options: options,
+                                         isCancelled: { ticket.isCancelled })
+    }
+    private final class DeskActivationRequest {
+        let instanceID: UUID
+        let source: DeskWidgetActivation.SourceKey
+        let ticket = DeskWidgetActivation.Ticket()
+        let requiresActive: Bool
+        let initialPosition: (x: Double, y: Double)?
+        let preferredLanguages: () -> [String]
+        let dateLocale: () -> Locale
+        var languages: [String]
+        var attempt = UUID()
+        private var completion: ((Result<DeskWidgetWindowController, Error>) -> Void)?
+
+        init(instanceID: UUID, source: DeskWidgetActivation.SourceKey, requiresActive: Bool,
+             initialPosition: (x: Double, y: Double)?, preferredLanguages: @escaping () -> [String],
+             dateLocale: @escaping () -> Locale,
+             completion: @escaping (Result<DeskWidgetWindowController, Error>) -> Void) {
+            self.instanceID = instanceID; self.source = source; self.requiresActive = requiresActive
+            self.initialPosition = initialPosition; self.preferredLanguages = preferredLanguages
+            self.dateLocale = dateLocale; self.languages = preferredLanguages(); self.completion = completion
+        }
+
+        func finish(_ result: Result<DeskWidgetWindowController, Error>) {
+            precondition(Thread.isMainThread)
+            let notify = completion; completion = nil
+            notify?(result)
+        }
+    }
+    private var deskActivationRequests: [UUID: DeskActivationRequest] = [:]
+    // A cancelled request leaves this set only after its worker result and private copies are retired on Main.
+    private var deskActivationAttempts: Set<UUID> = []
+    private var deskActivationDrainObservers: [() -> Void] = []
+    private var deskRestorationRequest: UUID?
+    var pendingDeskWidgetActivationCount: Int { deskActivationRequests.count }
     struct DeskOptionDraft {
         let sourceID: UUID
         let values: ProgramOptionsInput
@@ -240,6 +280,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let inspector, !inspector.canTerminate() { return .terminateCancel }
         if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return .terminateCancel }
         for window in codeFileWindows where !window.canTerminate() { return .terminateCancel }
+        if deskPackages.hasPendingInstallations || !deskActivationRequests.isEmpty || !deskActivationAttempts.isEmpty {
+            isTerminating = true
+            deskRestorationRequest = nil
+            var pending = 2
+            let drained = {
+                pending -= 1
+                if pending == 0 {
+                    // A queued activation may cancel before any worker starts. Reply after this method returns.
+                    DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) }
+                }
+            }
+            cancelDeskWidgetActivationsAndDrain(completion: drained)
+            deskPackages.cancelAndDrain(completion: drained)
+            return .terminateLater
+        }
         return .terminateNow
     }
 
@@ -268,6 +323,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @discardableResult
     func stopAllForTermination(budget: TimeInterval = AppController.terminationBudget) -> [String] {
         isTerminating = true
+        deskPackages.cancelAndDrain {}
+        deskRestorationRequest = nil
+        for id in Array(deskActivationRequests.keys) { cancelDeskWidgetActivation(instanceID: id) }
         let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
             // Every step is written as it is made; anything still waiting is written now.
@@ -1130,7 +1188,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func showCodeFile(_ file: URL, line: Int?) -> Bool {
         let key = CodeEditorRouter.comparablePath(file)
         let controller: CodeFileWindowController
-        if let open = codeFileWindows.first(where: { CodeEditorRouter.comparablePath($0.file) == key }) {
+        if let open = codeFileWindows.first(where: { $0.packageContext == nil && CodeEditorRouter.comparablePath($0.file) == key }) {
             controller = open
         } else {
             do {
@@ -1149,6 +1207,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bringToFront(controller)
         controller.reveal(line: line)
         return true
+    }
+
+    @discardableResult
+    func showCodePackage(_ input: DeskCodePackageInput, line: Int?) throws -> CodeFileWindowController {
+        let controller: CodeFileWindowController
+        if let open = codeFileWindows.first(where: { $0.packageContext?.matches(input) == true }) {
+            controller = open
+        } else {
+            controller = try CodeFileWindowController(file: input.file, app: self, package: input)
+            codeFileWindows.append(controller)
+        }
+        bringToFront(controller)
+        controller.reveal(line: line)
+        return controller
     }
 
     func codeFileWindowDidClose(_ controller: CodeFileWindowController) {
@@ -1194,6 +1266,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         precondition(Thread.isMainThread)
         guard !isTerminating else { throw DeskWidgetActivationFailure.isTerminating }
         if let existing = deskWidgetWindows[instance.id] { return existing }
+        // A complete package must use the file-worker admission path, even if its directory ID happens to
+        // equal this source ID. The synchronous standalone path never guesses package scope from a file.
+        guard source.packageID == nil else { throw DeskWidgetActivationFailure.invalidPackage }
 
         // 1. Verify sourceID / instance relationship
         guard instance.sourceID == source.id else {
@@ -1332,8 +1407,151 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return controller
     }
 
+    /// Full-package reads never run on Main. An explicit first activation is represented by this request until
+    /// the first accepted picture writes active intent; restoration/reload additionally require active state.
+    @discardableResult
+    func activateDeskWidgetAsync(instanceID: UUID,
+                                 initialPosition: (x: Double, y: Double)? = nil,
+                                 preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
+                                 dateLocale: @escaping () -> Locale = { Locale.current },
+                                 requiresActive: Bool = false,
+                                 completion: @escaping (Result<DeskWidgetWindowController, Error>) -> Void) -> DeskWidgetActivation.Ticket {
+        precondition(Thread.isMainThread)
+        cancelDeskWidgetActivation(instanceID: instanceID)
+        let ticket = DeskWidgetActivation.Ticket()
+        guard !isTerminating, let instance = state.deskInstance(instanceID),
+              let source = state.deskSource(instance.sourceID) else {
+            let error: Error = isTerminating ? DeskWidgetActivationFailure.isTerminating :
+                (state.deskInstance(instanceID) == nil ? DeskWidgetActivationFailure.instanceNotFound : DeskWidgetActivationFailure.sourceNotFound)
+            DispatchQueue.main.async { completion(.failure(error)) }
+            return ticket
+        }
+        let request = DeskActivationRequest(instanceID: instanceID, source: .init(source), requiresActive: requiresActive,
+            initialPosition: initialPosition, preferredLanguages: preferredLanguages, dateLocale: dateLocale, completion: completion)
+        deskActivationRequests[instanceID] = request
+        // Even a headless existing window can be closing on a held owner. Do not create its replacement or
+        // prepare another collection until its FIFO close ACK has saved the final accepted option values.
+        DispatchQueue.main.async { [weak self] in self?.beginDeskWidgetActivation(request) }
+        return request.ticket
+    }
+
+    func cancelDeskWidgetActivation(instanceID: UUID) {
+        precondition(Thread.isMainThread)
+        guard let request = deskActivationRequests.removeValue(forKey: instanceID) else { return }
+        request.ticket.cancel()
+        // Finish after the caller completes its map/state update. A cancellation callback may activate this
+        // instance again; synchronous notification would let the outer caller silently overwrite that request.
+        DispatchQueue.main.async { request.finish(.failure(DeskWidgetActivation.Failure.cancelled)) }
+    }
+
+    /// Request cancellation completes separately from file-worker retirement. Normal quit awaits both.
+    func cancelDeskWidgetActivationsAndDrain(completion: @escaping () -> Void) {
+        precondition(Thread.isMainThread)
+        for id in Array(deskActivationRequests.keys) { cancelDeskWidgetActivation(instanceID: id) }
+        if deskActivationAttempts.isEmpty { completion() }
+        else { deskActivationDrainObservers.append(completion) }
+    }
+
+    private func finishDeskWidgetActivationAttempt(_ attempt: UUID) {
+        precondition(Thread.isMainThread)
+        guard deskActivationAttempts.remove(attempt) != nil, deskActivationAttempts.isEmpty else { return }
+        let observers = deskActivationDrainObservers
+        deskActivationDrainObservers.removeAll()
+        for observer in observers { observer() }
+    }
+
+    private func beginDeskWidgetActivation(_ request: DeskActivationRequest) {
+        precondition(Thread.isMainThread)
+        guard deskActivationRequests[request.instanceID] === request else { return }
+        guard !isTerminating, !request.ticket.isCancelled,
+              let instance = state.deskInstance(request.instanceID), instance.sourceID == request.source.sourceID,
+              let source = state.deskSource(instance.sourceID), request.source.matches(source),
+              !request.requiresActive || instance.active else {
+            cancelDeskWidgetActivation(instanceID: request.instanceID); return
+        }
+        if let existing = deskWidgetWindows[request.instanceID] {
+            if existing.isClosed {
+                deskWidgetWindowDidClose(existing)
+                beginDeskWidgetActivation(request)
+            } else if existing.isClosing {
+                existing.close(deactivate: false) { [weak self] in self?.beginDeskWidgetActivation(request) }
+            } else {
+                deskActivationRequests.removeValue(forKey: request.instanceID)
+                request.finish(.success(existing))
+            }
+            return
+        }
+        if source.packageID == nil {
+            // The async convenience entry is also cancellable before its Main turn, but leaves standalone
+            // admission/resources unchanged. Only package members use the new file-worker operation.
+            let result = Result { try activateDeskWidget(source: source, instance: instance,
+                initialPosition: request.initialPosition, preferredLanguages: request.preferredLanguages, dateLocale: request.dateLocale) }
+            deskActivationRequests.removeValue(forKey: request.instanceID)
+            request.finish(result)
+            return
+        }
+        request.languages = request.preferredLanguages()
+        request.attempt = UUID()
+        let attempt = request.attempt, key = request.source, ticket = request.ticket
+        let root = widgetsDirectory, prepare = prepareDeskWidgetActivation
+        let options = DeskServiceOptions(messageLanguage: StudioText.language == .chinese ? .simplifiedChinese : .english,
+            catalog: .current, fonts: DeskFontCatalog(), symbols: DeskSymbolCatalog())
+        deskActivationAttempts.insert(attempt)
+        deskActivationQueue.async { [weak self] in
+            let result = Result {
+                guard !ticket.isCancelled else { throw DeskWidgetActivation.Failure.cancelled }
+                return try prepare(key, root, options, ticket)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else {
+                    if case .success(let ready) = result { ready.resources.removeCopies() }
+                    request.finish(.failure(DeskWidgetActivation.Failure.cancelled)); return
+                }
+                // receive disposes any rejected collection before this acknowledgement can release normal quit.
+                defer { self.finishDeskWidgetActivationAttempt(attempt) }
+                self.receiveDeskWidgetActivation(result, request: request, attempt: attempt)
+            }
+        }
+    }
+
+    private func receiveDeskWidgetActivation(_ result: Result<DeskWidgetActivation.Prepared, Error>,
+                                            request: DeskActivationRequest, attempt: UUID) {
+        precondition(Thread.isMainThread)
+        var transferred = false
+        defer { if !transferred, case .success(let ready) = result { ready.resources.removeCopies() } }
+        guard deskActivationRequests[request.instanceID] === request, request.attempt == attempt else { return }
+        guard !isTerminating, !request.ticket.isCancelled,
+              let instance = state.deskInstance(request.instanceID), instance.sourceID == request.source.sourceID,
+              let source = state.deskSource(instance.sourceID), request.source.matches(source),
+              !request.requiresActive || instance.active else {
+            cancelDeskWidgetActivation(instanceID: request.instanceID); return
+        }
+        // Each loaded runtime has one fixed language. A preference change while the worker was busy replaces
+        // this attempt, retaining the same cancellable user request and completion.
+        if request.preferredLanguages() != request.languages {
+            beginDeskWidgetActivation(request); return
+        }
+        deskActivationRequests.removeValue(forKey: request.instanceID)
+        switch result {
+        case .failure(let error): request.finish(.failure(error))
+        case .success(let ready):
+            guard ready.source == request.source, DeskWidgetActivation.matchesInstalledRoot(ready, widgetsRoot: widgetsDirectory),
+                  deskWidgetWindows[request.instanceID] == nil else {
+                request.finish(.failure(DeskWidgetActivation.Failure.cancelled)); return
+            }
+            // The latest position/options are Main-owned. Never restore the worker's older instance copy.
+            let controller = DeskWidgetWindowController(source: source, instance: instance, directory: ready.directory,
+                program: ready.program, prepared: ready.resources, app: self, executor: skinExecutor(source.entry),
+                clock: .live, initialPosition: request.initialPosition,
+                preferredLanguages: request.preferredLanguages, dateLocale: request.dateLocale)
+            transferred = true
+            request.finish(.success(controller))
+        }
+    }
+
     func deactivateDeskWidget(instanceID: UUID) {
         precondition(Thread.isMainThread)
+        cancelDeskWidgetActivation(instanceID: instanceID)
         guard let controller = deskWidgetWindows[instanceID] else {
             state.updateDeskInstance(instanceID) { $0.active = false }
             return
@@ -1355,10 +1573,35 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private(set) var deskRestorationFailures: [(entry: String, error: Error)] = []
 
-    func loadActiveDeskWidgets() {
+    func loadActiveDeskWidgets(completion: (() -> Void)? = nil) {
         precondition(Thread.isMainThread)
+        let restoration = UUID()
+        deskRestorationRequest = restoration
         deskRestorationFailures.removeAll()
-        for (instance, source) in state.activeDeskWidgets {
+        let widgets = state.activeDeskWidgets
+        var pending = widgets.filter { $0.source.packageID != nil }.count
+        func finish() {
+            if deskRestorationRequest == restoration, !isTerminating, !deskRestorationFailures.isEmpty {
+                let names = deskRestorationFailures.map(\.entry).joined(separator: ", ")
+                alert(StudioText[.deskWidgetUnavailable], StudioText[.deskWidgetUnavailable] + ": " + names, style: .warning)
+            }
+            completion?()
+        }
+        for (instance, source) in widgets {
+            if source.packageID != nil {
+                activateDeskWidgetAsync(instanceID: instance.id, requiresActive: true) { [weak self] result in
+                    guard let self else { return }
+                    if self.deskRestorationRequest == restoration, !self.isTerminating,
+                       case .failure(let error) = result,
+                       (error as? DeskWidgetActivation.Failure) != .cancelled {
+                        self.deskRestorationFailures.append((source.entry, error))
+                        Log.write("Cannot restore Desk widget \(source.entry): \(error)", level: .warning)
+                    }
+                    pending -= 1
+                    if pending == 0 { finish() }
+                }
+                continue
+            }
             do {
                 try activateDeskWidget(source: source, instance: instance)
             } catch {
@@ -1367,11 +1610,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 Log.write("Cannot restore Desk widget \(source.entry): \(error)", level: .warning)
             }
         }
-        if !deskRestorationFailures.isEmpty {
-            let names = deskRestorationFailures.map(\.entry).joined(separator: ", ")
-            let info = StudioText[.deskWidgetUnavailable] + ": " + names
-            alert(StudioText[.deskWidgetUnavailable], info, style: .warning)
-        }
+        if pending == 0 { finish() }
     }
 
     /// The Manage window when it is open (sheets attach to it).
@@ -1469,6 +1708,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Refresh All", #selector(refreshAllAction), key: "r"))
         menu.addItem(item("Install Skin…", #selector(installSkinAction)))
+        menu.addItem(deskPackages.openFolderMenuItem())
+        menu.addItem(deskPackages.installedMenuItem())
         menu.addItem(item("Open Skins Folder", #selector(openSkinsFolderAction)))
         menu.addItem(item("Open Log", #selector(openLogAction)))
         menu.addItem(.separator())
