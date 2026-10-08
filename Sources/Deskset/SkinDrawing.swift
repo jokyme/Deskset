@@ -426,8 +426,27 @@ final class SkinFrameProducer {
     var requestBitmapDelivery: ((SkinBitmapRequest) -> Void)?
     /// Captured on Main by the destination, then set only on this producer's owner. Drawing never consults the
     /// global AppKit glass capability or creates native views on the owner thread.
-    var bitmapCompositionSupportsSystemGlass = false
+    var bitmapCompositionSupportsSystemGlass = false {
+        didSet { if oldValue != bitmapCompositionSupportsSystemGlass { preparedBitmap = nil } }
+    }
     private(set) var bitmapCompositionFailure: SkinBitmapComposer.Failure?
+    /// Owner-only preparation, bound to the exact capture and destination used before a Desk transaction commits.
+    /// The producer keeps just the latest preparation; exporting it transfers its pixels to the existing delivery.
+    final class PreparedBitmap {
+        let capture: SkinBitmapDrawing.Capture
+        let composition: SkinBitmapComposition
+        fileprivate let space: CGColorSpace
+        fileprivate let appearance: String
+        fileprivate let panelGeneration: UInt64
+        fileprivate let lifecycle: UInt64
+
+        fileprivate init(capture: SkinBitmapDrawing.Capture, composition: SkinBitmapComposition,
+                         space: CGColorSpace, appearance: String, panelGeneration: UInt64, lifecycle: UInt64) {
+            self.capture = capture; self.composition = composition; self.space = space
+            self.appearance = appearance; self.panelGeneration = panelGeneration; self.lifecycle = lifecycle
+        }
+    }
+    private var preparedBitmap: PreparedBitmap?
     private struct PendingBitmap {
         let delivery: SkinBitmapDelivery
         let capture: SkinBitmapDrawing.Capture
@@ -602,6 +621,7 @@ final class SkinFrameProducer {
 
     /// Owner only. A claimed frame keeps its capture until Main finishes; no owner work waits for that ACK.
     private func cancelBitmapDelivery(cancelClear: Bool = true) {
+        preparedBitmap = nil
         guard requestBitmapDelivery != nil else { return }
         bitmapLifecycle &+= 1
         if let pendingBitmap, pendingBitmap.delivery.cancel() { self.pendingBitmap = nil }
@@ -609,6 +629,61 @@ final class SkinFrameProducer {
             pendingBitmapInvalidation?.cancel()
             pendingBitmapInvalidation = nil
         }
+    }
+
+    /// Only opt-in native bitmap delivery needs this precommit preparation. Independent/legacy owners retain
+    /// their direct picture path. All drawing and qualification happens here once, before state or effects commit.
+    func prepareBitmapContent(_ capture: SkinBitmapDrawing.Capture) throws -> PreparedBitmap? {
+        guard requestBitmapDelivery != nil, SkinBitmapComposer.needsComposition(capture.scene) else { return nil }
+        guard !isStopped, actualSpace?.model == .rgb,
+              capture.scene.environment.scale == Double(scale),
+              capture.scene.environment.appearance.name == appearance else {
+            throw SkinBitmapComposer.Failure.invalidDestination
+        }
+        // The screen retains its own immutable pixels. Old drawing scratch/runs need not coexist with the new
+        // compositor's scratch and independent crops; this does not release any accepted provider content.
+        drawing.releaseKept()
+        let (scale, space, appearance, panelGeneration, lifecycle, systemGlass) =
+            (self.scale, self.space, self.appearance, self.panelGeneration, bitmapLifecycle, bitmapCompositionSupportsSystemGlass)
+        var result: PreparedBitmap?
+        do {
+            try Self.withAppearanceThrowing(appearance) {
+                let validate = bitmapValidation.map { validate in { ctx in validate(capture, ctx) } }
+                let composition = try SkinBitmapComposer.make(capture, scale: scale, space: space,
+                    systemGlass: systemGlass, beforeDrawing: validate)
+                result = PreparedBitmap(capture: capture, composition: composition, space: space,
+                    appearance: appearance, panelGeneration: panelGeneration, lifecycle: lifecycle)
+            }
+            guard let result, isCurrent(result) else { throw SkinBitmapComposer.Failure.invalidDestination }
+            bitmapCompositionFailure = nil
+            return result
+        } catch let failure as SkinBitmapComposer.Failure {
+            bitmapCompositionFailure = failure
+            throw failure
+        }
+    }
+
+    /// Install only after all candidate checks succeed. Nil replaces a previous glass preparation when the new
+    /// scene uses ordinary bitmap drawing. No state or external effect is published by this operation.
+    func commitPreparedBitmap(_ prepared: PreparedBitmap?) {
+        preparedBitmap = prepared.flatMap { isCurrent($0) ? $0 : nil }
+    }
+
+    private func isCurrent(_ prepared: PreparedBitmap) -> Bool {
+        !isStopped && requestBitmapDelivery != nil && prepared.panelGeneration == panelGeneration
+            && prepared.lifecycle == bitmapLifecycle && prepared.appearance == appearance
+            && prepared.composition.scale == scale && CFEqual(prepared.space, space)
+            && prepared.composition.systemGlass == bitmapCompositionSupportsSystemGlass
+    }
+
+    private func takePreparedBitmap(for capture: SkinBitmapDrawing.Capture) -> SkinBitmapComposition? {
+        guard let prepared = preparedBitmap else { return nil }
+        preparedBitmap = nil
+        guard isCurrent(prepared),
+              prepared.capture.context === capture.context, prepared.capture.cycle == capture.cycle,
+              prepared.capture.scene == capture.scene, prepared.capture.size == capture.size,
+              prepared.capture.origin == capture.origin else { return nil }
+        return prepared.composition
     }
 
     private func requestBitmapClear() {
@@ -872,6 +947,10 @@ final class SkinFrameProducer {
             }
             if requestBitmapDelivery != nil, SkinBitmapComposer.needsComposition(capture.scene) {
                 drawing.releaseKept()
+                if let prepared = takePreparedBitmap(for: capture) {
+                    content = .composition(prepared)
+                    return
+                }
                 do {
                     content = .composition(try SkinBitmapComposer.make(capture, scale: scale, space: space,
                         systemGlass: bitmapCompositionSupportsSystemGlass, beforeDrawing: validate))

@@ -209,6 +209,8 @@ final class DeskProgramHost {
         var context: SkinRenderContext? = SkinRenderContext()
         var scene: WidgetScene?
         var viewport: CGRect?
+        private var sceneInput: Input?
+        private var sceneDestination: SkinWindowFacts?
         var presented: Presented?
         var state: State = .idle
         var cycle = 0
@@ -230,6 +232,7 @@ final class DeskProgramHost {
         var menuSession: DeskProgramMenuSession?
         var didPresent: ((Presented) -> Void)?
         var didBecomeUnavailable: ((String) -> Void)?
+        var didRejectProjection: ((String, UInt64) -> Void)?
         var didChangeOptions: ((ProgramOptionsSnapshot) -> Void)?
         private var optionsLocale: Locale?
         var isClosed: Bool { state == .closed }
@@ -397,11 +400,20 @@ final class DeskProgramHost {
                 let optionsSnapshot = projection.options != nil || candidate.optionsRevision != runtime.optionsRevision || scene == nil
                     || optionsLocale != input.locale
                     ? try candidate.resolveOptions(dateInput: projection.date) : nil
+                let capture = SkinBitmapDrawing.Capture(scene: next, context: context, cycle: projection.cycle,
+                    size: extent.size, source: source, origin: SkinPoint(x: extent.minX, y: extent.minY))
+                let bitmap = try frames.prepareBitmapContent(capture)
+                // Composition uses the same resources and destination as the eventual delivery, before the
+                // candidate's assignments/options/effects become accepted. Drawing consumes these exact pixels.
+                guard context.drawing.icons.fontGeneration == projection.fontGeneration,
+                      prepared?.failure == nil, prepared?.unchanged() ?? true else { throw Failure.resources }
+                frames.commitPreparedBitmap(bitmap)
                 context.iconResources.commitProjection()
                 pending = nil
                 runtime = candidate
                 if let menuSession, !menuSession.isAvailable(in: candidate) { self.menuSession = nil }
                 scene = next; viewport = extent; cycle = projection.cycle; state = .ready
+                sceneInput = input; sceneDestination = destination
                 // A successful hidden projection retires its gesture, even if the same target appears again
                 // before release. Continuously available targets retain presses across ordinary clock ticks.
                 if let press = primaryPress, !next.hitMap.entries.contains(where: {
@@ -429,10 +441,31 @@ final class DeskProgramHost {
 
         private func reject(_ projection: Projection, error: Error) {
             projection.options?.finish(.failure(error))
-            if projection.options != nil, scene != nil, prepared?.failure == nil, prepared?.unchanged() ?? true {
+            let compositionFailure = error is SkinBitmapComposer.Failure
+            let userCandidate = projection.options != nil || projection.activation != nil
+            let declinedComposition = compositionFailure && userCandidate && hasAcceptedDestination(for: projection)
+            let retainsOptions = projection.options != nil && !compositionFailure
+            if (retainsOptions || declinedComposition), let scene,
+               prepared?.failure == nil, prepared?.unchanged() ?? true {
                 cancelProjection()
+                projection.context.drawing.icons.cancelFrame()
                 arm(after: clock.now())
+                if declinedComposition {
+                    Log.write("Native bitmap composition declined before committing the Desk projection: \(error)",
+                              level: .warning, source: source)
+                    if projection.activation != nil { didRejectProjection?(String(describing: error), scene.generation) }
+                }
             } else { fail(error) }
+        }
+
+        private func hasAcceptedDestination(for projection: Projection) -> Bool {
+            guard scene != nil, sceneInput == projection.input, let accepted = sceneDestination,
+                  let destination, let acceptedSpace = accepted.colorSpace, let space = destination.colorSpace else { return false }
+            return destinationReady
+                && input == projection.input && context === projection.context
+                && projection.context.drawing.icons.fontGeneration == projection.fontGeneration
+                && accepted.panelGeneration == destination.panelGeneration && accepted.scale == destination.scale
+                && accepted.appearance == destination.appearance && CFEqual(acceptedSpace, space)
         }
 
         private func prepare(_ demands: [DeskIconResources.Demand], for projection: Projection) -> ProjectionResult {
@@ -530,6 +563,7 @@ final class DeskProgramHost {
             let changed = state != .unavailable(message)
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil
             scene = nil; viewport = nil; presented = nil; context = nil
+            sceneInput = nil; sceneDestination = nil
             state = .unavailable(message)
             frames.clearBitmapContents()
             if changed { didBecomeUnavailable?(message) }
@@ -541,10 +575,12 @@ final class DeskProgramHost {
             menuSession = nil
             cancelProjection()
             scheduler.cancel(); primaryPress = nil; secondaryPress = nil; didPresent = nil; didBecomeUnavailable = nil
+            didRejectProjection = nil
             didChangeOptions = nil
             state = .closed
             frames.stop(); frames.clearBitmapContents(); frames.bitmapResult = nil
             scene = nil; viewport = nil; presented = nil; context = nil
+            sceneInput = nil; sceneDestination = nil
             prepared?.removeCopies(); prepared = nil
         }
     }
@@ -593,6 +629,12 @@ final class DeskProgramHost {
     var didBecomeUnavailable: ((String) -> Void)? {
         get { current.didBecomeUnavailable }
         set { current.didBecomeUnavailable = newValue }
+    }
+    /// A composition candidate failed before committing. The old accepted scene remains available; Main must
+    /// qualify this scene generation and its own session/destination before displaying non-destructive feedback.
+    var didRejectProjection: ((String, UInt64) -> Void)? {
+        get { current.didRejectProjection }
+        set { current.didRejectProjection = newValue }
     }
 
     /// On successful construction the owner exclusively owns `prepared`'s copies; never pass preview's generation.

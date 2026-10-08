@@ -148,6 +148,10 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
                                     self?.handleUnavailable(errorDesc, session: currentSession, epoch: epoch,
                                                             invalidation: invalidation)
                                 }
+                            }, onRejected: { _, epoch, generation in
+                                DispatchQueue.main.async { [weak self] in
+                                    self?.handleRejectedProjection(session: currentSession, epoch: epoch, generation: generation)
+                                }
                             }, onOptions: { snapshot in
                                 DispatchQueue.main.async { [weak self] in
                                     guard let self, self.sessionID == currentSession, !self.isClosing, !self.isClosed else { return }
@@ -578,6 +582,21 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
         return StudioText[.deskWidgetUnavailable]
     }
 
+    /// A precommit rejection leaves the accepted picture, accessibility children and interaction intact. A later
+    /// successful picture or destination change makes its feedback obsolete before this Main callback arrives.
+    func handleRejectedProjection(session: UUID, epoch: UInt64, generation: UInt64) {
+        precondition(Thread.isMainThread)
+        guard !isClosing, !isClosed, session == sessionID, epoch == destinationEpoch,
+              epoch == lastAcceptedEpoch, latestPresented?.scene.generation == generation else { return }
+        let message = StudioText[.deskOptionsChangeFailed]
+        let changed = lastActionFailure != message
+        lastActionFailure = message
+        view.toolTip = message
+        view.programTooltips?.cancel()
+        view.setAccessibilityLabel(message)
+        if changed { Log.write(message, level: .warning, source: source.entry) }
+    }
+
     /// The exact source picture was accepted before Main issues this release. Ordinary newer frames are legal.
     func issueClickToken() -> DeskWidgetClickToken? {
         precondition(Thread.isMainThread)
@@ -813,6 +832,7 @@ final class DeskWidgetHostOwner {
     func start(input: DeskProgramHost.Input, facts: SkinWindowFacts, supportsSystemGlass: Bool = false,
                onDelivery: @escaping (SkinBitmapRequest) -> Void,
                onUnavailable: @escaping (String, UInt64, SkinBitmapInvalidation?) -> Void,
+               onRejected: @escaping (String, UInt64, UInt64) -> Void = { _, _, _ in },
                onOptions: @escaping (ProgramOptionsSnapshot) -> Void = { _ in }) {
         precondition(executor.isCurrent)
         guard !isClosed else {
@@ -842,6 +862,10 @@ final class DeskWidgetHostOwner {
             }
             self.host = readyHost
             readyHost.didChangeOptions = onOptions
+            readyHost.didRejectProjection = { [weak self] message, generation in
+                guard let self, !isClosed else { return }
+                onRejected(message, currentEpoch, generation)
+            }
             readyHost.take(facts, input: input)
             readyHost.start()
             readyHost.drawFirstFrame()

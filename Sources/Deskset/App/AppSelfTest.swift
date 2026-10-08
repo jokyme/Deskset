@@ -128,6 +128,7 @@ enum AppSelfTest {
         #endif
         SkinDrawingSelfTests.run(t)
         SkinBitmapCompositionSelfTests.run(t)
+        SkinBitmapPreparationSelfTests.run(t)
         SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)

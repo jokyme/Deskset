@@ -45,7 +45,7 @@ effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 07
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
 background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	16	FIFO lifecycle, fact and bitmap ACK delivery, pointer and accessibility actions, menu resolve/cancellation/selection, and checked option snapshot reads and updates; not a skin input
-background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	11	FIFO presentation, availability and close callbacks, resolved menu values, accepted option snapshots and qualified immutable effect batches; issued session/epoch/serial checked before injected external services
+background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	12	FIFO presentation, availability, rejected-projection feedback and close callbacks, resolved menu values, accepted option snapshots and qualified immutable effect batches; issued session/epoch/serial checked before injected external services
 event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag and accepted-scene hover pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	3	window session and opened menu identifiers reject obsolete replies and repeated selections; not a program input

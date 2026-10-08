@@ -85,6 +85,7 @@ enum DeskWidgetWindowSelfTests {
         pointerEventTests(t)
         reviewRegressionTests(t)
         mainDeliveryTests(t)
+        compositionPreflightTests(t)
         gaugeTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
@@ -655,6 +656,350 @@ enum DeskWidgetWindowSelfTests {
             return acknowledged
         }, "the owner acknowledged Main's accepted picture")
         return widget
+    }
+
+    private static func compositionPreflightTests(_ t: AppTestRunner) {
+        t.suite("App: Desk composition preflight: rejected fallback option preserves accepted state pixels and persistence") {
+            let fallback = SkinGlassViews.forcesFallback
+            SkinGlassViews.forcesFallback = true
+            t.atSuiteEnd { SkinGlassViews.forcesFallback = fallback }
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: compositionPreflightSource())
+            guard let host = widget.owner.host, let presented = widget.latestPresented,
+                  let image = widget.content.shown.image else { throw Failure.fixture }
+            let initial = try host.optionsSnapshot(), scene = host.scene
+            let pixels = try DeskConditionalTestSupport.bytes(image)
+            let stored = widget.app.state.deskInstance(widget.instance.id)?.optionValues
+            let serial = widget.lastPresentationSerial
+            t.equal(host.presented?.scene.generation, presented.scene.generation, "the red bitmap has received its owner ACK")
+            t.equal(scene?.generation, presented.scene.generation)
+            t.check(!host.frames.bitmapCompositionSupportsSystemGlass, "the destination captured the controlled fallback mode")
+            t.equal(initial.values.values["glass"], .boolean(false))
+            checkCompositionColor(t, pixels, blue: false)
+            var clears = 0
+            let forward = host.frames.requestBitmapDelivery
+            host.frames.requestBitmapDelivery = { request in
+                if case .clear = request { clears += 1 }
+                forward?(request)
+            }
+
+            var values = initial.values.values
+            values["glass"] = .boolean(true)
+            var replies: [Result<ProgramOptionsSnapshot, Error>] = []
+            host.updateOptions(.init(values: values), expectedRevision: initial.revision) { replies.append($0) }
+            t.equal(replies.count, 1)
+            if let reply = replies.first, case .failure = reply { t.check(true) }
+            else { t.check(false, "overlapping fallback glass must reject the candidate before reporting option success") }
+            host.frames.runLoopTurn(.beforeWaiting)
+            reviewDrainOwner(widget, t); reviewDrainOwner(widget, t)
+            t.equal(try host.optionsSnapshot(), initial)
+            t.equal(host.scene, scene)
+            t.equal(host.state, .ready)
+            t.equal(widget.latestPresented?.scene, presented.scene)
+            t.equal(host.presented?.scene, presented.scene)
+            t.equal(widget.optionsSnapshot, initial)
+            t.equal(widget.lastPresentationSerial, serial)
+            t.equal(clears, 0, "a rejected option must not enqueue a destructive Main clear")
+            t.check(widget.content.shown.image === image)
+            if let shown = widget.content.shown.image {
+                t.equal(try DeskConditionalTestSupport.bytes(shown), pixels)
+            } else { t.check(false, "the accepted red pixels must remain available") }
+            t.check(widget.nativeComposition.isHidden && widget.nativeComposition.shownPieces.isEmpty)
+            t.equal(widget.app.state.deskInstance(widget.instance.id)?.optionValues, stored,
+                    "a failed projection cannot become a durable option value")
+            t.equal(widget.lastUnavailableMessage, nil)
+
+            // Use the current revision to qualify a subsequent legal change.
+            let current = try host.optionsSnapshot()
+            values = current.values.values
+            values["glass"] = .boolean(false); values["blue"] = .boolean(true)
+            var recovered: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: current.revision) { recovered = $0 }
+            guard let recovered else { throw Failure.fixture }
+            let accepted = try recovered.get()
+            t.equal(accepted.revision, initial.revision + 1, "only the legal change advances the option revision")
+            t.equal(accepted.values.values["glass"], .boolean(false))
+            t.equal(accepted.values.values["blue"], .boolean(true))
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation
+                    && widget.content.shown.image != nil && !host.frames.hasBitmapDelivery
+            }, "the legal blue bitmap is accepted and acknowledged after the rejected candidate")
+            guard let blueImage = widget.content.shown.image else { throw Failure.fixture }
+            checkCompositionColor(t, try DeskConditionalTestSupport.bytes(blueImage), blue: true)
+            t.check(blueImage !== image)
+            t.equal(host.state, .ready)
+            t.equal(widget.lastUnavailableMessage, nil)
+            t.equal(clears, 0)
+        }
+
+        t.suite("App: Desk composition preflight: rejected fallback click commits neither option nor copy effects") {
+            let fallback = SkinGlassViews.forcesFallback
+            SkinGlassViews.forcesFallback = true
+            t.atSuiteEnd { SkinGlassViews.forcesFallback = fallback }
+            let recorder = ActionRecorder()
+            let widget = try actionFixture(t, recorder: recorder, text: compositionPreflightSource(click: true))
+            guard let host = widget.owner.host, let presented = widget.latestPresented,
+                  let image = widget.content.shown.image, let token = widget.issueClickToken() else { throw Failure.fixture }
+            let initial = try host.optionsSnapshot(), scene = host.scene
+            let pixels = try DeskConditionalTestSupport.bytes(image)
+            let stored = widget.app.state.deskInstance(widget.instance.id)?.optionValues
+            t.equal(host.presented?.scene.generation, presented.scene.generation)
+            t.check(!host.frames.bitmapCompositionSupportsSystemGlass)
+            checkCompositionColor(t, pixels, blue: false)
+            var clears = 0
+            let forward = host.frames.requestBitmapDelivery
+            host.frames.requestBitmapDelivery = { request in
+                if case .clear = request { clears += 1 }
+                forward?(request)
+            }
+            var rejectedGenerations: [UInt64] = []
+            let forwardRejection = host.didRejectProjection
+            host.didRejectProjection = { message, generation in
+                t.check(!message.isEmpty)
+                rejectedGenerations.append(generation)
+                forwardRejection?(message, generation)
+            }
+            let point = SkinPoint(x: 20, y: 20)
+            widget.owner.primaryPress(at: point, expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+            var batches: [[ProgramEffect]] = []
+            widget.owner.primaryRelease(at: point, token: token) { returned, effects in
+                batches.append(effects)
+                widget.handleEffects(effects, token: returned, issuedToken: token)
+            }
+            t.equal(batches, [], "the failed composition must not release a frozen effect batch")
+            t.equal(recorder.calls, [], "the injected copy service must not run before qualification")
+            t.equal(rejectedGenerations, [presented.scene.generation], "the rejection names the retained accepted scene")
+            t.equal(widget.lastActionFailure, nil, "owner rejection reaches feedback through the Main hop")
+            host.frames.runLoopTurn(.beforeWaiting)
+            reviewDrainOwner(widget, t); reviewDrainOwner(widget, t)
+            t.equal(try host.optionsSnapshot(), initial)
+            t.equal(host.scene, scene)
+            t.equal(host.state, .ready)
+            t.equal(widget.latestPresented?.scene, presented.scene)
+            t.equal(host.presented?.scene, presented.scene)
+            t.equal(clears, 0)
+            t.check(widget.content.shown.image === image)
+            if let shown = widget.content.shown.image {
+                t.equal(try DeskConditionalTestSupport.bytes(shown), pixels)
+            } else { t.check(false, "a failed click keeps the previously accepted red pixels") }
+            t.check(widget.nativeComposition.isHidden && widget.nativeComposition.shownPieces.isEmpty)
+            t.equal(widget.app.state.deskInstance(widget.instance.id)?.optionValues, stored)
+            t.equal(recorder.calls, [])
+            t.equal(widget.lastUnavailableMessage, nil)
+            t.equal(widget.lastActionFailure, StudioText[.deskOptionsChangeFailed])
+            t.equal(widget.view.toolTip, StudioText[.deskOptionsChangeFailed])
+        }
+
+        t.suite("App: Desk composition preflight: qualified glass and bitmap switches replace native views and pixels") {
+            let fallback = SkinGlassViews.forcesFallback
+            SkinGlassViews.forcesFallback = true
+            t.atSuiteEnd { SkinGlassViews.forcesFallback = fallback }
+            let source = """
+            options { glass = Toggle("Glass"); oversized = Toggle("Oversized") }
+            widget {
+                Freeform {
+                    if options.oversized {
+                        Column { }.size(2049).position(x: 0, y: 0).background(.glass)
+                    } else if options.glass {
+                        Column { }.size(80, 40).position(x: 0, y: 0).background(.glass)
+                        Rectangle().size(16, 12).position(x: 8, y: 6).fill("#0000FF")
+                    } else {
+                        Rectangle().size(80, 40).position(x: 0, y: 0).fill("#FF0000")
+                    }
+                }.size(80, 40)
+            }
+            """
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let redImage = widget.content.shown.image else { throw Failure.fixture }
+            let initial = try host.optionsSnapshot()
+            checkCompositionColor(t, try DeskConditionalTestSupport.bytes(redImage), blue: false)
+            t.check(!host.frames.bitmapCompositionSupportsSystemGlass)
+            var clears = 0
+            let forward = host.frames.requestBitmapDelivery
+            host.frames.requestBitmapDelivery = { request in
+                if case .clear = request { clears += 1 }
+                forward?(request)
+            }
+
+            var values = initial.values.values
+            values["oversized"] = .boolean(true)
+            var budgetReply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: initial.revision) { budgetReply = $0 }
+            guard let budgetReply else { throw Failure.fixture }
+            if case .failure(let error) = budgetReply {
+                t.equal(error as? SkinBitmapComposer.Failure, .bitmapBudgetExceeded,
+                        "the oversized scratch is rejected by the real composer before allocation")
+            } else { t.check(false, "the composition scratch exceeds the 16 MiB budget") }
+            host.frames.runLoopTurn(.beforeWaiting)
+            reviewDrainOwner(widget, t); reviewDrainOwner(widget, t)
+            t.equal(try host.optionsSnapshot(), initial)
+            t.equal(widget.latestPresented?.scene, original.scene)
+            t.equal(host.presented?.scene, original.scene)
+            t.check(widget.content.shown.image === redImage)
+            t.equal(clears, 0)
+            t.equal(widget.lastUnavailableMessage, nil)
+
+            values = initial.values.values
+            values["glass"] = .boolean(true)
+            var glassReply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: initial.revision) { glassReply = $0 }
+            guard let glassReply else { throw Failure.fixture }
+            let glassOptions = try glassReply.get()
+            t.equal(glassOptions.revision, initial.revision + 1)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(host.frames.hasBitmapDelivery)
+            t.check(widget.content.shown.image === redImage && widget.nativeComposition.isHidden,
+                    "qualification alone cannot replace Main's accepted picture")
+            t.equal(host.presented?.scene, original.scene)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation
+                    && !host.frames.hasBitmapDelivery && !widget.nativeComposition.isHidden
+            })
+            guard let piece = widget.nativeComposition.shownPieces.first,
+                  let pixelLayer = widget.nativeComposition.shownPixels.first,
+                  let contents = pixelLayer.contents,
+                  CFGetTypeID(contents as CFTypeRef) == CGImage.typeID else { throw Failure.fixture }
+            let blueImage = contents as! CGImage
+            t.equal(widget.nativeComposition.shownPieces.count, 1)
+            t.equal(widget.nativeComposition.shownPixels.count, 1)
+            t.equal(widget.nativeComposition.subviews.count, 2)
+            t.check(widget.nativeComposition.subviews.first === piece.frameView)
+            t.equal(piece.frameView.frame, NSRect(x: 0, y: 0, width: 80, height: 40))
+            t.equal((piece.glass as? NSVisualEffectView)?.blendingMode, .behindWindow)
+            t.equal(widget.nativeComposition.subviews.last?.frame, NSRect(x: 0, y: 0, width: 80, height: 40))
+            let scale = pixelLayer.contentsScale
+            guard scale.isFinite, scale > 0 else { throw Failure.fixture }
+            t.equal(scale, widget.window.backingScaleFactor)
+            t.equal(blueImage.width, Int(ceil(80 * scale)))
+            t.equal(blueImage.height, Int(ceil(40 * scale)))
+            let rgba = try DeskConditionalTestSupport.bytes(blueImage)
+            guard rgba.count == blueImage.width * blueImage.height * 4 else { throw Failure.fixture }
+            let blueRect = CGRect(x: 8 * scale, y: 6 * scale, width: 16 * scale, height: 12 * scale)
+            var bluePixels = 0, hitPixels = 0
+            var firstMismatch: String?
+            for y in 0..<blueImage.height {
+                for x in 0..<blueImage.width {
+                    let minX = CGFloat(x), minY = CGFloat(y), maxX = CGFloat(x + 1), maxY = CGFloat(y + 1)
+                    let inside = minX >= blueRect.minX && maxX <= blueRect.maxX &&
+                        minY >= blueRect.minY && maxY <= blueRect.maxY
+                    let outside = maxX <= blueRect.minX || minX >= blueRect.maxX ||
+                        maxY <= blueRect.minY || minY >= blueRect.maxY
+                    let offset = (y * blueImage.width + x) * 4
+                    let pixel = Array(rgba[offset..<(offset + 4)])
+                    let valid: Bool
+                    if inside {
+                        bluePixels += 1
+                        valid = pixel[0] <= 2 && pixel[1] <= 2 && pixel[2] >= 250 && pixel[3] == 255
+                    } else if outside {
+                        hitPixels += 1
+                        valid = pixel == [0, 0, 0, 1]
+                    } else { continue } // A fractional-scale boundary may contain antialiased coverage.
+                    if !valid, firstMismatch == nil { firstMismatch = "(\(x), \(y)): \(pixel)" }
+                }
+            }
+            t.check(bluePixels > 0 && hitPixels > 0, "both the blue rectangle and surrounding native hit area are sampled")
+            t.equal(firstMismatch, nil,
+                    "every interior pixel at (8,6) is opaque blue; every exterior pixel is only the alpha-1 hit area")
+            t.check(widget.content.shown.image == nil, "the foreground crop cannot become a whole-window glass cover")
+            t.equal(host.presented?.scene, widget.latestPresented?.scene)
+
+            values["glass"] = .boolean(false)
+            var bitmapReply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: glassOptions.revision) { bitmapReply = $0 }
+            guard let bitmapReply else { throw Failure.fixture }
+            t.equal(try bitmapReply.get().revision, initial.revision + 2)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(piece.frameView.superview === widget.nativeComposition && pixelLayer.contents != nil)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation
+                    && !host.frames.hasBitmapDelivery && widget.content.shown.image != nil
+            })
+            guard let restoredImage = widget.content.shown.image else { throw Failure.fixture }
+            checkCompositionColor(t, try DeskConditionalTestSupport.bytes(restoredImage), blue: false)
+            t.check(widget.nativeComposition.isHidden && widget.nativeComposition.subviews.isEmpty)
+            t.check(widget.nativeComposition.shownPieces.isEmpty && widget.nativeComposition.shownPixels.isEmpty)
+            t.check(piece.frameView.superview == nil && pixelLayer.contents == nil,
+                    "held native objects no longer retain the replaced glass or image")
+            t.equal(host.presented?.scene, widget.latestPresented?.scene)
+            t.equal(clears, 0, "successful format switches share frame delivery rather than independent clear requests")
+        }
+
+        t.suite("App: Desk composition preflight: rejection feedback cannot outlive its session epoch or accepted scene") {
+            let widget = try actionFixture(t, recorder: ActionRecorder(), text: compositionPreflightSource())
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let redImage = widget.content.shown.image else { throw Failure.fixture }
+            let session = widget.sessionID, epoch = widget.destinationEpoch
+            let generation = original.scene.generation
+            guard epoch > 0, generation > 0, generation < UInt64.max else { throw Failure.fixture }
+            widget.handleRejectedProjection(session: UUID(), epoch: epoch, generation: generation)
+            widget.handleRejectedProjection(session: session, epoch: epoch - 1, generation: generation)
+            widget.handleRejectedProjection(session: session, epoch: epoch, generation: generation + 1)
+            t.equal(widget.lastActionFailure, nil)
+            t.equal(widget.view.toolTip, nil)
+            widget.handleRejectedProjection(session: session, epoch: epoch, generation: generation)
+            t.equal(widget.lastActionFailure, StudioText[.deskOptionsChangeFailed])
+            t.equal(widget.view.toolTip, StudioText[.deskOptionsChangeFailed])
+            t.equal(widget.latestPresented?.scene, original.scene)
+            t.check(widget.content.shown.image === redImage)
+
+            let initial = try host.optionsSnapshot()
+            var values = initial.values.values
+            values["blue"] = .boolean(true)
+            var reply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: initial.revision) { reply = $0 }
+            guard let reply else { throw Failure.fixture }
+            _ = try reply.get()
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation && !host.frames.hasBitmapDelivery
+            })
+            guard let next = widget.latestPresented, let blueImage = widget.content.shown.image else { throw Failure.fixture }
+            t.check(next.scene.generation > generation)
+            checkCompositionColor(t, try DeskConditionalTestSupport.bytes(blueImage), blue: true)
+            t.equal(widget.lastActionFailure, nil, "an accepted recovery clears the earlier rejection feedback")
+            widget.handleRejectedProjection(session: session, epoch: epoch, generation: generation)
+            t.equal(widget.lastActionFailure, nil, "a delayed rejection cannot overwrite a newer accepted scene")
+
+            let isDark = widget.window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            guard let alternate = NSAppearance(named: isDark ? .aqua : .darkAqua) else { throw Failure.fixture }
+            widget.window.appearance = alternate
+            _ = widget.currentFacts()
+            t.check(widget.destinationEpoch > epoch)
+            widget.handleRejectedProjection(session: session, epoch: epoch, generation: next.scene.generation)
+            widget.handleRejectedProjection(session: session, epoch: widget.destinationEpoch, generation: next.scene.generation)
+            t.equal(widget.lastActionFailure, nil, "both the destination and accepted epoch must match")
+            t.check(widget.content.shown.image === blueImage)
+            widget.close(deactivate: false)
+            widget.handleRejectedProjection(session: session, epoch: epoch, generation: next.scene.generation)
+            t.equal(widget.lastActionFailure, nil)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            widget.handleRejectedProjection(session: widget.sessionID, epoch: widget.destinationEpoch,
+                                            generation: next.scene.generation)
+            t.equal(widget.lastActionFailure, nil)
+            t.check(widget.latestPresented == nil && widget.content.shown.image == nil)
+        }
+    }
+
+    private static func compositionPreflightSource(click: Bool = false) -> String {
+        """
+        options { glass = Toggle("Glass"); blue = Toggle("Blue") }
+        widget {
+            Freeform {
+                Rectangle().size(80, 40).position(x: 0, y: 0).fill("#FF0000")
+                    .fill("#0000FF", if: options.blue)
+                if options.glass {
+                    Column { }.size(80, 40).position(x: 0, y: 0).background(.glass)
+                }
+            }.size(80, 40)\(click ? ".onClick { options.glass = true; copy(\"changed\") }" : "")
+        }
+        """
+    }
+
+    private static func checkCompositionColor(_ t: AppTestRunner, _ rgba: Data, blue: Bool) {
+        guard rgba.count >= 4 else { return t.check(false, "the accepted bitmap exposes RGBA pixels") }
+        t.check(rgba[blue ? 2 : 0] >= 250 && rgba[blue ? 0 : 2] <= 2 && rgba[1] <= 2 && rgba[3] == 255,
+                "the accepted bitmap contains the independently expected opaque \(blue ? "blue" : "red") fill")
     }
 
     private static func gaugeTests(_ t: AppTestRunner) {
