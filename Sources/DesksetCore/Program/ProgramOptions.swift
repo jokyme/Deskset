@@ -1,6 +1,6 @@
 import Foundation
 
-/// A complete, typed value held by one widget instance. Local cases keep their owning option's stable name.
+/// A complete, typed option value. Local cases keep their owning option's stable name in the effective schema.
 public enum ProgramOptionValue: Equatable, Sendable {
     case boolean(Bool), string(String), number(ProgramNumber)
     case localCase(option: String, name: String)
@@ -20,6 +20,11 @@ public enum ProgramOptionControl: Equatable, Sendable {
     case picker(choices: [ProgramOptionChoice])
 }
 
+/// The host supplies the instance or installed-package identity; scope does not create a Core value namespace.
+public enum ProgramOptionScope: Equatable, Sendable {
+    case instance, package
+}
+
 public struct ProgramOption: Equatable, Sendable {
     public let name: String
     public let title: ProgramExpression
@@ -27,11 +32,13 @@ public struct ProgramOption: Equatable, Sendable {
     public let defaultValue: ProgramOptionValue
     public let help: ProgramExpression?
     public let hiddenIf: ProgramExpression?
+    public let scope: ProgramOptionScope
 
     public init(name: String, title: ProgramExpression, control: ProgramOptionControl,
-                defaultValue: ProgramOptionValue, help: ProgramExpression? = nil, hiddenIf: ProgramExpression? = nil) {
+                defaultValue: ProgramOptionValue, help: ProgramExpression? = nil, hiddenIf: ProgramExpression? = nil,
+                scope: ProgramOptionScope = .instance) {
         self.name = name; self.title = title; self.control = control; self.defaultValue = defaultValue
-        self.help = help; self.hiddenIf = hiddenIf
+        self.help = help; self.hiddenIf = hiddenIf; self.scope = scope
     }
 }
 
@@ -67,11 +74,12 @@ public struct ProgramResolvedOption: Equatable, Sendable {
     public let value: ProgramOptionValue
     public let help: String?
     public let hidden: Bool
+    public let scope: ProgramOptionScope
 
     public init(name: String, title: String, control: ProgramResolvedOptionControl, value: ProgramOptionValue,
-                help: String?, hidden: Bool) {
+                help: String?, hidden: Bool, scope: ProgramOptionScope = .instance) {
         self.name = name; self.title = title; self.control = control; self.value = value
-        self.help = help; self.hidden = hidden
+        self.help = help; self.hidden = hidden; self.scope = scope
     }
 }
 
@@ -190,8 +198,9 @@ public struct ProgramOptionsSchema: Sendable {
         }
     }
 
-    func resolve(_ input: ProgramOptionsInput, revision: UInt64, language: String?,
-                 dateInput: ProgramDateInput?) throws -> ProgramOptionsSnapshot {
+    /// Resolves a complete input without creating a runtime. Scope and stored values remain separate from labels.
+    public func resolve(_ input: ProgramOptionsInput, revision: UInt64, language: String?,
+                        dateInput: ProgramDateInput?) throws -> ProgramOptionsSnapshot {
         let input = try validate(input)
         var evaluation = ProgramExpressionEvaluation(declarations: [], dark: false, variables: nil,
             dateInput: dateInput, translations: translations, language: language, options: definitions, optionValues: input.values)
@@ -218,7 +227,8 @@ public struct ProgramOptionsSchema: Sendable {
                     return .option(ProgramResolvedOption(name: option.name,
                         title: try evaluation.text(option.title, displayed: false).text, control: control, value: value,
                         help: try option.help.map { try evaluation.text($0, displayed: false).text },
-                        hidden: try option.hiddenIf.map { try evaluation.condition($0, displayed: false) } ?? false))
+                        hidden: try option.hiddenIf.map { try evaluation.condition($0, displayed: false) } ?? false,
+                        scope: option.scope))
                 }
             }
         }
