@@ -656,9 +656,18 @@ func runDeskStyleCompilationTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Desk: styles: unsupported conditional applications other dynamic facets states and losers still reject the whole program") {
+    t.suite("Desk: styles: inactive color applications match explicit conditional modifiers") {
+        let styled = try styleCompilation(t, "style base { .color(.accent) }\nwidget { Text(\"A\").style(base, if: false) }")
+        let explicit = try styleCompilation(t, "widget { Text(\"A\").color(.accent, if: false) }")
+        t.equal(styled.program, explicit.program)
+        for dark in [false, true] {
+            t.equal(try styleScene(styled.program, dark: dark), try styleScene(explicit.program, dark: dark))
+        }
+    }
+
+    t.suite("Desk: styles: unsupported conditional facets other dynamic facets states and losers still reject the whole program") {
         let sources = [
-            "style base { .color(.accent) }\nwidget { Text(\"A\").style(base, if: false) }",
+            "style base { .font(12) }\nwidget { Text(\"A\").style(base, if: false) }",
             "style base { .color(system.accentColor) }\nwidget { Text(\"A\").style(base).color(.text) }",
             "style base { .hover { .color(.accent) } }\nwidget { Text(\"A\").style(base) }",
             "style base { .pressed { .bold() } }\nwidget { Text(\"A\").style(base) }",

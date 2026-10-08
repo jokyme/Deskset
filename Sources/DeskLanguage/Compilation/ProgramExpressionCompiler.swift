@@ -15,6 +15,7 @@ struct ProgramExpressionCompiler {
     private var count = 0
     private var loweringStyle = false
     private var loweringStyleFont = false
+    private var loweringCondition = false
     private var styleReads = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog, translations: ProgramTranslationCompiler? = nil) {
@@ -261,9 +262,14 @@ struct ProgramExpressionCompiler {
 
     /// Keep three-valued logic intact; the runtime consumes missing only at the outer Bool context.
     mutating func condition(_ node: PositionedNode) throws -> ProgramExpression {
-        guard checked.types[checked.tree.id(of: node)]?.type == .bool else {
+        let identity = checked.tree.id(of: node)
+        guard checked.types[identity]?.type == .bool,
+              checked.canonicalNumericValues[identity] == nil, checked.numericCoercions[identity] == nil else {
             throw issue(.invalidCheckedModel, node, "A condition requires its checked Bool type")
         }
+        let previous = loweringCondition
+        loweringCondition = true
+        defer { loweringCondition = previous }
         return try lower(node, depth: 1, displayConditionals: false)
     }
 
@@ -274,6 +280,18 @@ struct ProgramExpressionCompiler {
         loweringStyle = style
         defer { checked = previous; loweringStyle = previousStyle }
         return try condition(node)
+    }
+
+    mutating func allConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
+        guard var result = values.first else { return nil }
+        for value in values.dropFirst() {
+            count += 1
+            guard count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
+                throw issue(.resourceLimit, node, "Shared program expression limit exceeded")
+            }
+            result = .and(result, value)
+        }
+        return result
     }
 
     mutating func hiddenConditions(_ values: [ProgramExpression], at node: PositionedNode) throws -> ProgramExpression? {
@@ -374,19 +392,20 @@ struct ProgramExpressionCompiler {
         let readsBefore = styleReads
         let raw = try lowerValue(node, type: coercion == .percentAsFraction ? .percent : type, depth: depth,
                                  displayConditionals: displayConditionals, translateLiterals: translateLiterals)
-        if loweringStyle {
+        if loweringStyle || loweringCondition {
             switch raw {
             case .timeNow:
-                guard type == .date else { throw issue(.invalidCheckedModel, node, "A style clock read requires its checked Date type") }
+                guard type == .date else { throw issue(.invalidCheckedModel, node, "A style or condition clock read requires its checked Date type") }
                 styleReads += 1
             case .appearanceDark:
-                guard type == .bool else { throw issue(.invalidCheckedModel, node, "A style appearance read requires its checked Bool type") }
+                guard type == .bool else { throw issue(.invalidCheckedModel, node, "A style or condition appearance read requires its checked Bool type") }
                 styleReads += 1
             case .option, .systemProperty: styleReads += 1
+            case .declaration where loweringCondition: styleReads += 1
             default: break
             }
             guard checked.canonicalNumericValues[identity] == nil || styleReads == readsBefore else {
-                throw issue(.invalidCheckedModel, node, "Live style expressions cannot have constant receipts")
+                throw issue(.invalidCheckedModel, node, "Live style or condition expressions cannot have constant receipts")
             }
         }
         if let canonical = checked.canonicalNumericValues[identity] {
@@ -828,11 +847,11 @@ struct ProgramExpressionCompiler {
               validateSystemPropertyContract(property: property, member: member) else {
             throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
         }
-        if loweringStyle {
+        if loweringStyle || loweringCondition {
             let fraction = checked.numericCoercions[identity] == .percentAsFraction
             guard fraction ? member.type == .percent && checked.types[identity]?.type == .plainNumber :
                 checked.types[identity]?.type == member.type else {
-                throw issue(.invalidCheckedModel, node, "Checked style data type does not match its catalog member")
+                throw issue(.invalidCheckedModel, node, "Checked style or condition data type does not match its catalog member")
             }
         } else if property == .batteryPresent || property == .batteryTimeRemaining {
             guard checked.types[identity]?.type == member.type else {

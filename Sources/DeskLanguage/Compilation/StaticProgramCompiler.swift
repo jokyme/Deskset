@@ -8,6 +8,7 @@ struct StaticProgramCompiler {
     private var sourceFiles: [Int: CheckedFile] = [:]
     private var styles: [String: StyleDefinition] = [:]
     private var expandedModifiers: [NodeID: [SourcedModifier]] = [:]
+    private var positionedModifiers: [NodeID: [Int: SourcedModifier]] = [:]
     private var styleExpansionCount = 0
     private var styleFontSizes: [NodeID: ProgramExpression] = [:]
     private var allowsStyleParentheses = false
@@ -138,11 +139,23 @@ struct StaticProgramCompiler {
         let source: CheckedFile
     }
 
+    private struct SourcedCondition {
+        let node: PositionedNode
+        let source: CheckedFile
+        let isStyle: Bool
+        var identity: NodeID { source.tree.id(of: node) }
+    }
+
     private struct SourcedModifier {
         let modifier: ModifierAppSyntax
         let source: CheckedFile
         let origin: CandidateOrigin
+        let conditions: [SourcedCondition]
         var isStyle: Bool { if case .style = origin { return true }; return false }
+        var checkedCondition: CandidateCondition? {
+            let values = conditions.map { CandidateCondition.expr($0.identity) }
+            return values.isEmpty ? nil : values.count == 1 ? values[0] : .all(values)
+        }
     }
 
     private mutating func collectStyles(_ source: CheckedFile) throws {
@@ -161,7 +174,8 @@ struct StaticProgramCompiler {
         }
     }
 
-    private func styleName(_ modifier: ModifierAppSyntax, source: CheckedFile) throws -> String {
+    private func styleApplication(_ modifier: ModifierAppSyntax, source: CheckedFile,
+                                  inStyle: Bool) throws -> (name: String, condition: SourcedCondition?) {
         let compiler = sourceCompiler(source)
         guard source.symbols[source.tree.id(of: modifier.node)] == .builtIn(.modifier("style")),
               let spec = catalog.modifier(named: "style"), spec.context == .view,
@@ -183,8 +197,12 @@ struct StaticProgramCompiler {
             throw compiler.issue(.unsupported, modifier.node, "Unsupported checked style application contract")
         }
         let arguments = modifier.arguments?.arguments ?? []
-        guard arguments.count == 1, let argument = arguments.first, argument.label == nil else {
-            throw compiler.issue(.unsupported, modifier.node, "Only unconditional, single-name style applications are implemented")
+        guard arguments.count == 1 || arguments.count == 2,
+              arguments.filter({ $0.label == nil }).count == 1,
+              arguments.filter({ $0.label?.name == "if" }).count <= 1,
+              arguments.allSatisfy({ $0.label == nil || $0.label?.name == "if" }),
+              let argument = arguments.first(where: { $0.label == nil }) else {
+            throw compiler.issue(.invalidCheckedModel, modifier.node, "Style arguments require one checked name and an optional condition")
         }
         let value = argument.value.node
         guard let name = IdentifierExprSyntax(value)?.name ?? StringLiteralSyntax(value)?.literalValue,
@@ -196,7 +214,17 @@ struct StaticProgramCompiler {
             throw compiler.issue(.invalidCheckedModel, value, "Style application has no matching checked definition")
         }
         // A widget's definition replaces the package definition everywhere, including package includes.
-        return name
+        let conditionNode = arguments.first { $0.label?.name == "if" }?.value.node
+        if let conditionNode {
+            guard source.types[source.tree.id(of: conditionNode)]?.type == .bool else {
+                throw compiler.issue(.invalidCheckedModel, conditionNode, "A style application condition requires its checked Bool type")
+            }
+            if inStyle && !isLocalSource(source) {
+                let parameter = spec.signatures[0].params[1]
+                _ = try compiler.constantStyleValue(conditionNode, parameter: parameter)
+            }
+        }
+        return (name, conditionNode.map { SourcedCondition(node: $0, source: source, isStyle: inStyle) })
     }
 
     private func sourceCompiler(_ source: CheckedFile, style: Bool = false) -> StaticProgramCompiler {
@@ -234,7 +262,8 @@ struct StaticProgramCompiler {
     }
 
     private func modifier(_ candidate: Candidate, call: CallStmtSyntax) throws -> SourcedModifier {
-        guard let result = expandedModifiers[checked.tree.id(of: call.node)]?.first(where: { $0.origin == candidate.origin }) else {
+        guard let result = positionedModifiers[checked.tree.id(of: call.node)]?[candidate.position],
+              result.origin == candidate.origin else {
             throw issue(.invalidCheckedModel, call.node, "Facet has no modifier in the checked style expansion")
         }
         return result
@@ -243,7 +272,7 @@ struct StaticProgramCompiler {
     private mutating func expandModifiers(_ call: CallStmtSyntax, kind: ElementKind,
                                          allowed: Set<String>) throws -> [SourcedModifier] {
         var result: [SourcedModifier] = []
-        func expand(_ name: String, path: Set<String>, depth: Int) throws {
+        func expand(_ name: String, path: Set<String>, depth: Int, conditions: [SourcedCondition]) throws {
             guard depth <= min(ProgramLimits.maximumDepth, catalog.limits.maximumBlockNesting) else {
                 throw issue(.resourceLimit, call.node, "Shared program style nesting limit exceeded")
             }
@@ -259,7 +288,7 @@ struct StaticProgramCompiler {
             var own: [SourcedModifier] = []
             for statement in definition.syntax.block.items {
                 guard let chain = ModifierStmtSyntax(statement) else {
-                    throw compiler.issue(.unsupported, statement, "Style bodies require supported constant modifier chains")
+                    throw compiler.issue(.unsupported, statement, "Style bodies require supported modifier chains")
                 }
                 for modifier in chain.modifiers {
                     let modifierName = modifier.name.token.text
@@ -268,14 +297,16 @@ struct StaticProgramCompiler {
                         throw compiler.issue(.invalidCheckedModel, modifier.node, "Style modifier has no allowed checked catalog identity")
                     }
                     if modifierName == "style" {
-                        try expand(styleName(modifier, source: source), path: path.union([name]), depth: depth + 1)
+                        let application = try styleApplication(modifier, source: source, inStyle: true)
+                        try expand(application.name, path: path.union([name]), depth: depth + 1,
+                                   conditions: conditions + (application.condition.map { [$0] } ?? []))
                         continue
                     }
                     // Inapplicable style modifiers have no candidate and no effect (§4.8.2).
                     guard spec.appliesTo.contains(kind) else { continue }
-                    let hasCondition = (modifier.arguments?.arguments ?? []).contains { $0.label?.name == "if" }
+                    let leafCondition = (modifier.arguments?.arguments ?? []).first { $0.label?.name == "if" }?.value.node
                     guard allowed.contains(modifierName), modifier.block == nil,
-                          !hasCondition || isLocalSource(source) && ["hidden", "color", "fill", "track"].contains(modifierName) else {
+                          (conditions.isEmpty && leafCondition == nil) || ["hidden", "color", "fill", "track"].contains(modifierName) else {
                         throw compiler.issue(.unsupported, modifier.node, "This style property or conditional application is not implemented")
                     }
                     styleExpansionCount += 1
@@ -283,16 +314,23 @@ struct StaticProgramCompiler {
                         throw compiler.issue(.resourceLimit, modifier.node, "Shared program style expansion limit exceeded")
                     }
                     own.append(SourcedModifier(modifier: modifier, source: source,
-                        origin: .style(name, source.tree.id(of: modifier.node), file: source.tree.file)))
+                        origin: .style(name, source.tree.id(of: modifier.node), file: source.tree.file),
+                        conditions: conditions + (leafCondition.map {
+                            [SourcedCondition(node: $0, source: source, isStyle: true)]
+                        } ?? [])))
                 }
             }
             result += own // Includes precede this style's own properties, irrespective of where an include was written.
         }
         for modifier in call.modifiers where modifier.name.token.text == "style" {
-            try expand(styleName(modifier, source: checked), path: [], depth: 1)
+            let application = try styleApplication(modifier, source: checked, inStyle: false)
+            try expand(application.name, path: [], depth: 1,
+                       conditions: application.condition.map { [$0] } ?? [])
         }
         result += call.modifiers.filter { $0.name.token.text != "style" }.map {
-            SourcedModifier(modifier: $0, source: checked, origin: .own(checked.tree.id(of: $0.node)))
+            let condition = ($0.arguments?.arguments ?? []).first { $0.label?.name == "if" }?.value.node
+            return SourcedModifier(modifier: $0, source: checked, origin: .own(checked.tree.id(of: $0.node)),
+                conditions: condition.map { [SourcedCondition(node: $0, source: checked, isStyle: false)] } ?? [])
         }
         return result
     }
@@ -1507,6 +1545,7 @@ struct StaticProgramCompiler {
             throw issue(.invalidCheckedModel, call.node, "Facet expansion positions are not the checked sequence")
         }
         var position = 0
+        var byPosition: [Int: SourcedModifier] = [:]
         for item in expandedModifiers[checked.tree.id(of: call.node)] ?? [] {
             if item.isStyle {
                 let expected = try styleFacets(item)
@@ -1516,13 +1555,13 @@ struct StaticProgramCompiler {
                 }
                 for (key, value, fixed, hard) in expected {
                     position += 1
-                    let condition = item.modifier.arguments?.arguments.first { $0.label?.name == "if" }?.value.node
                     guard let candidate = facts.facets[key]?.first(where: { $0.position == position }),
                           candidate.origin == item.origin, candidate.value == value, candidate.fixedValue == fixed,
                           candidate.level == 2, candidate.hard == hard,
-                          candidate.condition == condition.map({ .expr(item.source.tree.id(of: $0)) }) else {
+                          candidate.condition == item.checkedCondition else {
                         throw issue(.invalidCheckedModel, call.node, "Style facet does not match its checked expansion and precedence")
                     }
+                    byPosition[position] = item
                 }
             } else {
                 for candidate in all.filter({ $0.origin == item.origin }).sorted(by: { $0.position < $1.position }) {
@@ -1531,6 +1570,7 @@ struct StaticProgramCompiler {
                           candidate.value.treeVersion == checked.tree.version else {
                         throw issue(.invalidCheckedModel, item.modifier.node, "Own facets do not follow their checked source modifiers")
                     }
+                    byPosition[position] = item
                 }
             }
         }
@@ -1544,13 +1584,13 @@ struct StaticProgramCompiler {
                 }
             }
         }
+        positionedModifiers[checked.tree.id(of: call.node)] = byPosition
     }
 
     private struct OwnCandidate {
         let value: PositionedNode?
-        let condition: PositionedNode?
+        let conditions: [SourcedCondition]
         let source: CheckedFile
-        let isStyle: Bool
     }
 
     /// Consume every candidate, including an inactive branch, against the modifier that actually produced it.
@@ -1612,26 +1652,31 @@ struct StaticProgramCompiler {
             guard arguments.filter({ $0.label?.name == "if" }).count <= 1,
                   arguments.allSatisfy({ $0.label == nil || $0.label?.name == "if" }),
                   arguments.filter({ $0.label == nil }).count == (key == "hidden" ? 0 : 1),
-                  candidate.condition == condition.map({ .expr(source.tree.id(of: $0)) }),
+                  candidate.condition == item.checkedCondition,
                   condition.map({ source.types[source.tree.id(of: $0)]?.type == .bool }) ?? true,
                   candidate.fixedValue == (key == "hidden" ? "true" : nil),
                   candidate.value == source.tree.id(of: key == "hidden" ? (condition ?? modifier.node) : (value ?? modifier.node)) else {
                 throw issue(.invalidCheckedModel, modifier.node, "Paint/visibility does not match its checked arguments")
             }
-            result.append(OwnCandidate(value: value, condition: condition, source: source, isStyle: item.isStyle))
+            result.append(OwnCandidate(value: value, conditions: item.conditions, source: source))
         }
         return result
+    }
+
+    private mutating func condition(_ candidate: OwnCandidate, at node: PositionedNode) throws -> ProgramExpression? {
+        let values = try candidate.conditions.map {
+            try expressions.condition($0.node, source: $0.source, style: $0.isStyle)
+        }
+        return try expressions.allConditions(values, at: node)
     }
 
     private mutating func hidden(_ facts: ElementFacts, call: CallStmtSyntax) throws -> (hidden: Bool, condition: ProgramExpression?) {
         let candidates = try ownCandidates(facts, "hidden", call: call)
         var conditions: [ProgramExpression] = []
         for candidate in candidates {
-            if let condition = candidate.condition {
-                conditions.append(try expressions.condition(condition, source: candidate.source, style: candidate.isStyle))
-            }
+            if let value = try condition(candidate, at: call.node) { conditions.append(value) }
         }
-        return (candidates.contains { $0.condition == nil }, try expressions.hiddenConditions(conditions, at: call.node))
+        return (candidates.contains { $0.conditions.isEmpty }, try expressions.hiddenConditions(conditions, at: call.node))
     }
 
     private mutating func conditionalColor(_ facts: ElementFacts, _ key: String, fallback: ProgramColor,
@@ -1644,7 +1689,7 @@ struct StaticProgramCompiler {
                 throw issue(.invalidCheckedModel, call.node, "A paint candidate has no checked argument")
             }
             values.append((try sourceCompiler(candidate.source).checkedFacetColor(value),
-                           try candidate.condition.map { try expressions.condition($0, source: candidate.source, style: candidate.isStyle) }))
+                           try condition(candidate, at: call.node)))
         }
         var result = values.first(where: { $0.condition == nil })?.color ?? fallback
         // The checker gives best-first order; wrapping low-to-high retains that exact precedence.

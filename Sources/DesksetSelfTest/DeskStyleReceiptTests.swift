@@ -196,4 +196,91 @@ func runDeskStyleReceiptTests(_ t: TestRunner) {
         t.equal(own.level, 3); t.equal(own.position, 2); t.equal(own.condition, nil)
         t.check(selected.sortKey > own.sortKey, "the identity repair does not alter conditional precedence")
     }
+
+    t.suite("Desk: style condition receipts: application three includes and leaf keep every condition in source order") {
+        let shared = package("""
+            style leaf { .color(.red, if: battery.charging) }
+            style inner { .style(leaf, if: cpu.usage > 50%) }
+            """)
+        let checked = widget("""
+            info { name: "Condition chain" }
+            widget { Text("A").style(outer, if: cpu.usage < 75%).color(.blue) }
+            style middle { .style(inner, if: system.dark) }
+            style outer { .style(middle, if: battery.pluggedIn) }
+            """, package: shared)
+        let application = try ownModifier(checked, name: "style")
+        let outer = try modifier(checked, style: "outer", name: "style")
+        let middle = try modifier(checked, style: "middle", name: "style")
+        let inner = try modifier(shared, style: "inner", name: "style")
+        let leaf = try modifier(shared, style: "leaf", name: "color")
+        let chain: [(CheckedFile, PositionedNode)] = [
+            (checked, try argument(application, label: "if")),
+            (checked, try argument(outer, label: "if")),
+            (checked, try argument(middle, label: "if")),
+            (shared, try argument(inner, label: "if")),
+            (shared, try argument(leaf, label: "if"))
+        ]
+        let ids = chain.map { $0.0.tree.id(of: $0.1) }
+        t.equal(Set(ids).count, 5, "each actual condition expression keeps its own identity")
+        for (source, node) in chain {
+            let id = source.tree.id(of: node)
+            t.check(source.tree.resolve(id)?.node === node.node)
+            let other = source.tree.version == checked.tree.version ? shared.tree : checked.tree
+            t.check(other.resolve(id) == nil, "condition IDs resolve only in their defining tree")
+        }
+        let selected = try candidate(checked, facet: "color")
+        receipt(selected, source: shared, style: "leaf", modifier: leaf, value: try argument(leaf), other: checked.tree)
+        t.equal(selected.condition, .all(ids.map(CandidateCondition.expr)),
+                "application, outer-to-inner includes, then leaf are one flat AND chain")
+        t.equal(selected.position, 1)
+        let own = try candidate(checked, facet: "color", at: 1)
+        t.equal(own.condition, nil); t.equal(own.level, 3); t.equal(own.position, 2)
+        t.check(selected.sortKey > own.sortKey, "conditions retain their existing precedence over an own base color")
+    }
+
+    t.suite("Desk: style condition receipts: repeated applications keep independent chains and expansion positions") {
+        let checked = widget("""
+            info { name: "Repeated condition chains" }
+            widget { Text("A").style(outer, if: battery.pluggedIn).style(outer, if: cpu.usage < 80%).color(.white) }
+            style base { .color(.red) }
+            style inner { .style(base, if: battery.charging).color(.green) }
+            style middle { .style(inner, if: system.dark) }
+            style outer { .style(middle, if: cpu.usage > 20%).color(.blue) }
+            """)
+        guard let textID = checked.elements.first(where: { $0.value.component == "Text" })?.key,
+              let node = checked.tree.resolve(textID), let call = CallStmtSyntax(node) else { throw StyleReceiptFixtureError.missing }
+        let applications = call.modifiers.filter { $0.name.token.text == "style" }
+        guard applications.count == 2 else { throw StyleReceiptFixtureError.missing }
+        let applicationIDs = try applications.map { checked.tree.id(of: try argument($0, label: "if")) }
+        t.check(applicationIDs[0] != applicationIDs[1], "the two applications do not share a condition occurrence")
+        let includeIDs = try ["outer", "middle", "inner"].map { name in
+            checked.tree.id(of: try argument(modifier(checked, style: name, name: "style"), label: "if"))
+        }
+        let colors = try facts(checked).facets["color"] ?? []
+        t.equal(colors.map(\.position), [6, 5, 4, 3, 2, 1, 7])
+        for application in 0..<2 {
+            // Included conditions belong only to that subtree, not to an including style's own modifier.
+            for (offset, style, includeCount) in [(1, "base", 3), (2, "inner", 2), (3, "outer", 0)] {
+                let position = application * 3 + offset
+                guard let value = colors.first(where: { $0.position == position }) else { throw StyleReceiptFixtureError.missing }
+                let color = try modifier(checked, style: style, name: "color")
+                receipt(value, source: checked, style: style, modifier: color, value: try argument(color))
+                let conditions = ([applicationIDs[application]] + includeIDs.prefix(includeCount)).map(CandidateCondition.expr)
+                t.equal(value.condition, conditions.count == 1 ? conditions[0] : .all(conditions),
+                        "application \(application + 1), source \(style), expansion position \(position)")
+            }
+        }
+        for style in ["base", "inner", "outer"] {
+            let matching = colors.filter {
+                if case .style(let name, _, _) = $0.origin { return name == style }
+                return false
+            }
+            t.equal(matching.count, 2)
+            t.equal(Set(matching.map(\.origin)).count, 1)
+            t.equal(Set(matching.map(\.value)).count, 1)
+            t.equal(Set(matching.map(\.position)).count, 2)
+        }
+        guard let own = colors.first(where: { $0.position == 7 }) else { throw StyleReceiptFixtureError.missing }
+        t.equal(own.condition, nil); t.equal(own.level, 3)
+    }
 }

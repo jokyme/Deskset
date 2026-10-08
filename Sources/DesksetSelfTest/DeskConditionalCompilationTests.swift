@@ -205,6 +205,16 @@ func runDeskConditionalCompilationTests(_ t: TestRunner) {
             environment: conditionalEnvironment(), measure: conditionalMeasure) == nil, "old generations remain stale")
     }
 
+    t.suite("Desk: conditional compilation: inactive style colors preserve the default text appearance") {
+        let styled = try conditionalProgram(t, #"widget { Text("A").style(alert, if: false) }"# + "\n" + #"style alert { .color(.red) }"#)
+        let explicit = try conditionalProgram(t, #"widget { Text("A").color(.red, if: false) }"#)
+        t.equal(styled, explicit)
+        var styledRuntime = try ProgramRuntime(program: styled)
+        var explicitRuntime = try ProgramRuntime(program: explicit)
+        t.equal(try styledRuntime.project(environment: conditionalEnvironment(), measure: conditionalMeasure),
+                try explicitRuntime.project(environment: conditionalEnvironment(), measure: conditionalMeasure))
+    }
+
     t.suite("Desk: conditional compilation: inactive unsupported facets and paints still reject the whole program") {
         for source in [
             #"widget { Rectangle().stroke(.red, if: false) }"#,
@@ -218,7 +228,7 @@ func runDeskConditionalCompilationTests(_ t: TestRunner) {
             #"widget { Rectangle().fill(system.dark ? .red : .blue, if: false) }"#,
             #"widget { Text("A").color(system.dark ? .red : .blue, if: false) }"#,
             #"info { permissions: [.music] }"# + "\n" + #"widget { Text("A").hidden(if: music.playing) }"#,
-            #"widget { Text("A").style(alert, if: false) }"# + "\n" + #"style alert { .color(.red) }"#] {
+            #"widget { Text("A").style(alert, if: false) }"# + "\n" + #"style alert { .font(12) }"#] {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, "\(source)\n\(deskDescribe(checked))")
             t.equal(result.issues.first?.kind, .unsupported, "\(source)\n\(result.issues)")
