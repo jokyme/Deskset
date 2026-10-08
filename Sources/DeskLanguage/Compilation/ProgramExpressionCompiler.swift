@@ -25,6 +25,16 @@ struct ProgramExpressionCompiler {
     }
 
     var translations: ProgramTranslations { translationCompiler?.translations ?? ProgramTranslations() }
+    var expressionCount: Int { count }
+
+    /// Charge selector nodes and duplicated tint conditions before constructing the bounded background tree.
+    mutating func reserveBackgroundExpressions(_ amount: Int, at node: PositionedNode) throws {
+        let maximum = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
+        guard amount >= 0, amount <= maximum - count else {
+            throw issue(.resourceLimit, node, "Shared program background expression limit exceeded")
+        }
+        count += amount
+    }
 
     mutating func registerOptions(_ values: [String: OptionFacts]) throws {
         options = values

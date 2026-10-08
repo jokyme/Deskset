@@ -127,11 +127,12 @@ public enum ProgramCornerRadius: Equatable, Sendable {
     case points(Double), full
 }
 
-/// A static box background. Native glass remains a region in the element's drawing order, not transparent paint.
-/// Pictures, gradients and expression-driven paints are not represented by this initial program value.
-public enum ProgramBackground: Equatable, Sendable {
+/// A box background selected from solid colors, native glass or no background. Native glass remains a region
+/// in the element's drawing order, not transparent paint. Pictures and gradients are not represented here.
+public indirect enum ProgramBackground: Equatable, Sendable {
     case color(ProgramColor)
     case glass(style: GlassStyle, tint: ProgramColor? = nil)
+    case conditional(ProgramExpression, then: ProgramBackground?, otherwise: ProgramBackground?)
 }
 
 /// The picture fills its final content box. ImageSource resolution and decoding remain with the host.

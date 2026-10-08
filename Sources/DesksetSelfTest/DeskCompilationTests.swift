@@ -1620,6 +1620,18 @@ private func runDeskBackgroundCompilationTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Desk: backgrounds: active conditional glass matches the complete static background scene") {
+        let source = #"widget { Column { Text("must not publish partially"); Text("A").background(.glass, if: true) } }"#
+        let reference = #"widget { Column { Text("must not publish partially"); Text("A").background(.glass) } }"#
+        for appearance in [SkinAppearance.light, .dark] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, source))
+            var expected = try ProgramRuntime(program: compileFixture(t, reference))
+            let scene = try runtime.project(environment: compileEnvironment(appearance), measure: measure)
+            t.equal(scene, try expected.project(environment: compileEnvironment(appearance), measure: measure))
+            t.equal(scene.elements.compactMap(\.glass).count, 1)
+        }
+    }
+
     t.suite("Desk: backgrounds: unsupported paints clipping and dynamic facets reject the entire checked document") {
         let elements = [#"Text("A").background(gradient(.black, .white))"#,
             #"Text("A").background(radialGradient(.white, .clear))"#,
@@ -1628,7 +1640,6 @@ private func runDeskBackgroundCompilationTests(_ t: TestRunner) {
             #"Text("A").background(.glass, tint: system.accentColor)"#,
             #"Text("A").background(.glass(123))"#,
             #"Text("A").background(.accent(123))"#,
-            #"Text("A").background(.glass, if: true)"#,
             #"Text("A").background(.glass).rounded(3, topLeft: 0)"#,
             #"Text("A").background(.glass).rounded(3, if: true)"#,
             #"Image("A.png").background(.glass).rounded(3)"#,

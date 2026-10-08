@@ -86,6 +86,7 @@ enum DeskWidgetWindowSelfTests {
         reviewRegressionTests(t)
         mainDeliveryTests(t)
         compositionPreflightTests(t)
+        conditionalBackgroundTests(t)
         gaugeTests(t)
         t.suite("App: Desk widget window: place on desktop installs and activates independent window") {
             let f = try fixture(t)
@@ -1000,6 +1001,252 @@ enum DeskWidgetWindowSelfTests {
         guard rgba.count >= 4 else { return t.check(false, "the accepted bitmap exposes RGBA pixels") }
         t.check(rgba[blue ? 2 : 0] >= 250 && rgba[blue ? 0 : 2] <= 2 && rgba[1] <= 2 && rgba[3] == 255,
                 "the accepted bitmap contains the independently expected opaque \(blue ? "blue" : "red") fill")
+    }
+
+    private static func conditionalBackgroundTests(_ t: AppTestRunner) {
+        t.suite("App: Desk conditional backgrounds: held Main delivery switches one box between pixels glass and no background") {
+            let fallback = SkinGlassViews.forcesFallback
+            SkinGlassViews.forcesFallback = true
+            t.atSuiteEnd { SkinGlassViews.forcesFallback = fallback }
+            let source = """
+            options { colored = Toggle("Colored", default: true); glass = Toggle("Glass") }
+            widget { Freeform {
+                Rectangle().size(16, 12).position(x: 8, y: 6).fill("#0000FF").name(button)
+                    .voiceOver("Button").onClick { copy("button") }
+            }.size(80, 40).name(panel)
+                .background("#FF0000", if: options.colored)
+                .background(.glass, tint: "#00FF0080", if: options.glass) }
+            """
+            let recorder = ActionRecorder()
+            let widget = try actionFixture(t, recorder: recorder, text: source)
+            guard let host = widget.owner.host, let original = widget.latestPresented,
+                  let originalImage = widget.content.shown.image else { throw Failure.fixture }
+            let initial = try host.optionsSnapshot()
+            let frames = original.scene.elements.map(\.frame), ids = original.scene.elements.map(\.id)
+            let hitMap = original.scene.hitMap
+            t.check(!host.frames.bitmapCompositionSupportsSystemGlass)
+            try checkConditionalBackgroundPixels(t, originalImage, scale: original.scale, outside: [255, 0, 0, 255])
+
+            let forward = host.frames.requestBitmapDelivery
+            var held: [SkinBitmapDelivery] = [], clears = 0
+            host.frames.requestBitmapDelivery = { request in
+                switch request {
+                case .frame(let delivery): held.append(delivery)
+                case .clear: clears += 1; forward?(request)
+                }
+            }
+            defer { host.frames.requestBitmapDelivery = forward }
+            var values = initial.values.values
+            values["glass"] = .boolean(true)
+            var reply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: initial.revision) { reply = $0 }
+            guard let reply else { throw Failure.fixture }
+            let glassOptions = try reply.get()
+            t.equal(glassOptions.revision, initial.revision + 1)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.equal(held.count, 1)
+            guard let delivery = held.first, case .composition = delivery.content else { throw Failure.fixture }
+            t.equal(delivery.state, .pending)
+            t.equal(widget.latestPresented?.scene, original.scene)
+            t.equal(host.presented?.scene, original.scene)
+            t.check(widget.content.shown.image === originalImage && widget.nativeComposition.isHidden)
+            t.equal(host.scene?.elements.map(\.frame), frames); t.equal(host.scene?.elements.map(\.id), ids)
+            t.equal(host.scene?.hitMap, hitMap)
+
+            // Resume the real Main hop and FIFO owner ACK after inspecting the held immutable candidate.
+            host.frames.requestBitmapDelivery = { request in
+                if case .clear = request { clears += 1 }
+                forward?(request)
+            }
+            forward?(.frame(delivery))
+            var mainCommitted = false
+            DispatchQueue.main.async {
+                t.equal(widget.latestPresented?.scene.generation, delivery.scene.generation)
+                t.equal(host.presented?.scene, original.scene, "native geometry and pixels precede the queued owner ACK")
+                mainCommitted = true
+            }
+            t.check(AppSelfTest.spin(timeout: 10) { mainCommitted && !host.frames.hasBitmapDelivery })
+            guard let piece = widget.nativeComposition.shownPieces.first,
+                  let layer = widget.nativeComposition.shownPixels.first,
+                  let contents = layer.contents, CFGetTypeID(contents as CFTypeRef) == CGImage.typeID else { throw Failure.fixture }
+            let foreground = contents as! CGImage
+            t.equal(widget.nativeComposition.shownPieces.count, 1)
+            t.equal(widget.nativeComposition.shownPixels.count, 1)
+            t.equal(widget.nativeComposition.subviews.count, 2)
+            t.check(widget.nativeComposition.subviews.first === piece.frameView)
+            t.equal(piece.frameView.frame, NSRect(x: 0, y: 0, width: 80, height: 40))
+            t.equal((piece.glass as? NSVisualEffectView)?.blendingMode, .behindWindow)
+            t.equal(try DeskConditionalTestSupport.element(widget.latestPresented?.scene, "panel").glass?.tint,
+                    RGBA(r: 0, g: 255, b: 0, a: 128))
+            t.check(widget.content.shown.image == nil, "the earlier conditional red fill does not become a bitmap covering glass")
+            try checkConditionalBackgroundPixels(t, foreground, scale: layer.contentsScale, outside: [0, 0, 0, 1])
+            t.equal(host.presented?.scene, widget.latestPresented?.scene)
+
+            values["colored"] = .boolean(false); values["glass"] = .boolean(false)
+            var noneReply: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: glassOptions.revision) { noneReply = $0 }
+            guard let noneReply else { throw Failure.fixture }
+            let noneOptions = try noneReply.get()
+            t.equal(noneOptions.revision, initial.revision + 2)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(piece.frameView.superview === widget.nativeComposition && layer.contents != nil,
+                    "removing the background on the owner does not dismantle Main's accepted glass")
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation
+                    && !host.frames.hasBitmapDelivery && widget.content.shown.image != nil
+            })
+            guard let noneImage = widget.content.shown.image, let noneScene = widget.latestPresented?.scene else { throw Failure.fixture }
+            try checkConditionalBackgroundPixels(t, noneImage, scale: widget.window.backingScaleFactor, outside: [0, 0, 0, 0])
+            let panel = try DeskConditionalTestSupport.element(noneScene, "panel")
+            t.equal(panel.backing, .content); t.equal(panel.glass, nil); t.equal(panel.items, [])
+            t.equal(noneScene.elements.map(\.frame), frames); t.equal(noneScene.elements.map(\.id), ids)
+            t.equal(noneScene.hitMap, hitMap)
+            t.equal(noneScene.elements.map(\.accessibilityLabel), original.scene.elements.map(\.accessibilityLabel))
+            t.check(widget.nativeComposition.isHidden && widget.nativeComposition.subviews.isEmpty)
+            t.check(widget.nativeComposition.shownPieces.isEmpty && widget.nativeComposition.shownPixels.isEmpty)
+            t.check(piece.frameView.superview == nil && layer.contents == nil)
+
+            values["colored"] = .boolean(true)
+            var restored: Result<ProgramOptionsSnapshot, Error>?
+            host.updateOptions(.init(values: values), expectedRevision: noneOptions.revision) { restored = $0 }
+            guard let restored else { throw Failure.fixture }
+            t.equal(try restored.get().revision, initial.revision + 3)
+            host.frames.runLoopTurn(.beforeWaiting)
+            t.check(AppSelfTest.spin(timeout: 10) {
+                widget.latestPresented?.scene.generation == host.scene?.generation && !host.frames.hasBitmapDelivery
+            })
+            guard let image = widget.content.shown.image else { throw Failure.fixture }
+            t.equal(try DeskConditionalTestSupport.bytes(image), try DeskConditionalTestSupport.bytes(originalImage))
+            t.equal(clears, 0); t.equal(recorder.calls, [])
+            widget.close(deactivate: false)
+            t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            t.check(widget.latestPresented == nil && widget.nativeComposition.subviews.isEmpty && widget.content.shown.image == nil)
+        }
+
+        t.suite("App: Desk conditional backgrounds: fallback option and action rejection preserve values pixels persistence and effects") {
+            let fallback = SkinGlassViews.forcesFallback
+            SkinGlassViews.forcesFallback = true
+            t.atSuiteEnd { SkinGlassViews.forcesFallback = fallback }
+            for click in [false, true] {
+                let source = """
+                options { glass = Toggle("Glass"); blue = Toggle("Blue") }
+                widget { Freeform {
+                    Rectangle().size(80, 40).position(x: 0, y: 0).fill("#FF0000").fill("#0000FF", if: options.blue)
+                    Column { }.size(80, 40).position(x: 0, y: 0).name(panel).background(.glass, if: options.glass)
+                }.size(80, 40)\(click ? ".onClick { options.glass = true; copy(\"changed\") }" : "") }
+                """
+                let recorder = ActionRecorder()
+                let widget = try actionFixture(t, recorder: recorder, text: source)
+                guard let host = widget.owner.host, let presented = widget.latestPresented,
+                      let image = widget.content.shown.image else { throw Failure.fixture }
+                let initial = try host.optionsSnapshot(), scene = host.scene
+                let pixels = try DeskConditionalTestSupport.bytes(image)
+                let stored = widget.app.state.deskInstance(widget.instance.id)?.optionValues
+                let storedBytes = try Data(contentsOf: widget.app.state.fileURL)
+                let serial = widget.lastPresentationSerial
+                t.equal(host.presented?.scene, presented.scene)
+                t.check(!host.frames.bitmapCompositionSupportsSystemGlass)
+                var clears = 0
+                let forward = host.frames.requestBitmapDelivery
+                host.frames.requestBitmapDelivery = { request in
+                    if case .clear = request { clears += 1 }
+                    forward?(request)
+                }
+                var rejected: [UInt64] = []
+                let rejection = host.didRejectProjection
+                host.didRejectProjection = { message, generation in
+                    t.check(message.contains("unsupportedFallbackOverlap"))
+                    rejected.append(generation); rejection?(message, generation)
+                }
+                if click {
+                    guard let token = widget.issueClickToken() else { throw Failure.fixture }
+                    let point = SkinPoint(x: 20, y: 20)
+                    widget.owner.primaryPress(at: point, expectedGeneration: token.sourceGeneration, epoch: token.epoch)
+                    var effects: [[ProgramEffect]] = []
+                    widget.owner.primaryRelease(at: point, token: token) { returned, batch in
+                        effects.append(batch); widget.handleEffects(batch, token: returned, issuedToken: token)
+                    }
+                    t.equal(effects, [], "a rejected conditional background cannot release its copy effect")
+                    t.equal(rejected, [presented.scene.generation])
+                } else {
+                    var values = initial.values.values; values["glass"] = .boolean(true)
+                    var replies: [Result<ProgramOptionsSnapshot, Error>] = []
+                    host.updateOptions(.init(values: values), expectedRevision: initial.revision) { replies.append($0) }
+                    t.equal(replies.count, 1)
+                    if let reply = replies.first, case .failure(let error) = reply {
+                        t.equal(error as? SkinBitmapComposer.Failure, .unsupportedFallbackOverlap)
+                    } else { t.check(false, "the real fallback compositor rejects an overlapping earlier element") }
+                    t.equal(rejected, [], "option errors use their own completion")
+                }
+                host.frames.runLoopTurn(.beforeWaiting)
+                reviewDrainOwner(widget, t); reviewDrainOwner(widget, t)
+                t.equal(try host.optionsSnapshot(), initial); t.equal(widget.optionsSnapshot, initial)
+                t.equal(host.scene, scene); t.equal(host.state, .ready)
+                t.equal(widget.latestPresented?.scene, presented.scene); t.equal(host.presented?.scene, presented.scene)
+                t.equal(widget.lastPresentationSerial, serial); t.equal(clears, 0)
+                t.check(widget.content.shown.image === image)
+                guard let shown = widget.content.shown.image else { throw Failure.fixture }
+                t.equal(try DeskConditionalTestSupport.bytes(shown), pixels)
+                t.check(widget.nativeComposition.isHidden && widget.nativeComposition.shownPieces.isEmpty)
+                t.equal(widget.app.state.deskInstance(widget.instance.id)?.optionValues, stored)
+                t.equal(try Data(contentsOf: widget.app.state.fileURL), storedBytes)
+                t.equal(recorder.calls, []); t.equal(widget.lastUnavailableMessage, nil)
+                t.equal(widget.lastActionFailure, click ? StudioText[.deskOptionsChangeFailed] : nil)
+
+                var values = initial.values.values; values["blue"] = .boolean(true)
+                var recovered: Result<ProgramOptionsSnapshot, Error>?
+                host.updateOptions(.init(values: values), expectedRevision: initial.revision) { recovered = $0 }
+                guard let recovered else { throw Failure.fixture }
+                let accepted = try recovered.get()
+                t.equal(accepted.revision, initial.revision + 1)
+                t.equal(accepted.values.values["glass"], .boolean(false))
+                host.frames.runLoopTurn(.beforeWaiting)
+                t.check(AppSelfTest.spin(timeout: 10) {
+                    widget.latestPresented?.scene.generation == host.scene?.generation && !host.frames.hasBitmapDelivery
+                })
+                guard let blue = widget.content.shown.image else { throw Failure.fixture }
+                checkCompositionColor(t, try DeskConditionalTestSupport.bytes(blue), blue: true)
+                t.check(blue !== image)
+                t.equal(host.scene?.elements.map(\.id), scene?.elements.map(\.id))
+                t.equal(host.scene?.elements.map(\.frame), scene?.elements.map(\.frame))
+                t.equal(widget.lastActionFailure, nil); t.equal(recorder.calls, []); t.equal(clears, 0)
+                widget.close(deactivate: false)
+                t.check(AppSelfTest.spin(timeout: 10) { widget.isClosed })
+            }
+        }
+    }
+
+    private static func checkConditionalBackgroundPixels(_ t: AppTestRunner, _ image: CGImage,
+                                                        scale: CGFloat, outside expected: [UInt8]) throws {
+        guard scale.isFinite, scale > 0, expected.count == 4 else { throw Failure.fixture }
+        t.equal(image.width, Int(ceil(80 * scale))); t.equal(image.height, Int(ceil(40 * scale)))
+        let bytes = try DeskConditionalTestSupport.bytes(image)
+        guard bytes.count == image.width * image.height * 4 else { throw Failure.fixture }
+        let blue = CGRect(x: 8 * scale, y: 6 * scale, width: 16 * scale, height: 12 * scale)
+        var interior = 0, exterior = 0
+        var firstMismatch: String?
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                let minX = CGFloat(x), minY = CGFloat(y), maxX = CGFloat(x + 1), maxY = CGFloat(y + 1)
+                let inside = minX >= blue.minX && maxX <= blue.maxX && minY >= blue.minY && maxY <= blue.maxY
+                let outside = maxX <= blue.minX || minX >= blue.maxX || maxY <= blue.minY || minY >= blue.maxY
+                guard inside || outside else { continue } // Exclude only fractional edge coverage.
+                let offset = (y * image.width + x) * 4
+                let pixel = Array(bytes[offset..<(offset + 4)])
+                let matches: Bool
+                if inside {
+                    interior += 1
+                    matches = pixel[0] <= 2 && pixel[1] <= 2 && pixel[2] >= 250 && pixel[3] == 255
+                } else {
+                    exterior += 1
+                    if expected[3] <= 1 { matches = pixel == expected }
+                    else { matches = pixel[0] >= 250 && pixel[1] <= 2 && pixel[2] <= 2 && pixel[3] == 255 }
+                }
+                if !matches, firstMismatch == nil { firstMismatch = "(\(x), \(y)): \(pixel)" }
+            }
+        }
+        t.check(interior > 0 && exterior > 0)
+        t.equal(firstMismatch, nil, "every blue interior and background exterior pixel matches its independent color/alpha oracle")
     }
 
     private static func gaugeTests(_ t: AppTestRunner) {

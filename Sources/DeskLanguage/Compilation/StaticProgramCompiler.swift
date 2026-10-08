@@ -306,7 +306,7 @@ struct StaticProgramCompiler {
                     guard spec.appliesTo.contains(kind) else { continue }
                     let leafCondition = (modifier.arguments?.arguments ?? []).first { $0.label?.name == "if" }?.value.node
                     guard allowed.contains(modifierName), modifier.block == nil,
-                          (conditions.isEmpty && leafCondition == nil) || ["hidden", "color", "fill", "track"].contains(modifierName) else {
+                          (conditions.isEmpty && leafCondition == nil) || ["hidden", "color", "fill", "track", "background"].contains(modifierName) else {
                         throw compiler.issue(.unsupported, modifier.node, "This style property or conditional application is not implemented")
                     }
                     styleExpansionCount += 1
@@ -776,7 +776,7 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
             }
             guard ignoresRootSize && sizeFacets.contains(facet.rawValue) ||
-                    ["hidden", "color", "fill", "track"].contains(facet.rawValue) ||
+                    ["hidden", "color", "fill", "track", "background", "background.tint"].contains(facet.rawValue) ||
                     candidates.allSatisfy({ $0.condition == nil }) else {
                 throw issue(.unsupported, node, "Conditional facet is not implemented: \(facet.rawValue)")
             }
@@ -1664,7 +1664,11 @@ struct StaticProgramCompiler {
     }
 
     private mutating func condition(_ candidate: OwnCandidate, at node: PositionedNode) throws -> ProgramExpression? {
-        let values = try candidate.conditions.map {
+        try condition(candidate.conditions, at: node)
+    }
+
+    private mutating func condition(_ conditions: [SourcedCondition], at node: PositionedNode) throws -> ProgramExpression? {
+        let values = try conditions.map {
             try expressions.condition($0.node, source: $0.source, style: $0.isStyle)
         }
         return try expressions.allConditions(values, at: node)
@@ -1736,12 +1740,27 @@ struct StaticProgramCompiler {
             throw issue(.unsupported, modifier.node, "Unsupported checked box modifier contract")
         }
         if name == "background" {
-            guard spec.signatures.count == 2, spec.signatures[0].params.count == 2,
-                  let paint = spec.signatures[0].param(named: "paint"), paint.label == nil,
-                  paint.type == .paint, paint.facets == [FacetID("background")], paint.defaultValue == nil,
-                  let tint = spec.signatures[0].param(named: "tint"), tint.label == "tint",
-                  tint.type == .color, tint.facets == [FacetID("background.tint")], tint.defaultValue == nil else {
+            guard spec.context == .view, spec.allowedInStyle, spec.allowedInState, spec.acceptsCondition,
+                  spec.repeatable == .no, !spec.softFacets, spec.fixedValues.isEmpty,
+                  spec.event == nil, spec.timing == nil,
+                  spec.facets == ["background", "background.tint", "background.image", "background.mode"],
+                  spec.signatures.count == 2, spec.signatures[0].params.count == 2 else {
                 throw issue(.unsupported, modifier.node, "Unsupported checked background paint/tint contract")
+            }
+            guard let paint = spec.signatures[0].param(named: "paint"), paint.label == nil,
+                  paint.type == .paint, paint.facets == [FacetID("background")], paint.defaultValue == nil, paint.required,
+                  let tint = spec.signatures[0].param(named: "tint"), tint.label == "tint",
+                  tint.type == .color, tint.facets == [FacetID("background.tint")], tint.defaultValue == nil, !tint.required else {
+                throw issue(.unsupported, modifier.node, "Unsupported checked background paint/tint contract")
+            }
+            let parameters: [ParamSpec] = [paint, tint]
+            for parameter in parameters {
+                guard parameter.role == .plain, parameter.source == .any,
+                      !parameter.variadic, !parameter.translatable,
+                      parameter.sameAs == nil, parameter.range == nil,
+                      parameter.unit == nil, !parameter.wholeNumber else {
+                    throw issue(.unsupported, modifier.node, "Unsupported checked background paint/tint contract")
+                }
             }
         } else {
             let corners = ["topLeft", "topRight", "bottomLeft", "bottomRight"]
@@ -1804,33 +1823,126 @@ struct StaticProgramCompiler {
         return try color(.choice(name), at: node)
     }
 
-    private func background(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramBackground? {
-        guard let paint = try boxArgument(facts, "background", modifier: "background", call: call) else {
-            guard sourceModifiers(call, named: "background").isEmpty, facts.facets["background.tint"] == nil else {
-                throw issue(.invalidCheckedModel, call.node, "Background has no checked paint argument")
-            }
+    private struct BackgroundCandidate {
+        let paint: ProgramBackground
+        let tint: ProgramColor?
+        let condition: ProgramExpression?
+        let conditionCost: Int
+    }
+
+    /// Paint and tint are separate facets. Every source is checked before selecting a single box background.
+    private mutating func background(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramBackground? {
+        let modifiers = sourceModifiers(call, named: "background")
+        let paints = facts.facets["background"] ?? [], tints = facts.facets["background.tint"] ?? []
+        guard paints.count == modifiers.count else {
+            throw issue(.invalidCheckedModel, call.node, "Background paints do not match their checked modifiers")
+        }
+        guard !paints.isEmpty else {
+            guard tints.isEmpty else { throw issue(.invalidCheckedModel, call.node, "Background tint has no paint source") }
             return nil
         }
-        let tint = try boxArgument(facts, "background.tint", modifier: "background", call: call)
-        let compiler = try facetCompiler(facts, "background", at: call.node)
-        let literal = compiler.allowsStyleParentheses ? compiler.styleLeaf(paint) : paint
-        let identity = compiler.checked.tree.id(of: literal)
-        if let implicit = ImplicitMemberExprSyntax(literal), implicit.arguments != nil {
-            throw issue(.unsupported, paint, "Background catalog values cannot take arguments")
-        }
-        if case .enumCase(type: "Paint", case: let name)? = compiler.checked.symbols[identity],
-           compiler.checked.types[identity]?.type == .paint, catalog.index.namedValues["Paint.\(name)"]?.type == "Paint",
-           ImplicitMemberExprSyntax(literal)?.name.token.text == name || MemberExprSyntax(literal)?.name.token.text == name {
-            let style: GlassStyle
-            switch name {
-            case "glass": style = .regular
-            case "clearGlass": style = .clear
-            default: throw issue(.unsupported, paint, "Unsupported catalog background Paint")
+        var values: [BackgroundCandidate] = [], tintValues: [Int: BackgroundCandidate] = [:]
+        var usedOwnModifiers = Set<NodeID>()
+        for (index, candidate) in paints.enumerated() {
+            let item = try modifier(candidate, call: call)
+            let source = item.source, modifier = item.modifier
+            let compiler = sourceCompiler(source, style: item.isStyle)
+            try compiler.boxModifierContract(modifier, kind: facts.kind)
+            guard candidate.level == (item.isStyle ? 2 : 3), candidate.hard, candidate.fixedValue == nil,
+                  index == 0 || paints[index - 1].sortKey > candidate.sortKey,
+                  modifier.name.token.text == "background", candidate.condition == item.checkedCondition,
+                  item.isStyle || usedOwnModifiers.insert(source.tree.id(of: modifier.node)).inserted,
+                  let spec = catalog.modifier(named: "background"),
+                  let paintParameter = spec.signatures[0].param(named: "paint"),
+                  let tintParameter = spec.signatures[0].param(named: "tint") else {
+                throw compiler.issue(.invalidCheckedModel, modifier.node, "Background has an invalid source or precedence receipt")
             }
-            return .glass(style: style, tint: try tint.map { try facetCompiler(facts, "background.tint", at: call.node).checkedBoxColor($0) })
+            let arguments = modifier.arguments?.arguments ?? []
+            guard arguments.filter({ $0.label == nil }).count == 1,
+                  arguments.filter({ $0.label?.name == "tint" }).count <= 1,
+                  arguments.filter({ $0.label?.name == "if" }).count <= 1,
+                  arguments.allSatisfy({ $0.label == nil || ["tint", "if"].contains($0.label?.name ?? "") }),
+                  let paint = arguments.first(where: { $0.label == nil })?.value.node else {
+                throw compiler.issue(.unsupported, modifier.node, "Background requires a solid color or glass paint, optional tint and condition")
+            }
+            guard candidate.value == source.tree.id(of: paint) else {
+                throw compiler.issue(.invalidCheckedModel, paint, "Background paint does not match its checked argument")
+            }
+            let leaf = try compiler.constantStyleValue(paint, parameter: paintParameter)
+            let identity = source.tree.id(of: leaf)
+            let resolved: ProgramBackground
+            if case .enumCase(type: "Paint", case: let name)? = source.symbols[identity],
+               source.types[identity]?.type == .paint, catalog.index.namedValues["Paint.\(name)"]?.type == "Paint" {
+                switch name {
+                case "glass": resolved = .glass(style: .regular)
+                case "clearGlass": resolved = .glass(style: .clear)
+                default: throw compiler.issue(.unsupported, paint, "Unsupported catalog background Paint")
+                }
+            } else { resolved = .color(try compiler.checkedFacetColor(paint)) }
+            let tint: ProgramColor?
+            let tintNode = arguments.first { $0.label?.name == "tint" }?.value.node
+            if let tintNode {
+                guard case .glass = resolved else {
+                    throw compiler.issue(.unsupported, paint, "A background tint is implemented only for glass")
+                }
+                _ = try compiler.constantStyleValue(tintNode, parameter: tintParameter)
+                tint = try compiler.checkedFacetColor(tintNode)
+                // The checked signature puts the paint facet first, then its optional tint facet.
+                guard let receipt = tints.first(where: { $0.position == candidate.position + 1 }),
+                      receipt.origin == candidate.origin, receipt.value == source.tree.id(of: tintNode),
+                      receipt.fixedValue == nil, receipt.hard, receipt.level == candidate.level,
+                      receipt.condition == item.checkedCondition else {
+                    throw compiler.issue(.invalidCheckedModel, tintNode, "Background tint does not match its checked argument and occurrence")
+                }
+            } else { tint = nil }
+            let before = expressions.expressionCount
+            let condition = try condition(item.conditions, at: modifier.node)
+            let value = BackgroundCandidate(paint: resolved, tint: tint,
+                condition: condition, conditionCost: expressions.expressionCount - before)
+            values.append(value)
+            if tintNode != nil { tintValues[candidate.position + 1] = value }
         }
-        guard tint == nil else { throw issue(.unsupported, paint, "A background tint is implemented only for glass") }
-        return .color(try compiler.checkedBoxColor(paint))
+        guard tints.count == tintValues.count,
+              tints.allSatisfy({ tintValues[$0.position] != nil }) else {
+            throw issue(.invalidCheckedModel, call.node, "Background tint refers to an absent or different source")
+        }
+        for index in tints.indices where index > 0 {
+            guard tints[index - 1].sortKey > tints[index].sortKey else {
+                throw issue(.invalidCheckedModel, call.node, "Background tint candidates are not in checked precedence order")
+            }
+        }
+        let orderedTints = tints.compactMap { tintValues[$0.position] }
+        let conditionalPaints = values.filter { $0.condition != nil }
+        let base = values.first { $0.condition == nil }
+        let glassBranches = (conditionalPaints + (base.map { [$0] } ?? [])).filter {
+            if case .glass = $0.paint { return true }; return false
+        }.count
+        let conditionalTints = orderedTints.filter { $0.condition != nil }
+        let tintCost = conditionalTints.reduce(0) { $0 + 1 + $1.conditionCost }
+        let duplicated = tintCost.multipliedReportingOverflow(by: glassBranches)
+        let total = conditionalPaints.count.addingReportingOverflow(duplicated.partialValue)
+        guard !duplicated.overflow, !total.overflow else {
+            throw issue(.resourceLimit, call.node, "Shared program background expression limit exceeded")
+        }
+        // Do this before materializing B×T branches, not after a large tree has already been allocated.
+        try expressions.reserveBackgroundExpressions(total.partialValue, at: call.node)
+        func selected(_ value: BackgroundCandidate) -> ProgramBackground {
+            guard case .glass(let style, _) = value.paint else { return value.paint }
+            var result = ProgramBackground.glass(style: style, tint: orderedTints.first { $0.condition == nil }?.tint)
+            for tint in conditionalTints.reversed() {
+                if let condition = tint.condition {
+                    result = .conditional(condition, then: .glass(style: style, tint: tint.tint), otherwise: result)
+                }
+            }
+            return result
+        }
+        var result = base.map(selected)
+        for value in conditionalPaints.reversed() {
+            if let condition = value.condition {
+                result = .conditional(condition, then: selected(value), otherwise: result)
+            }
+        }
+        return result
     }
 
     private func uniformRadius(_ facts: ElementFacts, call: CallStmtSyntax) throws -> ProgramCornerRadius? {

@@ -100,6 +100,7 @@ enum DeskConditionalStyleCompilationTests {
         precedence(t)
         packages(t)
         receiptsAndBudgets(t)
+        backgrounds(t)
         unsupported(t)
     }
 
@@ -430,6 +431,25 @@ enum DeskConditionalStyleCompilationTests {
         }
     }
 
+    private static func backgrounds(_ t: TestRunner) {
+        t.suite("Desk: conditional styles: inactive glass and tint preserve the complete own background scene") {
+            for (modifier, element) in [
+                (".background(.glass)", #"Text("A").background(.dim)"#),
+                (".background(.glass, tint: .red)", #"Text("A").background(.glass)"#)
+            ] {
+                let source = "style limited { \(modifier) }\nwidget { \(element).style(limited, if: false) }"
+                let styled = try compile(t, source)
+                let explicit = try compile(t, "widget { \(element) }")
+                for dark in [false, true] {
+                    var runtime = try ProgramRuntime(program: styled.program)
+                    var reference = try ProgramRuntime(program: explicit.program)
+                    t.equal(try runtime.project(environment: environment(dark), measure: measure),
+                            try reference.project(environment: environment(dark), measure: measure), source)
+                }
+            }
+        }
+    }
+
     private static func unsupported(_ t: TestRunner) {
         t.suite("Desk: conditional styles: unsupported conditional facets states and package dynamics never hide behind false") {
             let inapplicable = try compile(t, "style limited { .tint(.red) }\n" +
@@ -447,8 +467,6 @@ enum DeskConditionalStyleCompilationTests {
                 (".font(12)", #"Text("A").font(18)"#),
                 (#".tooltip("Style")"#, #"Text("A").tooltip("Own")"#),
                 (#".voiceOver("Style")"#, #"Text("A").voiceOver("Own")"#),
-                (".background(.glass)", #"Text("A").background(.dim)"#),
-                (".background(.glass, tint: .red)", #"Text("A").background(.glass)"#),
                 (".size(20)", #"Text("A").size(40)"#),
                 (".padding(2)", #"Text("A").padding(4)"#),
                 (".stroke(.red, width: 2)", "Rectangle().size(40).stroke(.blue, width: 1)"),

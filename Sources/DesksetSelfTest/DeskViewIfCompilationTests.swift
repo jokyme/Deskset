@@ -241,9 +241,24 @@ func runDeskViewIfCompilationTests(_ t: TestRunner) {
         t.check(!active.elements.contains { $0.id == conditional.otherwise[0].id })
     }
 
+    t.suite("Desk: view if compilation: inactive backgrounds remain valid in both checked branches") {
+        let source = #"widget { if true { Text("A") } else { Text("B").background(.glass, if: false) } }"#
+        let reference = #"widget { if true { Text("A") } else { Text("B") } }"#
+        for firstBranch in [true, false] {
+            let condition = firstBranch ? "if true" : "if false"
+            let (_, _, program) = try viewIfCompilation(t, source.replacingOccurrences(of: "if true", with: condition))
+            let (_, _, expected) = try viewIfCompilation(t, reference.replacingOccurrences(of: "if true", with: condition))
+            var runtime = try ProgramRuntime(program: program)
+            var referenceRuntime = try ProgramRuntime(program: expected)
+            let scene = try runtime.project(environment: viewIfEnvironment(), measure: viewIfMeasure)
+            t.equal(scene, try referenceRuntime.project(environment: viewIfEnvironment(), measure: viewIfMeasure))
+            t.equal(viewIfDraws(scene).map(\.text), [firstBranch ? "A" : "B"])
+            t.check(scene.elements.allSatisfy { $0.glass == nil })
+        }
+    }
+
     t.suite("Desk: view if compilation: unsupported constructs in every branch preserve the explicit boundary") {
         for source in [
-            #"widget { if true { Text("A") } else { Text("B").background(.glass, if: false) } }"#,
             #"widget { variable page = 0; if false { Text("A").onLoad { page = 1 } } else { Text("B") } }"#,
             #"widget { if false { Text("A").hover { .color(.red) } } else { Text("B") } }"#,
             #"widget { if false { for n in [1, 2] { Text(n) } } else { Text("B") } }"#,

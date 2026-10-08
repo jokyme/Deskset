@@ -215,11 +215,20 @@ func runDeskConditionalCompilationTests(_ t: TestRunner) {
                 try explicitRuntime.project(environment: conditionalEnvironment(), measure: conditionalMeasure))
     }
 
+    t.suite("Desk: conditional compilation: inactive backgrounds preserve the complete unpainted scene") {
+        for source in [#"widget { Text("A").background(.glass, if: false) }"#,
+                       #"widget { Text("A").background(.glass, tint: .red, if: false) }"#] {
+            var runtime = try ProgramRuntime(program: conditionalProgram(t, source))
+            var reference = try ProgramRuntime(program: conditionalProgram(t, #"widget { Text("A") }"#))
+            let scene = try runtime.project(environment: conditionalEnvironment(), measure: conditionalMeasure)
+            t.equal(scene, try reference.project(environment: conditionalEnvironment(), measure: conditionalMeasure), source)
+            t.check(scene.elements.allSatisfy { $0.glass == nil }, "inactive background leaves no native region")
+        }
+    }
+
     t.suite("Desk: conditional compilation: inactive unsupported facets and paints still reject the whole program") {
         for source in [
             #"widget { Rectangle().stroke(.red, if: false) }"#,
-            #"widget { Text("A").background(.glass, if: false) }"#,
-            #"widget { Text("A").background(.glass, tint: .red, if: false) }"#,
             #"widget { Text("A").font(20, if: false) }"#,
             #"widget { Text("A").width(20, if: false) }"#,
             #"widget { Text("A").color(.red).hover { .color(.blue) } }"#,

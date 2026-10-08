@@ -244,24 +244,50 @@ struct ProgramExpressionValidation {
 
     /// Color selections share the expression budget. Static paints keep their original zero-expression cost.
     /// Check every leaf and count the selector depth above expanded declaration references, even in inactive arms.
-    mutating func validateColor(_ color: ProgramColor, invalid: ProgramRuntimeError) throws {
-        var pending = [(color, 1)]
+    mutating func validateColor(_ color: ProgramColor, invalid: ProgramRuntimeError, startingAt depth: Int = 1) throws {
+        var pending = [(color, depth)]
         while let (color, depth) = pending.popLast() {
             guard depth <= ProgramLimits.maximumExpressionDepth else { throw ProgramRuntimeError.expressionDepth }
             switch color {
             case .literal(let value):
                 guard [value.r, value.g, value.b, value.a].allSatisfy({ $0.isFinite && (0...255).contains($0) }) else { throw invalid }
             case .conditional(let condition, let yes, let no):
-                count += 1
-                guard count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
-                try register(condition)
-                let info = try expressionInfo(condition, depth: 1)
-                guard info.type == .boolean else { throw ProgramRuntimeError.invalidExpression }
-                guard info.height <= ProgramLimits.maximumExpressionDepth - depth else { throw ProgramRuntimeError.expressionDepth }
+                try validatePaintCondition(condition, depth: depth)
                 pending.append(contentsOf: [(no, depth + 1), (yes, depth + 1)])
             case .text, .dim, .faint, .accent, .separator, .palette: break
             }
         }
+    }
+
+    /// Every possible paint is validated; an all-nil selector does not give an empty container content.
+    /// Background selectors, nested colors and expanded declarations share one depth and expression budget.
+    mutating func validateBackground(_ background: ProgramBackground, invalid: ProgramRuntimeError) throws -> Bool {
+        var pending = [(background, 1)], hasPotentialPaint = false
+        while let (background, depth) = pending.popLast() {
+            guard depth <= ProgramLimits.maximumExpressionDepth else { throw ProgramRuntimeError.expressionDepth }
+            switch background {
+            case .color(let color):
+                hasPotentialPaint = true
+                try validateColor(color, invalid: invalid, startingAt: depth)
+            case .glass(_, let tint):
+                hasPotentialPaint = true
+                if let tint { try validateColor(tint, invalid: invalid, startingAt: depth) }
+            case .conditional(let condition, let yes, let no):
+                try validatePaintCondition(condition, depth: depth)
+                if let no { pending.append((no, depth + 1)) }
+                if let yes { pending.append((yes, depth + 1)) }
+            }
+        }
+        return hasPotentialPaint
+    }
+
+    private mutating func validatePaintCondition(_ condition: ProgramExpression, depth: Int) throws {
+        count += 1
+        guard count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
+        try register(condition)
+        let info = try expressionInfo(condition, depth: 1)
+        guard info.type == .boolean else { throw ProgramRuntimeError.invalidExpression }
+        guard info.height <= ProgramLimits.maximumExpressionDepth - depth else { throw ProgramRuntimeError.expressionDepth }
     }
 
     mutating func validateFontSize(_ expression: ProgramExpression) throws {

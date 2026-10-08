@@ -424,6 +424,19 @@ func runDeskDynamicStyleCompilationTests(_ t: TestRunner) {
         F.reject(t, nested, catalog: catalog, kind: .resourceLimit, "losing dynamic expression nesting is still bounded")
     }
 
+    t.suite("Desk: dynamic styles: appearance selects the same glass scene as an own background") {
+        let source = "style live { .background(.glass, if: system.dark) }\nwidget { Text(\"A\").style(live) }"
+        let (_, styled) = try F.compile(t, source)
+        let (_, explicit) = try F.compile(t, #"widget { Text("A").background(.glass, if: system.dark) }"#)
+        var runtime = try ProgramRuntime(program: styled)
+        var reference = try ProgramRuntime(program: explicit)
+        for dark in [false, true, false] {
+            let scene = try runtime.project(environment: F.environment(dark), measure: F.measure)
+            t.equal(scene, try reference.project(environment: F.environment(dark), measure: F.measure))
+            t.equal(scene.elements.compactMap(\.glass).count, dark ? 1 : 0)
+        }
+    }
+
     t.suite("Desk: dynamic styles: package constants can include a local replacement while package dynamics stay explicit") {
         let package = #"""
             package { name: "Shared" }
@@ -459,8 +472,7 @@ func runDeskDynamicStyleCompilationTests(_ t: TestRunner) {
             "style live { .width(system.dark ? 30 : 20) }\nwidget { Text(\"A\").style(live) }",
             "style live { .padding((cpu.coreCount)) }\nwidget { Text(\"A\").style(live) }",
             "style live { .font(12, system.dark ? Weight.bold : Weight.regular) }\nwidget { Text(\"A\").style(live) }",
-            "style live { .hover { .color(.accent) } }\nwidget { Text(\"A\").style(live) }",
-            "style live { .background(.glass, if: system.dark) }\nwidget { Text(\"A\").style(live) }"
+            "style live { .hover { .color(.accent) } }\nwidget { Text(\"A\").style(live) }"
         ]
         for source in unsupported {
             let checked = deskCheck(source)

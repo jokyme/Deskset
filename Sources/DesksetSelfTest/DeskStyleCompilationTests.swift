@@ -665,6 +665,15 @@ func runDeskStyleCompilationTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Desk: styles: inactive glass preserves the own background and complete scene") {
+        let source = "style base { .background(.glass, if: false) }\nwidget { Text(\"A\").style(base).background(.dim) }"
+        let styled = try styleCompilation(t, source)
+        let reference = try styleCompilation(t, #"widget { Text("A").background(.dim) }"#)
+        for dark in [false, true] {
+            t.equal(try styleScene(styled.program, dark: dark), try styleScene(reference.program, dark: dark))
+        }
+    }
+
     t.suite("Desk: styles: unsupported conditional facets other dynamic facets states and losers still reject the whole program") {
         let sources = [
             "style base { .font(12) }\nwidget { Text(\"A\").style(base, if: false) }",
@@ -673,7 +682,6 @@ func runDeskStyleCompilationTests(_ t: TestRunner) {
             "style base { .pressed { .bold() } }\nwidget { Text(\"A\").style(base) }",
             "style base { .margin(2) }\nwidget { Text(\"A\").style(base) }",
             "style base { .uppercase() }\nwidget { Text(\"A\").style(base) }",
-            "style base { .background(.glass, if: false) }\nwidget { Text(\"A\").style(base).background(.dim) }",
             "style base { .fill(gradient(.black, .white)) }\nwidget { Rectangle().style(base).fill(.accent) }"
         ]
         for source in sources {

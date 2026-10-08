@@ -181,13 +181,7 @@ public struct ProgramRuntime: Sendable {
                 if case .image = node.content, radius != .points(0) { throw ProgramRuntimeError.invalidGeometry(node.id) }
             }
             if let background = node.background {
-                contentCount += 1
-                let color: ProgramColor?
-                switch background {
-                case .color(let value): color = value
-                case .glass(_, let tint): color = tint
-                }
-                if let color { try expressions.validateColor(color, invalid: .invalidPaint(node.id)) }
+                if try expressions.validateBackground(background, invalid: .invalidPaint(node.id)) { contentCount += 1 }
             }
             if let label = node.voiceOver { try expressions.validateText(label) }
             if let condition = node.hiddenIf { try expressions.validateCondition(condition) }
@@ -533,6 +527,19 @@ public struct ProgramRuntime: Sendable {
                 }
             }
         }
+        func collectBackground(_ background: ProgramBackground) {
+            var pending = [background]
+            while let background = pending.popLast() {
+                switch background {
+                case .color(let color): collectColor(color)
+                case .glass(_, let tint): if let tint { collectColor(tint) }
+                case .conditional(let condition, let yes, let no):
+                    active.append(condition)
+                    if let no { pending.append(no) }
+                    if let yes { pending.append(yes) }
+                }
+            }
+        }
         if includeLayoutText {
             var pending = [(program.root, false)]
             while let (node, parentHidden) = pending.popLast() {
@@ -574,11 +581,7 @@ public struct ProgramRuntime: Sendable {
                 }
                 if !hidden {
                     if let stroke = node.stroke { collectColor(stroke.color) }
-                    switch node.background {
-                    case .color(let color): collectColor(color)
-                    case .glass(_, let tint): if let tint { collectColor(tint) }
-                    case nil: break
-                    }
+                    if let background = node.background { collectBackground(background) }
                     switch node.content {
                     case .rectangle(let color), .shape(_, let color): collectColor(color)
                     default: break
@@ -684,6 +687,10 @@ public struct ProgramRuntime: Sendable {
                 let text = try evaluation.text(tooltip.text).text
                 let title = try tooltip.title.map { try evaluation.text($0).text } ?? ""
                 toolTips[node.id] = (ToolTipInfo(text: text, title: title), node.cornerRadius)
+            }
+            if !hidden {
+                layoutState.backgrounds[node.id] = try resolveBackground(node.background, evaluation: &evaluation,
+                                                                         appearance: appearance, colorInput: colorInput)
             }
             switch node.content {
             case .text, .icon, .progress, .gauge: if !hidden { visibleContent.insert(node.id) }
@@ -897,6 +904,32 @@ public struct ProgramRuntime: Sendable {
         [color.r, color.g, color.b, color.a].allSatisfy { $0.isFinite && (0...255).contains($0) }
     }
 
+    /// A selected, resolved value for this projection only. Layout proposals and scene emission never revisit
+    /// the selector tree, and a missing background is distinct from an explicitly transparent solid color.
+    private enum ResolvedBackground {
+        case color(RGBA)
+        case glass(style: GlassStyle, tint: RGBA?)
+    }
+
+    private func resolveBackground(_ input: ProgramBackground?, evaluation: inout ProgramExpressionEvaluation,
+                                   appearance: SkinAppearance, colorInput: ProgramColorInput?) throws -> ResolvedBackground? {
+        var selected = input
+        for _ in 0..<ProgramLimits.maximumExpressionDepth {
+            guard let background = selected else { return nil }
+            switch background {
+            case .color(let color):
+                return .color(try evaluation.color(color, in: appearance, colorInput: colorInput, displayed: true))
+            case .glass(let style, let tint):
+                return .glass(style: style, tint: try tint.map {
+                    try evaluation.color($0, in: appearance, colorInput: colorInput, displayed: true)
+                })
+            case .conditional(let condition, let yes, let no):
+                selected = try evaluation.condition(condition) ? yes : no
+            }
+        }
+        throw ProgramRuntimeError.expressionDepth
+    }
+
     private struct Box {
         let node: ProgramElement
         let hidden: Bool
@@ -912,8 +945,7 @@ public struct ProgramRuntime: Sendable {
         let progress: Double?
         let gauge: ProgramGaugeValues?
         let stroke: RGBA?
-        let backgroundColor: RGBA?
-        let backgroundTint: RGBA?
+        let background: ResolvedBackground?
         let image: ProgramImageResource?
         let icon: IconInput?
         let children: [(Box, SkinPoint)]
@@ -930,6 +962,7 @@ public struct ProgramRuntime: Sendable {
         let images: [String: ProgramImageResource]
         let preset: SkinSize?
         var hidden: [ElementID: Bool] = [:]
+        var backgrounds: [ElementID: ResolvedBackground] = [:]
         /// Selected real children, in source order. Structural items never reach measurement or scene emission.
         var activeChildren: [ElementID: [ProgramElement]] = [:]
         var flex: [ElementID: Flexibility] = [:]
@@ -1382,23 +1415,13 @@ public struct ProgramRuntime: Sendable {
                 layoutBounds = layoutBounds.union(slot)
             }
         }
-        let backgroundColor: RGBA?, backgroundTint: RGBA?
-        switch node.background {
-        case .color(let color):
-            backgroundColor = try resolveColor(node.id, color)
-            backgroundTint = nil
-        case .glass(_, let tint):
-            backgroundColor = nil
-            backgroundTint = try tint.map { try resolveColor(node.id, $0) }
-        case nil: backgroundColor = nil; backgroundTint = nil
-        }
         let box = Box(node: node, hidden: hidden, size: SkinSize(width: width, height: height), minimum: minimumSize,
                       layoutBounds: layoutBounds,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth,
                                         height: max(innerHeight, textSize?.height ?? 0)),
                       style: style, text: resolvedText, textSize: textSize, fill: fill, track: track, progress: fraction, gauge: gaugeValues,
                       stroke: try node.stroke.map { try resolveColor(node.id, $0.color) },
-                      backgroundColor: backgroundColor, backgroundTint: backgroundTint, image: image, icon: iconInput, children: children)
+                      background: state.backgrounds[node.id], image: image, icon: iconInput, children: children)
         state.boxes[key] = box
         return box
     }
@@ -1522,9 +1545,8 @@ public struct ProgramRuntime: Sendable {
         var glass: GlassRegion?
         if !hidden, frame.width > 0, frame.height > 0 {
             let radius = Self.cornerRadius(box.node.cornerRadius, in: frame)
-            switch box.node.background {
-            case .color:
-                guard let color = box.backgroundColor else { throw ProgramRuntimeError.invalidPaint(box.node.id) }
+            switch box.background {
+            case .color(let color):
                 if radius == 0 { items.insert(.fill(frame, Paint(color: color)), at: 0) }
                 else {
                     let geometry = ShapeGeometry.path(ShapePath(subpaths: [ShapeGeometryBuilder.rectangle(
@@ -1534,9 +1556,9 @@ public struct ProgramRuntime: Sendable {
                         strokeStyle: ShapeStrokeStyle(), strokePlan: nil, paintTransform: .identity, bounds: bounds, visualBounds: bounds)
                     items.insert(.shape(ShapeDraw(shapes: [shape], contentFrame: frame)), at: 0)
                 }
-            case .glass(let style, _):
+            case .glass(let style, let tint):
                 glass = GlassRegion(id: "desk-background:\(box.node.id.index):\(box.node.id.name)", rect: frame,
-                                    cornerRadius: radius, style: style, tint: box.backgroundTint)
+                                    cornerRadius: radius, style: style, tint: tint)
             case nil: break
             }
         }
