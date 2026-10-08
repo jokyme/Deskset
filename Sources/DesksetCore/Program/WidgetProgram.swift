@@ -447,17 +447,20 @@ public struct ProgramText: Equatable, Sendable {
     public let align: HorizontalTextAlign
     /// Automatic affects numeric interpolation ranges only; explicit policies apply to the whole text.
     public let digits: Digits
+    /// At most this many lines, with an ellipsis when content is omitted. Nil leaves the text unrestricted.
+    public let maximumLines: Int?
 
     public init(_ text: String, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
                 italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic,
-                fontSizeExpression: ProgramExpression? = nil) {
+                fontSizeExpression: ProgramExpression? = nil, maximumLines: Int? = nil) {
         self.init(value: .string(text), fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
-                  italic: italic, color: color, align: align, digits: digits, fontSizeExpression: fontSizeExpression)
+                  italic: italic, color: color, align: align, digits: digits, fontSizeExpression: fontSizeExpression,
+                  maximumLines: maximumLines)
     }
 
     public init(value: ProgramExpression, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
                 italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic,
-                fontSizeExpression: ProgramExpression? = nil) {
+                fontSizeExpression: ProgramExpression? = nil, maximumLines: Int? = nil) {
         self.value = value
         self.fontFamily = fontFamily
         self.fontSize = fontSize
@@ -467,6 +470,7 @@ public struct ProgramText: Equatable, Sendable {
         self.color = color
         self.align = align
         self.digits = digits
+        self.maximumLines = maximumLines
     }
 
     /// Adapt once at the existing renderer boundary. Measuring and TextDraw receive this same value.
@@ -484,6 +488,7 @@ public struct ProgramText: Equatable, Sendable {
         style.antiAlias = true
         style.trailingSpaces = true
         style.wrap = wrap
+        style.maximumLines = maximumLines
         if let text {
             switch digits {
             case .automatic:

@@ -408,6 +408,8 @@ struct StaticProgramCompiler {
                     styleFontSizes[identity] = try expressions.fontSize(node, source: source, style: true)
                     dynamicFontSizes.insert(identity)
                 }
+            } else if parameter.facets == [FacetID("lines")] {
+                leaf = try compiler.lineLimitLiteral(node, parameter: parameter)
             } else { leaf = try compiler.constantStyleValue(node, parameter: parameter) }
             leaves[identity] = leaf
             if parameter.role == .condition {
@@ -677,6 +679,7 @@ struct StaticProgramCompiler {
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         allowedModifiers.formUnion(["background", "rounded", "voiceOver"])
+        if facts.component == "Text" { allowedModifiers.insert("lines") }
         if icon {
             allowedModifiers.insert("iconColors")
             allowedModifiers.remove("digits")
@@ -769,6 +772,7 @@ struct StaticProgramCompiler {
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         if !spacer { allowedFacets.formUnion(["position.x", "position.y", "position.anchor", "tooltip", "tooltip.title"]) }
         if icon { allowedFacets.insert("iconColors") }
+        if facts.component == "Text" { allowedFacets.insert("lines") }
         allowedFacets.formUnion(["voiceOver", "background", "background.tint", "rounded.topLeft", "rounded.topRight",
                                  "rounded.bottomLeft", "rounded.bottomRight"])
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
@@ -1001,7 +1005,8 @@ struct StaticProgramCompiler {
             content = .text(ProgramText(value: text, fontFamily: try fontFamily(appearance, at: node), fontSize: appearance.size,
                                         fontWeight: appearance.weight, italic: appearance.italic,
                                         color: appearance.color, align: appearance.align, digits: appearance.digits,
-                                        fontSizeExpression: appearance.sizeExpression))
+                                        fontSizeExpression: appearance.sizeExpression,
+                                        maximumLines: try maximumLines(facts, call: call)))
         case "Freeform":
             let arguments = call.arguments?.arguments ?? []
             guard arguments.allSatisfy({ $0.label?.name == "align" }) else {
@@ -1056,6 +1061,71 @@ struct StaticProgramCompiler {
                               stroke: stroke, cornerRadius: radius, onClick: onClick, onClickActions: onClickActions,
                               onRightClickActions: onRightClickActions, position: position, background: background,
                               voiceOver: label, hiddenIf: visibility.condition, tooltip: tip, menu: menuItems)
+    }
+
+    private func lineLimitLiteral(_ node: PositionedNode, parameter: ParamSpec) throws -> PositionedNode {
+        guard NumberLiteralSyntax(styleLeaf(node)) != nil else {
+            throw issue(.unsupported, node, "Text line limits require an authored whole literal")
+        }
+        return try constantStyleValue(node, parameter: parameter)
+    }
+
+    /// A line limit belongs to this Text, including its applied styles; it never enters inherited appearance.
+    private func maximumLines(_ facts: ElementFacts, call: CallStmtSyntax) throws -> Int? {
+        guard !facts.inherits.contains("lines") else {
+            throw issue(.invalidCheckedModel, call.node, "Text line limits cannot inherit")
+        }
+        let modifiers = sourceModifiers(call, named: "lines")
+        let candidates = facts.facets["lines"] ?? []
+        guard candidates.count == modifiers.count else {
+            throw issue(.invalidCheckedModel, call.node, "Line limits do not match their checked expanded modifiers")
+        }
+        if modifiers.isEmpty && candidates.isEmpty { return nil }
+        guard let spec = catalog.modifier(named: "lines"), spec.appliesTo == .textLike,
+              spec.context == .view, spec.allowedInStyle, spec.allowedInState, spec.acceptsCondition,
+              !spec.inheritable, spec.repeatable == .no, !spec.softFacets,
+              spec.facets == [FacetID("lines")], spec.fixedValues.isEmpty, spec.boxLayer == .none,
+              spec.event == nil, spec.timing == nil, spec.block == .none,
+              spec.signatures.count == 1, spec.signatures[0].params.count == 1,
+              let parameter = spec.signatures[0].params.first else {
+            throw issue(.unsupported, call.node, "Unsupported checked text line limit catalog contract")
+        }
+        guard parameter.name == "max", parameter.label == nil, parameter.type == .plainNumber,
+              parameter.facets == [FacetID("lines")], parameter.required, parameter.defaultValue == nil,
+              parameter.range == 1...1000, parameter.wholeNumber, !parameter.variadic,
+              parameter.role == .plain, parameter.source == .any, !parameter.translatable,
+              parameter.sameAs == nil, parameter.unit == nil,
+              let facet = catalog.facet("lines"), facet.valueType == .plainNumber,
+              facet.range == 1...1000, !facet.inheritable else {
+            throw issue(.unsupported, call.node, "Unsupported checked text line limit parameter or facet contract")
+        }
+        var selected: Int?
+        var usedOwnModifiers = Set<NodeID>()
+        for candidate in candidates {
+            let item = try modifier(candidate, call: call), source = item.source
+            let compiler = sourceCompiler(source, style: item.isStyle)
+            guard item.modifier.name.token.text == "lines", item.modifier.block == nil,
+                  source.symbols[source.tree.id(of: item.modifier.node)] == .builtIn(.modifier("lines")),
+                  item.conditions.isEmpty, candidate.condition == nil, candidate.fixedValue == nil,
+                  candidate.hard, candidate.level == (item.isStyle ? 2 : 3),
+                  item.isStyle || usedOwnModifiers.insert(source.tree.id(of: item.modifier.node)).inserted,
+                  let arguments = item.modifier.arguments?.arguments, arguments.count == 1,
+                  let argument = arguments.first, argument.label == nil,
+                  candidate.value == source.tree.id(of: argument.value.node),
+                  source.types[candidate.value]?.type == .plainNumber else {
+                throw compiler.issue(.invalidCheckedModel, item.modifier.node, "Line limit has no matching unconditional checked argument")
+            }
+            let literal = try compiler.lineLimitLiteral(argument.value.node, parameter: parameter)
+            let identity = source.tree.id(of: literal)
+            guard let number = NumberLiteralSyntax(literal), number.unit == nil, number.unitAfterSpace == nil,
+                  let value = number.value, value.isFinite, value == value.rounded(), (1...1000).contains(value),
+                  source.types[identity]?.type == .plainNumber, source.symbols[identity] == nil,
+                  source.canonicalNumericValues[identity] == value, source.numericCoercions[identity] == nil else {
+                throw compiler.issue(.invalidCheckedModel, literal, "Line limit requires its checked positive whole literal receipt")
+            }
+            if selected == nil { selected = Int(value) }
+        }
+        return selected
     }
 
     private func iconColors(_ facts: ElementFacts, call: CallStmtSyntax) throws -> IconColors {

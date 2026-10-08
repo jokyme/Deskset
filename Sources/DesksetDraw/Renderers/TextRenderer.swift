@@ -57,7 +57,12 @@ package enum TextRenderer {
             ctx.translateBy(x: -anchor.x, y: -anchor.y)
         }
         ctx.setShouldAntialias(style.antiAlias)
-        if style.clip != 0 { ctx.clip(to: box) }
+        if layout.limitedWidth != nil {
+            // A semantic line limit constrains horizontal ink, including italic overhang and a single fallback
+            // glyph wider than the proposal. Height still comes from the selected lines, not the drawing box.
+            let current = ctx.boundingBoxOfClipPath
+            ctx.clip(to: CGRect(x: box.minX, y: current.minY, width: max(box.width, 0), height: current.height))
+        } else if style.clip != 0 { ctx.clip(to: box) }
 
         let innerX = box.minX + layout.pad
         let innerWidth = box.width - 2 * layout.pad
@@ -216,6 +221,9 @@ package final class TextLayout {
     package let pad: CGFloat
     package let textWidth: CGFloat
     package let textHeight: CGFloat
+    /// Only the opt-in line-count path has a semantic width constraint. INI clipping retains its original path.
+    fileprivate let limitedWidth: CGFloat?
+    private let hasLineLimit: Bool
     let shadows: [Shadow]
     let gradients: [InlineGradient]
     private let units: [UInt16]
@@ -226,13 +234,15 @@ package final class TextLayout {
     private var visibleCache: (clip: Int, boxHeight: CGFloat, innerWidth: CGFloat, lines: [Placed])?
 
     private init(attributed: NSAttributedString, units: [UInt16], lines: [Line], pad: CGFloat, shadows: [Shadow],
-                 gradients: [InlineGradient]) {
+                 gradients: [InlineGradient], hasLineLimit: Bool = false, limitedWidth: CGFloat? = nil) {
         self.attributed = attributed
         self.units = units
         self.lines = lines
         self.pad = pad
         self.shadows = shadows
         self.gradients = gradients
+        self.hasLineLimit = hasLineLimit
+        self.limitedWidth = limitedWidth
         textWidth = lines.map(\.width).max() ?? 0
         textHeight = lines.reduce(0) { $0 + $1.height }
     }
@@ -240,7 +250,8 @@ package final class TextLayout {
     /// Measured size in skin points (rounded up to whole pixels; an empty text is 0×0).
     package var size: (width: Double, height: Double) {
         guard !lines.isEmpty else { return (0, 0) }
-        return (Double(ceil(max(textWidth + 2 * pad, 0) - 0.001)), Double(ceil(textHeight - 0.001)))
+        let width = ceil(max(textWidth + 2 * pad, 0) - 0.001)
+        return (Double(limitedWidth.map { min(width, $0) } ?? width), Double(ceil(textHeight - 0.001)))
     }
 
     /// Judgment: lines beyond this are dropped (bounds the work for runaway texts).
@@ -264,7 +275,10 @@ package final class TextLayout {
         let available = wrapWidth.map { max($0 - 2 * pad, 1) }
         var lines: [Line] = []
         var start = 0
-        while start < n, lines.count < maximumLines {
+        // One additional line proves that the last selected line needs an ellipsis. The complete attributed
+        // source and UTF-16 spans remain intact; invisible paragraphs need no further shaping.
+        let buildLimit = style.maximumLines.map { min(max($0, 0), maximumLines - 1) + 1 } ?? maximumLines
+        while start < n, lines.count < buildLimit {
             var count = CTTypesetterSuggestLineBreak(typesetter, start, Double(available ?? 1e7))
             if count <= 0 { count = max(CTTypesetterSuggestClusterBreak(typesetter, start, 1e7), 1) }
             count = min(count, n - start)
@@ -285,8 +299,10 @@ package final class TextLayout {
             lines.append(line)
             start += count
         }
-        return TextLayout(attributed: attributed, units: units, lines: lines, pad: pad, shadows: built.shadows,
-                          gradients: built.gradients)
+        let layout = TextLayout(attributed: attributed, units: units, lines: lines, pad: pad, shadows: built.shadows,
+                                gradients: built.gradients)
+        guard let limit = style.maximumLines else { return layout }
+        return layout.limitingLines(to: limit, width: wrapWidth, hasMoreText: start < n, base: base)
     }
 
     private static func makeLine(_ ctLine: CTLine, range: CFRange, keepTrailing: Bool, base: ResolvedFont) -> Line {
@@ -500,6 +516,43 @@ package final class TextLayout {
 
     // MARK: Visible lines (clipping)
 
+    /// Select once, then use the same CTLines and their run metrics for both measurement and drawing.
+    private func limitingLines(to limit: Int, width: CGFloat?, hasMoreText: Bool, base: ResolvedFont) -> TextLayout {
+        let boundedWidth = width.map { max($0, 0) }
+        let available = boundedWidth.map { max($0 - 2 * pad, 0) }
+        var selected = Array(lines.prefix(max(limit, 0)))
+        let omitted = selected.count < lines.count || hasMoreText
+        for i in selected.indices {
+            let original = selected[i]
+            let room = available.map { max($0 - original.indent, 0) }
+            let replacement: CTLine?
+            if omitted && i == selected.count - 1 {
+                replacement = ellipsisLine(original, available: room ?? .greatestFiniteMagnitude, semantic: true)
+            } else if let available, original.width > available {
+                replacement = truncate(original.line, to: room ?? 0)
+            } else { continue }
+
+            // CoreText cannot truncate to less than the token's advance. The legacy helper deliberately returns
+            // a wider candidate in that case because its caller clips a rectangle; a semantic limit instead
+            // keeps the original line height with no glyphs, without pretending that oversized text fitted.
+            guard let replacement, room.map({ visibleWidth(replacement) <= $0 }) ?? true else {
+                selected[i].line = CTLineCreateWithAttributedString(NSAttributedString(string: ""))
+                selected[i].width = 0
+                selected[i].indent = 0
+                continue
+            }
+            var line = Self.makeLine(replacement, range: original.range, keepTrailing: false, base: base)
+            line.indent = original.indent
+            line.width = max(line.width + line.indent, 0)
+            if CTLineGetGlyphCount(replacement) == 0 {
+                line.ascent = original.ascent; line.descent = original.descent; line.leading = original.leading
+            }
+            selected[i] = line
+        }
+        return TextLayout(attributed: attributed, units: units, lines: selected, pad: pad, shadows: shadows,
+                          gradients: gradients, hasLineLimit: true, limitedWidth: boundedWidth)
+    }
+
     struct Placed {
         var line: CTLine
         var width: CGFloat
@@ -517,7 +570,7 @@ package final class TextLayout {
             Placed(line: l.line, width: l.width, ascent: l.ascent, descent: l.descent, leading: l.leading,
                    indent: l.indent)
         }
-        guard clip != 0 else { return lines.map(placed) }
+        guard clip != 0, !hasLineLimit else { return lines.map(placed) }
         if let c = visibleCache, c.clip == clip, c.boxHeight == boxHeight, c.innerWidth == innerWidth { return c.lines }
         var count = 0
         var used: CGFloat = 0
@@ -564,7 +617,7 @@ package final class TextLayout {
 
     /// Last visible line when more lines were cut: its own text + "…" when that fits, else the rest of the
     /// paragraph truncated with "…".
-    private func ellipsisLine(_ line: Line, available: CGFloat) -> CTLine {
+    private func ellipsisLine(_ line: Line, available: CGFloat, semantic: Bool = false) -> CTLine {
         let start = line.range.location
         var end = start + line.range.length
         while end > start, TextLayout.isNewline(units[end - 1]) || TextLayout.isSpace(units[end - 1]) { end -= 1 }
@@ -573,11 +626,18 @@ package final class TextLayout {
         let tokenAttributes = attributed.attributes(at: max(end - 1, start), effectiveRange: nil)
         own.append(NSAttributedString(string: "\u{2026}", attributes: tokenAttributes))
         let candidate = CTLineCreateWithAttributedString(own)
-        if visibleWidth(candidate) <= available + 0.5 { return candidate }
+        if visibleWidth(candidate) <= available + (semantic ? 0 : 0.5) { return candidate }
         var paragraphEnd = start
         while paragraphEnd < units.count, !TextLayout.isNewline(units[paragraphEnd]) { paragraphEnd += 1 }
-        let rest = CTLineCreateWithAttributedString(attributed.attributedSubstring(
-            from: NSRange(location: start, length: paragraphEnd - start)))
+        let remainder = attributed.attributedSubstring(from: NSRange(location: start, length: paragraphEnd - start))
+        // If a hard-broken paragraph itself fits but its required ellipsis does not, CoreText would otherwise
+        // return that paragraph unchanged. Semantic limits must retain the token whenever text was omitted.
+        let rest: CTLine
+        if semantic {
+            let ending = NSMutableAttributedString(attributedString: remainder)
+            ending.append(NSAttributedString(string: "\u{2026}", attributes: tokenAttributes))
+            rest = CTLineCreateWithAttributedString(ending)
+        } else { rest = CTLineCreateWithAttributedString(remainder) }
         return CTLineCreateTruncatedLine(rest, Double(available), .end, ellipsisToken(at: max(end - 1, start)))
             ?? candidate
     }

@@ -42,6 +42,9 @@ public struct TextStyle: Hashable, Sendable {
     public var trailingSpaces = false
     /// Wrap lines at the available width (ClipString=1 with both W and H, ClipString=2 with W or ClipStringW).
     public var wrap = false
+    /// Explicit line-count limit, independent of the legacy ClipString mode. Nil preserves unrestricted layout.
+    /// Measurement and drawing use the same limited lines, adding an ellipsis only when content is omitted.
+    public var maximumLines: Int? = nil
     /// When wrapping, a word wider than the line may be broken (ClipString=1). ClipString=2 "will always wrap on
     /// word boundaries (spaces or tabs)" and clips a word that is too long instead.
     public var breakLongWords = true

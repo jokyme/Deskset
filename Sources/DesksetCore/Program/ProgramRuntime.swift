@@ -213,7 +213,8 @@ public struct ProgramRuntime: Sendable {
                 if let fontSize = text.fontSizeExpression { try expressions.validateFontSize(fontSize) }
                 guard !text.fontFamily.isEmpty,
                       text.fontSize.isFinite, text.fontSize > 0,
-                      text.fontWeight.map({ (1...999).contains($0) }) ?? true else {
+                      text.fontWeight.map({ (1...999).contains($0) }) ?? true,
+                      text.maximumLines.map({ (1...1000).contains($0) }) ?? true else {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 try expressions.validateColor(text.color, invalid: .invalidText(node.id))

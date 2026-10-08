@@ -57,6 +57,9 @@ public extension Desk {
     /// Conditional style applications and nested includes combine their checked conditions for hidden/color/fill/track/background,
     /// retaining each expansion occurrence and inherited color fallbacks. Widget-side conditions may apply supplied constant package styles.
     /// Style expressions keep their definition-tree receipts and the merged translation tables.
+    /// Text line limits accept unconditional whole literals from 1 through 1000, including transparent parentheses
+    /// and constant local/package styles. Limits do not inherit; no limit leaves ordinary wrapping unchanged.
+    /// Dynamic or conditional line limits, state sources and Label components remain unsupported.
     /// Box backgrounds select one static solid color, glass/clearGlass or no background. Paint and static glass tint
     /// keep independent candidate precedence; only a selected glass branch consumes tint. Every inactive or losing source is validated.
     /// Missing/invalid font sizes fail the current scene transaction;
