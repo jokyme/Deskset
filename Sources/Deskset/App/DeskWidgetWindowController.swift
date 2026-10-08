@@ -65,7 +65,8 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
          actionServices: DeskProgramActionServices = .live,
          tooltipExecutor: SkinExecutor = MainSkinExecutor.shared,
          preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages },
-         dateLocale: @escaping () -> Locale = { Locale.current }) {
+         dateLocale: @escaping () -> Locale = { Locale.current },
+         system: SystemDataSource = SystemMonitor.shared) {
         let initialLanguages = preferredLanguages(), initialLocale = dateLocale()
         let localization = DeskProgramLocalization(program: program, preferredLanguages: initialLanguages, locale: initialLocale)
         self.source = source
@@ -99,7 +100,7 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
 
         let hostOwner = DeskWidgetHostOwner(program: program, executor: executor, provider: content,
                                             prepared: prepared, clock: clock, source: source.entry, session: currentSession,
-                                            options: restoredOptions?.input)
+                                            options: restoredOptions?.input, system: system)
         self.owner = hostOwner
 
         super.init()
@@ -193,6 +194,15 @@ final class DeskWidgetWindowController: NSObject, NSWindowDelegate {
             }
         }
         observers.append((center, powerToken))
+
+        let detailsToken = center.addObserver(forName: .desksetBatteryDetailsDidChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self, !self.isClosing, !self.isClosed else { return }
+            let hostOwner = self.owner
+            self.executor.async { [hostOwner] in
+                hostOwner.notifyBatteryDetailsReady()
+            }
+        }
+        observers.append((center, detailsToken))
     }
 
     static func makeInput(for appearance: NSAppearance, scale: CGFloat, program: WidgetProgram? = nil,
@@ -808,6 +818,7 @@ final class DeskWidgetHostOwner {
     let source: String
     let session: UUID
     private let initialOptions: ProgramOptionsInput?
+    private let system: SystemDataSource
     var prepared: DeskProgramResources.Prepared?
     private(set) var host: DeskProgramHost?
     private(set) var isClosed = false
@@ -818,7 +829,7 @@ final class DeskWidgetHostOwner {
 
     init(program: WidgetProgram, executor: SkinExecutor, provider: ContentProvider,
          prepared: DeskProgramResources.Prepared?, clock: SkinClock, source: String, session: UUID,
-         options: ProgramOptionsInput? = nil) {
+         options: ProgramOptionsInput? = nil, system: SystemDataSource = SystemMonitor.shared) {
         self.program = program
         self.executor = executor
         self.provider = provider
@@ -827,6 +838,7 @@ final class DeskWidgetHostOwner {
         self.source = source
         self.session = session
         self.initialOptions = options
+        self.system = system
     }
 
     func start(input: DeskProgramHost.Input, facts: SkinWindowFacts, supportsSystemGlass: Bool = false,
@@ -844,7 +856,7 @@ final class DeskWidgetHostOwner {
         do {
             let readyHost = try DeskProgramHost(program: program, executor: executor, provider: provider,
                                                 input: input, prepared: prepared, clock: clock,
-                                                source: source, options: initialOptions)
+                                                system: system, source: source, options: initialOptions)
             guard !isClosed else {
                 readyHost.close()
                 return
@@ -1032,6 +1044,11 @@ final class DeskWidgetHostOwner {
         precondition(executor.isCurrent)
         guard !isClosed, let host else { return }
         host.notifyPowerChange()
+    }
+    func notifyBatteryDetailsReady() {
+        precondition(executor.isCurrent)
+        guard !isClosed, let host else { return }
+        host.notifyBatteryDetailsReady()
     }
 
     func wake() {

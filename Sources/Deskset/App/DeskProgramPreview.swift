@@ -107,6 +107,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         switch runtime?.clockPrecision {
         case .second: return 1000
         case .twoSeconds: return 2000
+        case .hour: return 3_600_000
         case .minute, nil: return 60_000
         }
     }
@@ -251,6 +252,12 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         guard visible, let runtime else { return }
         let batteryProps: Set<ProgramSystemProperty> = [.batteryLevel, .batteryCharging, .batteryPluggedIn]
         guard !runtime.neededSystemProperties().isDisjoint(with: batteryProps) else { return }
+        updateForTick()
+    }
+    func notifyBatteryDetailsReady() {
+        guard state != .closed, visible, let runtime else { return }
+        let details: Set<ProgramSystemProperty> = [.batteryHealth, .batteryCycles]
+        guard !runtime.neededSystemProperties().isDisjoint(with: details) else { return }
         updateForTick()
     }
 

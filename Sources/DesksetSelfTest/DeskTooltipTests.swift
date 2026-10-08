@@ -246,6 +246,20 @@ func runDeskTooltipTests(_ t: TestRunner) {
         t.equal(scene, try literal.project(environment: tooltipEnvironment(), measure: tooltipMeasure))
     }
 
+    t.suite("Desk: tooltips: the original battery health tip displays live and missing Percent values") {
+        let (_, _, program) = try tooltipCompilation(t, #"widget { Text("A").tooltip(battery.health) }"#)
+        for (value, expected) in [(Optional(94.0), "94"), (nil, "–")] {
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: tooltipEnvironment(), dateInput: tooltipDate(),
+                systemInput: ProgramSystemInput(batteryHealth: value), measure: tooltipMeasure)
+            t.equal(scene.hitMap.toolTipInfo(at: point.x, point.y, images: nil), ToolTipInfo(text: expected))
+            t.equal(runtime.neededSystemProperties, [.batteryHealth]); t.equal(runtime.clockPrecision, .hour)
+            var literal = try ProgramRuntime(program: tooltipCompilation(t,
+                "widget { Text(\"A\").tooltip(\"\(expected)\") }").2)
+            t.equal(scene, try literal.project(environment: tooltipEnvironment(), measure: tooltipMeasure))
+        }
+    }
+
     t.suite("Desk: tooltips: conditions states unknown data and dimensions retain explicit boundaries") {
         for source in [#"widget { Text("A").tooltip("Body", if: false) }"#,
                        #"widget { Text("A").tooltip("Body", title: "Title", if: true) }"#,
@@ -253,8 +267,7 @@ func runDeskTooltipTests(_ t: TestRunner) {
                        #"widget { Text("A").pressed { .tooltip("Body") } }"#,
                        #"widget { Text("A").tooltip(2W) }"#,
                        #"widget { Text("A").tooltip("Body", title: 2W) }"#,
-                       #"widget { Text("A").tooltip(false ? 2W : "Allowed") }"#,
-                       #"widget { Text("A").tooltip(battery.health) }"#] {
+                       #"widget { Text("A").tooltip(false ? 2W : "Allowed") }"#] {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, "\(source)\n\(deskDescribe(checked))")
             t.check(result.program == nil && !result.issues.isEmpty, "\(source)\n\(result.issues)")

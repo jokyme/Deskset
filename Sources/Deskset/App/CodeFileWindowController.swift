@@ -172,6 +172,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate, NSTo
                 preview?.notifyPowerChange()
             }
             previewObservers.append((center, power))
+            let details = center.addObserver(forName: .desksetBatteryDetailsDidChange, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifyBatteryDetailsReady()
+            }
+            previewObservers.append((center, details))
         }
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes

@@ -1689,10 +1689,12 @@ enum DeskWidgetWindowSelfTests {
             reviewDrainOwner(widget, t)
             func awaitPresentation(_ generation: UInt64) throws {
                 let input = try DeskWidgetWindowController.makeInput(for: widget.window.effectiveAppearance,
-                                                                      scale: widget.window.backingScaleFactor)
+                                                                      scale: widget.window.backingScaleFactor,
+                                                                      program: widget.program)
                 guard let space = widget.window.colorSpace?.cgColorSpace else { throw Failure.fixture }
                 // The real notification may report an occluded desktop window. Like actionFixture, these
                 // same-destination facts qualify bitmap delivery after the notification's scene assertions.
+                // Match publishFacts' localized input so this delivery cannot create a second projection.
                 let facts = SkinWindowFacts(frame: widget.window.frame, isVisible: true, isOrderedIn: true,
                     scale: widget.window.backingScaleFactor, colorSpace: space, appearance: input.environment.appearance.name,
                     takesPointer: true, sequence: 200, panelGeneration: widget.destinationEpoch)

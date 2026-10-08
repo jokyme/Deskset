@@ -44,9 +44,9 @@ effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
 
-background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	16	FIFO lifecycle, fact and bitmap ACK delivery, pointer and accessibility actions, menu resolve/cancellation/selection, and checked option snapshot reads and updates; not a skin input
+background.executorAsync	Sources/Deskset/App/DeskWidgetWindowController.swift	17	FIFO lifecycle, fact and bitmap ACK delivery, pointer and accessibility actions, menu resolve/cancellation/selection, checked option snapshots, and battery-details readiness; not a skin input
 background.mainHop	Sources/Deskset/App/DeskWidgetWindowController.swift	12	FIFO presentation, availability, rejected-projection feedback and close callbacks, resolved menu values, accepted option snapshots and qualified immutable effect batches; issued session/epoch/serial checked before injected external services
-event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	4	screen profile, screen change, workspace wake, and power source change notifications for desktop widget window; not a skin input
+event.notification	Sources/Deskset/App/DeskWidgetWindowController.swift	5	screen profile, screen change, workspace wake, power source, and completed battery-details notifications; metadata sampling stays on the owner and observers leave on close
 event.pointerState	Sources/Deskset/App/DeskWidgetWindowController.swift	1	default desktop drag and accepted-scene hover pointer source reads cursor position on Main; route tests inject the view's pointerLocation without moving the system cursor; not a skin input
 random.UUID	Sources/Deskset/App/DeskWidgetWindowController.swift	3	window session and opened menu identifiers reject obsolete replies and repeated selections; not a program input
 zone.Locale.current	Sources/Deskset/App/DeskWidgetWindowController.swift	2	Main captures preferred languages at widget load and the region/calendar for each input; providers are injected, and a language change reloads the session
@@ -721,9 +721,18 @@ wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for 
 background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel replacement is deferred until an applying ScenePatch releases its contentRoot writer; no executor wait inside a claim
 wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt
 
-event.notification	Sources/Deskset/App/CodeFileWindowController.swift	4	App-owned document preview system palette/date/wake/power notifications; weak owner, main publication, removed at deinit; no skin action or data read
+event.notification	Sources/Deskset/App/CodeFileWindowController.swift	5	App-owned document preview palette/date/wake/power and completed battery-details notifications; weak owner, Main publication, removed at deinit; no skin action or data read
 zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	2	default Main providers capture widget preferred languages and regional locale; translation selection is frozen per loaded session and formatting input per projection
 effect.pasteboard	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live copy adapter behind an injected closure; preview records typed effects and tests replace the clipboard operation
 effect.workspace	Sources/Deskset/App/DeskProgramActionServices.swift	1	Main-only live open adapter behind injected target resolver/opener closures; preview records typed effects and tests never launch applications
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramNumberFormatting.swift	1	owner-local formatter receives explicit immutable projection locale; Core reads no current locale
+background.fileEvents	Sources/Deskset/BatteryDetailsService.swift	2	owned nonblocking stdout and child-exit sources; completion follows descriptor closure and leader reap, with fixed local child fixtures
+background.mainHop	Sources/Deskset/BatteryDetailsService.swift	1	injected ready publisher schedules Main only after committing the shared snapshot; request identity and current hour reject stale callbacks
+background.process	Sources/Deskset/BatteryDetailsService.swift	1	fixed system_profiler battery JSON command off Main; bounded stdout, monotonic timeout, exit status and owned process-group cleanup; test-only internal command seam
+background.queue	Sources/Deskset/BatteryDetailsService.swift	2	injected service queue and private child-reader queue keep slow profile/raw health work off owners and Main; controlled completions verify serialization
+effect.signal	Sources/Deskset/BatteryDetailsService.swift	2	terminate only the owned child group while the unreaped leader still reserves its identity; cancellation and normal output closure clean descendants before reap
+random.UUID	Sources/Deskset/BatteryDetailsService.swift	1	opaque request identity discards obsolete hour and stop callbacks; never used as a widget data value
+timer.asyncAfter	Sources/Deskset/BatteryDetailsService.swift	3	bounded child exit observation, complete-output grace and nonblocking reap retries on the reader queue; timeout and cancellation fixtures cover cleanup
+timer.dispatchSource	Sources/Deskset/BatteryDetailsService.swift	1	monotonic ten-second profile-reader deadline; cancelled at completion, with shorter injected deadlines for fixed child fixtures
+wall.Date()	Sources/Deskset/BatteryDetailsService.swift	1	injected Unix clock selects the shared hourly metadata bucket; no second owner cache and no timer between demanded reads

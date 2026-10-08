@@ -95,6 +95,8 @@ enum AppSelfTest {
         DeskConditionalStylePreviewSelfTests.run(t)
         DeskConditionalBackgroundPreviewSelfTests.run(t)
         DeskTextLineLimitSelfTests.run(t)
+        BatteryDetailsServiceSelfTests.run(t)
+        DeskBatteryDetailsSelfTests.run(t)
         DeskOptionsIntegrationSelfTests.run(t)
         DeskProgramOptionsPanelSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)

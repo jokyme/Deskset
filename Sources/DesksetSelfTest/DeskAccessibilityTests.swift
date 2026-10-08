@@ -212,11 +212,24 @@ func runDeskAccessibilityTests(_ t: TestRunner) {
         t.equal(scene, try literal.project(environment: accessibilityEnvironment(), measure: accessibilityMeasure))
     }
 
+    t.suite("Desk: accessibility: the original battery health label displays live and missing Percent values") {
+        let program = try accessibilityProgram(t, #"widget { Text("A").voiceOver(battery.health) }"#)
+        for (value, expected) in [(Optional(94.0), "94"), (nil, "–")] {
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: accessibilityEnvironment(), dateInput: accessibilityDate(),
+                systemInput: ProgramSystemInput(batteryHealth: value), measure: accessibilityMeasure)
+            t.equal(scene.elements.first?.accessibilityLabel, expected)
+            t.equal(runtime.neededSystemProperties, [.batteryHealth]); t.equal(runtime.clockPrecision, .hour)
+            var literal = try ProgramRuntime(program: accessibilityProgram(t,
+                "widget { Text(\"A\").voiceOver(\"\(expected)\") }"))
+            t.equal(scene, try literal.project(environment: accessibilityEnvironment(), measure: accessibilityMeasure))
+        }
+    }
+
     t.suite("Desk: accessibility: unsupported dimensions conditions and limits remain explicit") {
         for source in [#"widget { Text("A").voiceOver(2W) }"#,
                        #"widget { Text("A").voiceOver(true ? 2W : "Allowed") }"#,
                        #"widget { Text("A").voiceOver("Label", if: true) }"#,
-                       #"widget { Text("A").voiceOver(battery.health) }"#,
                        #"widget { Text("A").voiceOver("Label").margin(1) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))

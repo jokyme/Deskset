@@ -12,6 +12,8 @@ public enum ProgramSystemProperty: String, CaseIterable, Equatable, Sendable {
     case batteryPluggedIn = "battery.pluggedIn"
     case batteryPresent = "battery.present"
     case batteryTimeRemaining = "battery.timeRemaining"
+    case batteryHealth = "battery.health"
+    case batteryCycles = "battery.cycles"
 }
 
 /// One projection's system data inputs. The host samples its injected system data source once; Core owns no live monitor.
@@ -26,11 +28,14 @@ public struct ProgramSystemInput: Equatable, Sendable {
     public let batteryPluggedIn: Bool?
     public let batteryPresent: Bool?
     public let batteryTimeRemaining: Double? // seconds until empty or full
+    public let batteryHealth: Double? // 0...100
+    public let batteryCycles: Double? // nonnegative, observed count
 
     public init(cpuUsage: Double? = nil, cpuCoreCount: Int? = nil,
                 memoryUsed: Double? = nil, memoryTotal: Double? = nil, memoryFree: Double? = nil,
                 batteryLevel: Double? = nil, batteryCharging: Bool? = nil, batteryPluggedIn: Bool? = nil,
-                batteryPresent: Bool? = nil, batteryTimeRemaining: Double? = nil) {
+                batteryPresent: Bool? = nil, batteryTimeRemaining: Double? = nil,
+                batteryHealth: Double? = nil, batteryCycles: Double? = nil) {
         self.cpuUsage = cpuUsage
         self.cpuCoreCount = cpuCoreCount
         self.memoryUsed = memoryUsed
@@ -41,6 +46,8 @@ public struct ProgramSystemInput: Equatable, Sendable {
         self.batteryPluggedIn = batteryPluggedIn
         self.batteryPresent = batteryPresent
         self.batteryTimeRemaining = batteryTimeRemaining
+        self.batteryHealth = Self.validBatteryHealth(batteryHealth)
+        self.batteryCycles = Self.validBatteryCycles(batteryCycles)
     }
 
     /// Pure snapshot from a SystemDataSource without retaining it. Samples only the requested properties.
@@ -99,6 +106,7 @@ public struct ProgramSystemInput: Equatable, Sendable {
         } else {
             batLevel = nil; batCharging = nil; batPluggedIn = nil
         }
+        let details = batteryDetails(from: system, for: needed)
 
         return ProgramSystemInput(
             cpuUsage: cpuUsage,
@@ -110,8 +118,29 @@ public struct ProgramSystemInput: Equatable, Sendable {
             batteryCharging: batCharging,
             batteryPluggedIn: batPluggedIn,
             batteryPresent: needed.contains(.batteryPresent) ? bat != nil : nil,
-            batteryTimeRemaining: needed.contains(.batteryTimeRemaining) ? batteryDurationSeconds(from: bat) : nil
+            batteryTimeRemaining: needed.contains(.batteryTimeRemaining) ? batteryDurationSeconds(from: bat) : nil,
+            batteryHealth: details.health,
+            batteryCycles: details.cycles
         )
+    }
+
+    /// The provider owns the hourly cache. Read both requested fields together on every projection so a completed
+    /// background read is immediately available, including after this projection previously saw pending.
+    static func batteryDetails(from system: SystemDataSource, for needed: Set<ProgramSystemProperty>) -> BatteryDetails {
+        let health = needed.contains(.batteryHealth), cycles = needed.contains(.batteryCycles)
+        guard health || cycles, case .ready(let details) = system.batteryDetails() else { return BatteryDetails() }
+        return BatteryDetails(health: health ? validBatteryHealth(details.health) : nil,
+                              cycles: cycles ? validBatteryCycles(details.cycles) : nil)
+    }
+
+    static func validBatteryHealth(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, (0...100).contains(value) else { return nil }
+        return value
+    }
+
+    static func validBatteryCycles(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
     }
 
     /// Both sampling paths use the same provider policy. Charging estimates may explicitly be zero; the

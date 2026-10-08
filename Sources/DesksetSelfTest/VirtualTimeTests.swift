@@ -1182,7 +1182,7 @@ private final class BoundaryTarget: TickTarget {
 
 private func runClockBoundaryTests(_ t: TestRunner) {
     t.suite("Executor: clock boundaries: wall phases are precise one-shot deadlines") {
-        for precision in [ProgramClockPrecision.second, .twoSeconds, .minute] {
+        for precision in [ProgramClockPrecision.second, .twoSeconds, .minute, .hour] {
             let executor = VirtualTimeExecutor(start: start.addingTimeInterval(0.25), timeZone: utc)
             let target = BoundaryTarget(executor), scheduler = TickScheduler()
             let delay = try precision.delayToNextBoundary(after: executor.wallClock)
@@ -1191,6 +1191,7 @@ private func runClockBoundaryTests(_ t: TestRunner) {
             case .second: expected = 0.75
             case .twoSeconds: expected = 1.75
             case .minute: expected = 59.75
+            case .hour: expected = 3599.75
             }
             t.close(delay, expected)
             scheduler.startClockBoundary(after: delay, for: target)

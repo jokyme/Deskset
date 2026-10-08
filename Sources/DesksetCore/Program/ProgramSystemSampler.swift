@@ -6,6 +6,7 @@ import Foundation
 /// - Battery level: eventAndPeriodic(60s), sampled at minute boundaries and after power events
 /// - Battery time remaining: periodic(60s), sampled at minute boundaries
 /// - Battery status (charging / pluggedIn): event-driven (sampled on demand, refreshed on power events)
+/// - Battery details (health / cycles): one snapshot per demand; the provider owns the hourly cache
 /// - Static properties (cpuCoreCount, memoryTotal, batteryPresent): once (sampled on demand, never re-read)
 /// Power notifications invalidate the dynamic battery snapshot for the next sample; they do not themselves
 /// trigger an immediate projection when time remaining is the only battery dependency.
@@ -165,6 +166,7 @@ public struct ProgramSystemSampler: Sendable {
         if needed.contains(.batteryPluggedIn) {
             batteryPluggedIn = cachedBatteryStatus?.isPluggedIn ?? false
         }
+        let details = ProgramSystemInput.batteryDetails(from: system, for: needed)
 
         return ProgramSystemInput(
             cpuUsage: cpuUsage,
@@ -176,7 +178,9 @@ public struct ProgramSystemSampler: Sendable {
             batteryCharging: batteryCharging,
             batteryPluggedIn: batteryPluggedIn,
             batteryPresent: needed.contains(.batteryPresent) ? cachedBatteryPresent : nil,
-            batteryTimeRemaining: needsBatteryRemaining ? ProgramSystemInput.batteryDurationSeconds(from: cachedBatteryStatus) : nil
+            batteryTimeRemaining: needsBatteryRemaining ? ProgramSystemInput.batteryDurationSeconds(from: cachedBatteryStatus) : nil,
+            batteryHealth: details.health,
+            batteryCycles: details.cycles
         )
     }
 

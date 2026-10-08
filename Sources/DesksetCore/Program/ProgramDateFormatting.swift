@@ -11,15 +11,16 @@ public struct ProgramDateInput: Equatable, Sendable {
     }
 }
 
-/// The fastest precision actually needed by visible, nonfrozen date text in a successful projection.
+/// The fastest precision actually needed by visible, nonfrozen date or system expressions in a successful projection.
 public enum ProgramClockPrecision: Equatable, Sendable {
-    case minute, twoSeconds, second
+    case hour, minute, twoSeconds, second
 
     public func delayToNextBoundary(after instant: Date) throws -> TimeInterval {
         let value = instant.timeIntervalSince1970
         guard value.isFinite else { throw ProgramRuntimeError.invalidDateInput }
         let interval: Double
         switch self {
+        case .hour: interval = 3_600.0
         case .minute: interval = 60.0
         case .twoSeconds: interval = 2.0
         case .second: interval = 1.0
@@ -35,7 +36,8 @@ public enum ProgramClockPrecision: Equatable, Sendable {
         guard let b else { return a }
         if a == .second || b == .second { return .second }
         if a == .twoSeconds || b == .twoSeconds { return .twoSeconds }
-        return .minute
+        if a == .minute || b == .minute { return .minute }
+        return .hour
     }
 }
 

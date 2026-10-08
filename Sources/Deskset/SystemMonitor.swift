@@ -59,11 +59,13 @@ final class SystemMonitor: SystemDataSource {
     init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          sensors: SensorService = .shared,
          readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:),
-         readBattery: @escaping () -> BatteryStatus? = SystemMonitor.readBattery) {
+         readBattery: @escaping () -> BatteryStatus? = SystemMonitor.readBattery,
+         readBatteryDetails: @escaping () -> BatteryDetailsReading = { BatteryDetailsService.shared.reading() }) {
         self.clock = clock
         self.sensors = sensors
         self.readAvailableSpace = readAvailableSpace
         self.readBattery = readBattery
+        self.readBatteryDetails = readBatteryDetails
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
             state.lastSample = clock()
@@ -760,6 +762,10 @@ final class SystemMonitor: SystemDataSource {
 
     /// The live IOKit reader; self-tests hold an old reading across cache invalidation.
     private let readBattery: () -> BatteryStatus?
+    private let readBatteryDetails: () -> BatteryDetailsReading
+
+    /// The service owns the hour cache and asynchronous completion; do not cache its pending answer here.
+    func batteryDetails() -> BatteryDetailsReading { readBatteryDetails() }
 
     /// Read without the lock (IOKit asks the power management daemon).
     func battery() -> BatteryStatus? {

@@ -234,14 +234,33 @@ func runDeskMenuTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Desk: menus: the original battery health title resolves live and missing Percent values on demand") {
+        let (_, _, program) = try menuCompilation(t, #"widget { Text("A").menu { Item(battery.health) } }"#)
+        for (value, expected) in [(Optional(94.0), "94"), (nil, "–")] {
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: menuEnvironment(), measure: menuMeasure)
+            let menu = try runtime.resolveMenu(program.root.id, expectedGeneration: scene.generation,
+                environment: menuEnvironment(), dateInput: menuDate("en_US"), systemInput: ProgramSystemInput(batteryHealth: value))
+            guard case .item(_, let title, _, _)? = menu?.items.first else { throw DeskMenuFixtureError.structure }
+            t.equal(title, expected); t.equal(runtime.clockPrecision, nil)
+            t.equal(runtime.neededSystemProperties, [])
+            t.equal(runtime.neededSystemProperties(openingMenu: program.root.id), [.batteryHealth])
+            var literal = try ProgramRuntime(program: menuCompilation(t,
+                "widget { Text(\"A\").menu { Item(\"\(expected)\") } }").2)
+            let control = try literal.project(environment: menuEnvironment(), measure: menuMeasure)
+            t.equal(scene, control)
+            t.equal(menu, try literal.resolveMenu(program.root.id, expectedGeneration: control.generation,
+                environment: menuEnvironment()))
+        }
+    }
+
     t.suite("Desk: menus: unsupported syntax actions data and dimensions reject all branches without partial refs") {
         for source in [#"widget { Text("A").menu { for entry in [1, 2] { Item(entry) } } }"#,
                        #"widget { Text("A").menu { if false { Item(2W) } else { Item("Allowed") } } }"#,
                        #"widget { Text("A").menu { if network.online { Item("Online") } } }"#,
                        #"widget { Text("A").menu { Item("A").onClick { if true { copy("A") } } } }"#,
                        #"widget { saved count = 0; Text("A").menu { Item("A").onClick { count = 1 } } }"#,
-                       #"widget { Text("A").menu { Divider().onClick { copy("A") } } }"#,
-                       #"widget { Text("A").menu { Item(battery.health) } }"#] {
+                       #"widget { Text("A").menu { Divider().onClick { copy("A") } } }"#] {
             let checked = deskCheck(source), result = Desk.compile(checked)
             t.check(checked.diagnostics(.error).isEmpty, "\(source)\n\(deskDescribe(checked))")
             t.check(result.program == nil && !result.issues.isEmpty, "\(source)\n\(result.issues)")

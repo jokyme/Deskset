@@ -723,6 +723,14 @@ final class DeskProgramHost {
         guard !owner.runtime.neededSystemProperties().isDisjoint(with: batteryProps) else { return }
         owner.project()
     }
+    func notifyBatteryDetailsReady() {
+        let owner = current
+        guard !owner.isClosed, owner.visible else { return }
+        let details: Set<ProgramSystemProperty> = [.batteryHealth, .batteryCycles]
+        guard !owner.runtime.neededSystemProperties().isDisjoint(with: details) else { return }
+        // Ordinary refreshes defer behind a pending projection, preserving its sampled action inputs.
+        owner.project()
+    }
     func drawFirstFrame() { current.frames.drawFirstFrame() }
 
     /// Points are relative to the presented bitmap's top-left corner, already in points rather than pixels.

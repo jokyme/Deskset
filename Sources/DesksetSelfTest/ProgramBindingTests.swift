@@ -1532,7 +1532,20 @@ private func runDeskBatteryDurationTests(_ t: TestRunner) {
                 t.equal(result.issues.first?.kind, damage == "type" ? .invalidCheckedModel : .unsupported)
             }
         }
-        for source in ["widget { Text(battery.health) }", "widget { Text(2W) }"] {
+        let health = try checkedBindingProgram(t, "widget { Text(battery.health) }")
+        for (value, expected, reference) in [(Optional(94.0), "94", "widget { Text(94%) }"),
+                                            (nil, "–", "widget { Text(cpu.usage) }")] {
+            var runtime = try ProgramRuntime(program: health)
+            let scene = try runtime.project(environment: environment, dateInput: date(),
+                systemInput: ProgramSystemInput(batteryHealth: value), measure: bindingMeasure)
+            t.equal(bindingStrings(scene), [expected])
+            t.equal(runtime.clockPrecision, .hour)
+            var literal = try ProgramRuntime(program: checkedBindingProgram(t, reference))
+            let control = try literal.project(environment: environment, dateInput: date(), measure: bindingMeasure)
+            t.equal(scene.drawingItems, control.drawingItems, "health uses the same Percent spans and geometry")
+            t.equal(scene.elements.map(\.frame), control.elements.map(\.frame))
+        }
+        for source in ["widget { Text(2W) }"] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             t.equal(Desk.compile(checked).issues.first?.kind, .unsupported, source)

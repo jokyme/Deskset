@@ -380,6 +380,7 @@ struct ProgramExpressionCompiler {
         }
         let identity = checked.tree.id(of: node)
         let coercion = checked.numericCoercions[identity]
+        try validateBatteryDetailsRead(node, identity: identity, type: type, coercion: coercion)
         if checked.canonicalNumericValues[identity] != nil,
            let source = try? unparenthesized(node), let member = MemberExprSyntax(source),
            IdentifierExprSyntax(member.base.node)?.name == "options" {
@@ -847,6 +848,13 @@ struct ProgramExpressionCompiler {
         guard case .builtIn(.member(let namespace, let name))? = symbol else { return nil }
         let fullPath = "\(namespace).\(name)"
         guard let property = ProgramSystemProperty(rawValue: fullPath) else { return nil }
+        if property == .batteryHealth || property == .batteryCycles {
+            guard let syntax = MemberExprSyntax(node), syntax.name.token.name == name,
+                  IdentifierExprSyntax(syntax.base.node)?.name == namespace,
+                  checked.symbols[checked.tree.id(of: syntax.base.node)] == .builtIn(.namespace(namespace)) else {
+                throw issue(.invalidCheckedModel, node, "Checked battery details require their actual namespace/member source")
+            }
+        }
         guard checked.dataUses.contains(where: {
             $0.reference == identity && $0.nodePath == namespace && $0.memberPath == fullPath && $0.arguments.isEmpty && $0.instanceScope.isEmpty
         }) else {
@@ -857,11 +865,11 @@ struct ProgramExpressionCompiler {
               validateSystemPropertyContract(property: property, member: member) else {
             throw issue(.unsupported, node, "Unsupported \(fullPath) catalog contract")
         }
-        if loweringStyle || loweringCondition {
+        if loweringStyle || loweringCondition || property == .batteryHealth || property == .batteryCycles {
             let fraction = checked.numericCoercions[identity] == .percentAsFraction
             guard fraction ? member.type == .percent && checked.types[identity]?.type == .plainNumber :
                 checked.types[identity]?.type == member.type else {
-                throw issue(.invalidCheckedModel, node, "Checked style or condition data type does not match its catalog member")
+                throw issue(.invalidCheckedModel, node, "Checked data type does not match its catalog member")
             }
         } else if property == .batteryPresent || property == .batteryTimeRemaining {
             guard checked.types[identity]?.type == member.type else {
@@ -869,6 +877,25 @@ struct ProgramExpressionCompiler {
             }
         }
         return property
+    }
+
+    /// Live fields and transparent wrappers cannot acquire a constant receipt. A real Percent use may still
+    /// carry the checker's percent-as-fraction conversion; the observed cycle count has no such conversion.
+    private func validateBatteryDetailsRead(_ node: PositionedNode, identity: NodeID, type: DeskType,
+                                           coercion: NumericCoercion?) throws {
+        let source = try unparenthesized(node)
+        guard let syntax = MemberExprSyntax(source), IdentifierExprSyntax(syntax.base.node)?.name == "battery",
+              syntax.name.token.name == "health" || syntax.name.token.name == "cycles" else { return }
+        let sourceID = checked.tree.id(of: source)
+        let expected: DeskType = syntax.name.token.name == "health" ? .percent : .plainNumber
+        let fraction = expected == .percent && coercion == .percentAsFraction && type == .plainNumber
+        guard checked.symbols[sourceID] == .builtIn(.member(namespace: "battery", name: syntax.name.token.name)),
+              checked.symbols[checked.tree.id(of: syntax.base.node)] == .builtIn(.namespace("battery")),
+              identity == sourceID || checked.symbols[identity] == nil,
+              type == expected && coercion == nil || fraction,
+              checked.canonicalNumericValues[identity] == nil else {
+            throw issue(.invalidCheckedModel, node, "Live battery details require exact checked types and no constant receipts")
+        }
     }
 
     private func validateSystemPropertyContract(property: ProgramSystemProperty, member: MemberSpec) -> Bool {
@@ -909,6 +936,13 @@ struct ProgramExpressionCompiler {
             return member.type == .duration && member.range == .none && member.displayBase == nil && member.defaultFormat == .style(".short") &&
                 member.cadence == .periodic(seconds: 60) && !member.readsSynchronously && member.signatures.isEmpty && !member.userInitiatedOnly &&
                 member.lowering == CatalogData.pluginKernel("PowerPlugin", ["PowerState": "Lifetime"])
+        case .batteryHealth, .batteryCycles:
+            let health = property == .batteryHealth
+            return member.name == (health ? "health" : "cycles") && member.type == (health ? .percent : .plainNumber) &&
+                member.range == (health ? .fixed(0...100) : .observed) && member.displayBase == nil && member.defaultFormat == nil &&
+                member.maxCount == nil && member.settableTwin == nil && member.signatures.isEmpty && !member.userInitiatedOnly &&
+                member.cadence == .periodic(seconds: 3_600) && !member.readsSynchronously &&
+                member.lowering == CatalogData.nativeKernel("battery", field: health ? "health" : "cycles")
         }
     }
 

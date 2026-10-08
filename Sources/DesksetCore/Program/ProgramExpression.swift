@@ -427,8 +427,8 @@ struct ProgramExpressionValidation {
         case .systemProperty(let property):
             let type: ProgramScalarType
             switch property {
-            case .cpuUsage, .memoryUsage, .batteryLevel: type = .numeric(.percent)
-            case .cpuCoreCount: type = .numeric(.plain)
+            case .cpuUsage, .memoryUsage, .batteryLevel, .batteryHealth: type = .numeric(.percent)
+            case .cpuCoreCount, .batteryCycles: type = .numeric(.plain)
             case .memoryUsed, .memoryTotal, .memoryFree: type = .numeric(.bytes, displayBase: 1024)
             case .batteryCharging, .batteryPluggedIn, .batteryPresent: type = .boolean
             case .batteryTimeRemaining: type = .numeric(.duration)
@@ -819,6 +819,16 @@ struct ProgramExpressionEvaluation: ProgramActionTarget {
                     return Value(scalar: .numeric(ProgramNumber(seconds, dimension: .duration)), precision: .minute)
                 }
                 return Value(scalar: .missing(.numeric(.duration)), precision: .minute)
+            case .batteryHealth:
+                if let health = ProgramSystemInput.validBatteryHealth(systemInput?.batteryHealth) {
+                    return Value(scalar: .numeric(ProgramNumber(health, dimension: .percent)), precision: .hour)
+                }
+                return Value(scalar: .missing(.numeric(.percent)), precision: .hour)
+            case .batteryCycles:
+                if let cycles = ProgramSystemInput.validBatteryCycles(systemInput?.batteryCycles) {
+                    return Value(scalar: .numeric(ProgramNumber(cycles, dimension: .plain)), precision: .hour)
+                }
+                return Value(scalar: .missing(.numeric(.plain)), precision: .hour)
             }
         case .dateIn(let child, let identifier):
             let value = try evaluate(child, depth: depth + 1)

@@ -44,7 +44,8 @@ public extension Desk {
     /// Checked source → the shared Core program. It supports String/Bool/Date/plain/Percent/Bytes/Duration/Length/Angle declarations,
     /// scalar text templates, checked time.now/Date.in/date formats, numeric and Date/Duration arithmetic,
     /// typed missing/three-valued logic, isMissing/ifMissing, locale numeric formats and digits policies,
-    /// system.dark and checked CPU/memory/battery scalar fields, including presence and remaining Duration, root onLoad variable assignments,
+    /// system.dark and checked CPU/memory/battery scalar fields, including presence, remaining Duration and hourly
+    /// macOS battery health/cycle details (health has a raw-capacity fallback; unavailable cycles remain missing), root onLoad variable assignments,
     /// ordered Text/Icon/Progress/Gauge/basic-shape/Row/Column/Freeform onClick/onRightClick assignments/copy/open actions,
     /// including empty handlers and event-specific innermost selection without bubbling,
     /// copy display formatting for the supported scalar types (open remains String-only),
