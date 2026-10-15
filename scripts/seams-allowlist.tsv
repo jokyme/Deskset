@@ -40,6 +40,8 @@ mono.systemUptime	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Mana
 zone.localizedText	Sources/Deskset/App/CodeEditorSettings.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.mainHop	Sources/Deskset/App/DeskCodeDocumentChecking.swift	3	standalone image, full-package refresh and immutable image results publish only to the current Main-owned document generation
+effect.fileWrite	Sources/Deskset/App/DeskPackageArchive.swift	5	scoped archive capture owns its 0700 temporary tree, extracted copies and success/failure cleanup; never writes the source archive or installed packages
+random.UUID	Sources/Deskset/App/DeskPackageArchive.swift	1	unique private archive staging directory name for one scoped capture; not program semantics or a skin input
 effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner's 0700 temporary image directory, exact private copies and cleanup; user resources are read only
 effect.fileWrite	Sources/Deskset/App/DeskWidgetInstallation.swift	1	App-owned 0700 installation root; installer owns no-follow FD staging/copy, exclusive rename and rollback (Darwin writes reviewed separately, not all scanner-detected)
 random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input

@@ -58,7 +58,7 @@ public extension Desk {
     /// font sizes, dynamic hidden(if:) and conditional solid color/fill/track with inherited color fallbacks,
     /// and constant other box/style properties, including checked pt lengths. Unconditional local and supplied package styles expand
     /// with own/style precedence, nested includes, repeated applications and widget replacements. Local style definitions support
-    /// checked dynamic font sizes, hidden/solid-color conditions and tooltip/voiceOver display expressions; package definitions retain constant values.
+    /// checked dynamic font sizes, hidden/solid-color conditions and tooltip/voiceOver display expressions, including package definitions rechecked against each member’s effective options.
     /// Conditional style applications and nested includes combine their checked conditions for hidden/color/fill/track/background,
     /// retaining each expansion occurrence and inherited color fallbacks. Widget-side conditions may apply supplied constant package styles.
     /// Style expressions keep their definition-tree receipts and the merged translation tables.
@@ -100,7 +100,7 @@ public extension Desk {
     /// This slice keeps existing generic Duration formatting for scalar declarations/arithmetic; it introduces no member-style propagation through them.
     /// Fit/fill, catalog ideals, min/max and info.size presets use the shared runtime, including proportional preset overflow scaling.
     /// Dynamic background paint/tint leaves, picture/gradient backgrounds, conditional stroke and other conditional facets,
-    /// dynamic package styles and hover/pressed states remain unsupported.
+    /// hover/pressed states remain unsupported.
     /// View-level for, branch mount actions, dynamic layout and sibling geometry references, other numeric dimensions,
     /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.

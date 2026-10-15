@@ -79,6 +79,12 @@ struct StaticProgramCompiler {
         optionNodeCount += optionCompiler.nodeCount
         let options = ownOptions + ProgramOptionsCompiler.excluding(Set(checked.options.keys), from: packageNodes)
         try expressions.registerOptions(optionCompiler.bindings)
+        if let package {
+            let source = try Checker.checkedPackageStyles(package, member: checked, catalog: catalog)
+            sourceFiles[source.tree.version] = source
+            try collectStyles(source)
+            try collectStyles(checked)
+        }
         var name = URL(fileURLWithPath: checked.tree.file.path).deletingPathExtension().lastPathComponent
         var nameKey: String?
         guard let sizeField = catalog.infoFields.first(where: { $0.name == "size" }),
@@ -239,10 +245,6 @@ struct StaticProgramCompiler {
             guard source.types[source.tree.id(of: conditionNode)]?.type == .bool else {
                 throw compiler.issue(.invalidCheckedModel, conditionNode, "A style application condition requires its checked Bool type")
             }
-            if inStyle && !isLocalSource(source) {
-                let parameter = spec.signatures[0].params[1]
-                _ = try compiler.constantStyleValue(conditionNode, parameter: parameter)
-            }
         }
         return (name, conditionNode.map { SourcedCondition(node: $0, source: source, isStyle: inStyle) })
     }
@@ -252,10 +254,6 @@ struct StaticProgramCompiler {
         copy.checked = source
         copy.allowsStyleParentheses = style
         return copy
-    }
-
-    private func isLocalSource(_ source: CheckedFile) -> Bool {
-        source.tree.version == checked.tree.version && source.tree.file == checked.tree.file
     }
 
     private func source(_ candidate: Candidate, at node: PositionedNode) throws -> CheckedFile {
@@ -371,7 +369,7 @@ struct StaticProgramCompiler {
                 if case .oneOf(let types) = expected { return types.contains(where: accepts) }
                 if expected == .lengthSpec { return actual == .length || actual == .plainNumber || actual == .enumeration("LengthKeyword") }
                 if expected == .length {
-                    let liveFont = isLocalSource(source) && parameter.facets == [FacetID("font.size")]
+                    let liveFont = parameter.facets == [FacetID("font.size")]
                     return actual == .plainNumber && (liveFont || NumberLiteralSyntax(node) != nil || ParenExprSyntax(node) != nil)
                 }
                 if expected == .fontFamily { return actual == .string && StringLiteralSyntax(compiler.styleLeaf(node))?.literalValue != nil }
@@ -418,8 +416,8 @@ struct StaticProgramCompiler {
         var dynamicFontSizes = Set<NodeID>()
         for (index, argument) in bindings {
             let parameter = signature.params[index], node = argument.value.node, identity = source.tree.id(of: node)
-            let dynamicSlot = isLocalSource(source) && (parameter.role == .display || parameter.role == .condition ||
-                parameter.facets == [FacetID("font.size")])
+            let dynamicSlot = parameter.role == .display || parameter.role == .condition ||
+                parameter.facets == [FacetID("font.size")]
             let leaf: PositionedNode
             if dynamicSlot && !compiler.constantStyleSyntax(node) {
                 leaf = node

@@ -165,13 +165,20 @@ func runDeskSharedOptionsReceiptTests(_ t: TestRunner) {
         t.check(Desk.compile(combined, package: shared).program != nil)
     }
 
-    t.suite("Desk: shared option receipts: unsupported loser and dynamic package style publish nothing") {
+    t.suite("Desk: shared option receipts: unsupported loser rejects while dynamic package style reads shared options") {
         let shared = package(#"options { tint = ColorPicker("Tint") }"#)
         let checked = member(#"options { tint = ColorPicker("Local") }"# + "\n" + #"widget { Text("A") }"#, shared)
         rejected(Desk.compile(checked, package: shared))
         let styled = package(#"options { size = Slider("Size", min: 1, max: 20) }"# + "\n" + #"style label { .font(options.size) }"#)
         let styledMember = member(#"widget { Text("A").style(label) }"#, styled)
-        let denied = Desk.compile(styledMember, package: styled)
-        rejected(denied); t.equal(denied.issues.first?.kind, .unsupported)
+        let admitted = Desk.compile(styledMember, package: styled)
+        t.check(admitted.program != nil && admitted.packageOptions != nil)
+        t.check(admitted.issues.isEmpty)
+        var runtime = try ProgramRuntime(program: admitted.program!)
+        let scene = try runtime.project(environment: deskOptionEnvironment(), measure: deskOptionMeasure)
+        let sizes = scene.drawingItems.compactMap { item -> Double? in
+            if case .text(let draw) = item { return TextStyle.pixelSize(points: draw.style.fontSize) }; return nil
+        }
+        t.equal(sizes, [1])
     }
 }
