@@ -78,7 +78,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         for section in program.sections {
             let ini = section.ini
             switch section.kernel {
-            case .time, .calc, .cpu, .memory, .physicalmemory, .swapmemory, .uptime, .netin, .netout, .nettotal, .process, .freediskspace, .sysinfo, .quoteplugin:
+            case .time, .calc, .cpu, .memory, .physicalmemory, .swapmemory, .uptime, .netin, .netout, .nettotal, .process, .freediskspace, .sysinfo, .quoteplugin, .powerplugin:
                 guard let kernel = section.kernel, let selectedClass = kernel.measureClass,
                       let node = makeContextBuiltinMeasure(selectedClass, name: section.name, section: ini,
                                                            context: self, type: kernel.rawValue) else {
@@ -322,7 +322,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         measureIndex[identifier.lowercased()]?.value
     }
     func noteService(_ kind: BackgroundWorkKind) {
-        guard kind == .system else { reject("service \(kind)"); return }
+        guard kind == .system || kind == .battery else { reject("service \(kind)"); return }
         guard let virtual = executor as? VirtualTimeExecutor else { return }
         let scripted = (system as? ScriptedSystemData)?.gives(kind) ?? false
         virtual.background.noteService(kind, config: program.config, scripted: scripted)

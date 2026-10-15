@@ -55,7 +55,7 @@ package enum IniProgramConverter {
             guard let kernel = kernels[section.name.lowercased()], let expected = kernel.measureClass else {
                 throw RainmeterProgramError.inconsistentFrozenInput
             }
-            let plugin = kernel == .quoteplugin
+            let plugin = kernel == .quoteplugin || kernel == .powerplugin
             let registered = plugin ? MeasureRegistry.plugin(named: kernel.rawValue) : MeasureRegistry.measure(named: kernel.rawValue)
             if let registered, ObjectIdentifier(registered) != ObjectIdentifier(expected) {
                 let key = plugin ? "Plugin" : "Measure"
@@ -164,11 +164,15 @@ package enum IniProgramConverter {
                     guard let plugin = section.entries.first(where: { $0.key.lowercased() == "plugin" }) else {
                         throw decline(section, raw, "missing qualified plugin")
                     }
-                    guard MeasureRegistry.normalizedPluginName(try value(plugin, in: section)) == "quoteplugin" else {
-                        throw decline(section, raw, "plugin type")
+                    switch MeasureRegistry.normalizedPluginName(try value(plugin, in: section)) {
+                    case "quoteplugin":
+                        kernels[name] = .quoteplugin
+                        allowed = systemKeys.union(["plugin", "pathname", "separator", "subfolders", "filefilter"])
+                    case "powerplugin":
+                        kernels[name] = .powerplugin
+                        allowed = systemKeys.union(["plugin", "powerstate", "format"])
+                    default: throw decline(section, raw, "plugin type")
                     }
-                    kernels[name] = .quoteplugin
-                    allowed = systemKeys.union(["plugin", "pathname", "separator", "subfolders", "filefilter"])
                 case "time": kernels[name] = .time; allowed = timeKeys
                 case "calc": kernels[name] = .calc; allowed = calcKeys
                 case "cpu": kernels[name] = .cpu; allowed = systemKeys.union(["processor"])
@@ -199,6 +203,10 @@ package enum IniProgramConverter {
                     throw decline(section, entry, "option capability")
                 }
                 let resolved = try value(entry, in: section)
+                if kernels[name] == .powerplugin, key == "powerstate",
+                   !["PERCENT", "ACLINE", "STATUS", "STATUS2", "LIFETIME"].contains(resolved.trimmingCharacters(in: .whitespaces).uppercased()) {
+                    throw decline(section, entry, "PowerState outside battery profile")
+                }
                 if kernels[name] == .quoteplugin, key == "pathname", !resolved.trimmingCharacters(in: .whitespaces).isEmpty {
                     let path = PluginPaths.resolve(resolved, relativeTo: directory.path)
                     guard !resolved.contains("%"), !resolved.contains("~"),

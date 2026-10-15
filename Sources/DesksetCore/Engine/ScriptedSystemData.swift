@@ -37,7 +37,8 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
         defer { lock.unlock() }
         switch kind {
         case .system: return !frames.isEmpty
-        case .battery: return batteryGiven != nil || batteryDetailsGiven != nil
+        // Details alone do not isolate battery(): an omitted status still reads the base provider.
+        case .battery: return batteryGiven != nil
         case .sensors: return sensorValues != nil || thermal != nil
         default: return false
         }
