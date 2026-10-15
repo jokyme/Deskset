@@ -77,7 +77,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         for section in program.sections {
             let ini = section.ini
             switch section.kernel {
-            case .time, .calc:
+            case .time, .calc, .cpu, .memory, .physicalmemory, .swapmemory:
                 guard let kernel = section.kernel, let selectedClass = kernel.measureClass,
                       let node = makeContextBuiltinMeasure(selectedClass, name: section.name, section: ini,
                                                            context: self, type: kernel.rawValue) else {
@@ -232,7 +232,12 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         // Read at the kernel's original evaluation point: forward and self references see their previous value.
         measureIndex[identifier.lowercased()]?.value
     }
-    func noteService(_ kind: BackgroundWorkKind) { reject("service \(kind)") }
+    func noteService(_ kind: BackgroundWorkKind) {
+        guard kind == .system else { reject("service \(kind)"); return }
+        guard let virtual = executor as? VirtualTimeExecutor else { return }
+        let scripted = (system as? ScriptedSystemData)?.gives(kind) ?? false
+        virtual.background.noteService(kind, config: program.config, scripted: scripted)
+    }
     func execute(_ actionText: String, from section: SkinSection?) { reject("action") }
     func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
                               relativeToSkin: Bool) { reject("pointer action") }

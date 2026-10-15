@@ -42,6 +42,18 @@ private final class RainmeterSkinTick: TickTarget {
     func notifySystemWake() {}
 }
 
+private final class RainmeterSystemProbe: FakeSystem {
+    var reads: [String] = []
+    override func cpuUsage(processor: Int) -> Double {
+        reads.append("cpu:" + String(processor))
+        return super.cpuUsage(processor: processor)
+    }
+    override func memoryStatus() -> MemoryStatus {
+        reads.append("memory")
+        return super.memoryStatus()
+    }
+}
+
 private final class RainmeterUnqualifiedTime: Measure {
     static var constructions = 0
     required init(name: String, section: IniSection, skin: Skin, type: String) {
@@ -80,6 +92,241 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         try IniProgramConverter.convert(config: config, fileURL: file, skinsDirectory: skins,
                                         system: FakeSystem(), environment: RecordingSkinHost.fixedEnvironment,
                                         clock: time.clock, executor: time, effects: effects)
+    }
+
+    t.suite("Engine: Rainmeter system services: sampling and lifecycle match Skin") {
+        let (skins, file, _) = try input("system-services")
+        let source = """
+        [Rainmeter]
+        Update=250
+        [CPU]
+        Measure=CPU
+        UpdateDivider=2
+        AverageSize=2
+        [Core]
+        Measure=CPU
+        Processor=3
+        [Disabled]
+        Measure=CPU
+        Disabled=1
+        [Paused]
+        Measure=CPU
+        Paused=1
+        [RAM]
+        Measure=PhysicalMemory
+        UpdateDivider=3
+        [Swap]
+        Measure=SwapMemory
+        Free=1
+        [Memory]
+        Measure=Memory
+        Total=1
+        [Display]
+        Meter=String
+        MeasureName=CPU
+        Text=%1
+        W=120
+        H=20
+        """
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let conversionTime = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        let program = try convert(file, skins, conversionTime, effects)
+        t.equal(program.sections.compactMap(\.kernel).filter { $0 == .cpu }.count, 4)
+        t.equal(conversionTime.pendingCount, 0)
+        t.equal(conversionTime.background.unverifiable.map(\.kind), [.system], "initial memory range reads are reported")
+        let oldTime = try clock(), time = try clock()
+        oldTime.background.setFake(.service, for: .system)
+        time.background.setFake(.service, for: .system)
+        let oldSystem = RainmeterSystemProbe(), system = RainmeterSystemProbe()
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects
+        try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: RainmeterFixtureText())
+        defer { runtime.close(); skin.close() }
+        // Range initialization can read memory at load: preserve that sequence rather than promise zero reads.
+        t.equal(system.reads, oldSystem.reads)
+        t.check(!system.reads.contains { $0.hasPrefix("cpu:") })
+        let oldScheduler = TickScheduler(), target = RainmeterSkinTick(skin)
+        defer { oldScheduler.cancel() }
+        func compare() {
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(runtime.orderedMeasures.map(\.minValue), skin.measures.map(\.minValue))
+            t.equal(runtime.orderedMeasures.map(\.maxValue), skin.measures.map(\.maxValue))
+            t.equal(system.reads, oldSystem.reads)
+            t.equal(time.background.reports, oldTime.background.reports)
+            t.equal(runtime.updateCount, skin.updateCount)
+        }
+        skin.update(); try runtime.update(); compare()
+        t.equal(runtime.measure(named: "Core")?.value, 3)
+        t.equal(runtime.measure(named: "CPU")?.value, 42)
+        t.equal(runtime.measure(named: "CPU")?.minValue, 0)
+        t.equal(runtime.measure(named: "CPU")?.maxValue, 100)
+        t.equal(runtime.measure(named: "Disabled")?.value, 0)
+        t.equal(runtime.measure(named: "Paused")?.updateCount, 0)
+        oldScheduler.startTimer(for: target); try runtime.startTimer()
+        for index in 1...12 {
+            oldSystem.cpu = Double(index * 7); system.cpu = oldSystem.cpu
+            oldSystem.memory.physicalTotal = Double(index) * 4096
+            oldSystem.memory.swapTotal = Double(index) * 2048
+            oldSystem.memory.swapUsed = Double(index) * 512
+            oldSystem.memory.physicalUsed = Double(index) * 1024
+            system.memory = oldSystem.memory
+            oldTime.advance(by: 0.25); time.advance(by: 0.25); compare()
+        }
+        let beforePause = system.reads
+        oldScheduler.pause(); runtime.pause()
+        oldTime.advance(by: 2); time.advance(by: 2); compare()
+        t.equal(system.reads, beforePause)
+        oldScheduler.resume(updateNow: true, target: target); try runtime.resume(updateNow: true); compare()
+        oldSystem.cpu = .infinity; system.cpu = .infinity
+        oldTime.advance(by: 1); time.advance(by: 1); compare()
+        t.check(runtime.orderedMeasures.allSatisfy { $0.value.isFinite })
+        oldSystem.cpu = 0; system.cpu = 0
+        oldTime.advance(by: 1); time.advance(by: 1); compare()
+        t.equal(runtime.measure(named: "CPU")?.value, 0)
+        let beforeClose = system.reads
+        runtime.close(); runtime.close(); oldScheduler.cancel(); skin.close()
+        time.advance(by: 10)
+        t.equal(system.reads, beforeClose)
+        t.equal(time.pendingCount, 0)
+        do { try runtime.update(); t.check(false, "closed owner must reject updates") }
+        catch RainmeterProgramError.closed {}
+        t.equal(effects.records, [])
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter system services: virtual coverage and admission stay explicit") {
+        let (skins, file, _) = try input("system-coverage")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for faked in [false, true] {
+            try "[CPU]\nMeasure=CPU\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock()
+            if faked { time.background.setFake(.service, for: .system) }
+            let program = try convert(file, skins, time, effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            try runtime.update(); try runtime.update()
+            t.equal(time.background.reports.count, 1)
+            t.equal(time.background.reports.first?.kind, .system)
+            t.equal(time.background.reports.first?.faked, faked)
+            t.equal(time.background.unverifiable.count, faked ? 0 : 1)
+            runtime.close()
+        }
+        for (source, key) in [
+            ("[CPU]\nMeasure=CPU\nProcessor=(Other+1)\n", "Processor"),
+            ("[RAM]\nMeasure=PhysicalMemory\nFree=[Other]\n", "Free"),
+            ("[CPU]\nMeasure=CPU\nOnUpdateAction=[!Log nope]\n", "OnUpdateAction"),
+            ("[Music]\nMeasure=NowPlaying\n", "Measure")
+        ] {
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock,
+                    executor: time, effects: effects)
+                t.check(false, "unqualified capability must fail before service access")
+            } catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(system.reads, [])
+            t.equal(time.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: Rainmeter system services: initialization and scripted ranges are covered") {
+        let (skins, file, _) = try input("system-scripted")
+        try "[CPU]\nMeasure=CPU\n[RAM]\nMeasure=PhysicalMemory\nMaxValue=999\nInvertMeasure=1\n".write(
+            to: file, atomically: true, encoding: .utf8)
+        for given in [false, true] {
+            let time = try clock(), base = RainmeterSystemProbe()
+            var first = SkinInputData.SystemFrame(), second = SkinInputData.SystemFrame()
+            first.cpu = [25]; first.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40)
+            second.cpu = [75]; second.memory = MemoryStatus(physicalTotal: 200, physicalUsed: 70)
+            var zero = SkinInputData.SystemFrame()
+            zero.cpu = [0]; zero.memory = MemoryStatus()
+            var data = SkinInputData()
+            if given { data.system = [first, second, zero] }
+            let system = ScriptedSystemData(base: base, data: data)
+            let effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            t.equal(time.background.reports.count, 1, "conversion alone reads memory's initial range")
+            t.equal(time.background.reports.first?.faked, given)
+            let runtimeTime = try clock()
+            let runtime = try RainmeterProgramRuntime(program: program, executor: runtimeTime, clock: runtimeTime.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            t.equal(runtimeTime.background.reports.count, 1, "initialization is covered before update")
+            t.equal(runtimeTime.background.reports.first?.faked, given)
+            if given {
+                t.equal(base.reads, [])
+                t.equal(runtime.measure(named: "RAM")?.maxValue, 100, "MaxValue option remains ignored")
+                try runtime.update()
+                t.equal(runtime.measure(named: "CPU")?.value, 25)
+                t.equal(runtime.measure(named: "RAM")?.value, 60)
+                system.advance(); try runtime.update()
+                t.equal(runtime.measure(named: "CPU")?.value, 75)
+                t.equal(runtime.measure(named: "RAM")?.maxValue, 200)
+                t.equal(runtime.measure(named: "RAM")?.value, 130)
+                system.advance(); try runtime.update()
+                t.equal(runtime.measure(named: "RAM")?.maxValue, 1, "legacy minimum automatic maximum")
+                t.equal(runtime.measure(named: "RAM")?.value, 1, "legacy inversion uses the guarded range")
+                t.equal(base.reads, [])
+            } else {
+                t.equal(base.reads, ["memory", "memory"])
+                try runtime.update()
+                t.equal(runtime.measure(named: "CPU")?.value, 42)
+                t.equal(runtimeTime.background.unverifiable.map(\.kind), [.system])
+            }
+            t.equal(runtimeTime.background.reports.count, 1, "first update does not duplicate the initial report")
+        }
+    }
+
+    t.suite("Engine: Rainmeter system services: memory rechecks withdrawn frames at first update") {
+        let (skins, file, _) = try input("memory-withdrawn")
+        try "[RAM]\nMeasure=PhysicalMemory\n".write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        var frame = SkinInputData.SystemFrame()
+        frame.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40)
+        var data = SkinInputData(); data.system = [frame]
+        let base = RainmeterSystemProbe(), system = ScriptedSystemData(base: base, data: data)
+        let program = try convert(file, skins, try clock(), effects)
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+        defer { runtime.close() }
+        t.equal(time.background.reports.map(\.faked), [true])
+        t.equal(base.reads, [])
+        var withdrawn = SkinInputData(); withdrawn.system = []
+        system.apply(withdrawn)
+        try runtime.update()
+        t.equal(base.reads, ["memory"])
+        t.equal(runtime.measure(named: "RAM")?.value, base.memory.physicalUsed)
+        t.equal(time.background.reports.map(\.faked), [true, false])
+        t.equal(time.background.unverifiable.map(\.kind), [.system])
+    }
+
+    t.suite("Engine: Rainmeter system services: inactive memory does not sample until enabled") {
+        for option in ["Disabled", "Paused"] {
+            let (skins, file, _) = try input("memory-inactive-" + option)
+            try "[RAM]\nMeasure=PhysicalMemory\n\(option)=1\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins), system = RainmeterSystemProbe()
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update()
+            t.equal(system.reads, [])
+            t.equal(time.background.reports, [])
+            guard let memory = runtime.measure(named: "RAM") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { memory.setDisabled(false) } else { memory.setPaused(false) }
+            try runtime.update()
+            t.equal(system.reads, ["memory", "memory"], "range read then sample, with no hidden extra read")
+            t.equal(memory.value, system.memory.physicalUsed)
+            t.equal(time.background.unverifiable.map(\.kind), [.system])
+        }
     }
 
     t.suite("Engine: Rainmeter live owner: injected services use the real main executor") {
