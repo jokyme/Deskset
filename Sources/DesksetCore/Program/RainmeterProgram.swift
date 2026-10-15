@@ -13,13 +13,15 @@ package struct RainmeterProgram: Equatable, Sendable {
         package let source: Source?
     }
     package enum Kernel: String, Equatable, Sendable {
-        case time, calc, cpu, memory, physicalmemory, swapmemory, string, image
+        case time, calc, cpu, memory, physicalmemory, swapmemory, uptime, netin, netout, nettotal, string, image
 
         var measureClass: Measure.Type? {
             switch self {
             case .time: return TimeMeasure.self
             case .calc: return CalcMeasure.self
             case .cpu: return CPUMeasure.self
+            case .uptime: return UptimeMeasure.self
+            case .netin, .netout, .nettotal: return NetMeasure.self
             case .memory, .physicalmemory, .swapmemory: return MemoryMeasure.self
             case .string, .image: return nil
             }

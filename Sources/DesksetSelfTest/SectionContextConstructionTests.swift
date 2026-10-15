@@ -1025,7 +1025,8 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
         incoming.performUpdate()
         t.equal(system.requestedInterfaces.count, reads)
         t.equal(incoming.value, 0)
-        t.equal(context.services, Array(repeating: .system, count: nodes.count))
+        t.equal(context.services, Array(repeating: .system, count: nodes.count * 2 + 2),
+                "each initial interface read and first update is covered, plus the two explicit option rereads")
 
         let fast = try node("Fast", "netin", [("Interface", "en0")])
         let slow = try node("Slow", "netin", [("Interface", "en0")])

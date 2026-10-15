@@ -117,7 +117,8 @@ package enum IniProgramConverter {
         let numeric: Set<String> = ["x", "y", "w", "h", "fontsize", "updatedivider", "hidden", "antialias", "update",
                                    "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces",
                                    "lowbound", "highbound", "updaterandom", "uniquerandom", "dynamicvariables", "disabled", "paused",
-                                   "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute", "processor", "total", "free"]
+                                   "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute", "processor", "total", "free",
+                                   "secondsvalue", "adddaystohours", "cumulative", "usebits", "netinspeed", "netoutspeed"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -158,6 +159,10 @@ package enum IniProgramConverter {
                 case "time": kernels[name] = .time; allowed = timeKeys
                 case "calc": kernels[name] = .calc; allowed = calcKeys
                 case "cpu": kernels[name] = .cpu; allowed = systemKeys.union(["processor"])
+                case "uptime": kernels[name] = .uptime; allowed = systemKeys.union(["format", "secondsvalue", "adddaystohours"])
+                case "netin", "netout", "nettotal":
+                    kernels[name] = RainmeterProgram.Kernel(rawValue: raw.value.lowercased())
+                    allowed = systemKeys.union(["interface", "cumulative", "usebits", "netinspeed", "netoutspeed"])
                 case "memory": kernels[name] = .memory; allowed = systemKeys.union(["total", "free"])
                 case "physicalmemory": kernels[name] = .physicalmemory; allowed = systemKeys.union(["total", "free"])
                 case "swapmemory": kernels[name] = .swapmemory; allowed = systemKeys.union(["total", "free"])

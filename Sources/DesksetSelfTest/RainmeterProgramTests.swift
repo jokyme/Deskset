@@ -44,6 +44,12 @@ private final class RainmeterSkinTick: TickTarget {
 
 private final class RainmeterSystemProbe: FakeSystem {
     var reads: [String] = []
+    var up = 90061.0
+    override func uptime() -> TimeInterval { reads.append("uptime"); return up }
+    override func networkInterfaces() -> [String] { reads.append("interfaces"); return ["en0", "en1"] }
+    override func networkCounters(interface: String?) -> NetworkCounters {
+        reads.append("network:" + (interface ?? "all")); return net
+    }
     override func cpuUsage(processor: Int) -> Double {
         reads.append("cpu:" + String(processor))
         return super.cpuUsage(processor: processor)
@@ -326,6 +332,185 @@ func runRainmeterProgramTests(_ t: TestRunner) {
             t.equal(system.reads, ["memory", "memory"], "range read then sample, with no hidden extra read")
             t.equal(memory.value, system.memory.physicalUsed)
             t.equal(time.background.unverifiable.map(\.kind), [.system])
+        }
+    }
+
+    t.suite("Engine: Rainmeter system services: uptime and network keep independent cadence and history") {
+        let (skins, file, _) = try input("network-uptime")
+        try """
+        [Rainmeter]
+        Update=500
+        [Up]
+        Measure=Uptime
+        UpdateDivider=2
+        [Fixed]
+        Measure=Uptime
+        SecondsValue=90061
+        AddDaysToHours=0
+        [Fast]
+        Measure=NetIn
+        Interface=en0
+        [Slow]
+        Measure=NetIn
+        Interface=en0
+        UpdateDivider=2
+        [Out]
+        Measure=NetOut
+        Interface=2
+        NetOutSpeed=500
+        [Total]
+        Measure=NetTotal
+        Interface=0
+        Cumulative=1
+        UseBits=1
+        [Inactive]
+        Measure=NetIn
+        Disabled=1
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock()
+        let program = try convert(file, skins, conversion, effects)
+        t.equal(conversion.background.unverifiable.map(\.kind), [.system], "interface reads at conversion are covered")
+        let oldTime = try clock(), time = try clock()
+        let oldSystem = RainmeterSystemProbe(), system = RainmeterSystemProbe(), host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects
+        try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+        let scheduler = TickScheduler(), target = RainmeterSkinTick(skin)
+        defer { scheduler.cancel(); skin.close(); runtime.close() }
+        t.equal(system.reads, oldSystem.reads)
+        t.check(!system.reads.contains { $0.hasPrefix("network:") || $0 == "uptime" })
+        func compare() {
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(runtime.orderedMeasures.map(\.maxValue), skin.measures.map(\.maxValue))
+            t.equal(system.reads, oldSystem.reads)
+            t.equal(time.background.reports, oldTime.background.reports)
+        }
+        skin.update(); try runtime.update(); compare()
+        t.equal(runtime.measure(named: "Fast")?.value, 0)
+        t.equal(runtime.measure(named: "Total")?.value, 12000)
+        t.equal(runtime.measure(named: "Out")?.maxValue, 500)
+        scheduler.startTimer(for: target); try runtime.startTimer()
+        for n in 1...6 {
+            system.net = NetworkCounters(received: UInt64(n == 6 ? 2600 : 1000 + n * 300), sent: UInt64(500 + n * 100))
+            oldSystem.net = system.net; system.up += 0.5; oldSystem.up = system.up
+            oldTime.advance(by: 0.5); time.advance(by: 0.5); compare()
+        }
+        t.equal(runtime.measure(named: "Fast")?.value, 200, "the fast node uses only the last half-second")
+        t.equal(runtime.measure(named: "Slow")?.value, 400, "the slow node retains its independent one-second history")
+        system.net = NetworkCounters(received: 5, sent: 3); oldSystem.net = system.net
+        oldTime.advance(by: 1); time.advance(by: 1); compare()
+        t.equal(runtime.measure(named: "Fast")?.value, 0, "counter reversal is not a negative rate")
+        for node in [runtime.measure(named: "Fast"), skin.measure(named: "Fast")] {
+            node?.overrides["interface"] = "en1"; node?.needsOptionRead = true
+        }
+        oldTime.advance(by: 0.5); time.advance(by: 0.5); compare()
+        t.equal(runtime.measure(named: "Fast")?.value, 0, "interface change resets only the node's history")
+        scheduler.pause(); runtime.pause()
+        let pausedReads = system.reads
+        oldTime.advance(by: 3); time.advance(by: 3); compare()
+        t.equal(system.reads, pausedReads)
+        scheduler.wake(target: target); try runtime.wake(); compare()
+        scheduler.cancel(); skin.close(); runtime.close()
+        let closedReads = system.reads
+        time.advance(by: 10)
+        t.equal(system.reads, closedReads); t.equal(time.pendingCount, 0)
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter system services: fixed uptime does not read a service") {
+        let (skins, file, _) = try input("fixed-uptime")
+        try "[Up]\nMeasure=Uptime\nSecondsValue=90061\nAddDaysToHours=0\n".write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins), system = RainmeterSystemProbe()
+        let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+            system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+        defer { runtime.close() }
+        try runtime.update()
+        t.equal(runtime.measure(named: "Up")?.value, 90061)
+        t.equal(system.reads, []); t.equal(time.background.reports, [])
+    }
+
+    t.suite("Engine: Rainmeter system services: empty options inactive network and admission edges") {
+        let (skins, file, _) = try input("network-edges")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for source in ["[N]\nMeasure=Uptime\nSecondsValue=\nFormat=\n", "[N]\nMeasure=NetIn\nInterface=\n"] {
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            let program = try convert(file, skins, try clock(), effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update()
+            if source.contains("Uptime") {
+                t.equal(system.reads, ["uptime"])
+                t.equal(runtime.measure(named: "N")?.value, 90061)
+                t.equal(runtime.measure(named: "N")?.stringValue, "")
+            } else {
+                t.check(system.reads.contains("network:en0"), "empty Interface retains Best semantics")
+                t.equal(runtime.measure(named: "N")?.value, 0)
+            }
+            t.equal(time.background.unverifiable.map(\.kind), [.system])
+        }
+        for option in ["Disabled", "Paused"] {
+            try "[N]\nMeasure=NetIn\nInterface=en0\n\(option)=1\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update(); t.equal(system.reads, []); t.equal(time.background.reports, [])
+            guard let node = runtime.measure(named: "N") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { node.setDisabled(false) } else { node.setPaused(false) }
+            try runtime.update()
+            t.equal(system.reads, ["interfaces", "network:en0"])
+            t.equal(node.value, 0)
+        }
+        for (source, key) in [
+            ("[N]\nMeasure=Uptime\nSecondsValue=(Other+1)\n", "SecondsValue"),
+            ("[N]\nMeasure=NetIn\nNetInSpeed=(Other+1)\n", "NetInSpeed"),
+            ("[N]\nMeasure=NetTotal\nOnUpdateAction=[!Log no]\n", "OnUpdateAction"),
+            ("[N]\nMeasure=Uptime\nOnUpdateAction=[!Log no]\n", "OnUpdateAction")
+        ] {
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+                t.check(false, "unqualified option must be declined")
+            } catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(system.reads, []); t.equal(time.pendingCount, 0)
+        }
+    }
+
+    let systemRegistrySuite = "Engine: Rainmeter registry: substituted system kernels are declined before construction"
+    if CommandLine.arguments.dropFirst().first == systemRegistrySuite {
+        t.suite(systemRegistrySuite) {
+            let (skins, file, _) = try input("system-registry")
+            let types: [(String, Measure.Type)] = [("CPU", CPUMeasure.self), ("Memory", MemoryMeasure.self),
+                ("PhysicalMemory", MemoryMeasure.self), ("SwapMemory", MemoryMeasure.self), ("Uptime", UptimeMeasure.self),
+                ("NetIn", NetMeasure.self), ("NetOut", NetMeasure.self), ("NetTotal", NetMeasure.self)]
+            for (type, original) in types {
+                MeasureRegistry.registerMeasure(type, original)
+                defer { MeasureRegistry.registerMeasure(type, original) }
+                try "[N]\nMeasure=\(type)\n".write(to: file, atomically: true, encoding: .utf8)
+                let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+                _ = try convert(file, skins, time, effects)
+                RainmeterUnqualifiedTime.constructions = 0
+                MeasureRegistry.registerMeasure(type, RainmeterUnqualifiedTime.self)
+                do { _ = try convert(file, skins, time, effects); t.check(false) }
+                catch RainmeterProgramError.outsideInitialProfile(let section, let key, let location, let reason) {
+                    t.equal(section, "N"); t.equal(key, "Measure"); t.check(location != nil)
+                    t.equal(reason, "registered measure implementation")
+                }
+                t.equal(RainmeterUnqualifiedTime.constructions, 0)
+                t.equal(effects.records, []); t.equal(time.pendingCount, 0)
+            }
         }
     }
 
