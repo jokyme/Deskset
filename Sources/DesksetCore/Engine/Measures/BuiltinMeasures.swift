@@ -321,6 +321,9 @@ public final class NetMeasure: Measure {
         if let s = speedOption, !(s > 0) { speedOption = nil }
 
         let raw = string("Interface", "Best").trimmingCharacters(in: .whitespaces)
+        // Interface selection already reads the service during option loading. Keep the later
+        // first-update check too, since scripted frames can change before counters are sampled.
+        if sectionContext.runsInVirtualTime { sectionContext.noteService(.system) }
         let names = sectionContext.system.networkInterfaces()
         let resolved: String?
         if raw.isEmpty || raw.caseInsensitiveCompare("Best") == .orderedSame {
