@@ -59,7 +59,7 @@ enum DeskWidgetActivation {
         let capture = try DeskPackageCapture.read(root: directory, limits: options.catalog.limits,
                                                   isCancelled: isCancelled, hooks: hooks)
         try checkCancellation()
-        let package = try PackageLoader.load(capture.source, limits: options.catalog.limits)
+        let package = try PackageLoader.load(capture.source, fonts: DeskFontFileInspector(), limits: options.catalog.limits)
         let selected = DeskFileID(path: parts[1])
         guard package.widgetFiles.contains(selected), package.texts[selected] != nil else { throw Failure.invalidPackage }
         let service = DeskLanguageService(package: package, openFile: selected, options: options)
@@ -88,7 +88,7 @@ enum DeskWidgetActivation {
         // Loader metadata, checks and image bytes all came from this capture. Do not append prepared.files to the
         // complete inventory or reparse only package.desk and pair its new NodeIDs with older widget receipts.
         try capture.validateUnchanged(isCancelled: isCancelled, hooks: hooks)
-        guard resources.images.values.allSatisfy({ Images.imageStamp(atPath: $0.path) == $0.stamp }) else {
+        guard resources.copiesUnchanged() else {
             throw Failure.invalidPackage
         }
         try checkCancellation()

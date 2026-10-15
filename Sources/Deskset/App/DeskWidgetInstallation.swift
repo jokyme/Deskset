@@ -139,7 +139,7 @@ enum DeskWidgetInstallation {
               limits.maximumPackageFiles >= capture.files.count else {
             throw Failure.resourceLimit
         }
-        let package = try PackageLoader.load(capture.source, fonts: nil, limits: limits)
+        let package = try PackageLoader.load(capture.source, fonts: DeskFontFileInspector(), limits: limits)
         guard !package.isTruncated, !package.diagnostics.contains(where: { $0.severity == .error }),
               !package.widgetFiles.isEmpty,
               package.widgetFiles.contains(where: { DeskPackagePath.sameBytes($0.path, snapshot.file.path) }),

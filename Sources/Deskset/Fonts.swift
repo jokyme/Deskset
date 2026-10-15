@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import CryptoKit
 import DesksetCore
 import DesksetDraw
 
@@ -125,6 +126,110 @@ enum Fonts {
     static let missingFolderRecheck: TimeInterval = 5
     /// Font file extensions loaded from `@Resources/Fonts` (TrueType, OpenType and their collections).
     static let fontFileExtensions: Set<String> = ["ttf", "otf", "ttc", "otc"]
+
+    /// Package registrations are content-addressed, separately owned from legacy folder registrations.
+    /// All state, including lease release, is confined to the fonts queue.
+    private struct PackageRegistration {
+        let copy: URL
+        let stamp: ImageStamp
+        var owners: Int
+    }
+    private static var packageRegistrations: [String: PackageRegistration] = [:]
+
+    final class PackageLease: @unchecked Sendable {
+        private let keys: [String]
+        let invalidPaths: [String]
+        let failedPaths: [String]
+        private var released = false
+
+        fileprivate init(keys: [String], invalidPaths: [String], failedPaths: [String]) {
+            self.keys = keys; self.invalidPaths = invalidPaths; self.failedPaths = failedPaths
+        }
+
+        var isActive: Bool {
+            Fonts.onQueue {
+                !released && keys.allSatisfy { key in
+                    guard let entry = Fonts.packageRegistrations[key] else { return false }
+                    return Images.imageStamp(atPath: entry.copy.path) == entry.stamp
+                }
+            }
+        }
+
+        func release() {
+            Fonts.onQueue {
+                guard !released else { return }
+                released = true
+                var changed = false
+                for key in keys {
+                    guard var entry = Fonts.packageRegistrations[key] else { continue }
+                    entry.owners -= 1
+                    if entry.owners > 0 {
+                        Fonts.packageRegistrations[key] = entry
+                    } else {
+                        Fonts.changingFonts {
+                            _ = CTFontManagerUnregisterFontsForURL(entry.copy as CFURL, .process, nil)
+                        }
+                        try? FileManager.default.removeItem(at: entry.copy)
+                        Fonts.packageRegistrations[key] = nil
+                        changed = true
+                    }
+                }
+                if changed { Fonts.invalidate() }
+            }
+        }
+
+        deinit { release() }
+    }
+
+    /// Only captured bytes are used. A valid font that Core Text refuses is not treated as registered
+    /// (in particular, a duplicate name is not ownership of another package's or an installed font).
+    static func acquirePackageFonts(_ files: [(path: String, bytes: Data)]) -> PackageLease {
+        onQueue {
+            var keys: [String] = [], invalid: [String] = [], failed: [String] = []
+            var seen = Set<String>(), changed = false
+            for file in files {
+                guard DeskFontFileInspector().families(inFontData: file.bytes, fileName: file.path) != nil,
+                      let descriptors = CTFontManagerCreateFontDescriptorsFromData(file.bytes as CFData) as? [CTFontDescriptor] else {
+                    invalid.append(file.path); continue
+                }
+                let key = SHA256.hash(data: file.bytes).map { String(format: "%02x", $0) }.joined()
+                guard seen.insert(key).inserted else { continue }
+                if var entry = packageRegistrations[key] {
+                    entry.owners += 1
+                    packageRegistrations[key] = entry
+                    keys.append(key)
+                    continue
+                }
+                // Distinct styles may share a family, but name matching cannot select different bytes
+                // with the same PostScript name. Never borrow another owner's registration on a collision.
+                let names = descriptors.compactMap { CTFontDescriptorCopyAttribute($0, kCTFontNameAttribute) as? String }
+                let available = Set(CTFontManagerCopyAvailablePostScriptNames() as? [String] ?? [])
+                guard names.count == descriptors.count, names.allSatisfy({ !available.contains($0) }),
+                      let folder = copiesFolder else { failed.append(file.path); continue }
+                copyCounter += 1
+                let copy = folder.appendingPathComponent("package-\(copyCounter)." + (file.path as NSString).pathExtension)
+                do { try file.bytes.write(to: copy, options: .withoutOverwriting) }
+                catch { failed.append(file.path); continue }
+                guard let stamp = Images.imageStamp(atPath: copy.path) else {
+                    try? FileManager.default.removeItem(at: copy)
+                    failed.append(file.path); continue
+                }
+                var error: Unmanaged<CFError>?
+                let accepted = changingFonts { CTFontManagerRegisterFontsForURL(copy as CFURL, .process, &error) }
+                if let error { _ = error.takeRetainedValue() }
+                guard accepted else {
+                    try? FileManager.default.removeItem(at: copy)
+                    failed.append(file.path)
+                    continue
+                }
+                packageRegistrations[key] = PackageRegistration(copy: copy, stamp: stamp, owners: 1)
+                keys.append(key)
+                changed = true
+            }
+            if changed { invalidate() }
+            return PackageLease(keys: keys, invalidPaths: invalid, failedPaths: failed)
+        }
+    }
 
     // MARK: Registration
 

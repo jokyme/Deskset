@@ -49,7 +49,7 @@ final class DeskPackageFlow: NSObject, NSMenuDelegate {
             let inspection: Result<(DeskPackageCapture, [DeskFileID]), Error>
             do {
                 let capture = try DeskPackageCapture.read(root: root, isCancelled: { ticket.current })
-                let package = try PackageLoader.load(capture.source, limits: capture.limits)
+                let package = try PackageLoader.load(capture.source, fonts: DeskFontFileInspector(), limits: capture.limits)
                 guard !package.widgetFiles.isEmpty else { throw Failure.noWidgets }
                 inspection = .success((capture, package.widgetFiles))
             } catch { inspection = .failure(error) }

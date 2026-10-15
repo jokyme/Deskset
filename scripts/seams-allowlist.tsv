@@ -225,7 +225,7 @@ zone.localizedText	Sources/Deskset/AppState.swift	2	state.json saving and orderi
 
 background.mainHop	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
 background.queue	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
-effect.fileWrite	Sources/Deskset/Fonts.swift	8	app files (state, log, caches); not a skin effect
+effect.fileWrite	Sources/Deskset/Fonts.swift	12	serialized font service owns private copies, including captured package-byte leases and their failure/last-owner cleanup; not a skin effect
 effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling

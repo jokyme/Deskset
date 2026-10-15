@@ -10,6 +10,7 @@ enum DeskFontCatalogSelfTests {
         catalogTests(t)
         serviceTests(t)
         fileTests(t)
+        DeskPackageFontSelfTests.run(t)
     }
 
     private static func catalogTests(_ t: AppTestRunner) {

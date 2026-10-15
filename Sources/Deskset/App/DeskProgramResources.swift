@@ -66,21 +66,23 @@ enum DeskProgramResources {
         let sources: [Source]
         let failure: String?
         let capture: DeskPackageCapture?
+        let fonts: Fonts.PackageLease?
 
         init(root: URL, folder: URL?, files: [DeskPackageFile], images: [String: ProgramImageResource],
-             sources: [Source], failure: String?, capture: DeskPackageCapture? = nil) {
+             sources: [Source], failure: String?, capture: DeskPackageCapture? = nil, fonts: Fonts.PackageLease? = nil) {
             self.root = root; self.folder = folder; self.files = files; self.images = images
-            self.sources = sources; self.failure = failure; self.capture = capture
+            self.sources = sources; self.failure = failure; self.capture = capture; self.fonts = fonts
         }
 
         func removeCopies() {
+            fonts?.release()
             if let folder { try? FileManager.default.removeItem(at: folder) }
         }
 
         /// A drawing owner consumes its already qualified package snapshot. It checks only those immutable
         /// private images here; refreshing the original package is separate file-worker work.
         func copiesUnchanged() -> Bool {
-            images.values.allSatisfy { Images.imageStamp(atPath: $0.path) == $0.stamp }
+            (fonts?.isActive ?? true) && images.values.allSatisfy { Images.imageStamp(atPath: $0.path) == $0.stamp }
         }
 
         /// Package validation reads the whole captured directory and belongs on a file worker, not Main or a
@@ -238,7 +240,7 @@ enum DeskProgramResources {
         for file in capture.files { byPath[Array(file.path.utf8)] = file }
         // The capture already enforces complete-package budgets. These existing collection guards operate on
         // its subset without rescanning the package or reading original files.
-        return prepare(root: capture.root, literals: literals, byteLimit: capture.totalBytes,
+        let images = prepare(root: capture.root, literals: literals, byteLimit: capture.totalBytes,
                        maximumFiles: capture.files.count, language: language, capture: capture) { literal, use in
             guard !literal.contains("\0"), !literal.hasPrefix("~"), !literal.contains("://"),
                   let path = resources.resolve(literal), DeskPackagePath.safeComponents(path) != nil else {
@@ -255,6 +257,22 @@ enum DeskProgramResources {
                 return file.bytes
             }
         }
+        guard images.failure == nil else { return images }
+        let fonts = Fonts.acquirePackageFonts(capture.files.filter {
+            DeskPackagePath.kind(of: $0.path) == .font
+        }.map { (path: $0.path, bytes: $0.bytes) })
+        // Invalid bytes have no families in the checker and use its normal missing-font warning/fallback.
+        // A real font refused by Core Text is different: never publish success using someone else's font.
+        guard fonts.failedPaths.isEmpty else {
+            images.removeCopies()
+            fonts.release()
+            let detail = fonts.failedPaths.joined(separator: ", ")
+            let failure = language == .chinese ? "无法注册包字体：" + detail : "Could not register package fonts: " + detail
+            return Prepared(root: images.root, folder: nil, files: images.files, images: [:], sources: images.sources,
+                            failure: failure, capture: capture)
+        }
+        return Prepared(root: images.root, folder: images.folder, files: images.files, images: images.images,
+                        sources: images.sources, failure: nil, capture: capture, fonts: fonts)
     }
 
     private typealias ReadBytes = (Int) throws -> Data

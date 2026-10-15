@@ -21,7 +21,7 @@ struct DeskCodePackageInput: Sendable {
         self.capture = capture
         self.member = member
         memberBytes = entry.bytes
-        package = try PackageLoader.load(capture.source, limits: capture.limits)
+        package = try PackageLoader.load(capture.source, fonts: DeskFontFileInspector(), limits: capture.limits)
     }
 }
 
