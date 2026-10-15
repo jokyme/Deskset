@@ -32,15 +32,20 @@ public struct DeskCompilationResult: Sendable {
     /// Complete package definitions, with package-only translations. Never inferred from widget overrides.
     /// Only published alongside a fully supported program; nil without a supplied checked package.
     public let packageOptions: ProgramOptionsSchema?
+    /// Published identity lineage and version-qualified source locations. Keep the last successful result
+    /// across failed checks; passing it as previous never qualifies its old ElementRefs for the new tree.
+    public let sourceMap: DeskSourceMap?
 
     init(program: WidgetProgram?, diagnostics: [Diagnostic], issues: [DeskCompilationIssue], imageSources: [String],
-         elementRefs: [ElementID: ElementRef] = [:], packageOptions: ProgramOptionsSchema? = nil) {
+         elementRefs: [ElementID: ElementRef] = [:], packageOptions: ProgramOptionsSchema? = nil,
+         sourceMap: DeskSourceMap? = nil) {
         self.program = program
         self.diagnostics = diagnostics
         self.issues = issues
         self.imageSources = imageSources
         self.elementRefs = program == nil ? [:] : elementRefs
         self.packageOptions = program == nil ? nil : packageOptions
+        self.sourceMap = program == nil ? nil : sourceMap
     }
 }
 
@@ -105,7 +110,11 @@ public extension Desk {
     /// Duration decimals, relative/subsecond Date formats and
     /// other semantics fail explicitly. Numeric lowering consumes final checked types, canonical constants and coercion receipts.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
-    static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current, package: CheckedFile? = nil) -> DeskCompilationResult {
+    /// Pass the last successful compilation of this file to reconcile template identities. Move ranges must
+    /// describe that previous source and this checked source (EditResult.moves, or their inverse for undo).
+    /// This preserves identity only; it neither replaces a live runtime nor migrates its schema or values.
+    static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current, package: CheckedFile? = nil,
+                        previous: DeskCompilationResult? = nil, moves: [TextMove] = []) -> DeskCompilationResult {
         let needed = max(StackGuard.bytesNeeded(toWalk: checked.tree), package.map { StackGuard.bytesNeeded(toWalk: $0.tree) } ?? 0)
         let diagnostics = checked.diagnostics + (package?.tree.file == checked.tree.file ? [] : package?.diagnostics ?? [])
         return StackGuard.run(needing: needed) {
@@ -128,9 +137,17 @@ public extension Desk {
                     default: break
                     }
                 }
-                return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: diagnostics,
+                guard errors.isEmpty else {
+                    return DeskCompilationResult(program: nil, diagnostics: diagnostics, issues: [],
+                                                 imageSources: images.sorted(by: DeskPackagePath.precedes))
+                }
+                let reconciled = try TemplateReconciliation(program: program, checked: checked,
+                    references: compiler.sourceRefs, sources: compiler.sourceFiles, origins: compiler.sourceOrigins,
+                    previous: previous?.sourceMap, moves: moves)
+                return DeskCompilationResult(program: reconciled.program, diagnostics: diagnostics,
                                              issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes),
-                                             elementRefs: compiler.elementRefs, packageOptions: compiler.packageOptions)
+                                             elementRefs: reconciled.elementRefs, packageOptions: compiler.packageOptions,
+                                             sourceMap: reconciled.sourceMap)
             } catch let issue as DeskCompilationIssue {
                 return DeskCompilationResult(program: nil, diagnostics: diagnostics, issues: [issue], imageSources: [])
             } catch {

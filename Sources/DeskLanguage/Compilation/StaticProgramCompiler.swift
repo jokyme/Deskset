@@ -5,7 +5,12 @@ struct StaticProgramCompiler {
     private(set) var checked: CheckedFile
     let catalog: DeskCatalog
     private var nextIndex = 0
-    private var sourceFiles: [Int: CheckedFile] = [:]
+    private(set) var sourceFiles: [Int: CheckedFile] = [:]
+    private(set) var sourceRefs: [ElementID: NodeID] = [:]
+    var sourceOrigins: Set<CandidateOrigin> {
+        Set(checked.elements.values.flatMap { $0.facets.values.flatMap { $0.map(\.origin) } })
+            .union(expandedModifiers.values.flatMap { $0.map(\.origin) })
+    }
     private var styles: [String: StyleDefinition] = [:]
     private var expandedModifiers: [NodeID: [SourcedModifier]] = [:]
     private var positionedModifiers: [NodeID: [Int: SourcedModifier]] = [:]
@@ -145,6 +150,7 @@ struct StaticProgramCompiler {
             let children = try statements.map { try viewStatement($0, inherited: appearance, depth: 2) }
             let spacing = try defaultNumber(component: "Column", parameter: "spacing", at: widget.node)
             let align = try defaultChoice(component: "Column", parameter: "align", at: widget.node)
+            sourceRefs[ElementID(name: "widget", index: index)] = checked.tree.id(of: widget.node)
             root = ProgramElement(id: ElementID(name: "widget", index: index),
                                   content: .column(spacing: spacing, align: try horizontal(align, at: widget.node), children: children))
         }
@@ -666,6 +672,7 @@ struct StaticProgramCompiler {
                 }
             }
         }
+        sourceRefs[ElementID(name: "if#\(index)", index: index)] = checked.tree.id(of: node)
         return ProgramElement(id: ElementID(name: "if#\(index)", index: index),
                               content: .conditional(ProgramConditional(branches: branches, otherwise: otherwise)))
     }
@@ -1072,6 +1079,7 @@ struct StaticProgramCompiler {
         }
         let id = ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index)
         elementRefs[id] = checked.tree.id(of: node)
+        sourceRefs[id] = checked.tree.id(of: node)
         return ProgramElement(id: id,
                               content: content, width: width, height: height, padding: padding, hidden: visibility.hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
