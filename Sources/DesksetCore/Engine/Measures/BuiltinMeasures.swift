@@ -235,7 +235,13 @@ public final class MemoryMeasure: Measure {
         }
     }
 
-    public override var automaticMaxValue: Double { max(lastTotal ?? amounts().total, 1) }
+    public override var automaticMaxValue: Double {
+        if let lastTotal { return max(lastTotal, 1) }
+        // Initial range reads precede performUpdate. Report them without consuming its first-update
+        // coverage check: scripted frames may be withdrawn between initialization and that update.
+        if sectionContext.runsInVirtualTime { sectionContext.noteService(.system) }
+        return max(amounts().total, 1)
+    }
     override var allowsMaxValueOption: Bool { false }
 
     public override func readMeasureOptions() {

@@ -931,6 +931,7 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
             t.equal(measure.type, item.type)
             measure.readOptionsIfNeeded()
             t.equal(system.memoryReads, before + 1, "the original automatic maximum samples at option read")
+            t.equal(context.services.count, index * 2 + 1, "initial range reads are covered before update")
             t.equal(measure.maxValue, item.maximum, "MaxValue is ignored for every memory kind")
             measure.performUpdate()
             t.equal(system.memoryReads, before + 2)
@@ -938,7 +939,8 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
             t.equal(measure.automaticMaxValue, item.maximum)
             t.equal(system.memoryReads, before + 2, "the sampled total is cached before numeric range refresh")
         }
-        t.equal(context.services, Array(repeating: .system, count: cases.count))
+        t.equal(context.services, Array(repeating: .system, count: cases.count * 2),
+                "initial range and first update both check coverage; actual reports deduplicate unchanged inputs")
         t.equal(context.logs, [])
 
         var owner: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("context-memory-lifetime"))

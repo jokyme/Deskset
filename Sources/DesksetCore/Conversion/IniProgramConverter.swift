@@ -112,10 +112,12 @@ package enum IniProgramConverter {
         let calcKeys: Set<String> = ["measure", "formula", "lowbound", "highbound", "updaterandom", "uniquerandom",
                                      "updatedivider", "dynamicvariables", "disabled", "paused", "minvalue", "maxvalue",
                                      "invertmeasure", "averagesize", "substitute", "regexpsubstitute"]
+        let systemKeys: Set<String> = ["measure", "updatedivider", "dynamicvariables", "disabled", "paused",
+                                       "minvalue", "maxvalue", "invertmeasure", "averagesize", "substitute", "regexpsubstitute"]
         let numeric: Set<String> = ["x", "y", "w", "h", "fontsize", "updatedivider", "hidden", "antialias", "update",
                                    "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces",
                                    "lowbound", "highbound", "updaterandom", "uniquerandom", "dynamicvariables", "disabled", "paused",
-                                   "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute"]
+                                   "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute", "processor", "total", "free"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -155,6 +157,10 @@ package enum IniProgramConverter {
                 switch raw.value.lowercased() {
                 case "time": kernels[name] = .time; allowed = timeKeys
                 case "calc": kernels[name] = .calc; allowed = calcKeys
+                case "cpu": kernels[name] = .cpu; allowed = systemKeys.union(["processor"])
+                case "memory": kernels[name] = .memory; allowed = systemKeys.union(["total", "free"])
+                case "physicalmemory": kernels[name] = .physicalmemory; allowed = systemKeys.union(["total", "free"])
+                case "swapmemory": kernels[name] = .swapmemory; allowed = systemKeys.union(["total", "free"])
                 default: throw decline(section, raw, "measure type")
                 }
             } else if let raw = section.entries.first(where: { $0.key.lowercased() == "meter" }) {
