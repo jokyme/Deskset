@@ -451,7 +451,7 @@ enum DeskConditionalStyleCompilationTests {
     }
 
     private static func unsupported(_ t: TestRunner) {
-        t.suite("Desk: conditional styles: unsupported conditional facets states and package dynamics never hide behind false") {
+        t.suite("Desk: conditional styles: unsupported conditional facets and states never hide behind false") {
             let inapplicable = try compile(t, "style limited { .tint(.red) }\n" +
                 #"widget { Text("A").background(.glass).style(limited, if: false) }"#)
             let literal = try compile(t, #"widget { Text("A").background(.glass) }"#)
@@ -490,7 +490,8 @@ enum DeskConditionalStyleCompilationTests {
                                                        package: package)
                 t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
                 if let shared { t.check(shared.diagnostics(.error).isEmpty, deskDescribe(shared)) }
-                reject(t, checked, package: shared, kind: .unsupported, "package-defined dynamic expressions remain unsupported")
+                let result = Desk.compile(checked, package: shared)
+                t.check(result.program != nil && result.issues.isEmpty, "inactive package dynamic expressions are checked: \(result.issues)")
             }
         }
     }

@@ -480,7 +480,11 @@ struct ProgramExpressionCompiler {
             var parts: [ProgramExpression] = [], values: [ProgramExpression] = []
             for segment in value.segments {
                 switch segment {
-                case .text(_, let cooked): parts.append(.string(cooked))
+                case .text(_, let cooked):
+                    guard cooked.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength) else {
+                        throw issue(.resourceLimit, node, "Shared program template text limit exceeded")
+                    }
+                    parts.append(.string(cooked))
                 case .foreign(let foreign): throw issue(.unsupported, foreign, "Foreign string interpolation is not implemented")
                 case .interpolation(let interpolation):
                     let expression = try lower(interpolation.value.node, depth: depth + 1)

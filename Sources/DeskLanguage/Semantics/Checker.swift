@@ -461,7 +461,7 @@ final class Checker {
         return result(root: root)
     }
 
-    private func result(root: NodeID?) -> CheckedFile {
+    func result(root: NodeID?) -> CheckedFile {
         var all = tree.diagnostics.filter { !droppedParserDiagnostics.contains(diagnosticKey($0)) }
         all = all.map { d in replacedParserDiagnostics[diagnosticKey(d)] ?? d }
         all += diagnostics

@@ -437,7 +437,7 @@ func runDeskDynamicStyleCompilationTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Desk: dynamic styles: package constants can include a local replacement while package dynamics stay explicit") {
+    t.suite("Desk: dynamic styles: package constants and dynamic sources preserve local replacement precedence") {
         let package = #"""
             package { name: "Shared" }
             style base { .font(10).color(.dim) }
@@ -465,7 +465,8 @@ func runDeskDynamicStyleCompilationTests(_ t: TestRunner) {
             let (checked, package) = try F.checked(widget, package: shared)
             t.check(checked.diagnostics(.error).isEmpty, "\(modifier)\n\(deskDescribe(checked))")
             if let package { t.check(package.diagnostics(.error).isEmpty, deskDescribe(package)) }
-            F.reject(t, checked, package: package, kind: .unsupported, "package dynamic source: \(modifier)")
+            let result = Desk.compile(checked, package: package)
+            t.check(result.program != nil && result.issues.isEmpty, "package dynamic source: \(modifier): \(result.issues)")
         }
         let unsupported = [
             "style live { .font(12) }\nwidget { Text(\"A\").style(live, if: system.dark) }",
