@@ -1,6 +1,12 @@
 import Foundation
 import DesksetCore
 
+/// The source declaration, not a same-name lookup, qualifies each effective option read and assignment.
+struct ProgramOptionBinding {
+    let facts: OptionFacts
+    let source: CheckedFile
+}
+
 /// Lower the existing checked identities and scalar types. No runtime name lookup or source evaluation is used.
 struct ProgramExpressionCompiler {
     private(set) var checked: CheckedFile
@@ -10,6 +16,7 @@ struct ProgramExpressionCompiler {
     private var initializers: [NodeID: PositionedNode] = [:]
     private var assignmentTypes: [Int: DeskType] = [:]
     private var options: [String: OptionFacts] = [:]
+    private var optionSources: [String: CheckedFile] = [:]
     private var localEnums: [String: String] = [:]
     private var userOnlyOptions = Set<String>()
     private var count = 0
@@ -25,7 +32,13 @@ struct ProgramExpressionCompiler {
     }
 
     var translations: ProgramTranslations { translationCompiler?.translations ?? ProgramTranslations() }
+    var packageTranslations: ProgramTranslations? { translationCompiler?.packageTranslations }
     var expressionCount: Int { count }
+
+    /// Include tables in the budget for all lowered metadata, including replaced declarations.
+    func validateTranslationBudget(at node: PositionedNode, packageOnly: Bool = false) throws {
+        try translationCompiler?.validateBudget(expressions: count, packageOnly: packageOnly, at: node, in: checked)
+    }
 
     /// Charge selector nodes and duplicated tint conditions before constructing the bounded background tree.
     mutating func reserveBackgroundExpressions(_ amount: Int, at node: PositionedNode) throws {
@@ -36,13 +49,20 @@ struct ProgramExpressionCompiler {
         count += amount
     }
 
-    mutating func registerOptions(_ values: [String: OptionFacts]) throws {
-        options = values
+    mutating func registerOptions(_ values: [String: ProgramOptionBinding]) throws {
+        options = values.mapValues(\.facts)
+        optionSources = values.mapValues(\.source)
         localEnums.removeAll(keepingCapacity: true)
-        userOnlyOptions = Set(checked.requirements.commands.compactMap(\.scriptOption))
+        userOnlyOptions = Set(values.values.flatMap { $0.source.requirements.commands.compactMap(\.scriptOption) })
+        userOnlyOptions.formUnion(checked.requirements.commands.compactMap(\.scriptOption))
         for name in values.keys.sorted() {
-            guard let facts = values[name], facts.name == name, facts.scope == .widget else {
-                throw issue(.invalidCheckedModel, checked.tree.rootNode, "Local option identities do not match their declarations")
+            guard let binding = values[name] else { continue }
+            let facts = binding.facts, source = binding.source
+            let scope: OptionFacts.Scope = DeskPackagePath.isPackageFile(source.tree.file.path) ? .package : .widget
+            guard facts.name == name, facts.scope == scope, source.options[name] == facts,
+                  let node = source.tree.resolve(facts.node), let declaration = OptionDeclSyntax(node),
+                  declaration.target.name.token.name == name else {
+                throw issue(.invalidCheckedModel, checked.tree.rootNode, "Option identities do not match their supplied source declarations")
             }
             if let type = facts.localEnum {
                 guard facts.type == .enumeration(type), localEnums[type] == nil else {
@@ -51,6 +71,20 @@ struct ProgramExpressionCompiler {
                 localEnums[type] = name
             }
         }
+    }
+
+    /// Metadata retains its definition-tree receipts while charging the same expression counter as the widget.
+    mutating func optionSource<T>(_ source: CheckedFile, bindings: [String: ProgramOptionBinding],
+                                  _ body: (inout ProgramExpressionCompiler) throws -> T) throws -> T {
+        let previous = checked, previousOptions = options, previousSources = optionSources
+        let previousEnums = localEnums, previousUserOnly = userOnlyOptions
+        checked = source
+        defer {
+            checked = previous; options = previousOptions; optionSources = previousSources
+            localEnums = previousEnums; userOnlyOptions = previousUserOnly
+        }
+        try registerOptions(bindings)
+        return try body(&self)
     }
 
     mutating func accountOptionNode(_ node: PositionedNode) throws {
@@ -78,9 +112,9 @@ struct ProgramExpressionCompiler {
     mutating func clickAssignment(_ syntax: AssignmentSyntax) throws -> ProgramAction {
         if syntax.target.path.count == 1 { return .assign(try assignment(syntax)) }
         let path = syntax.target.path
-        guard syntax.isPlainAssignment, path.count == 2, path[0] == "options", let facts = options[path[1]],
-              checked.symbols[checked.tree.id(of: syntax.target.node)] == .option(facts.node, file: checked.tree.file) else {
-            throw issue(.unsupported, syntax.target.node, "Only checked local option and session variable assignments are implemented")
+        guard syntax.isPlainAssignment, path.count == 2, path[0] == "options", let facts = options[path[1]], let source = optionSources[facts.name],
+              checked.symbols[checked.tree.id(of: syntax.target.node)] == .option(facts.node, file: source.tree.file) else {
+            throw issue(.unsupported, syntax.target.node, "Only checked option and session variable assignments are implemented")
         }
         guard !userOnlyOptions.contains(facts.name) else {
             throw issue(.unsupported, syntax.target.node, "This option can only be changed in the Options panel")
@@ -561,10 +595,10 @@ struct ProgramExpressionCompiler {
         if let value = MemberExprSyntax(node) {
             let identity = checked.tree.id(of: node)
             if IdentifierExprSyntax(value.base.node)?.name == "options" {
-                guard let facts = options[value.name.token.name], type == facts.type,
-                      checked.symbols[identity] == .option(facts.node, file: checked.tree.file),
+                guard let facts = options[value.name.token.name], type == facts.type, let source = optionSources[facts.name],
+                      checked.symbols[identity] == .option(facts.node, file: source.tree.file),
                       checked.types[identity]?.displayBase == facts.displayBase else {
-                    throw issue(.invalidCheckedModel, node, "Option read has no matching local declaration receipt")
+                    throw issue(.invalidCheckedModel, node, "Option read has no matching source declaration receipt")
                 }
                 return .option(facts.name)
             }

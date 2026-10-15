@@ -29,14 +29,18 @@ public struct DeskCompilationResult: Sendable {
     /// Source calls of a published program in this checked tree version. A synthetic widget root has no source call.
     /// Element IDs do not qualify references across compilations; use the reference only with its checked snapshot.
     public let elementRefs: [ElementID: ElementRef]
+    /// Complete package definitions, with package-only translations. Never inferred from widget overrides.
+    /// Only published alongside a fully supported program; nil without a supplied checked package.
+    public let packageOptions: ProgramOptionsSchema?
 
     init(program: WidgetProgram?, diagnostics: [Diagnostic], issues: [DeskCompilationIssue], imageSources: [String],
-         elementRefs: [ElementID: ElementRef] = [:]) {
+         elementRefs: [ElementID: ElementRef] = [:], packageOptions: ProgramOptionsSchema? = nil) {
         self.program = program
         self.diagnostics = diagnostics
         self.issues = issues
         self.imageSources = imageSources
         self.elementRefs = program == nil ? [:] : elementRefs
+        self.packageOptions = program == nil ? nil : packageOptions
     }
 }
 
@@ -76,11 +80,14 @@ public extension Desk {
     /// empty text is preserved; a title may stand alone. Conditional tooltip modifiers and state sources remain unsupported.
     /// Ordinary menus lower Item/Divider/nested Menu and menu-level if/else-if/else, with supported display titles,
     /// Bool checked/enabled values and Item onClick assignments/copy/open. Menu entries have no view geometry or source element refs.
-    /// Local per-instance Toggle/Input/Slider/Stepper/Picker options retain Bool/String/supported numeric dimensions
+    /// Per-instance and supplied package Toggle/Input/Slider/Stepper/Picker options retain Bool/String/supported numeric dimensions
     /// and nominal local cases, constant defaults/constraints, ordered Sections, localized panel text, and options-only hidden conditions.
-    /// Checked local option reads and primary/secondary/menu assignments use independent persistent option identities;
+    /// Effective controls keep own declaration order followed by unreplaced package declarations, with exact source-qualified
+    /// option reads and assignments. A widget override is instance-scoped; other package values remain package-scoped.
+    /// Complete package metadata and its own translations are also validated without inventing a widget or session value.
+    /// Checked option reads and primary/secondary/menu assignments retain their persistent option identities;
     /// root onLoad remains session-variable-only. Slider steps are optional; off-grid values within bounds are valid.
-    /// Package options, catalog-enum/Color and other controls, dynamic option metadata, menu-level for and saved values,
+    /// Catalog-enum/Color and other controls, dynamic option metadata, menu-level for and saved values,
     /// other menu actions and view modifiers remain unsupported.
     /// Checked translations localize display literals and reorder their original formatted placeholders. Package
     /// translations are shared; a widget's own entry wins. Stored literals, copy/open and resource names retain their source values.
@@ -123,7 +130,7 @@ public extension Desk {
                 }
                 return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: diagnostics,
                                              issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes),
-                                             elementRefs: compiler.elementRefs)
+                                             elementRefs: compiler.elementRefs, packageOptions: compiler.packageOptions)
             } catch let issue as DeskCompilationIssue {
                 return DeskCompilationResult(program: nil, diagnostics: diagnostics, issues: [issue], imageSources: [])
             } catch {

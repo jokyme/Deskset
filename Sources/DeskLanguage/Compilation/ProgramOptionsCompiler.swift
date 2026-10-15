@@ -5,12 +5,35 @@ import DesksetCore
 struct ProgramOptionsCompiler {
     let checked: CheckedFile
     let catalog: DeskCatalog
+    let imports: [String: ProgramOptionBinding]
+    private var scope: OptionFacts.Scope { DeskPackagePath.isPackageFile(checked.tree.file.path) ? .package : .widget }
+    var bindings: [String: ProgramOptionBinding] {
+        imports.merging(checked.options.mapValues { ProgramOptionBinding(facts: $0, source: checked) }) { _, own in own }
+    }
     private(set) var nodeCount = 0
     private var declarations: [String: OptionDeclSyntax] = [:]
 
-    init(checked: CheckedFile, catalog: DeskCatalog) throws {
+    init(checked: CheckedFile, catalog: DeskCatalog, imports: [String: ProgramOptionBinding] = [:]) throws {
         self.checked = checked
         self.catalog = catalog
+        self.imports = imports
+        guard scope == .widget || imports.isEmpty else {
+            throw issue(.invalidCheckedModel, checked.tree.rootNode, "Package metadata cannot import widget declarations")
+        }
+        for (name, binding) in imports {
+            guard binding.facts.scope == .package, binding.source.options[name] == binding.facts,
+                  DeskPackagePath.isPackageFile(binding.source.tree.file.path) else {
+                throw issue(.invalidCheckedModel, checked.tree.rootNode, "Imported options require their checked package declarations")
+            }
+            if let own = checked.options[name] {
+                guard own.type.sameKind(as: binding.facts.type),
+                      (own.localEnum == nil && binding.facts.localEnum == nil ||
+                       own.localEnum == binding.facts.localEnum && Set(own.choices) == Set(binding.facts.choices)) else {
+                    throw issue(.invalidCheckedModel, checked.tree.resolve(own.node) ?? checked.tree.rootNode,
+                                "Option replacement does not preserve its package type and local cases")
+                }
+            }
+        }
         let blocks = checked.tree.rootNode.childNodes.filter { $0.kind == .optionsBlock }
         guard blocks.count <= 1 else { throw issue(.invalidCheckedModel, checked.tree.rootNode, "Duplicate options blocks") }
         for node in blocks {
@@ -18,18 +41,29 @@ struct ProgramOptionsCompiler {
             try collect(block.block, depth: 1)
         }
         guard Set(declarations.keys) == Set(checked.options.keys) else {
-            throw issue(.invalidCheckedModel, checked.tree.rootNode, "Option facts do not match the authored local declarations")
+            throw issue(.invalidCheckedModel, checked.tree.rootNode, "Option facts do not match the authored source declarations")
         }
     }
 
     mutating func compile(expressions: inout ProgramExpressionCompiler) throws -> [ProgramOptionNode] {
-        try expressions.registerOptions(checked.options)
-        var result: [ProgramOptionNode] = []
-        for node in checked.tree.rootNode.childNodes where node.kind == .optionsBlock {
-            guard let block = TopLevelBlockSyntax(node) else { throw issue(.invalidCheckedModel, node, "Missing options block") }
-            result.append(contentsOf: try items(block.block, expressions: &expressions))
+        try expressions.optionSource(checked, bindings: bindings) { expressions in
+            var result: [ProgramOptionNode] = []
+            for node in checked.tree.rootNode.childNodes where node.kind == .optionsBlock {
+                guard let block = TopLevelBlockSyntax(node) else { throw issue(.invalidCheckedModel, node, "Missing options block") }
+                result.append(contentsOf: try items(block.block, expressions: &expressions))
+            }
+            return result
         }
-        return result
+    }
+
+    /// Removing a replaced option must not remove its siblings or change authored Section order.
+    static func excluding(_ names: Set<String>, from nodes: [ProgramOptionNode]) -> [ProgramOptionNode] {
+        nodes.compactMap { node in
+            switch node {
+            case .option(let value): return names.contains(value.name) ? nil : node
+            case .section(let title, let items): return .section(title: title, items: excluding(names, from: items))
+            }
+        }
     }
 
     private mutating func collect(_ block: BlockSyntax, depth: Int) throws {
@@ -44,9 +78,9 @@ struct ProgramOptionsCompiler {
             if let declaration = OptionDeclSyntax(node) {
                 let name = declaration.target.name.token.name
                 guard declarations[name] == nil, let facts = checked.options[name],
-                      facts.node == checked.tree.id(of: node), facts.name == name, facts.scope == .widget,
+                      facts.node == checked.tree.id(of: node), facts.name == name, facts.scope == scope,
                       let call = declaration.controlCall, call.callee.path == [facts.control], call.block == nil else {
-                    throw issue(.invalidCheckedModel, node, "Option has no matching local declaration and control")
+                    throw issue(.invalidCheckedModel, node, "Option has no matching source declaration and control")
                 }
                 guard ["Toggle", "Input", "Slider", "Stepper", "Picker"].contains(facts.control) else {
                     throw issue(.unsupported, call.node, "This option control requires additional persistent value support")
@@ -92,7 +126,7 @@ struct ProgramOptionsCompiler {
                 }
                 _ = try arguments(call, spec: control("Section", at: node))
                 try collect(inner, depth: depth + 1)
-            } else { throw issue(.unsupported, node, "Only local option declarations and Section blocks are implemented") }
+            } else { throw issue(.unsupported, node, "Only option declarations and Section blocks are implemented") }
         }
     }
 
@@ -197,7 +231,8 @@ struct ProgramOptionsCompiler {
             }
         }
         return ProgramOption(name: facts.name, title: title, control: control, defaultValue: value, help: help,
-                             hiddenIf: try expressions.hiddenConditions(hidden, at: call.node))
+                             hiddenIf: try expressions.hiddenConditions(hidden, at: call.node),
+                             scope: scope == .package ? .package : .instance)
     }
 
     private func number(_ node: PositionedNode, facts: OptionFacts, expressions: inout ProgramExpressionCompiler) throws -> ProgramNumber {
@@ -320,15 +355,21 @@ struct ProgramOptionsCompiler {
         var reads = Set<String>()
         while let current = pending.popLast() {
             if let member = MemberExprSyntax(current), IdentifierExprSyntax(member.base.node)?.name == "options" {
-                guard let facts = checked.options[member.name.token.name], facts.scope == .widget,
-                      checked.symbols[checked.tree.id(of: current)] == .option(facts.node, file: checked.tree.file) else { throw issue(.invalidCheckedModel, current, "Option hidden condition reads a different declaration") }
+                guard let binding = bindings[member.name.token.name],
+                      checked.symbols[checked.tree.id(of: current)] == .option(binding.facts.node, file: binding.source.tree.file),
+                      checked.types[checked.tree.id(of: current)]?.type == binding.facts.type,
+                      checked.canonicalNumericValues[checked.tree.id(of: current)] == nil,
+                      checked.numericCoercions[checked.tree.id(of: current)] == nil else {
+                    throw issue(.invalidCheckedModel, current, "Option hidden condition reads a different source declaration")
+                }
+                let facts = binding.facts
                 reads.insert(facts.name)
                 continue
             }
             if case .enumCase(let type, let name)? = checked.symbols[checked.tree.id(of: current)],
-               checked.options.values.contains(where: { $0.localEnum == type && $0.choices.contains(name) }),
+               bindings.values.contains(where: { $0.facts.localEnum == type && $0.facts.choices.contains(name) }),
                checked.types[checked.tree.id(of: current)]?.type == .enumeration(type) { continue }
-            if IdentifierExprSyntax(current) != nil { throw issue(.unsupported, current, "Option hidden conditions may read only local options") }
+            if IdentifierExprSyntax(current) != nil { throw issue(.unsupported, current, "Option hidden conditions may read only checked options") }
             pending.append(contentsOf: current.childNodes)
         }
         guard dependencies == Set(reads.map { DepKey.option($0) }) else {

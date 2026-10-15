@@ -311,7 +311,10 @@ extension Checker {
         checkOptionItems(body)
         for (name, packageOption) in packageReplaced {
             guard let option = options[name] else { continue }
-            if !option.val.type.sameKind(as: packageOption.val.type) && !option.val.error && option.val.type != DeskType.any {
+            let differentLocalCases = (option.localEnum != nil || packageOption.localEnum != nil) &&
+                Set(option.choices) != Set(packageOption.choices)
+            if (!option.val.type.sameKind(as: packageOption.val.type) || differentLocalCases) &&
+                !option.val.error && option.val.type != DeskType.any {
                 report(.replacedOptionTypeDiffers, option.nameRange, ["name": .code(name), "expected": .type(packageOption.val.type),
                                                                       "actual": .type(option.val.type)],
                        notes: [Note(file: packageOption.file, range: 0..<0, messageKey: "packageDeclaration")])

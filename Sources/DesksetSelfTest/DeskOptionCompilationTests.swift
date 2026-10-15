@@ -256,16 +256,25 @@ func runDeskOptionsCompilationTests(_ t: TestRunner) {
         t.check(Desk.compile(wrappedChoice).program == nil, "the checker only admits literal scalar Picker choices")
     }
 
-    t.suite("Desk: options compilation: package options remain an explicit boundary") {
+    t.suite("Desk: options compilation: original package Toggle publishes both schemas") {
         let source = #"widget { Text("A") }"#
         let folder = CheckedDeskPackage(package: deskMemoryPackage([
             "package.desk": #"options { show = Toggle("Show") }"#, "Options.desk": source
         ]))
         guard let package = folder.files[DeskFileID("package.desk")], let checked = folder.files[DeskFileID("Options.desk")] else { throw DeskOptionFixtureError.receipt }
         t.check(package.diagnostics(.error).isEmpty && checked.diagnostics(.error).isEmpty)
-        let denied = Desk.compile(checked, package: package)
-        t.equal(denied.issues.first?.kind, .unsupported); t.equal(denied.issues.first?.file, package.tree.file)
-        t.check(denied.program == nil && denied.elementRefs.isEmpty)
+        let result = Desk.compile(checked, package: package)
+        t.check(result.issues.isEmpty)
+        guard let program = result.program, let schema = result.packageOptions else { throw DeskOptionFixtureError.receipt }
+        t.equal(schema.defaults.values, ["show": .boolean(false)])
+        t.equal(deskOptionDefinitions(program.options).first?.scope, .package)
+        t.equal(schema.definitions["show"]?.scope, .package)
+        var runtime = try ProgramRuntime(program: program)
+        t.equal(deskOptionTexts(try runtime.project(environment: deskOptionEnvironment(), measure: deskOptionMeasure)), ["A"])
+        let reader = deskCheck("widget { Text(options.show) }", file: "Reader.desk",
+            context: CheckContext(package: CheckedPackage(file: package)))
+        let denied = Desk.compile(reader)
+        t.check(denied.program == nil && denied.packageOptions == nil && !denied.issues.isEmpty)
     }
 
     t.suite("Desk: options compilation: the original option driven style updates like an own font modifier") {

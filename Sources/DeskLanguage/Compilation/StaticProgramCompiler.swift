@@ -18,19 +18,18 @@ struct StaticProgramCompiler {
     private var widgetSize = ProgramWidgetSize.fit
     private var seenElements = Set<NodeID>()
     private var optionNodeCount = 0
+    private let package: CheckedFile?
+    private(set) var packageOptions: ProgramOptionsSchema?
     private(set) var elementRefs: [ElementID: ElementRef] = [:]
 
     init(checked: CheckedFile, catalog: DeskCatalog, package: CheckedFile? = nil) throws {
         self.checked = checked
         self.catalog = catalog
+        self.package = package
         expressions = ProgramExpressionCompiler(checked: checked, catalog: catalog,
             translations: try ProgramTranslationCompiler(checked: checked, package: package, catalog: catalog))
         sourceFiles[checked.tree.version] = checked
         if let package {
-            guard package.options.isEmpty,
-                  !package.tree.rootNode.childNodes.contains(where: { $0.kind == .optionsBlock }) else {
-                throw sourceCompiler(package).issue(.unsupported, package.tree.rootNode, "Package options require package persistence")
-            }
             guard sourceFiles[package.tree.version] == nil else {
                 throw sourceCompiler(package).issue(.invalidCheckedModel, package.tree.rootNode, "Shared source tree versions must be distinct")
             }
@@ -57,9 +56,29 @@ struct StaticProgramCompiler {
     }
 
     mutating func compile() throws -> WidgetProgram {
-        var optionCompiler = try ProgramOptionsCompiler(checked: checked, catalog: catalog)
-        let options = try optionCompiler.compile(expressions: &expressions)
-        optionNodeCount = optionCompiler.nodeCount
+        var packageNodes: [ProgramOptionNode] = [], imported: [String: ProgramOptionBinding] = [:]
+        if let package {
+            var packageCompiler = try ProgramOptionsCompiler(checked: package, catalog: catalog)
+            packageNodes = try packageCompiler.compile(expressions: &expressions)
+            imported = packageCompiler.bindings
+            optionNodeCount = packageCompiler.nodeCount
+            try expressions.validateTranslationBudget(at: package.tree.rootNode, packageOnly: true)
+            do {
+                packageOptions = try ProgramOptionsSchema(options: packageNodes,
+                    translations: expressions.packageTranslations ?? ProgramTranslations())
+            } catch ProgramRuntimeError.expressionLimit {
+                throw sourceCompiler(package).issue(.resourceLimit, package.tree.rootNode, "Package option expression limit exceeded")
+            } catch ProgramRuntimeError.expressionDepth {
+                throw sourceCompiler(package).issue(.resourceLimit, package.tree.rootNode, "Package option expression depth exceeded")
+            } catch {
+                throw sourceCompiler(package).issue(.invalidProgram, package.tree.rootNode, "Invalid package option schema: \(error)")
+            }
+        }
+        var optionCompiler = try ProgramOptionsCompiler(checked: checked, catalog: catalog, imports: imported)
+        let ownOptions = try optionCompiler.compile(expressions: &expressions)
+        optionNodeCount += optionCompiler.nodeCount
+        let options = ownOptions + ProgramOptionsCompiler.excluding(Set(checked.options.keys), from: packageNodes)
+        try expressions.registerOptions(optionCompiler.bindings)
         var name = URL(fileURLWithPath: checked.tree.file.path).deletingPathExtension().lastPathComponent
         var nameKey: String?
         guard let sizeField = catalog.infoFields.first(where: { $0.name == "size" }),
@@ -126,6 +145,7 @@ struct StaticProgramCompiler {
         guard seenElements == Set(checked.elements.keys) else {
             throw issue(.invalidCheckedModel, widget.node, "Checked elements do not match the supported view and menu calls")
         }
+        try expressions.validateTranslationBudget(at: widget.node)
         let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad, size: widgetSize,
                                     translations: expressions.translations, nameKey: nameKey, options: options)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.

@@ -7,6 +7,7 @@ struct ProgramTranslationCompiler {
     private let catalog: DeskCatalog
     private let entries: [NodeID: StringEntry]
     private let patterns: [String: [String: [ProgramTranslationPart]]]
+    private let packagePatterns: [String: [String: [ProgramTranslationPart]]]?
     private var source: [String: [ProgramTranslationPart]] = [:]
 
     init(checked: CheckedFile, package: CheckedFile?, catalog: DeskCatalog) throws {
@@ -37,8 +38,11 @@ struct ProgramTranslationCompiler {
             }
         }
         self.entries = entries
-        var patterns = try package.map { try Self.tables($0, catalog: catalog) } ?? [:]
-        for (language, table) in try Self.tables(checked, catalog: catalog) {
+        var tableCost = 0
+        let packagePatterns = try package.map { try Self.tables($0, catalog: catalog, count: &tableCost) }
+        self.packagePatterns = packagePatterns
+        var patterns = packagePatterns ?? [:]
+        for (language, table) in try Self.tables(checked, catalog: catalog, count: &tableCost) {
             patterns[language, default: [:]].merge(table) { _, own in own }
         }
         self.patterns = patterns
@@ -48,6 +52,33 @@ struct ProgramTranslationCompiler {
         ProgramTranslations(source: source, languages: patterns.mapValues { table in
             table.filter { source[$0.key] != nil }
         })
+    }
+
+    /// Capture after package metadata and before widget metadata; source keys share the same lowering budget.
+    /// A widget translation may cause a localized node, but it must never replace a package panel translation.
+    var packageTranslations: ProgramTranslations? {
+        packagePatterns.map { patterns in
+            ProgramTranslations(source: source, languages: patterns.mapValues { table in table.filter { source[$0.key] != nil } })
+        }
+    }
+
+    /// Count before constructing the filtered emitted table; reused keys are charged once.
+    func validateBudget(expressions: Int, packageOnly: Bool, at node: PositionedNode, in checked: CheckedFile) throws {
+        var remaining = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) - expressions
+        func charge(_ amount: Int) throws {
+            guard amount >= 0, amount <= remaining else {
+                throw DeskCompilationIssue(kind: .resourceLimit, file: checked.tree.file, range: node.textRange,
+                                           message: "Shared metadata and translation limit exceeded")
+            }
+            remaining -= amount
+        }
+        try charge(source.count)
+        for parts in source.values { try charge(parts.count) }
+        let tables = packageOnly ? (packagePatterns ?? [:]) : patterns
+        try charge(tables.count)
+        for table in tables.values {
+            for (key, parts) in table where source[key] != nil { try charge(1); try charge(parts.count) }
+        }
     }
 
     /// A Picker's implicit title is display text even when its value is a stored literal or a local case.
@@ -95,10 +126,10 @@ struct ProgramTranslationCompiler {
         return entry.key
     }
 
-    private static func tables(_ checked: CheckedFile, catalog: DeskCatalog) throws -> [String: [String: [ProgramTranslationPart]]] {
+    private static func tables(_ checked: CheckedFile, catalog: DeskCatalog, count: inout Int) throws -> [String: [String: [ProgramTranslationPart]]] {
         var written: [String: [String: String]] = [:]
         var patterns: [String: [String: [ProgramTranslationPart]]] = [:]
-        var count = 0
+        let maximum = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
         let blocks = checked.tree.rootNode.childNodes.filter { $0.kind == .translationsBlock }
         guard blocks.count <= 1 else { throw issue(checked, checked.tree.rootNode, "Duplicate translation blocks") }
         for node in blocks {
@@ -113,6 +144,10 @@ struct ProgramTranslationCompiler {
                 guard !language.isEmpty, written[language] == nil else {
                     throw issue(checked, statement, "Duplicate or empty normalized translation language")
                 }
+                guard count < maximum else {
+                    throw DeskCompilationIssue(kind: .resourceLimit, file: checked.tree.file, range: statement.textRange,
+                                               message: "Shared translation language limit exceeded")
+                }
                 count += 1
                 var table: [String: String] = [:], values: [String: [ProgramTranslationPart]] = [:]
                 for statement in group.block.items {
@@ -123,9 +158,14 @@ struct ProgramTranslationCompiler {
                     guard table[key] == nil else { throw issue(checked, statement, "Duplicate translation key") }
                     table[key] = value.node.node.trimmedText
                     let original = placeholders(entry.key)
-                    values[key] = try pattern(value, original: original, checked: checked, catalog: catalog)
+                    let parts = try pattern(value, original: original, checked: checked, catalog: catalog)
                     _ = try pattern(entry.key, original: original, checked: checked, catalog: catalog)
-                    count += 1 + (values[key]?.count ?? 0)
+                    guard parts.count < maximum - count else {
+                        throw DeskCompilationIssue(kind: .resourceLimit, file: checked.tree.file, range: statement.textRange,
+                                                   message: "Shared translation table limit exceeded")
+                    }
+                    count += 1 + parts.count
+                    values[key] = parts
                     guard key.utf16.count <= min(ProgramLimits.maximumTextLength, catalog.limits.maximumTextLength),
                           count <= min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens) else {
                         throw DeskCompilationIssue(kind: .resourceLimit, file: checked.tree.file, range: statement.textRange,
