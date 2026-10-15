@@ -5,7 +5,7 @@ import Foundation
 /// of `SkinAppearance`, so they behave like the appearance variables: dynamic, fixed for `[Variables]` and `!SetVariable`,
 /// and a change runs `MacOnAppearanceChangeAction`. The app works them out from macOS (`system()`); a host that does not
 /// ask macOS (the engine alone, the core self-tests) reports `standard`.
-public struct MacRegionalSettings: Equatable {
+public struct MacRegionalSettings: Equatable, Sendable {
     /// 12 or 24: System Settings → General → Date & Time → "24-hour time", else the region's own clock.
     public var clockHours: Int
     /// The first day of the week, 0 (Sunday) … 6 (Saturday), counted as the Time measure's `%w` counts: System

@@ -7,6 +7,9 @@ CommandLineTools.makeHashingDeterministic(for: CommandLine.arguments)
 // under --self-test; set before anything can load a skin.
 CommandLineTools.useANSICodePage(for: CommandLine.arguments)
 
+// One symbol renderer for the shared image cache in every command-line mode and the interactive app.
+Images.configure(symbols: AppSymbolRasterizer())
+
 // Developer / build commands (`--render`, `--self-test`, `--make-icon`, `--snapshot-ui`, `--system-report`,
 // `--help`) run and exit; an unknown `--` flag prints the usage and exits with status 2; otherwise the menu bar app
 // starts (see CommandLineTools).

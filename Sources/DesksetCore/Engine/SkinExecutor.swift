@@ -299,6 +299,10 @@ public final class SkinExecutorPark: @unchecked Sendable {
 
 // MARK: - The way back from background work
 
+protocol BackgroundWorkOwner: AnyObject {
+    func receiveBackgroundWork(_ work: () -> Void, orElse dropped: (() -> Void)?)
+}
+
 /// The way back to a skin's executor for background work the skin started: a file read, a child process, a network
 /// request. Taken on the skin's own thread before the work starts (`Skin.hop()`); `post` may be called from any
 /// thread.
@@ -313,31 +317,59 @@ public final class SkinExecutorPark: @unchecked Sendable {
 /// reference once the executor has let go, and the skin, its measures and meters would be released there — off the
 /// executor, where an InputText prompt would close its window and FrostedGlass release its backdrop window.
 public struct SkinHop: @unchecked Sendable {
-    private weak var skin: Skin?
+    /// Copied into queued work without reading the weak owner on the posting thread.
+    private struct Target {
+        weak var owner: (any BackgroundWorkOwner)?
+    }
+
+    private let target: Target
     private let executor: SkinExecutor
 
     init(skin: Skin, executor: SkinExecutor) {
-        self.skin = skin
+        self.init(owner: skin, executor: executor)
+    }
+
+    init(owner: any BackgroundWorkOwner, executor: SkinExecutor) {
+        target = Target(owner: owner)
         self.executor = executor
+    }
+
+    /// A delayed result must not keep its destination alive through that destination's timer queue.
+    func post(after delay: TimeInterval, _ work: @escaping () -> Void) {
+        let target = self.target
+        executor.async(after: delay) { [weak executor] in
+            executor?.async {
+                guard let owner = target.owner else { return }
+                withExtendedLifetime(owner) { owner.receiveBackgroundWork(work, orElse: nil) }
+            }
+        }
     }
 
     /// Runs `work` on the skin's executor, after the work already queued there, if the skin is still there by then;
     /// otherwise `dropped` runs there instead. `dropped` is for what must not be left behind when nobody takes the
     /// result, such as a temporary file the background work saved; it must not touch the skin.
     public func post(_ work: @escaping () -> Void, orElse dropped: (() -> Void)? = nil) {
-        let hop = self
+        // The hop owns its destination, but queued work must not keep its own executor alive through the hop.
+        let target = self.target
         executor.async {
-            guard let skin = hop.skin else {
+            guard let owner = target.owner else {
                 dropped?()
                 return
             }
             // A piece of work of the skin's own: its snapshot follows what it did.
-            withExtendedLifetime(skin) { skin.work(work) }
+            withExtendedLifetime(owner) { owner.receiveBackgroundWork(work, orElse: dropped) }
         }
     }
 }
 
 // MARK: - Skin
+
+extension Skin: BackgroundWorkOwner {
+    func receiveBackgroundWork(_ body: () -> Void, orElse dropped: (() -> Void)?) {
+        // Preserve SkinHop semantics: retained closed skins still enter their original work boundary.
+        work(body)
+    }
+}
 
 extension Skin {
     /// Runs `work` on the skin's executor after the current work — "after the current action" — never inline. The

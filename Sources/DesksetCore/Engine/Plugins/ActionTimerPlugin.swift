@@ -48,7 +48,7 @@ public final class ActionTimerMeasure: Measure, PluginLifecycle {
 
     /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
     var clock: () -> TimeInterval {
-        get { clockOverride ?? skin.clock }
+        get { clockOverride ?? sectionContext.clock }
         set { clockOverride = newValue }
     }
     private var clockOverride: (() -> TimeInterval)?
@@ -152,13 +152,13 @@ public final class ActionTimerMeasure: Measure, PluginLifecycle {
         switch verb {
         case "execute":
             guard let number, number >= 1 else {
-                skin.log("ActionTimer [\(name)]: \"\(command)\" needs an ActionList number", level: .warning)
+                sectionContext.log("ActionTimer [\(name)]: \"\(command)\" needs an ActionList number", level: .warning)
                 return
             }
             start(list: number)
         case "stop":
             guard let number else {
-                skin.log("ActionTimer [\(name)]: \"\(command)\" needs an ActionList number", level: .warning)
+                sectionContext.log("ActionTimer [\(name)]: \"\(command)\" needs an ActionList number", level: .warning)
                 return
             }
             stop(list: number)
@@ -171,14 +171,14 @@ public final class ActionTimerMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         if runs[list] != nil {
             if !ignoreWarnings {
-                skin.log("ActionTimer [\(name)]: ActionList\(list) is still running; Execute \(list) ignored",
+                sectionContext.log("ActionTimer [\(name)]: ActionList\(list) is still running; Execute \(list) ignored",
                          level: .warning)
             }
             return
         }
         if !snapshotTaken { takeSnapshot() }
         guard let text = snapshot["actionlist\(list)"], !text.trimmingCharacters(in: .whitespaces).isEmpty else {
-            skin.log("ActionTimer [\(name)]: ActionList\(list) is not defined", level: .warning)
+            sectionContext.log("ActionTimer [\(name)]: ActionList\(list) is not defined", level: .warning)
             return
         }
         let steps = ActionTimerMeasure.parse(text)
@@ -208,7 +208,7 @@ public final class ActionTimerMeasure: Measure, PluginLifecycle {
         run.timer?.cancel()
         let delay = max(0, time - clock())
         let id = run.id, list = run.list
-        run.timer = skin.executor.timer(interval: delay, leeway: 0, repeats: false) { [weak self] in
+        run.timer = sectionContext.executor.timer(interval: delay, leeway: 0, repeats: false) { [weak self] in
             guard let self, let current = self.runs[list], current.id == id else { return }
             current.timer = nil
             self.advance(current)
@@ -293,11 +293,11 @@ public final class ActionTimerMeasure: Measure, PluginLifecycle {
     private func perform(_ actionName: String) {
         guard let action = snapshot[actionName.lowercased()] else {
             if reported.insert(actionName.lowercased()).inserted {
-                skin.log("ActionTimer [\(name)]: action option \(actionName) is not defined", level: .warning)
+                sectionContext.log("ActionTimer [\(name)]: action option \(actionName) is not defined", level: .warning)
             }
             return
         }
         if action.trimmingCharacters(in: .whitespaces).isEmpty { return }
-        skin.execute(action, from: self)
+        sectionContext.execute(action, from: self)
     }
 }

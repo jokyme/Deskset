@@ -64,7 +64,8 @@ extension SyntaxTree {
         guard id.treeVersion == version else { return nil }
         var stack: [PositionedNode] = [rootNode]
         while let current = stack.popLast() {
-            if current.kind == id.kind, current.quickTextStart == id.utf8Start { return current }
+            if current.kind == id.kind, current.quickTextStart == id.utf8Start,
+               id.utf8End == nil || id.utf8End == current.quickTextRange.upperBound { return current }
             var holding: [PositionedNode] = []
             var at = current.offset
             for child in current.node.children {

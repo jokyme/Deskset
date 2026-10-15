@@ -39,7 +39,9 @@ import Foundation
 // - `\K` (reset match start) dropped (best effort: the overall match then also contains the text before `\K`).
 // - Recursion / subroutines `(?R)`, `(?1)`, `(?-1)`, `(?&n)`, `(?P>n)`, `\g<n>` → unsupported.
 // Not translated (ICU semantics are close enough): `\w`, `\d`, `\b` and `(?i)` are Unicode-aware in ICU (PCRE without
-// UCP is ASCII-only); `.` and `$` also treat `\r`, U+2028 etc. as line ends in ICU.
+// UCP is ASCII-only). PCRERegexCache compiles with LF line separators for `.`, `^` and `$`; `(?s)` / `(?m)` still
+// apply, `\s` / `\R` retain ICU semantics, and `\N` is translated to `[^\n]`. This is Deskset's default convention;
+// Rainmeter's binary newline configuration is unverified. Explicit newline / BSR controls remain dropped above.
 // Known ICU engine bugs (found by differential testing against Perl, not fixable by translation): a *lazy* loop
 // over a body that can match the empty string (`(?:\s*)+?b`, and so `(?U)(?:\s*)+b`) may miss a match or spin until
 // the `PCRE.timeLimitNanoseconds` guard stops it; `\b` next to `\z` / `\B` at the very end can disagree with PCRE.

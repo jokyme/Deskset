@@ -323,8 +323,13 @@ func runDeskCorpusTests(_ t: TestRunner) {
             while big.utf8.count < size { big += block }
             let start = ProcessInfo.processInfo.systemUptime
             let tree = deskParse(big)
+            let parsedAt = ProcessInfo.processInfo.systemUptime
             t.equal(deskTreeProblems(tree) + deskDiagnosticProblems(tree), [], "\(size) bytes")
-            t.check(ProcessInfo.processInfo.systemUptime - start < 10, "\(size) bytes within 10 s")
+            let total = ProcessInfo.processInfo.systemUptime - start
+            t.check(total < 10, "\(size) bytes within 10 s")
+            let parse = parsedAt - start
+            print(String(format: "    big input: target %d bytes, actual %d bytes; parse %.3f s, checks %.3f s, total %.3f s",
+                         size, big.utf8.count, parse, total - parse, total))
         }
     }
 

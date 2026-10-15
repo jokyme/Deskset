@@ -37,6 +37,63 @@ enum MacAppearance {
         }
         return result
     }
+
+    struct ProgramValues {
+        let appearance: SkinAppearance
+        let colors: ProgramColorInput
+    }
+
+    enum ProgramFailure: Error { case unresolvableColor(ProgramPaletteColor) }
+
+    /// The editor supplies its actual appearance. One capture feeds both semantic appearance and the complete
+    /// program palette; a platform conversion failure is an error, never a fixed approximation of a system hue.
+    static func programValues(for appearance: NSAppearance) throws -> ProgramValues {
+        precondition(Thread.isMainThread)
+        func native(_ key: ProgramPaletteColor) -> NSColor {
+            switch key {
+            case .accent: return .controlAccentColor
+            case .text: return .labelColor
+            case .dim: return .secondaryLabelColor
+            case .faint: return .tertiaryLabelColor
+            case .separator: return .separatorColor
+            case .red: return .systemRed
+            case .orange: return .systemOrange
+            case .yellow: return .systemYellow
+            case .green: return .systemGreen
+            case .mint: return .systemMint
+            case .teal: return .systemTeal
+            case .cyan: return .systemCyan
+            case .blue: return .systemBlue
+            case .indigo: return .systemIndigo
+            case .purple: return .systemPurple
+            case .pink: return .systemPink
+            case .brown: return .systemBrown
+            case .gray: return .systemGray
+            case .white: return .white
+            case .black: return .black
+            case .clear: return .clear
+            }
+        }
+        var colors: [ProgramPaletteColor: RGBA] = [:]
+        var failure: ProgramFailure?
+        appearance.performAsCurrentDrawingAppearance {
+            for key in ProgramPaletteColor.allCases {
+                guard let value = native(key).usingColorSpace(.sRGB) else { failure = .unresolvableColor(key); return }
+                let channels = [value.redComponent, value.greenComponent, value.blueComponent, value.alphaComponent]
+                guard channels.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else { failure = .unresolvableColor(key); return }
+                colors[key] = RGBA(r: Double(value.redComponent) * 255, g: Double(value.greenComponent) * 255,
+                                   b: Double(value.blueComponent) * 255, a: Double(value.alphaComponent) * 255)
+            }
+        }
+        if let failure { throw failure }
+        guard let accent = colors[.accent], let text = colors[.text], let dim = colors[.dim],
+              let faint = colors[.faint], let separator = colors[.separator] else { throw ProgramRuntimeError.invalidColorInput }
+        var value = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? SkinAppearance.dark : SkinAppearance.light
+        value.regional = MacRegional.current
+        value.accentColor = accent; value.labelColor = text; value.secondaryLabelColor = dim
+        value.tertiaryLabelColor = faint; value.separatorColor = separator
+        return ProgramValues(appearance: value, colors: ProgramColorInput(colors: colors))
+    }
 }
 
 /// The Mac's clock, week and temperature settings as skins see them (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`,

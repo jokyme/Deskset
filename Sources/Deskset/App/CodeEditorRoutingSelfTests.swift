@@ -1,4 +1,5 @@
 import AppKit
+import DeskLanguage
 import DesksetCore
 
 /// Settings ▸ Editor, the code-editor catalog and `CodeEditorRouter` (docs/editor-design.md §6). Apps are never
@@ -11,6 +12,7 @@ enum CodeEditorRoutingSelfTests {
         preferenceTests(t)
         detectionTests(t)
         routingTests(t)
+        deskRoutingTests(t)
         configEditorTests(t)
         settingsWindowTests(t)
         miscTests(t)
@@ -576,6 +578,223 @@ enum CodeEditorRoutingSelfTests {
                 CodeEditorRouter.open(file: picture, line: nil, app: app)
                 t.equal(opener.opened.last?.app, URL(fileURLWithPath: "/System/Applications/TextEdit.app"))
                 locator.defaultApp = nil
+            }
+        }
+    }
+
+    // MARK: Desk document routing
+
+    private struct DeskRouteFixture {
+        let app: AppController
+        let root: URL
+        let locator = FakeLocator()
+        let opener = RecordingOpener()
+    }
+
+    /// Only explicit scratch documents. The owned-include control adds one original, local INI fixture below.
+    private static func deskRouteFixture(_ t: AppTestRunner) -> DeskRouteFixture {
+        let root = t.temporaryDirectory("desk-routing")
+        let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                skinsDirectory: root.appendingPathComponent("Skins"),
+                                layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                backupsDirectory: root.appendingPathComponent("Backups"), defaultSkinsSource: nil,
+                                settingsDirectory: root.appendingPathComponent("Settings"), presentsWindows: false)
+        app.state.updateEditor { $0.codeEditor = .builtIn }
+        t.atSuiteEnd {
+            for window in app.codeFileWindows {
+                window.deskChecking?.close()
+                window.codeView.onCommit = { _, _ in false }
+                window.codeView.onDiskConflict = { _ in .decideLater }
+                window.codeView.discardUncommittedChanges()
+                window.window?.close()
+            }
+            _ = app.stopAllForTermination()
+            app.endEngineThread()
+        }
+        return DeskRouteFixture(app: app, root: root)
+    }
+
+    private static let deskRouteText = "\u{FEFF}info { name: \"路由😀\" }\r\nwidget { Text(\"Literal😀\").colr(.red) }\r\n"
+
+    private static func deskRoutingTests(_ t: AppTestRunner) {
+        t.suite("Desk: code routing: built-in files consume the checker and reuse the same document window") {
+            let f = deskRouteFixture(t)
+            let file = f.root.appendingPathComponent("Widget.DESK")
+            let bytes = Data(deskRouteText.utf8)
+            try bytes.write(to: file)
+            // An invalid adjacent package is not part of this explicitly opened document.
+            let sibling = f.root.appendingPathComponent("package.desk")
+            try Data([0xC3]).write(to: sibling)
+            var loadRequests = 0
+            f.app.skinExecutor = { _ in loadRequests += 1; return MainSkinExecutor.shared }
+            try withFakes(f.locator, f.opener) {
+                t.equal(CodeEditorRouter.routeOpenedFiles([file], app: f.app), [], "the real file-opening entry consumes it")
+                guard let window = f.app.codeFileWindows.first, let checking = window.deskChecking,
+                      let diagnostic = checking.snapshot.diagnostics.first(where: { $0.id == .unknownModifier }) else {
+                    return t.check(false, "the router did not create a window consuming the actual Desk checker")
+                }
+                t.equal(window.file, file.standardizedFileURL)
+                t.equal(window.codeView.files, [file.standardizedFileURL], "no sibling document is opened")
+                t.equal(window.codeView.text, deskRouteText)
+                t.equal(checking.snapshot.text, deskRouteText)
+                t.equal(diagnostic.range.nsRange, (deskRouteText as NSString).range(of: "colr"))
+                t.equal(window.window?.subtitle, diagnostic.message, "a real checked message reaches the window")
+                t.equal(window.codeView.document(for: file)?.data, bytes, "BOM and CRLF survive routing")
+                let alias = f.root.appendingPathComponent("./Widget.DESK")
+                CodeEditorRouter.open(file: alias, line: 2, app: f.app)
+                t.equal(f.app.codeFileWindows.count, 1)
+                t.check(f.app.codeFileWindows.first === window, "the existing canonical document window is reused")
+                t.equal(window.codeView.caretLine, 2)
+                t.equal(loadRequests, 0, "no skin executor is requested")
+                t.equal(f.app.sortedControllers.count, 0)
+                t.check(f.app.inspector == nil && f.app.studioSessions.isEmpty)
+                t.equal(f.opener.opened.count + f.opener.runs.count, 0)
+                t.check(f.app.lastAlert == nil)
+                t.equal(try Data(contentsOf: file), bytes)
+                t.equal(try Data(contentsOf: sibling), Data([0xC3]))
+            }
+        }
+
+        t.suite("Desk: code routing: an owned include stays independent without reloading its INI owner") {
+            let f = deskRouteFixture(t)
+            let folder = f.app.skinsDirectory.appendingPathComponent("Owned")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = folder.appendingPathComponent("Shared.desk")
+            let bytes = Data(deskRouteText.utf8)
+            try bytes.write(to: file)
+            let ini = folder.appendingPathComponent("Owner.ini")
+            let iniBytes = Data("[Rainmeter]\nUpdate=-1\n@Include=Shared.desk\n\n[OwnerText]\nMeter=String\nText=Owner\n".utf8)
+            try iniBytes.write(to: ini)
+            var loadRequests = 0
+            f.app.skinExecutor = { _ in loadRequests += 1; return MainSkinExecutor.shared }
+            guard let owner = f.app.activate(config: "Owned", file: "Owner.ini") else {
+                return t.check(false, "the original local INI control did not load")
+            }
+            t.equal(loadRequests, 1, "one deliberate INI setup load")
+            t.check(owner.runtime.snapshot.sourceFiles.contains { CodeEditorRouter.comparablePath($0) == CodeEditorRouter.comparablePath(file) },
+                    "the actual loaded skin recorded the Desk include")
+            t.check(CodeEditorRouter.owningController(of: file, in: f.app) === owner, "this is an owned include control")
+            let runtime = owner.runtime
+            let updates = runtime.skin.updateCount
+            try withFakes(f.locator, f.opener) {
+                CodeEditorRouter.open(file: file, line: 2, app: f.app)
+                guard let window = f.app.codeFileWindows.first, let checking = window.deskChecking else {
+                    return t.check(false, "the Desk include went to its INI owner instead of a document window")
+                }
+                t.equal(f.app.codeFileWindows.count, 1)
+                t.equal(window.file, file.standardizedFileURL)
+                t.equal(checking.snapshot.text, deskRouteText)
+                t.check(checking.snapshot.diagnostics.contains { $0.id == .unknownModifier })
+                t.check(f.app.controller(for: "Owned") === owner && owner.runtime === runtime, "the owner runtime was not replaced")
+                t.equal(loadRequests, 1, "Desk routing adds no activation or reload load request")
+                t.equal(runtime.skin.updateCount, updates, "Update=-1 keeps the control's update count fixed")
+                t.equal(f.app.sortedControllers.count, 1)
+                t.check(!f.app.isLoadPending("Owned"))
+                t.check(f.app.inspector == nil && f.app.studioSessions.isEmpty, "no widget editing session is opened")
+                t.equal(f.opener.opened.count + f.opener.runs.count, 0)
+                t.equal(try Data(contentsOf: file), bytes)
+                t.equal(try Data(contentsOf: ini), iniBytes)
+                print("    Desk owned-include control: INI setup loads=1, extra load requests=\(loadRequests - 1), updates=\(updates)")
+            }
+        }
+
+        t.suite("Desk: code routing: strict read failures show actual localized errors and consume the request") {
+            let oldLanguage = StudioText.languageOverride
+            defer { StudioText.languageOverride = oldLanguage }
+            let cases: [(name: String, bytes: Data?, en: String?, zh: String?)] = [
+                ("坏格式😀.desk", Data([0xC3]), "DK1008: This file is not UTF-8 text. [byte 0]", "DK1008: 这个文件不是 UTF-8 文本。 [byte 0]"),
+                ("UTF16.desk", Data([0xFF, 0xFE, 0x41, 0]), "DK1008: This file is not UTF-8 text. [byte 0]", "DK1008: 这个文件不是 UTF-8 文本。 [byte 0]"),
+                ("Oversize.desk", Data(repeating: 0x20, count: 1_048_577), "DK8503: This file is larger than 1 MiB. [byte 0]", "DK8503: 文件超过了 1 MiB。 [byte 0]"),
+                ("Missing.desk", nil, nil, nil),
+            ]
+            for language in [StudioLanguage.english, .chinese] {
+                StudioText.languageOverride = language
+                let f = deskRouteFixture(t)
+                var loadRequests = 0
+                f.app.skinExecutor = { _ in loadRequests += 1; return MainSkinExecutor.shared }
+                try withFakes(f.locator, f.opener) {
+                    for control in cases {
+                        let file = f.root.appendingPathComponent(control.name)
+                        let expectedError: String
+                        if let bytes = control.bytes {
+                            try bytes.write(to: file)
+                            guard let message = language == .chinese ? control.zh : control.en else {
+                                return t.check(false, "the original byte control lacks an independent error expectation")
+                            }
+                            expectedError = message
+                        } else {
+                            // Independent Foundation I/O: no successful text or fabricated DK error for an absent file.
+                            do {
+                                _ = try Data(contentsOf: file)
+                                t.check(false, "the missing-file negative control unexpectedly exists")
+                                continue
+                            } catch {
+                                let io = error as NSError
+                                t.equal(io.domain, NSCocoaErrorDomain)
+                                t.equal(io.code, CocoaError.fileReadNoSuchFile.rawValue)
+                                expectedError = error.localizedDescription
+                            }
+                        }
+                        t.check(CodeFileWindowController.isTextFile(file), "the explicit extension enters strict loading even for NUL or absent bytes")
+                        t.equal(CodeEditorRouter.routeOpenedFiles([file], app: f.app), [])
+                        t.equal(f.app.codeFileWindows.count, 0, "a read failure does not create a writable empty document")
+                        let title = language == .chinese ? "无法打开“\(control.name)”" : "Can’t open “\(control.name)”"
+                        t.equal(f.app.lastAlert?.title, title)
+                        t.equal(f.app.lastAlert?.text, expectedError, "the real load error reaches the existing alert")
+                        t.equal(f.opener.opened.count + f.opener.runs.count, 0, "the request never falls back to another editor")
+                        if let bytes = control.bytes { t.equal(try Data(contentsOf: file), bytes) }
+                        else { t.check(!FileManager.default.fileExists(atPath: file.path)) }
+                        print("    Desk routing error control: \(language.rawValue) \(control.name): \(f.app.lastAlert?.text ?? "missing alert")")
+                    }
+                    t.equal(loadRequests, 0)
+                    t.equal(f.app.sortedControllers.count, 0)
+                }
+            }
+        }
+
+        t.suite("Desk: code routing: external preferences and non-Desk fallback keep their original behavior") {
+            let f = deskRouteFixture(t)
+            let editor = fakeApp(f.root, "Plain Editor")
+            f.locator.apps["com.example.desk-plain-editor"] = editor
+            f.locator.defaultApp = editor
+            let valid = f.root.appendingPathComponent("External.desk")
+            let invalid = f.root.appendingPathComponent("Invalid.desk")
+            let missing = f.root.appendingPathComponent("Missing.desk")
+            try Data(deskRouteText.utf8).write(to: valid)
+            try Data([0xC3]).write(to: invalid)
+            var loadRequests = 0
+            f.app.skinExecutor = { _ in loadRequests += 1; return MainSkinExecutor.shared }
+            try withFakes(f.locator, f.opener) {
+                for systemDefault in [false, true] {
+                    f.app.state.updateEditor {
+                        $0.codeEditor = systemDefault ? .systemDefault
+                            : .app(bundleID: "com.example.desk-plain-editor", lastKnownPath: editor.path)
+                    }
+                    for file in [valid, invalid, missing] {
+                        let before = f.opener.opened.count
+                        CodeEditorRouter.open(file: file, app: f.app)
+                        t.equal(f.opener.opened.count, before + 1)
+                        t.equal(f.opener.opened.last?.urls, [file.standardizedFileURL])
+                        t.equal(f.opener.opened.last?.app, editor)
+                        t.equal(f.app.codeFileWindows.count, 0, "an explicit external choice does not create a Desk checker window")
+                        t.check(f.app.lastAlert == nil, "the external editor owns its read errors")
+                    }
+                }
+                f.app.state.updateEditor { $0.codeEditor = .builtIn }
+                let ini = f.root.appendingPathComponent("Missing.ini")
+                CodeEditorRouter.open(file: ini, app: f.app)
+                t.equal(f.opener.opened.last?.urls, [ini], "a non-Desk missing file keeps its old system-editor fallback")
+                t.check(f.app.lastAlert == nil)
+                let remote = URL(string: "https://example.com/NotAFile.desk")!
+                let before = f.opener.opened.count
+                t.equal(CodeEditorRouter.routeOpenedFiles([remote], app: f.app), [remote])
+                t.equal(f.opener.opened.count, before, "a non-file URL is not opened or fetched")
+                t.equal(f.opener.runs.count, 0)
+                t.equal(loadRequests, 0)
+                t.equal(f.app.sortedControllers.count, 0)
+                t.equal(try Data(contentsOf: valid), Data(deskRouteText.utf8))
+                t.equal(try Data(contentsOf: invalid), Data([0xC3]))
+                t.check(!FileManager.default.fileExists(atPath: missing.path))
             }
         }
     }

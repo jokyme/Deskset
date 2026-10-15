@@ -70,7 +70,7 @@ open class Meter: SkinSection {
 
     /// Something the mouse finds, or what it does there, may have changed: the skin's snapshot is built again
     /// (`Skin.snapshotGeneration`). The properties the hit map reads call it when they change (`SkinHitMap`).
-    func noteMouseChange() { skin.noteSnapshotChange() }
+    func noteMouseChange() { sectionContext.noteSnapshotChange() }
 
     /// Adds what the meter's drawing reads when it is drawn, besides the meter's own state that `drawGeneration`
     /// counts: nothing for most meters; a Histogram's bound measures' value range. A kept picture of the meter stays
@@ -172,6 +172,12 @@ open class Meter: SkinSection {
         super.init(name: name, section: section, skin: skin)
     }
 
+    /// The context owns this meter; the reverse reference remains borrowed like the legacy Skin initializer.
+    init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        self.type = type
+        super.init(name: name, section: section, context: context)
+    }
+
     /// Content area (frame minus padding).
     public var contentFrame: SkinRect {
         SkinRect(x: frame.x + padding.left, y: frame.y + padding.top,
@@ -201,7 +207,7 @@ open class Meter: SkinSection {
     /// Whether the mouse is over this meter at the point (skin coordinates), ignoring Hidden and Container (see
     /// `isHit`): whether `mouseShape` contains the point.
     public func hitTest(x: Double, y: Double) -> Bool {
-        mouseShape.contains(x: x, y: y, images: skin.host as? SkinImageQueries)
+        mouseShape.contains(x: x, y: y, images: sectionContext.host as? SkinImageQueries)
     }
 
     /// Visible, not hidden by its container, and hit at the point (skin coordinates): where the meter's mouse actions,
@@ -224,9 +230,9 @@ open class Meter: SkinSection {
     public func isHit(x: Double, y: Double, precise: Bool) -> Bool {
         guard !hidden else { return false }
         return MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: handlesMouseItself,
-                              glass: skin.shownGlassRegion(of: self), frame: frame, shape: { mouseShape },
+                              glass: sectionContext.shownGlassRegion(of: self), frame: frame, shape: { mouseShape },
                               container: { container.map { $0.hidden ? .nowhere : $0.mouseShape } },
-                              images: skin.host as? SkinImageQueries)
+                              images: sectionContext.host as? SkinImageQueries)
     }
 
     // MARK: Subclass hooks
@@ -270,7 +276,7 @@ open class Meter: SkinSection {
             styleOption = own.value(forKey: "MeterStyle") ?? ""
         }
         let styleSectionVariables = bool("DynamicVariables", false) || readingAfterLoad
-        let styleText = skin.resolve(styleOption, in: self, sectionVariables: styleSectionVariables)
+        let styleText = sectionContext.resolve(styleOption, in: self, sectionVariables: styleSectionVariables)
         styles = OptionValue.list(styleText)
         // `MeterStyle=A | B[MeasureX]` read without section variables (the load-time read of a section without
         // DynamicVariables in the meter itself): read once more at the first update, like any other option.
@@ -319,8 +325,8 @@ open class Meter: SkinSection {
         toolTipBalloon = bool("ToolTipType", false)
         toolTipWidth = double("ToolTipWidth", 1000).clamped(1, 1e5)
         toolTipHidden = bool("ToolTipHidden", false)
-        mouseActionCursor = bool("MouseActionCursor", skin.settings.mouseActionCursor)
-        mouseActionCursorName = string("MouseActionCursorName", skin.settings.mouseActionCursorName)
+        mouseActionCursor = bool("MouseActionCursor", sectionContext.settings.mouseActionCursor)
+        mouseActionCursorName = string("MouseActionCursorName", sectionContext.settings.mouseActionCursorName)
             .trimmingCharacters(in: .whitespaces)
 
         // "There must be exactly 6 values separated by semicolons".
@@ -343,18 +349,18 @@ open class Meter: SkinSection {
     /// first read after the skin loaded that resolves section variables (the first update); names written without
     /// section variables are checked right away.
     private func reportMissingStyles(_ styleOption: String, sectionVariablesResolved: Bool) {
-        var missing = styles.filter { skin.styleSection(named: $0) == nil }
+        var missing = styles.filter { sectionContext.styleSection(named: $0) == nil }
         guard !missing.isEmpty else { return }
-        if !(sectionVariablesResolved && skin.optionsLoaded), styleOption.utf8.contains(UInt8(ascii: "[")) {
-            let written = OptionValue.list(skin.resolve(styleOption, in: self, sectionVariables: false))
-            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && skin.mentionsSectionVariable($0) }
+        if !(sectionVariablesResolved && sectionContext.optionsLoaded), styleOption.utf8.contains(UInt8(ascii: "[")) {
+            let written = OptionValue.list(sectionContext.resolve(styleOption, in: self, sectionVariables: false))
+            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && sectionContext.mentionsSectionVariable($0) }
             if !pending.isEmpty {
                 let settled = Set(written.filter { !pending.contains($0) }.map { $0.lowercased() })
                 missing = missing.filter { settled.contains($0.lowercased()) }
             }
         }
         for style in missing {
-            skin.logOnce("MeterStyle \"\(style)\" used by [\(name)] does not exist", level: .warning)
+            sectionContext.logOnce("MeterStyle \"\(style)\" used by [\(name)] does not exist", level: .warning)
         }
     }
 
@@ -366,11 +372,11 @@ open class Meter: SkinSection {
             let measureName = entry.value.trimmingCharacters(in: .whitespaces)
             var found: Measure?
             if !measureName.isEmpty {
-                found = skin.measure(named: measureName)
+                found = sectionContext.measure(named: measureName)
                 if found == nil, reportedMissingMeasures.count < Meter.maxReportedMissingMeasures {
                     let option = "MeasureName\(entry.index == 1 ? "" : String(entry.index))=\(measureName)"
                     if reportedMissingMeasures.insert(option.lowercased()).inserted {
-                        skin.log("[\(name)] \(option) not found", level: .warning)
+                        sectionContext.log("[\(name)] \(option) not found", level: .warning)
                     }
                 }
             }
@@ -432,37 +438,27 @@ open class Meter: SkinSection {
         } else {
             let natural: (width: Double, height: Double) =
                 (widthOption == nil || heightOption == nil) ? naturalSize() : (0, 0)
-            width = finite((widthOption ?? finite(natural.width)) + padding.left + padding.right)
-                .clamped(0, Meter.maxCoordinate)
-            height = finite((heightOption ?? finite(natural.height)) + padding.top + padding.bottom)
-                .clamped(0, Meter.maxCoordinate)
+            width = RainmeterLayout.dimension(option: widthOption, natural: natural.width,
+                                               leading: padding.left, trailing: padding.right)
+            height = RainmeterLayout.dimension(option: heightOption, natural: natural.height,
+                                                leading: padding.top, trailing: padding.bottom)
         }
 
-        func resolve(_ p: PositionValue, origin: Double, start: Double?, end: Double?) -> Double {
-            switch p.mode {
-            case .absolute: return origin + p.value
-            case .relativeToPreviousStart: return (start ?? origin) + p.value
-            // The first content meter: "r is assumed and R is ignored".
-            case .relativeToPreviousEnd: return (end ?? start ?? origin) + p.value
-            }
-        }
         let originX = container?.frame.x ?? 0
         let originY = container?.frame.y ?? 0
         let offset = anchorOffset(width: width, height: height)
-        // `r` / `R` use the previous meter's anchor (its X / Y before StringAlign / BitmapAlign moved the box), and
-        // `R` adds its W / H to it — not the moved box: see the type documentation.
-        let x = resolve(xPosition, origin: originX, start: previous?.anchorX,
-                        end: previous.map { $0.anchorX + $0.frame.width })
-        let y = resolve(yPosition, origin: originY, start: previous?.anchorY,
-                        end: previous.map { $0.anchorY + $0.frame.height })
-        anchorX = finite(x)
-        anchorY = finite(y)
-        frame = SkinRect(x: finite(x + (hidden ? 0 : offset.dx)), y: finite(y + (hidden ? 0 : offset.dy)),
-                         width: width, height: height)
-    }
-
-    private func finite(_ v: Double) -> Double {
-        v.isFinite ? v.clamped(-Meter.maxCoordinate, Meter.maxCoordinate) : 0
+        // Capture current geometry after the hooks, not the output from an earlier placement: a synchronous
+        // action may have moved the previous meter. Commit once so shadowing does not change draw/mouse revisions.
+        let input = RainmeterLayout.Input(
+            x: xPosition, y: yPosition, size: SkinSize(width: width, height: height),
+            origin: SkinPoint(x: originX, y: originY),
+            previous: previous.map { RainmeterLayout.Output(frame: $0.frame,
+                                                             anchor: SkinPoint(x: $0.anchorX, y: $0.anchorY)) },
+            alignShift: SkinPoint(x: offset.dx, y: offset.dy), hidden: hidden)
+        let output = RainmeterLayout.place(input)
+        anchorX = output.anchor.x
+        anchorY = output.anchor.y
+        frame = output.frame
     }
 
     /// `X` / `Y` as read: a missing, unreadable or non-finite value is 0; the offset is within ±`maxCoordinate`.

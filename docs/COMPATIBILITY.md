@@ -1362,7 +1362,9 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
     PerfMon), `sysInfo` (`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`), `cpuFrequency` (Hz) and `graphicsAdapter`; a
     frame keeps what it leaves out from the one before. With `system` given, nothing of these comes from the Mac: a
     reading no frame gives is 0, empty or unknown.
-  - `battery`: `{"level", "charging", "onAC", "timeRemaining"}` (minutes); `null`: a Mac without a battery.
+  - `battery`: `{"level", "charging", "onAC", "timeRemaining", "timeUntilFull"}`; both time fields are in minutes.
+    `timeRemaining` keeps the discharge estimate; optional `timeUntilFull` supplies the charge estimate. An omitted or
+    `null` estimate stays unknown. `battery: null` means a Mac without a battery.
   - `sensors`: `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}` by MacSensors key; a
     sensor left out is one this Mac does not have.
   - `nowPlaying`: `{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",

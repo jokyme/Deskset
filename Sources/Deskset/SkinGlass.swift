@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 // MacGlass (a Deskset extension; DesksetCore/Engine/Glass.swift, docs/compat/engine.md): the glass lives inside the
 // skin window, under the skin's own drawing. The window's content view is a `SkinContentView` holding the glass views
@@ -84,9 +85,21 @@ final class SkinGlassViews {
         guard regions != self.regions || pieces.values.contains(where: { $0.frameView.superview !== container }) else {
             return
         }
-        let system = SkinGlassViews.usesSystemGlass
+        let ordered = reconcile(regions, system: SkinGlassViews.usesSystemGlass).map(\.frameView)
+        // Glass back to front, then the skin's drawing; other subviews (none today) stay in front.
+        let others = container.subviews.filter { !($0 is SkinGlassFrameView) && $0 !== skinView }
+        let wanted = ordered + [skinView] + others
+        if container.subviews != wanted { container.subviews = wanted }
+    }
+
+    /// Reuses the same factory for the legacy glass plane and Desk's interleaved composition. The caller owns
+    /// sibling order and its surrounding transaction. No arbitrary content is added inside NSGlassEffectView:
+    /// only its contentView has a documented position relative to the glass effect.
+    @discardableResult
+    func reconcile(_ regions: [GlassRegion], system: Bool) -> [Piece] {
+        dispatchPrecondition(condition: .onQueue(.main))
         var kept: [String: Piece] = [:]
-        var ordered: [NSView] = []
+        var ordered: [Piece] = []
         for region in regions {
             let piece: Piece
             if let existing = pieces[region.id], existing.isSystemGlass == system {
@@ -97,15 +110,12 @@ final class SkinGlassViews {
             }
             configure(piece, region)
             kept[region.id] = piece
-            ordered.append(piece.frameView)
+            ordered.append(piece)
         }
         for (id, piece) in pieces where kept[id] !== piece { piece.frameView.removeFromSuperview() }
         pieces = kept
         self.regions = regions
-        // Glass back to front, then the skin's drawing; other subviews (none today) stay in front.
-        let others = container.subviews.filter { !($0 is SkinGlassFrameView) && $0 !== skinView }
-        let wanted = ordered + [skinView] + others
-        if container.subviews != wanted { container.subviews = wanted }
+        return ordered
     }
 
     private func configure(_ piece: Piece, _ region: GlassRegion) {
@@ -161,89 +171,25 @@ final class SkinGlassViews {
     }
 }
 
-/// What glass looks like where the real thing cannot be shown: `--render`, the Skin Studio's canvas, thumbnails. A
-/// translucent fill (the tint over it) and a hairline edge, in the region's shape.
+/// App entry points for the shared CoreGraphics glass placeholder.
 enum GlassPlaceholder {
-    /// `dark`: drawn over a dark background (true), a light one (false), or either (nil: an edge that shows on both).
     static func draw(_ regions: [GlassRegion], in ctx: CGContext, dark: Bool?) {
-        for region in regions { draw(region, in: ctx, dark: dark) }
+        DesksetDraw.GlassPlaceholder.draw(regions, in: ctx, dark: dark)
     }
 
     static func draw(_ region: GlassRegion, in ctx: CGContext, dark: Bool?) {
-        guard let path = path(region) else { return }
-        let clear = region.style == .clear
-        ctx.saveGState()
-        if let clip = region.clip { ctx.clip(to: clip.cgRect) }
-        // The frosted body: lighter on dark backgrounds, whiter on light ones; Clear glass lets more through.
-        let body: CGFloat
-        switch dark {
-        case true?: body = clear ? 0.10 : 0.18
-        case false?: body = clear ? 0.25 : 0.50
-        case nil: body = clear ? 0.16 : 0.30
-        }
-        ctx.addPath(path)
-        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: body))
-        ctx.fillPath()
-        if let tint = region.tint, tint.a > 0 {
-            ctx.addPath(path)
-            ctx.setFillColor(CGColor(srgbRed: tint.r / 255, green: tint.g / 255, blue: tint.b / 255,
-                                     alpha: min(tint.a / 255, 1) * 0.5))
-            ctx.fillPath()
-        }
-        // The edge: a light rim, and on light (or unknown) backgrounds a faint dark line around it.
-        let inset = region.rect.cgRect.insetBy(dx: 0.5, dy: 0.5)
-        if inset.width > 0, inset.height > 0 {
-            let r = max(CGFloat(region.cornerRadius) - 0.5, 0)
-            let edge = CGPath(roundedRect: inset, cornerWidth: r, cornerHeight: r, transform: nil)
-            ctx.setLineWidth(1)
-            if dark != true {
-                ctx.addPath(edge)
-                ctx.setStrokeColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: dark == false ? 0.14 : 0.12))
-                ctx.strokePath()
-            }
-            if dark != false {
-                let rim = inset.insetBy(dx: dark == nil ? 1 : 0, dy: dark == nil ? 1 : 0)
-                if rim.width > 0, rim.height > 0 {
-                    let rr = max(r - (dark == nil ? 1 : 0), 0)
-                    ctx.addPath(CGPath(roundedRect: rim, cornerWidth: rr, cornerHeight: rr, transform: nil))
-                    ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: dark == true ? 0.30 : 0.45))
-                    ctx.strokePath()
-                }
-            }
-        }
-        ctx.restoreGState()
+        DesksetDraw.GlassPlaceholder.draw(region, in: ctx, dark: dark)
     }
 
-    /// In the skin window, a fill no one can see (alpha 1/255) where the glass is: the window server then sends the
-    /// clicks on the glass to the skin rather than letting them through to what is behind (the same rule makes
-    /// `SolidColor=0,0,0,1` clickable).
     static func drawHitArea(_ regions: [GlassRegion], in ctx: CGContext) {
-        guard !regions.isEmpty else { return }
-        ctx.saveGState()
-        ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1.0 / 255))
-        for region in regions {
-            guard let path = path(region) else { continue }
-            ctx.saveGState()
-            if let clip = region.clip { ctx.clip(to: clip.cgRect) }
-            ctx.addPath(path)
-            ctx.fillPath()
-            ctx.restoreGState()
-        }
-        ctx.restoreGState()
+        DesksetDraw.GlassPlaceholder.drawHitArea(regions, in: ctx)
     }
 
-    /// Whether a background color is dark enough for the stand-in's dark look (its alpha counts as the share of it
-    /// over a light page).
     static func isDark(_ color: RGBA) -> Bool {
-        let luminance = (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255
-        let alpha = min(max(color.a / 255, 0), 1)
-        return luminance * alpha + (1 - alpha) < 0.5
+        DesksetDraw.GlassPlaceholder.isDark(color)
     }
 
     static func path(_ region: GlassRegion) -> CGPath? {
-        let rect = region.rect.cgRect
-        guard rect.width > 0, rect.height > 0, rect.minX.isFinite, rect.minY.isFinite else { return nil }
-        let r = min(CGFloat(region.cornerRadius), rect.width / 2, rect.height / 2)
-        return r > 0 ? CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil) : CGPath(rect: rect, transform: nil)
+        DesksetDraw.GlassPlaceholder.path(region)
     }
 }

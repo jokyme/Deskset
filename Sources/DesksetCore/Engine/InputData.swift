@@ -5,7 +5,7 @@ import Foundation
 // engine already reads it through:
 //
 //   system        SystemDataSource: a sequence of frames (CPU, memory, network, disks, uptime, processes, SysInfo…)
-//   battery       SystemDataSource.battery()
+//   battery       SystemDataSource.battery() and batteryDetails()
 //   sensors       HardwareSensorSource (MacSensors, CoreTemp, SpeedFan, UsageMonitor's sensor counters…)
 //   nowPlaying    the app's NowPlaying backend
 //   audio         the app's AudioLevel analysis: a sequence of levels and bands
@@ -297,6 +297,9 @@ public struct SkinInputData: Equatable, Sendable {
 
     public var system: [SystemFrame]?
     public var battery: Given<BatteryStatus>?
+    /// Health and cycle count from the same JSON `battery` object. An explicitly given battery without these
+    /// fields has unavailable details, rather than borrowing them from the live machine.
+    public var batteryDetails: Given<BatteryDetails>?
     /// Canonical sensor keys (`SensorKeys.canonical`); a key left out is a sensor this Mac does not have.
     public var sensors: [String: Sensor]?
     /// macOS's thermal state 0–3 (`sensors.thermal`).
@@ -319,8 +322,9 @@ public struct SkinInputData: Equatable, Sendable {
 
     /// True when no key is given.
     public var isEmpty: Bool {
-        system == nil && battery == nil && sensors == nil && thermalState == nil && nowPlaying == nil && audio == nil
-            && weather == nil && wifi == nil && desktopImage == nil && programs == nil && trash == nil
+        system == nil && battery == nil && batteryDetails == nil && sensors == nil && thermalState == nil
+            && nowPlaying == nil && audio == nil && weather == nil && wifi == nil && desktopImage == nil
+            && programs == nil && trash == nil
     }
 
     /// What a program started with `command` writes (`programs`): the output of the longest entry the command line
@@ -333,7 +337,7 @@ public struct SkinInputData: Equatable, Sendable {
     public var givenKeys: [String] {
         var keys: [String] = []
         if system != nil { keys.append("system") }
-        if battery != nil { keys.append("battery") }
+        if battery != nil || batteryDetails != nil { keys.append("battery") }
         if sensors != nil || thermalState != nil { keys.append("sensors") }
         if nowPlaying != nil { keys.append("nowPlaying") }
         if audio != nil { keys.append("audio") }
@@ -401,7 +405,10 @@ struct SkinInputDataReader {
         var d = SkinInputData()
         d.unknownKeys = top.keys.filter { !SkinInputData.keys.contains($0) }.sorted()
         if let v = top["system"] { d.system = try systemFrames(file(v, "system"), "system") }
-        if let v = top["battery"] { d.battery = try given(v) { try battery($0, "battery") } }
+        if let v = top["battery"] {
+            d.battery = try given(v) { try battery($0, "battery") }
+            d.batteryDetails = try given(v) { try batteryDetails($0, "battery") }
+        }
         if let v = top["sensors"] { (d.sensors, d.thermalState) = try sensors(v, "sensors") }
         if let v = top["nowPlaying"] { d.nowPlaying = try given(v) { try nowPlaying($0, "nowPlaying") } }
         if let v = top["audio"] { d.audio = try given(v) { try audio(file($0, "audio"), "audio") } }
@@ -604,7 +611,15 @@ struct SkinInputDataReader {
         let charging = try bool(o["charging"], "\(key).charging") ?? false
         let onAC = try bool(o["onAC"], "\(key).onAC") ?? charging
         return BatteryStatus(percent: level, isCharging: charging, isPluggedIn: onAC,
-                             minutesRemaining: try number(o["timeRemaining"], "\(key).timeRemaining"))
+                             minutesRemaining: try number(o["timeRemaining"], "\(key).timeRemaining"),
+                             minutesUntilFull: try number(o["timeUntilFull"], "\(key).timeUntilFull"))
+    }
+
+    func batteryDetails(_ v: JSONValue, _ key: String) throws -> BatteryDetails {
+        let o = try object(v, key)
+        return BatteryDetails(
+            health: ProgramSystemInput.validBatteryHealth(try number(o["health"], "\(key).health")),
+            cycles: ProgramSystemInput.validBatteryCycles(try number(o["cycles"], "\(key).cycles")))
     }
 
     func sensors(_ v: JSONValue, _ key: String) throws -> ([String: SkinInputData.Sensor]?, Int?) {

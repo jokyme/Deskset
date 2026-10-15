@@ -16,21 +16,38 @@ import Foundation
 ///   so they keep the value they had then (see `readOptionsIfNeeded`).
 open class SkinSection {
     public let name: String
-    public unowned let skin: Skin
+    /// Compatibility for sections constructed by Skin. Independent kernels use sectionContext instead;
+    /// they have no Skin to return. The owner must remain alive while any section is used.
+    public final var skin: Skin {
+        guard let skin = sectionContext as? Skin else {
+            preconditionFailure("A section constructed with an independent context has no Skin")
+        }
+        return skin
+    }
+    unowned let sectionContext: any SectionContext
+    /// The current host, read on this section's owner when an app plugin asks for a service.
+    package var serviceHost: SkinHost? { sectionContext.host }
     /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
     /// in its place; the lookup below follows.
     var own: IniSection {
-        didSet { ownValues = SkinSection.index(own) }
+        get { optionStack.own }
+        set { optionStack.own = newValue }
     }
-    /// `own` keyed by lowercased option name (first definition wins, like `IniSection.value(forKey:)`). Option
-    /// lookups are the hottest path of dynamic sections, which re-read every option on every update; a linear
-    /// case-insensitive scan per lookup dominated the update time of large skins.
-    private lazy var ownValues: [String: String] = SkinSection.index(own)
+    let optionStack: OptionStack
     /// `!SetOption` values, keyed by lowercased option name (raw, resolved when read). An empty value marks an
     /// option removed with `!SetOption … ""`.
-    var overrides: [String: String] = [:]
+    var overrides: [String: String] {
+        get { optionStack.overrides }
+        set { optionStack.overrides = newValue }
+        // Preserve direct dictionary mutations without a get/copy/set round trip.
+        _modify { yield &optionStack.overrides }
+    }
     /// MeterStyle section names (meters only), resolved at option-read time.
-    var styles: [String] = []
+    var styles: [String] {
+        get { optionStack.styles }
+        set { optionStack.styles = newValue }
+        _modify { yield &optionStack.styles }
+    }
 
     public internal(set) var dynamicVariables = false
     public internal(set) var updateDivider = 1
@@ -41,7 +58,7 @@ open class SkinSection {
 
     /// Mouse action state bangs (meters and `[Rainmeter]` only). Missing entries are `.enabled`.
     var mouseActionStates: [MouseEventKind: MouseActionState] = [:] {
-        didSet { if mouseActionStates != oldValue { skin.noteSnapshotChange() } }
+        didSet { if mouseActionStates != oldValue { sectionContext.noteSnapshotChange() } }
     }
     /// The last non-enabled state per action, used by `!ToggleMouseAction` ("remembers the last non-enabled
     /// state"; disabled by default).
@@ -49,8 +66,15 @@ open class SkinSection {
 
     init(name: String, section: IniSection, skin: Skin) {
         self.name = name
-        self.own = section
-        self.skin = skin
+        self.optionStack = OptionStack(own: section)
+        self.sectionContext = skin
+    }
+
+    /// The context owns its sections; this reverse reference is borrowed, just as it is for Skin.
+    init(name: String, section: IniSection, context: any SectionContext) {
+        self.name = name
+        self.optionStack = OptionStack(own: section)
+        self.sectionContext = context
     }
 
     // MARK: Raw option lookup
@@ -66,102 +90,42 @@ open class SkinSection {
     /// lookup continues with the (earlier) styles. When no style has a value, an empty own / style value is returned
     /// as `""` (the option is present but empty); an option removed with `!SetOption` is nil.
     public func rawOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        if let found = rawOption(lowercased: lower) { return found }
-        guard let alias = SkinSection.optionAliases[lower] else { return nil }
-        return rawOption(lowercased: alias)
+        optionStack.rawOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
-    /// Misspelled or legacy option names that skins known to work in Rainmeter use in place of the documented name
-    /// (lowercased documented name → lowercased alias). The documented spelling wins when both are set.
-    /// - `ValueReminder` for `ValueRemainder` (Roundline, Rotator): the analog clocks of Enigma (21 uses in its
-    ///   Sidebar / Taskbar / World clocks) and Elegant Watch set only this spelling, and their hands move on
-    ///   Windows.
-    static let optionAliases: [String: String] = [
-        "valueremainder": "valuereminder",
-    ]
+    static let optionAliases = OptionStack.optionAliases
 
     /// The value of `key` as the skin's files define it — the section's own value, else its MeterStyles' (the last
     /// listed first) — ignoring what is set while the skin runs (`!SetOption`, the editor's live previews). nil when
     /// no file sets it; `""` for an empty value.
     public func fileOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        var foundEmpty = false
-        if let v = ownValues[lower] {
-            if !v.isEmpty { return v }
-            foundEmpty = true
-        }
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.fileOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
     /// The value of `key` the section's MeterStyles give it (the last listed first) — what `fileOption(key)` becomes
     /// when the section's own key is removed. nil when no style sets it; `""` for an empty value.
     public func styleFileOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        var foundEmpty = false
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.styleFileOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
     /// Where `fileOption(key)` is defined: the section itself or the MeterStyle it inherits it from (nil when no file
     /// sets it). Unlike `optionOrigin`, never `.setOption`.
     public func fileOrigin(_ key: String) -> OptionOrigin? {
-        let lower = key.lowercased()
-        if ownValues[lower] != nil { return .own(skin.sources.location(section: name, key: lower)) }
-        for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
-            return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
-        }
-        return nil
-    }
-
-    private func rawOption(lowercased lower: String) -> String? {
-        var ownRemoved = false
-        var foundEmpty = false
-        if let v = overrides[lower] {
-            if !v.isEmpty { return v }
-            ownRemoved = true
-        }
-        if !ownRemoved, let v = ownValues[lower] {
-            if !v.isEmpty { return v }
-            foundEmpty = true
-        }
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.fileOrigin(key, sectionName: name,
+                               styleValues: { self.sectionContext.styleValues(named: $0) },
+                               styleName: { self.sectionContext.styleSection(named: $0)?.name },
+                               location: { self.sectionContext.sources.location(section: $0, key: $1) })
     }
 
     /// Entries keyed by lowercased name; the first definition of a key wins.
-    static func index(_ section: IniSection) -> [String: String] {
-        var values: [String: String] = [:]
-        values.reserveCapacity(section.entries.count)
-        for entry in section.entries {
-            let key = entry.key.lowercased()
-            if values[key] == nil { values[key] = entry.value }
-        }
-        return values
-    }
+    static func index(_ section: IniSection) -> [String: String] { OptionStack.index(section) }
 
     /// Option value with variables and — for dynamic sections, and in every read after the skin loaded — section
     /// variables resolved (see `readOptionsIfNeeded`).
     public func option(_ key: String) -> String? {
         guard let raw = rawOption(key) else { return nil }
         let sectionVariables = resolvesSectionVariables
-        let value = skin.resolve(raw, in: self, sectionVariables: sectionVariables)
+        let value = sectionContext.resolve(raw, in: self, sectionVariables: sectionVariables)
         noteSectionVariables(raw: raw, resolved: value, sectionVariablesResolved: sectionVariables)
         return value
     }
@@ -172,11 +136,11 @@ open class SkinSection {
     func noteSectionVariables(raw: String, resolved: String, sectionVariablesResolved: Bool) {
         guard !mentionsSectionVariables else { return }
         if !sectionVariablesResolved {
-            if resolved.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(resolved) }
+            if resolved.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = sectionContext.mentionsSectionVariable(resolved) }
         } else if tracksSectionVariables,
                   raw.utf8.contains(UInt8(ascii: "[")) || raw.utf8.contains(UInt8(ascii: "#")) {
-            let plain = skin.resolve(raw, in: self, sectionVariables: false)
-            if plain.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(plain) }
+            let plain = sectionContext.resolve(raw, in: self, sectionVariables: false)
+            if plain.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = sectionContext.mentionsSectionVariable(plain) }
         }
     }
 
@@ -209,16 +173,16 @@ open class SkinSection {
     /// was loading (no measure has a value and no meter a position yet). Such options are read again at the first
     /// update, so "invalid …" log lines wait for that read instead of reporting a mistake the skin does not have.
     func awaitsSectionVariables(_ key: String) -> Bool {
-        if resolvesSectionVariables && skin.optionsLoaded { return false }
+        if resolvesSectionVariables && sectionContext.optionsLoaded { return false }
         guard let raw = rawOption(key), raw.utf8.contains(UInt8(ascii: "[")) else { return false }
-        return skin.mentionsSectionVariable(skin.resolve(raw, in: self, sectionVariables: false))
+        return sectionContext.mentionsSectionVariable(sectionContext.resolve(raw, in: self, sectionVariables: false))
     }
 
     /// Action option (`LeftMouseUpAction`, `IfTrueAction`, …): only `#Var#` is replaced when the option is read;
     /// escapes, nesting syntax and section variables are resolved once, when the action runs (see `Skin.execute`).
     public func actionOption(_ key: String) -> String {
         guard let raw = rawOption(key) else { return "" }
-        return skin.resolveStandardVariables(raw, in: self)
+        return sectionContext.resolveStandardVariables(raw, in: self)
     }
 
     public func string(_ key: String, _ defaultValue: String = "") -> String {
@@ -270,7 +234,7 @@ open class SkinSection {
     /// Reads options common to every section. Subclasses override, call super, then read their own.
     open func readOptions() {
         dynamicVariables = bool("DynamicVariables", false)
-        updateDivider = int("UpdateDivider", skin.settings.defaultUpdateDivider)
+        updateDivider = int("UpdateDivider", sectionContext.settings.defaultUpdateDivider)
         groups = OptionValue.list(string("Group")).map { $0.lowercased() }
     }
 
@@ -287,9 +251,9 @@ open class SkinSection {
     /// updated and the meters above it were placed (Mac timing; Rainmeter presumably resolves them at load).
     func readOptionsIfNeeded() {
         if needsOptionRead || dynamicVariables {
-            skin.assertOwned()
+            sectionContext.assertOwned(#function)
             needsOptionRead = false
-            readingAfterLoad = skin.optionsLoaded
+            readingAfterLoad = sectionContext.optionsLoaded
             defer { readingAfterLoad = false }
             readOptions()
         }

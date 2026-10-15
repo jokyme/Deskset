@@ -1,0 +1,166 @@
+import Foundation
+
+public enum ProgramSystemProperty: String, CaseIterable, Equatable, Sendable {
+    case cpuUsage = "cpu.usage"
+    case cpuCoreCount = "cpu.coreCount"
+    case memoryUsed = "memory.used"
+    case memoryTotal = "memory.total"
+    case memoryFree = "memory.free"
+    case memoryUsage = "memory.usage"
+    case batteryLevel = "battery.level"
+    case batteryCharging = "battery.charging"
+    case batteryPluggedIn = "battery.pluggedIn"
+    case batteryPresent = "battery.present"
+    case batteryTimeRemaining = "battery.timeRemaining"
+    case batteryHealth = "battery.health"
+    case batteryCycles = "battery.cycles"
+}
+
+/// One projection's system data inputs. The host samples its injected system data source once; Core owns no live monitor.
+public struct ProgramSystemInput: Equatable, Sendable {
+    public let cpuUsage: Double? // 0...100
+    public let cpuCoreCount: Int?
+    public let memoryUsed: Double? // bytes
+    public let memoryTotal: Double? // bytes
+    public let memoryFree: Double? // bytes
+    public let batteryLevel: Double? // 0...100
+    public let batteryCharging: Bool?
+    public let batteryPluggedIn: Bool?
+    public let batteryPresent: Bool?
+    public let batteryTimeRemaining: Double? // seconds until empty or full
+    public let batteryHealth: Double? // 0...100
+    public let batteryCycles: Double? // nonnegative, observed count
+
+    public init(cpuUsage: Double? = nil, cpuCoreCount: Int? = nil,
+                memoryUsed: Double? = nil, memoryTotal: Double? = nil, memoryFree: Double? = nil,
+                batteryLevel: Double? = nil, batteryCharging: Bool? = nil, batteryPluggedIn: Bool? = nil,
+                batteryPresent: Bool? = nil, batteryTimeRemaining: Double? = nil,
+                batteryHealth: Double? = nil, batteryCycles: Double? = nil) {
+        self.cpuUsage = cpuUsage
+        self.cpuCoreCount = cpuCoreCount
+        self.memoryUsed = memoryUsed
+        self.memoryTotal = memoryTotal
+        self.memoryFree = memoryFree
+        self.batteryLevel = batteryLevel
+        self.batteryCharging = batteryCharging
+        self.batteryPluggedIn = batteryPluggedIn
+        self.batteryPresent = batteryPresent
+        self.batteryTimeRemaining = batteryTimeRemaining
+        self.batteryHealth = Self.validBatteryHealth(batteryHealth)
+        self.batteryCycles = Self.validBatteryCycles(batteryCycles)
+    }
+
+    /// Pure snapshot from a SystemDataSource without retaining it. Samples only the requested properties.
+    public static func sample(from system: SystemDataSource,
+                              for needed: Set<ProgramSystemProperty> = Set(ProgramSystemProperty.allCases)) -> ProgramSystemInput {
+        guard !needed.isEmpty else { return ProgramSystemInput() }
+
+        let cpuUsage: Double?
+        if needed.contains(.cpuUsage) {
+            let raw = system.cpuUsage(processor: 0)
+            cpuUsage = (raw.isFinite && raw >= 0 && raw <= 100) ? raw : nil
+        } else {
+            cpuUsage = nil
+        }
+
+        let cpuCoreCount: Int?
+        if needed.contains(.cpuCoreCount) {
+            let count = system.processorCount
+            cpuCoreCount = count > 0 ? count : nil
+        } else {
+            cpuCoreCount = nil
+        }
+
+        let memNeeded = needed.contains(.memoryUsed) || needed.contains(.memoryTotal) ||
+                        needed.contains(.memoryFree) || needed.contains(.memoryUsage)
+        let memUsed: Double?
+        let memTotal: Double?
+        let memFree: Double?
+        if memNeeded {
+            let mem = system.memoryStatus()
+            let validTotal = mem.physicalTotal.isFinite && mem.physicalTotal > 0 ? mem.physicalTotal : nil
+            let validUsed = mem.physicalUsed.isFinite && mem.physicalUsed >= 0 ? mem.physicalUsed : nil
+            if let validTotal, let validUsed, validUsed <= validTotal {
+                memTotal = validTotal
+                memUsed = validUsed
+                memFree = max(0, validTotal - validUsed)
+            } else {
+                memTotal = validTotal
+                memUsed = nil
+                memFree = nil
+            }
+        } else {
+            memUsed = nil; memTotal = nil; memFree = nil
+        }
+
+        let batNeeded = needed.contains(.batteryLevel) || needed.contains(.batteryCharging) || needed.contains(.batteryPluggedIn) ||
+                        needed.contains(.batteryPresent) || needed.contains(.batteryTimeRemaining)
+        let batLevel: Double?
+        let batCharging: Bool?
+        let batPluggedIn: Bool?
+        let bat = batNeeded ? system.battery() : nil
+        if let bat {
+            batLevel = (bat.percent.isFinite && bat.percent >= 0 && bat.percent <= 100) ? bat.percent : nil
+            batCharging = bat.isCharging
+            batPluggedIn = bat.isPluggedIn
+        } else {
+            batLevel = nil; batCharging = nil; batPluggedIn = nil
+        }
+        let details = batteryDetails(from: system, for: needed)
+
+        return ProgramSystemInput(
+            cpuUsage: cpuUsage,
+            cpuCoreCount: cpuCoreCount,
+            memoryUsed: memUsed,
+            memoryTotal: memTotal,
+            memoryFree: memFree,
+            batteryLevel: batLevel,
+            batteryCharging: batCharging,
+            batteryPluggedIn: batPluggedIn,
+            batteryPresent: needed.contains(.batteryPresent) ? bat != nil : nil,
+            batteryTimeRemaining: needed.contains(.batteryTimeRemaining) ? batteryDurationSeconds(from: bat) : nil,
+            batteryHealth: details.health,
+            batteryCycles: details.cycles
+        )
+    }
+
+    /// The provider owns the hourly cache. Read both requested fields together on every projection so a completed
+    /// background read is immediately available, including after this projection previously saw pending.
+    static func batteryDetails(from system: SystemDataSource, for needed: Set<ProgramSystemProperty>) -> BatteryDetails {
+        let health = needed.contains(.batteryHealth), cycles = needed.contains(.batteryCycles)
+        guard health || cycles, case .ready(let details) = system.batteryDetails() else { return BatteryDetails() }
+        return BatteryDetails(health: health ? validBatteryHealth(details.health) : nil,
+                              cycles: cycles ? validBatteryCycles(details.cycles) : nil)
+    }
+
+    static func validBatteryHealth(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, (0...100).contains(value) else { return nil }
+        return value
+    }
+
+    static func validBatteryCycles(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    /// Both sampling paths use the same provider policy. Charging estimates may explicitly be zero; the
+    /// existing discharge estimate uses strictly positive minutes and is unavailable on external power.
+    static func batteryDurationSeconds(from battery: BatteryStatus?) -> Double? {
+        guard let battery else { return nil }
+        let minutes: Double
+        if battery.isCharging {
+            guard let value = battery.minutesUntilFull, value.isFinite, value >= 0 else { return nil }
+            minutes = value
+        } else {
+            guard !battery.isPluggedIn, let value = battery.minutesRemaining, value.isFinite, value > 0 else { return nil }
+            minutes = value
+        }
+        return validBatteryDurationSeconds(minutes * 60)
+    }
+
+    /// Keep bad external input as typed missing before Duration formatting can perform an Int64 conversion.
+    static func validBatteryDurationSeconds(_ seconds: Double?) -> Double? {
+        guard let seconds, seconds.isFinite, seconds >= 0, seconds < Double(Int64.max) else { return nil }
+        return seconds
+    }
+}

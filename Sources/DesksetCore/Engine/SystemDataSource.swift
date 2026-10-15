@@ -21,13 +21,36 @@ public struct BatteryStatus: Equatable, Sendable {
     public var isPluggedIn: Bool
     /// Minutes of battery life left; nil while unknown / calculating / on AC.
     public var minutesRemaining: Double?
+    /// Minutes until fully charged; nil while not charging or unknown / calculating. An explicit estimate may be zero.
+    public var minutesUntilFull: Double?
 
-    public init(percent: Double, isCharging: Bool, isPluggedIn: Bool, minutesRemaining: Double? = nil) {
+    public init(percent: Double, isCharging: Bool, isPluggedIn: Bool, minutesRemaining: Double? = nil,
+                minutesUntilFull: Double? = nil) {
         self.percent = percent
         self.isCharging = isCharging
         self.isPluggedIn = isPluggedIn
         self.minutesRemaining = minutesRemaining
+        self.minutesUntilFull = minutesUntilFull
     }
+}
+
+/// Infrequently changing battery details. Missing fields are unavailable, not zero.
+public struct BatteryDetails: Equatable, Sendable {
+    /// Maximum capacity compared with new, in percent.
+    public let health: Double?
+    /// Charge cycle count.
+    public let cycles: Double?
+
+    public init(health: Double? = nil, cycles: Double? = nil) {
+        self.health = health
+        self.cycles = cycles
+    }
+}
+
+/// A completed reading may contain no values. That is distinct from a first reading still in progress.
+public enum BatteryDetailsReading: Equatable, Sendable {
+    case pending
+    case ready(BatteryDetails)
 }
 
 public struct NetworkCounters: Equatable, Sendable {
@@ -92,6 +115,10 @@ public protocol SystemDataSource: AnyObject {
     func uptime() -> TimeInterval
     /// nil when the machine has no battery.
     func battery() -> BatteryStatus?
+    /// A quick, immutable snapshot of battery health and cycle count. The provider owns the hourly cache and
+    /// background acquisition; consumers must not cache a pending result as a completed hourly reading.
+    /// Default: a completed reading with both fields unavailable.
+    func batteryDetails() -> BatteryDetailsReading
     func isProcessRunning(_ name: String) -> Bool
     /// SysInfo measure `SysInfoType=` (upper-case), with `SysInfoData=`. nil when unsupported (the engine then
     /// answers the types it can compute itself, see `SysInfoMeasure`). A nil `string` means "number only".
@@ -124,6 +151,8 @@ public protocol SystemDataSource: AnyObject {
 }
 
 extension SystemDataSource {
+    public func batteryDetails() -> BatteryDetailsReading { .ready(BatteryDetails()) }
+
     /// Default: unknown.
     public func graphicsAdapterName() -> String? { nil }
 

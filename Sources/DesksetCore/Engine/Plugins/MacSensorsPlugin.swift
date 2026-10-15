@@ -96,14 +96,14 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
         rawString = ""
         noReading = true
         if readsThermalState {
-            let given = HardwareSensors.source(for: skin)?.thermalState()
+            let given = HardwareSensors.source(for: sectionContext.system)?.thermalState()
             let state = min(max(given ?? MacSensorsMeasure.thermalState(), 0), 3)
             noReading = false
             rawString = MacSensorsMeasure.thermalStateNames[state]
             return Double(state)
         }
         guard let kind else { return 0 }
-        guard let sensors = HardwareSensors.source(for: skin) else {
+        guard let sensors = HardwareSensors.source(for: sectionContext.system) else {
             report("none", "MacSensors [\(name)]: hardware sensors are not available here; the value is 0")
             return 0
         }
@@ -124,11 +124,11 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
     public override func execute(command: String) {
         let words = command.split(separator: " ").map { $0.lowercased() }
         guard words.first == "list" else {
-            skin.log("MacSensors [\(name)]: unknown command \"\(command)\" (the command is List)", level: .warning)
+            sectionContext.log("MacSensors [\(name)]: unknown command \"\(command)\" (the command is List)", level: .warning)
             return
         }
-        guard let sensors = HardwareSensors.source(for: skin) else {
-            skin.log("MacSensors [\(name)]: hardware sensors are not available here", level: .notice)
+        guard let sensors = HardwareSensors.source(for: sectionContext.system) else {
+            sectionContext.log("MacSensors [\(name)]: hardware sensors are not available here", level: .notice)
             return
         }
         let scale = self.scale
@@ -138,9 +138,9 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
                 deliver(MacSensorsMeasure.listLines(list, values: { sensors.sensorValue($0) }, scale: scale))
             }
         }, scripted: { $0.lines ?? [] })
-        skin.startBackground(job) { [weak self] lines in
+        sectionContext.startBackground(job) { [weak self] lines in
             guard let self, !self.closed else { return }
-            for line in lines { self.skin.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
+            for line in lines { self.sectionContext.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
         }
     }
 
@@ -155,7 +155,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }
 
@@ -242,7 +242,7 @@ public final class MSIAfterburnerMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let sensors = HardwareSensors.source(for: skin)
+        let sensors = HardwareSensors.source(for: sectionContext.system)
         func sensor(_ key: String) -> Double {
             guard let sensors else {
                 report("none", "MSIAfterburner [\(name)]: hardware sensors are not available here; the value is 0")
@@ -266,10 +266,10 @@ public final class MSIAfterburnerMeasure: Measure {
         case .fanRPM:
             return MSIAfterburnerMeasure.fans(sensors).map(\.actual).max() ?? sensor(SensorKeys.fan(1))
         case .cpuUsage(let n):
-            guard n <= skin.system.processorCount else { return 0 }
-            return skin.system.cpuUsage(processor: n)
+            guard n <= sectionContext.system.processorCount else { return 0 }
+            return sectionContext.system.cpuUsage(processor: n)
         case .ramUsage:
-            return skin.system.memoryStatus().physicalUsed / 1_048_576
+            return sectionContext.system.memoryStatus().physicalUsed / 1_048_576
         case .unsupported:
             return 0
         }
@@ -289,6 +289,6 @@ public final class MSIAfterburnerMeasure: Measure {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }

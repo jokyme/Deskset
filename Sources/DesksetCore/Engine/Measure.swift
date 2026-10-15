@@ -57,12 +57,10 @@ open class Measure: SkinSection {
 
     var invert = false
     var averageSize = 0
-    private var history: [Double] = []
     /// Set by `computeValue` for an update that has no reading yet and returns a placeholder instead (FreeDiskSpace
     /// `MacAvailable=1` gives −1 before its first reading): the number is kept as it is — not averaged, not inverted and
     /// not counted in the observed range — so a skin can tell "not read yet" from any value. Cleared before each update.
     var computedPlaceholder = false
-    private var historyNext = 0
     private var substitute: SubstituteRules? {
         didSet { stringCache = nil }
     }
@@ -73,61 +71,21 @@ open class Measure: SkinSection {
     /// Disabled / Paused option texts last applied (bang state lasts until they change or are set again).
     var lastDisabledOption: String?
     var lastPausedOption: String?
-    /// MinValue / MaxValue as written (nil = not set), already scaled by `rangeOptionScale`.
-    private var minValueOption: Double?
-    private var maxValueOption: Double?
-    private var observedMin: Double?
-    private var observedMax: Double?
-    private var warnedAboutRange = false
 
-    private struct Condition {
-        /// N of `IfConditionN` (1 for `IfCondition`): the "became true/false" state belongs to the option, so a
-        /// dynamic formula whose text changes keeps its state.
-        var index: Int
-        var formula: CompiledFormula?
-        var source: String
-        var trueAction: String
-        var falseAction: String
-        var lastResult: Bool?
-        var loggedError = false
-    }
-    private var conditions: [Condition] = []
-    private var ifConditionMode = false
-
-    private struct Threshold {
-        var value: Double
-        var action: String
-        var active = false
-    }
-    private var ifAbove: Threshold?
-    private var ifBelow: Threshold?
-    private var ifEqual: Threshold?
-
-    private struct Match {
-        /// N of `IfMatchN` (state kept when a dynamic pattern changes).
-        var index: Int
-        var pattern: String
-        var matchAction: String
-        var notMatchAction: String
-        var lastResult: Bool?
-        var loggedError = false
-    }
-    private var matches: [Match] = []
-    private var ifMatchMode = false
-
-    private var onUpdateAction = ""
-    private var onChangeAction = ""
-    private var lastValue: Double?
-    private var lastString: String?
+    private let pipeline = MeasurePipeline()
     /// Whether `liveInputs` were noted (virtual time).
     private var notedInputs = false
-
-    /// Upper bound for `AverageSize` (a larger window is pointless and would cost memory).
-    static let maxAverageSize = 10_000
 
     public required init(name: String, section: IniSection, skin: Skin, type: String) {
         self.type = type
         super.init(name: name, section: section, skin: skin)
+    }
+
+    /// Internal construction for kernels whose option, sampling and action paths use SectionContext.
+    /// The legacy required initializer remains the entry point for Skin and its plugin factories.
+    init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        self.type = type
+        super.init(name: name, section: section, context: context)
     }
 
     // MARK: Subclass hooks
@@ -155,7 +113,7 @@ open class Measure: SkinSection {
 
     /// `!CommandMeasure` arguments.
     open func execute(command: String) {
-        skin.log("!CommandMeasure is not supported by \(type) measure [\(name)]", level: .warning)
+        sectionContext.log("!CommandMeasure is not supported by \(type) measure [\(name)]", level: .warning)
     }
 
     /// True for measures that cannot know their range and track the observed minimum / maximum instead
@@ -197,17 +155,7 @@ open class Measure: SkinSection {
         if disabled || paused { return }
 
         readMeasureOptions()
-        let scale = rangeOptionScale
-        minValueOption = allowsMinValueOption ? optionalDouble("MinValue").map { $0 * scale } : nil
-        maxValueOption = allowsMaxValueOption ? optionalDouble("MaxValue").map { $0 * scale } : nil
-        refreshRange()
-        invert = allowsInvert && bool("InvertMeasure", false)
-        let size = allowsAverage ? int("AverageSize", 1) : 1
-        averageSize = min(max(size, 0), Measure.maxAverageSize)
-        if averageSize <= 1 || history.count > averageSize {
-            history = []
-            historyNext = 0
-        }
+        pipeline.readValueOptions(for: self)
 
         let substituteOption = string("Substitute")
         let regex = bool("RegExpSubstitute", false)
@@ -219,92 +167,13 @@ open class Measure: SkinSection {
             substituteSource = (substituteOption, regex)
         }
 
-        readConditions()
-        readThresholds()
-        readMatches()
-        onUpdateAction = actionOption("OnUpdateAction")
-        onChangeAction = actionOption("OnChangeAction")
+        pipeline.readOptions(for: self)
         needsOptionRead = false
     }
 
     /// Recomputes `minValue` / `maxValue` from the options, the automatic range and the tracked range.
     func refreshRange() {
-        if let minValueOption {
-            minValue = minValueOption
-        } else if tracksValueRange, let observedMin {
-            minValue = Swift.min(automaticMinValue, observedMin)
-        } else {
-            minValue = automaticMinValue
-        }
-        if let maxValueOption {
-            maxValue = maxValueOption
-        } else if tracksValueRange, let observedMax {
-            maxValue = Swift.max(automaticMaxValue, observedMax)
-        } else {
-            maxValue = automaticMaxValue
-        }
-        if maxValue < minValue && !warnedAboutRange {
-            warnedAboutRange = true
-            skin.log("[\(name)] MaxValue is less than MinValue", level: .debug)
-        }
-    }
-
-    private func readConditions() {
-        ifConditionMode = bool("IfConditionMode", false)
-        let sources = numberedOptions("IfCondition")
-        var result: [Condition] = []
-        for (index, source) in sources {
-            let suffix = index == 1 ? "" : String(index)
-            let existing = conditions.first { $0.index == index }
-            var condition = existing
-                ?? Condition(index: index, formula: nil, source: source, trueAction: "", falseAction: "", lastResult: nil)
-            let blank = source.trimmingCharacters(in: .whitespaces).isEmpty
-            if existing == nil || condition.source != source {
-                condition.source = source
-                condition.formula = blank ? nil : try? Formula.compile(source)
-            }
-            // Logged once per condition: a dynamic condition whose text changes on every update would otherwise
-            // log on every update. An empty IfCondition is simply ignored; one whose section variables are not
-            // resolved yet (read at load) is checked at the first update.
-            if condition.formula == nil && !blank && !condition.loggedError
-                && !awaitsSectionVariables("IfCondition\(suffix)") {
-                condition.loggedError = true
-                skin.log("[\(name)] invalid IfCondition\(suffix): \(source)", level: .error)
-            }
-            condition.trueAction = actionOption("IfTrueAction\(suffix)")
-            condition.falseAction = actionOption("IfFalseAction\(suffix)")
-            result.append(condition)
-        }
-        conditions = result
-    }
-
-    private func readThresholds() {
-        func threshold(_ valueKey: String, _ actionKey: String, _ previous: Threshold?) -> Threshold? {
-            let action = actionOption(actionKey)
-            guard !action.isEmpty, let v = optionalDouble(valueKey) else { return nil }
-            // Judgment: the armed state survives a (dynamic) change of the threshold value.
-            var t = Threshold(value: v, action: action)
-            if let previous { t.active = previous.active }
-            return t
-        }
-        ifAbove = threshold("IfAboveValue", "IfAboveAction", ifAbove)
-        ifBelow = threshold("IfBelowValue", "IfBelowAction", ifBelow)
-        ifEqual = threshold("IfEqualValue", "IfEqualAction", ifEqual)
-    }
-
-    private func readMatches() {
-        ifMatchMode = bool("IfMatchMode", false)
-        var result: [Match] = []
-        for (index, pattern) in numberedOptions("IfMatch") {
-            let suffix = index == 1 ? "" : String(index)
-            var match = matches.first { $0.index == index }
-                ?? Match(index: index, pattern: pattern, matchAction: "", notMatchAction: "", lastResult: nil)
-            match.pattern = pattern   // an invalid pattern is logged once per IfMatchN, even when it changes
-            match.matchAction = actionOption("IfMatchAction\(suffix)")
-            match.notMatchAction = actionOption("IfNotMatchAction\(suffix)")
-            result.append(match)
-        }
-        matches = result
+        pipeline.refreshRange(for: self)
     }
 
     // MARK: Update
@@ -318,30 +187,13 @@ open class Measure: SkinSection {
         if paused { return }
         if !notedInputs {
             notedInputs = true
-            if skin.runsInVirtualTime { for kind in liveInputs { skin.noteService(kind) } }
+            if sectionContext.runsInVirtualTime { for kind in liveInputs { sectionContext.noteService(kind) } }
         }
         // The Studio's sample data (`MeasureValueOverride`): its value in place of the computed one; the rules still run.
-        if let sample = skin.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
+        if let sample = sectionContext.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
         computedPlaceholder = false
-        var v = computeValue()
-        if !v.isFinite { v = 0 }
-        let placeholder = computedPlaceholder
-        if averageSize > 1 && !placeholder {
-            if history.count < averageSize {
-                history.append(v)
-            } else {
-                history[historyNext % history.count] = v
-            }
-            historyNext = (historyNext + 1) % averageSize
-            v = history.reduce(0, +) / Double(history.count)
-        }
-        if tracksValueRange && !placeholder {
-            observedMin = Swift.min(observedMin ?? v, v)
-            observedMax = Swift.max(observedMax ?? v, v)
-        }
-        refreshRange()
-        if invert && !placeholder { v = maxValue - (v - minValue) }
-        value = v.isFinite ? v : 0
+        let v = computeValue()
+        pipeline.finishValue(v, for: self)
         updateCount += 1
         runActions()
     }
@@ -353,86 +205,14 @@ open class Measure: SkinSection {
     }
 
     private func runActions() {
-        for i in conditions.indices {
-            guard let formula = conditions[i].formula else { continue }
-            guard let number = try? formula.evaluate({ skin.formulaValue(of: $0, from: self) }) else {
-                if !conditions[i].loggedError {
-                    conditions[i].loggedError = true
-                    skin.log("[\(name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
-                }
-                continue
-            }
-            let result = number != 0
-            if ifConditionMode || conditions[i].lastResult != result {
-                conditions[i].lastResult = result
-                let action = result ? conditions[i].trueAction : conditions[i].falseAction
-                if !action.isEmpty { skin.execute(action, from: self) }
-            }
-        }
-
-        func check(_ t: inout Threshold?, _ holds: (Double) -> Bool) {
-            guard var th = t else { return }
-            if holds(th.value) {
-                if !th.active {
-                    th.active = true
-                    t = th
-                    skin.execute(th.action, from: self)
-                    return
-                }
-            } else {
-                th.active = false
-            }
-            t = th
-        }
-        let current = value
-        check(&ifAbove) { current > $0 }
-        check(&ifBelow) { current < $0 }
-        check(&ifEqual) { roundedInt(current) == roundedInt($0) }
-
-        let needsText = !matches.isEmpty || !onChangeAction.isEmpty
-        let text = needsText ? stringValue : ""
-        for i in matches.indices {
-            guard let result = PCRE.matches(matches[i].pattern, in: text) else {
-                if !matches[i].loggedError {
-                    matches[i].loggedError = true
-                    skin.log("[\(name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
-                }
-                continue
-            }
-            if ifMatchMode || matches[i].lastResult != result {
-                matches[i].lastResult = result
-                let action = result ? matches[i].matchAction : matches[i].notMatchAction
-                if !action.isEmpty { skin.execute(action, from: self) }
-            }
-        }
-
-        if !onChangeAction.isEmpty {
-            if let lastValue, lastValue != value || lastString != text {
-                skin.execute(onChangeAction, from: self)
-            }
-            lastValue = value
-            lastString = text
-        } else {
-            // Not tracked while there is no action; a later !SetOption starts from a fresh "initial" value.
-            lastValue = nil
-            lastString = nil
-        }
-
-        if !onUpdateAction.isEmpty { skin.execute(onUpdateAction, from: self) }
-    }
-
-    /// Rounded to the nearest integer (IfEqualValue: "The compared value is rounded to an integer").
-    private func roundedInt(_ v: Double) -> Int64 {
-        guard v.isFinite else { return 0 }
-        return Int64(v.rounded().clamped(-9e18, 9e18))
+        pipeline.run(for: self) { sectionContext.execute($0, from: self) }
     }
 
     /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch
     /// (`Skin.patch(sources:)`) updates a measure whose options changed this way — a reload would not report its new
     /// string as a change either.
     func forgetChangeBaseline() {
-        lastValue = nil
-        lastString = nil
+        pipeline.forgetChangeBaseline()
     }
 
     // MARK: Values for meters and section variables
@@ -493,33 +273,41 @@ open class Measure: SkinSection {
     }
 }
 
+// MARK: - Pipeline inputs
+
+extension Measure: MeasureNumericSource {
+    func logNumericPipeline(_ message: String, level: SkinLogLevel) {
+        sectionContext.log(message, level: level)
+    }
+}
+
+extension Measure: MeasureActionSource {
+    func numberedActionOptions(_ key: String) -> [(index: Int, value: String)] {
+        numberedOptions(key)
+    }
+
+    func logActionPipeline(_ message: String, level: SkinLogLevel) {
+        sectionContext.log(message, level: level)
+    }
+
+    func actionFormulaValue(of identifier: String) -> Double? {
+        sectionContext.formulaValue(of: identifier, from: self)
+    }
+}
+
 // MARK: - Seeding (Session/Seeding.swift)
 
 extension Measure {
     /// What this measure has seen so far, for a new instance of the widget (`SkinRuntimeState.MeasureState`).
     var runtimeSnapshot: SkinRuntimeState.MeasureState {
-        SkinRuntimeState.MeasureState(
-            type: type, kind: String(describing: Swift.type(of: self)), own: own, value: value, rawString: rawString,
-            average: averageSize > 1 && !history.isEmpty
-                ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
-            observedMin: observedMin, observedMax: observedMax, webParser: nil)
+        pipeline.runtimeSnapshot(type: type, kind: String(describing: Swift.type(of: self)), own: own,
+                                 value: value, rawString: rawString, averageSize: averageSize)
     }
 
     /// Takes what the same measure of another instance of the widget has seen (loaded, before the first update): its
     /// value and string, the samples it averages (when it averages as many) and the range it observed. The first update
     /// then computes the next value from there.
     func seed(_ state: SkinRuntimeState.MeasureState) {
-        value = state.value.isFinite ? state.value : 0
-        rawString = state.rawString
-        if let average = state.average, averageSize > 1, !average.samples.isEmpty,
-           average.samples.count <= averageSize {
-            history = average.samples
-            historyNext = min(max(average.next, 0), averageSize - 1)
-        }
-        if tracksValueRange {
-            observedMin = state.observedMin
-            observedMax = state.observedMax
-            refreshRange()
-        }
+        pipeline.seed(state, for: self)
     }
 }

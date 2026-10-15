@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetRuntime
 
 /// The half of a running skin that owns the `Skin` (docs/skin-threading.md §5.4): it is the skin's `SkinHost`, runs its
 /// update clock, pause and wake, draws its frames (`frames`), handles the messages sent to it (`send`), publishes what
@@ -19,7 +20,7 @@ import DesksetCore
 /// The skin lives as long as the runtime and is let go of on its executor: when the runtime goes elsewhere (the window
 /// half that held it went on the main thread while the skin runs on a thread of its own), the skin is handed to its
 /// executor to be released there, with its measures, meters and plugins.
-final class SkinRuntime: LiveSkinHost, SkinImageQueries {
+final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     let config: String
     let file: String
     let fileURL: URL
@@ -36,12 +37,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     var executor: SkinExecutor { skin.executor }
 
     // What the executor owns.
-    private var timer: SkinScheduledWork?
+    private let ticks = TickScheduler()
     /// OnCloseAction is running, or has run.
     private(set) var isClosing = false
     /// The skin is closed: it takes no more messages.
     private(set) var isClosed = false
-    private var updatesPaused = false
+    private var updatesPaused: Bool {
+        get { ticks.isPaused }
+        set { ticks.isPaused = newValue }
+    }
     /// The hops of the message being handled (0 for the skin's own work): what its bangs for other skins count from.
     private var currentHops = 0
     /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
@@ -76,7 +80,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`, whose frames go to `content` (nil: none
     /// are drawn). Load it with `load()`, on the executor.
     init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
-         content: ContentProvider? = nil, defersPeerBangs: Bool = false,
+         content: ContentProvider? = nil, contentMode: SkinFrameContentMode = .bitmap, defersPeerBangs: Bool = false,
          watchdog: SkinWorkWatchdog = .shared) {
         self.config = config
         self.file = file
@@ -84,17 +88,39 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         workActivity = executor is SkinThreadExecutor ? SkinWorkWatchdog.Activity(watchdog: watchdog, config: config) : nil
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
         var owner: (() -> Skin?)?
-        frames = SkinFrameProducer(provider: content, skin: { owner?() }, workActivity: workActivity)
+        frames = SkinFrameProducer(provider: content, skin: { owner?() }, contentMode: contentMode, workActivity: workActivity)
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: self)
         skin.executor = executor
         self.skin = skin
         owner = { [weak self] in self?.skin }
+        frames.requestLayerInstallation = { [weak self] in self?.request(.installLayerContent) }
+        frames.requestScenePatch = { [weak self] patch in
+            guard let self else { _ = patch.content.reclaim(.invalidated); return }
+            self.request(.scenePatch(patch))
+        }
+        frames.publishLayerHitMap = { [weak self] map, generation, panel in
+            self?.request(.layerHitMap(map, generation: generation, panelGeneration: panel))
+        }
+        frames.writerReleased = { [weak self] in self?.finishLayerTeardown() }
+        if contentMode.usesLayers, executor is SkinThreadExecutor {
+            frames.requestNativeCompletion = { [weak self] stage, result in
+                self?.request(.nativeStageCompleted(stage, result))
+            }
+            frames.requestNativeStopRelease = { [weak self] stage in self?.request(.nativeStageReleased(stage)) }
+            frames.requestNativePublicationFinished = { [weak self] stage, result in
+                self?.request(.nativeStagePublicationFinished(stage, result))
+            }
+            frames.requestNativeRollback = { [weak self] stage, failure in self?.request(.nativeStageRollback(stage, failure)) }
+        }
+        if contentMode.requestsNativeFrames {
+            frames.requestNativeFrames = { [weak self] in self?.enqueue(.nativeFramesRequested) }
+        }
         frames.start(on: executor)
     }
 
     deinit {
-        timer?.cancel()
+        ticks.cancel()
         // Only the executor lets go of a skin (docs/skin-threading.md, phase 0: Lifetime).
         guard let skin, !skin.executor.isCurrent else { return }
         self.skin = nil
@@ -112,6 +138,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Loads the skin and registers its fonts (`@Resources/Fonts`). On the executor.
     func load() throws -> LoadResult {
         try skin.load()
+        frames.selectLoadedBackend(updateMilliseconds: skin.settings.update)
         return LoadResult(registeredFonts: Fonts.registerFonts(for: skin), issues: skin.issues)
     }
 
@@ -234,6 +261,34 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         defer { workActivity?.end() }
         messageObserver?(message)
         switch message {
+        case .nativeStageRequested(let request):
+            return prepareNativeRequest(request)
+        case .nativeFramesRequested:
+            guard !isClosing, !isClosed, let request = frames.automaticNativeFrameRequest() else { return false }
+            return prepareNativeRequest(request)
+        case .nativeFramesReady(let stage):
+            frames.enableNativeFrames(stage)
+            return true
+        case .nativeStageAttached(let stage):
+            frames.displayNativeStage(stage)
+            return true
+        case .nativeStageRelease(let stage):
+            guard frames.releaseNativeStage(stage) else { return false }
+            request(.nativeStageReleased(stage))
+            return true
+        case .nativeStageDetached(let stage):
+            frames.detachedNativeStage(stage)
+            return true
+        case .nativeStagePublicationCommitted(let stage, let observation):
+            frames.acknowledgeNativePublication(stage, observation: observation)
+            return true
+        case .nativeStageRolledBack(let stage):
+            guard frames.rolledBackNativePublication(stage) else { return false }
+            request(.nativeStageReleased(stage))
+            return true
+        case .scenePatchFinished(let patch):
+            frames.finishScenePatch(patch)
+            return true
         case .mirrorInput(let mirror):
             skin.inputMirror = mirror
             return true
@@ -323,7 +378,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             frames.drawFirstFrame()
         case .frameWanted:
             frames.setNeedsFrame()
-        case .mirrorInput, .windowFacts, .patch:
+        case .mirrorInput, .windowFacts, .patch, .scenePatchFinished,
+             .nativeStageRequested, .nativeStageAttached, .nativeStageRelease, .nativeStageDetached,
+             .nativeStagePublicationCommitted, .nativeStageRolledBack, .nativeFramesRequested, .nativeFramesReady:
             break
         }
         return true
@@ -369,7 +426,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         snapshotLock.lock()
         publishedSnapshot = next
         snapshotLock.unlock()
-        let changes = next.changes(from: old)
+        var changes = next.changes(from: old)
+        // Layer tooltips/hit maps are the values of a completed frame, not an independently posted work snapshot.
+        if frames.contentMode.usesLayers { changes.remove(.toolTips) }
         if !changes.isEmpty { request(.snapshotChanged(changes)) }
     }
 
@@ -387,6 +446,243 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return skin.executor.exclusive(timeout: timeout) { body(skin) }
     }
 
+    /// Main parks the executor before touching the provider, never while holding its layer lock. The caller
+    /// supplies CURRENT window facts, including a real optional profile, and its actual content size.
+    func installLayerContent(for facts: SkinWindowFacts, size: CGSize) -> SkinFrameProducer.LayerInstallation? {
+        precondition(Thread.isMainThread)
+        return executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+            frames.installLayerContent(for: facts, size: size)
+        }
+    }
+
+    /// Internal, explicit, one-shot qualification. No automatic frame path calls it. Unsupported bitmap or Main
+    /// modes answer before allocating an E owner, capturing a scene or scheduling any worker work.
+    func requestNativeStage(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, publishesSingle: false, completion: completion)
+    }
+
+    /// Explicit same-generation Single E publication only. The ordinary C/default frame path never invokes it.
+    func publishNativeSingle(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, publishesSingle: true, completion: completion)
+    }
+
+    private func requestNativeStage(maximumCallbackBitmapBytes: Int, publishesSingle: Bool,
+                                    completion: @escaping (SkinNativeStageResult) -> Void) {
+        precondition(Thread.isMainThread)
+        guard frames.contentMode.usesLayers else { return completion(.failure(.unsupportedMode)) }
+        guard let worker = executor as? SkinThreadExecutor else { return completion(.failure(.unsupportedExecutor)) }
+        guard !didClose, !worker.hasExited else { return completion(.failure(.cancelled)) }
+        // Even inside a main exclusive callback, display/creation must run later on the physical worker.
+        enqueue(.nativeStageRequested(SkinNativeStageRequest(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes,
+                                                            publishesSingle: publishesSingle, completion: completion)))
+    }
+
+    /// The controller calls after actual C installation. Existing C/bitmap activation queues nothing extra.
+    func beginNativeFrames() {
+        precondition(Thread.isMainThread)
+        guard frames.contentMode.requestsNativeFrames, !didClose else { return }
+        enqueue(.nativeFramesRequested)
+    }
+
+    private func prepareNativeRequest(_ request: SkinNativeStageRequest) -> Bool {
+        precondition(executor.isCurrent)
+        guard !isClosing, !isClosed else {
+            self.request(.nativeStageRejected(request, .cancelled))
+            return false
+        }
+        do {
+            let stage = try frames.prepareNativeStage(request)
+            if request.publishesContent {
+                stage.attachment.callbackReport.observeFirstFailure { [weak self, weak stage] failure in
+                    guard let self, let stage else { return }
+                    self.request(.nativeStageCallbackFailed(stage, .rendering(String(describing: failure))))
+                }
+            }
+            self.request(.attachNativeStage(stage))
+        } catch {
+            let failure = (error as? SkinNativeStageFailure) ?? .rendering(String(describing: error))
+            frames.rejectAutomaticNativeFrames(request, failure: failure)
+            self.request(.nativeStageRejected(request, failure))
+        }
+        return true
+    }
+
+    func nativeStageAttached(_ stage: SkinNativeStage) {
+        precondition(Thread.isMainThread)
+        enqueue(.nativeStageAttached(stage))
+    }
+
+    /// CURRENT host and captured scene validation precedes main attachment inside the actual executor lease.
+    func attachNativeStage(_ stage: SkinNativeStage, facts: SkinWindowFacts, size: CGSize) -> Bool? {
+        precondition(Thread.isMainThread)
+        return executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+            frames.attachNativeStage(stage, facts: facts, size: size)
+        }
+    }
+
+    /// Completion is scoped: a successful callback runs while the physical owner is parked, then its E owner is
+    /// released before main detaches. No native ready token or visible publication escapes this operation.
+    func completeNativeStage(_ stage: SkinNativeStage, result: SkinNativeStageResult,
+                             facts: SkinWindowFacts? = nil, size: CGSize? = nil) {
+        precondition(Thread.isMainThread)
+        // The permanent-stop ack is an actual owner-release fact, independent of whether the worker still exists.
+        // A queued success/attach cannot turn it back into readiness or require another stopped-owner work item.
+        if stage.hasStoppedOwnerRelease {
+            stage.request.complete(.failure(.cancelled))
+            if stage.request.publishesContent { rollbackNativePublication(stage, failure: .cancelled) }
+            stage.provider.detachNativeStage(stage.attachment)
+            return
+        }
+        if stage.request.publishesContent {
+            completeNativePublication(stage, result: result, facts: facts, size: size)
+            return
+        }
+        let completed: Bool
+        switch result {
+        case .success(let ready):
+            if let facts, let size, stage.epoch.matches(facts, size: size) {
+                completed = executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+                    guard frames.nativeStageIsCurrent(stage) else { return stage.request.complete(.failure(.cancelled)) }
+                    // CA may have supplied an unexpected callback AFTER worker display and before this main scope.
+                    // The queued worker snapshot cannot override a current failure latch or extra native entry.
+                    let current = stage.attachment.callbackReport.observation
+                    if let failure = current.failure {
+                        return stage.request.complete(.failure(.rendering(String(describing: failure))))
+                    }
+                    guard current.callbacks == ready.native.callbacks else {
+                        return stage.request.complete(.failure(.rendering("Native callback count changed before completion")))
+                    }
+                    return stage.request.complete(.success(SkinNativeStageObservation(sourceSequence: ready.sourceSequence,
+                        native: current, drewOnPhysicalOwner: ready.drewOnPhysicalOwner)))
+                } ?? stage.request.complete(.failure(.attachmentTimedOut))
+            } else { completed = stage.request.complete(.failure(.staleDestination)) }
+        case .failure:
+            completed = stage.request.complete(result)
+        }
+        if completed { enqueue(.nativeStageRelease(stage)) }
+    }
+
+    /// Main retains only the attachment envelope. Drawing ownership remains strong on the physical owner until
+    /// rollback/release; a backend switch keeps the already presented scene generation and its host values.
+    private var publishedNativePublication: SkinNativeStage?
+
+    private func completeNativePublication(_ stage: SkinNativeStage, result: SkinNativeStageResult,
+                                           facts: SkinWindowFacts?, size: CGSize?) {
+        guard !stage.hasPublicationRollback, !stage.wasPublished else { return }
+        do {
+            let ready = try result.get()
+            guard let facts, let size, stage.epoch.matches(facts, size: size) else {
+                throw SkinNativeStageFailure.staleDestination
+            }
+            let publication: Result<Void, Error>? = executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+                Result {
+                    guard frames.nativeStageIsCurrent(stage) else { throw SkinNativeStageFailure.cancelled }
+                    let current = stage.attachment.callbackReport.observation
+                    if let failure = current.failure { throw failure }
+                    guard current.callbacks == ready.native.callbacks else {
+                        throw SkinNativeStageFailure.rendering("Native callback count changed before publication")
+                    }
+                    try frames.beginNativePublication(stage)
+                    guard stage.provider.publishNativeStage(stage.attachment, executor: executor) else {
+                        throw SkinNativeStageFailure.cancelled
+                    }
+                    stage.recordPublicationCommit()
+                    publishedNativePublication = stage
+                    if let failure = stage.attachment.callbackReport.observation.failure { throw failure }
+                }
+            }
+            guard let publication else { throw SkinNativeStageFailure.attachmentTimedOut }
+            try publication.get()
+            enqueue(.nativeStagePublicationCommitted(stage, ready))
+        } catch let failure as SkinNativeStageFailure { rollbackNativePublication(stage, failure: failure) }
+        catch { rollbackNativePublication(stage, failure: .rendering(String(describing: error))) }
+    }
+
+    /// Called only after the actual owner consumed Main's commit acknowledgment. An older queued success cannot
+    /// override a newer callback failure, cancellation, destination or rollback. The result carries no ready token.
+    func finishNativePublication(_ stage: SkinNativeStage, result: SkinNativeStageResult,
+                                 facts: SkinWindowFacts, size: CGSize) {
+        precondition(Thread.isMainThread)
+        // A replay of initial readiness cannot cancel a persistent attachment's newer ordinary native frames.
+        if stage.request.continuesFrames && stage.request.isCompleted { return }
+        guard publishedNativePublication === stage, !stage.hasPublicationRollback, !stage.hasOwnerRelease,
+              stage.epoch.matches(facts, size: size) else {
+            rollbackNativePublication(stage, failure: .staleDestination)
+            return
+        }
+        do {
+            let ready = try result.get()
+            let checked: Result<SkinNativeStageObservation, Error>? = executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+                Result {
+                    guard frames.nativeStageIsCurrent(stage) else { throw SkinNativeStageFailure.cancelled }
+                    let current = stage.attachment.callbackReport.observation
+                    if let failure = current.failure { throw failure }
+                    guard ready.published, current.callbacks == ready.native.callbacks else {
+                        throw SkinNativeStageFailure.rendering("Native callback count changed after publication acknowledgment")
+                    }
+                    return SkinNativeStageObservation(sourceSequence: ready.sourceSequence, native: current,
+                        drewOnPhysicalOwner: ready.drewOnPhysicalOwner, published: true)
+                }
+            }
+            guard let checked else { throw SkinNativeStageFailure.attachmentTimedOut }
+            if stage.request.complete(.success(try checked.get())), stage.request.continuesFrames {
+                enqueue(.nativeFramesReady(stage))
+            }
+        } catch let failure as SkinNativeStageFailure { rollbackNativePublication(stage, failure: failure) }
+        catch { rollbackNativePublication(stage, failure: .rendering(String(describing: error))) }
+    }
+
+    /// Main-only host rollback needs no stopped/busy executor lease. A stale envelope can release its own owner,
+    /// but cannot hide a newer provider attachment or advance any newer panel/scene acknowledgment.
+    func rollbackNativePublication(_ stage: SkinNativeStage, failure: SkinNativeStageFailure) {
+        precondition(Thread.isMainThread)
+        guard stage.request.publishesContent else { return }
+        let hadAck = stage.hasPublicationRollback
+        let hidden = stage.provider.rollbackNativeStage(stage.attachment)
+        guard hidden || !stage.wasPublished || stage.hasOwnerRelease else { return }
+        stage.recordPublicationRollback(failure: failure)
+        if publishedNativePublication === stage { publishedNativePublication = nil }
+        stage.request.complete(.failure(failure))
+        if !hadAck, !stage.hasStoppedOwnerRelease { enqueue(.nativeStageRolledBack(stage)) }
+    }
+
+    func rollbackVisibleNativePublication(provider: LayerContentProvider, failure: SkinNativeStageFailure,
+                                           facts: SkinWindowFacts? = nil, size: CGSize? = nil) {
+        precondition(Thread.isMainThread)
+        guard let stage = publishedNativePublication, stage.provider === provider else { return }
+        if let facts, let size, stage.epoch.matches(facts, size: size) { return }
+        rollbackNativePublication(stage, failure: failure)
+    }
+
+    /// Main calls this after the window/fade no longer needs its last frame. Cleanup goes behind close on the
+    /// executor. Main removes the attachment only after the owner acknowledges that it is closed and stopped.
+    func teardownContent() {
+        precondition(Thread.isMainThread)
+        guard frames.contentMode.usesLayers, let provider = frames.provider as? LayerContentProvider else {
+            frames.provider?.teardown()
+            return
+        }
+        guard provider.beginLayerTeardown() else { return }
+        let cleanup = { [self] in
+            layerCleanupRequested = true
+            finishLayerTeardown()
+        }
+        if executor.isCurrent { cleanup() }
+        else { executor.async(cleanup) }
+    }
+
+    private var layerCleanupRequested = false
+
+    /// An applying main writer may outlive the deadline. Its ack triggers this owner cleanup without an upward wait.
+    private func finishLayerTeardown() {
+        precondition(executor.isCurrent)
+        guard layerCleanupRequested, !frames.hasLayerWriter, !frames.hasNativeStage,
+              let provider = frames.provider as? LayerContentProvider, frames.retireLayerContent() else { return }
+        layerCleanupRequested = false
+        if Thread.isMainThread { provider.completeLayerTeardown() }
+        else { DispatchQueue.main.async { provider.completeLayerTeardown() } }
+    }
+
     /// Runs `body` on the main thread once the work the skin's executor has now — the piece it is running and what is
     /// queued behind it — has run, so the snapshot counts what that work did: at once on the executor. Main thread.
     func whenCaughtUp(_ body: @escaping () -> Void) {
@@ -399,21 +695,61 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Asks the main thread: at once when on it, else queued there in order.
     func request(_ request: SkinRequest) {
         if Thread.isMainThread {
-            window?.apply(request, from: self)
-            return
+            // A CA callback can arrive while a provider transaction holds its leaf lock. Failure notification must
+            // leave that callback before attempting Main rollback; reuse the existing one Main delivery site.
+            if case .nativeStageCallbackFailed = request {} else {
+                applyRequestOnMain(request)
+                return
+            }
         }
         // A load the main thread has not scheduled yet: bangs for that config wait for it (`isLoadPending`).
         let load = SkinRuntime.configLoaded(by: request)
         if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.window?.apply(request, from: self)
+        // An in-flight native attachment must complete owner release/detach even if its window disappears. Only
+        // these bounded requests retain the runtime across main delivery; ordinary requests keep their weak life.
+        let nativeOwner: SkinRuntime?
+        switch request {
+        case .attachNativeStage, .nativeStageCompleted, .nativeStageReleased, .nativeStageRejected,
+             .nativeStagePublicationFinished, .nativeStageRollback, .nativeStageCallbackFailed: nativeOwner = self
+        default: nativeOwner = nil
+        }
+        DispatchQueue.main.async { [weak self, nativeOwner] in
+            guard let self = self ?? nativeOwner else {
+                if case .scenePatch(let patch) = request { _ = patch.content.reclaim(.invalidated) }
+                return
+            }
+            self.applyRequestOnMain(request)
             if let load {
                 self.loadsInFlight.access {
                     let left = ($0[load] ?? 1) - 1
                     $0[load] = left > 0 ? left : nil
                 }
             }
+        }
+    }
+
+    private func applyRequestOnMain(_ request: SkinRequest) {
+        precondition(Thread.isMainThread)
+        switch request {
+        case .nativeStageReleased(let stage):
+            guard stage.hasOwnerRelease else { return }
+            if stage.request.publishesContent { rollbackNativePublication(stage, failure: .cancelled) }
+            if stage.hasStoppedOwnerRelease { stage.request.complete(.failure(.cancelled)) }
+            stage.provider.detachNativeStage(stage.attachment)
+            if !stage.hasStoppedOwnerRelease { enqueue(.nativeStageDetached(stage)) }
+        case .nativeStageRejected(let request, let failure):
+            request.complete(.failure(failure))
+        case .nativeStageRollback(let stage, let failure), .nativeStageCallbackFailed(let stage, let failure):
+            rollbackNativePublication(stage, failure: failure)
+        case .nativeStagePublicationFinished(let stage, _):
+            if let window { window.apply(request, from: self) }
+            else { rollbackNativePublication(stage, failure: .cancelled) }
+        case .attachNativeStage(let stage), .nativeStageCompleted(let stage, _):
+            if let window { window.apply(request, from: self) }
+            else { completeNativeStage(stage, result: .failure(.cancelled)) }
+        default:
+            if let window { window.apply(request, from: self) }
+            else if case .scenePatch(let patch) = request { _ = patch.content.reclaim(.invalidated) }
         }
     }
 
@@ -575,69 +911,31 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// `Update` in ms → timer interval: negative means "update once" (manual: `Update=-1`), otherwise at least 16 ms
     /// ("minimum effective value is 16").
     static func updateInterval(_ milliseconds: Int) -> TimeInterval? {
-        milliseconds < 0 ? nil : Double(max(milliseconds, 16)) / 1000
+        TickScheduler.updateInterval(milliseconds)
     }
 
     /// Timer slack that lets macOS coalesce wake-ups (Apple suggests at least 10%); capped so slow skins still tick
     /// on time.
     static func timerTolerance(_ interval: TimeInterval) -> TimeInterval {
-        min(interval * 0.1, 0.5)
+        TickScheduler.timerTolerance(interval)
     }
 
-    /// The update clock is skin work, so it runs on the skin's executor (on the main thread: a Foundation timer in the
-    /// common modes, which keeps skins updating while a menu is open).
-    private func startTimer() {
-        timer?.cancel()
-        timer = nil
-        guard !isClosed, !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
-        let update = { [weak self] in
-            guard let self, !self.isClosed else { return }
-            self.skin.update()
-        }
-        let leeway = SkinRuntime.timerTolerance(interval)
-        if let executor = skin.executor as? SkinThreadExecutor {
-            timer = executor.updateScheduler.schedule(interval: interval, leeway: leeway, update)
-        } else {
-            timer = skin.executor.timer(interval: interval, leeway: leeway, repeats: true, update)
-        }
-    }
+    // TickTarget reads the live skin at each operation, including after synchronous action callbacks.
+    var updateMilliseconds: Int { skin.settings.update }
+    func updateForTick() { skin.update() }
+    func notifySystemWake() { skin.systemDidWake() }
 
-    /// Sleep / screens asleep / session switched away: no updates and no drawing.
-    private func pause() {
-        guard !updatesPaused else { return }
-        updatesPaused = true
-        timer?.cancel()
-        timer = nil
-    }
-
-    /// `updateNow`: catch up at once. Skins with `Update=-1` ("update only once on load or refresh") are not updated:
-    /// they have nothing to catch up on, and an extra update would run their OnUpdateAction again.
-    private func resume(updateNow: Bool) {
-        guard updatesPaused, !isClosed else { return }
-        updatesPaused = false
-        if updateNow && SkinRuntime.updateInterval(skin.settings.update) != nil { skin.update() }
-        startTimer()
-    }
-
-    /// The Mac woke from sleep: the engine runs OnWakeAction at the end of the next update ("Action to execute when
-    /// Windows returns from the sleep or hibernate states"; at once for Update=-1 skins), which happens right away.
-    private func wake() {
-        skin.systemDidWake()
-        guard !isClosed else { return }
-        if updatesPaused {
-            resume(updateNow: true)
-        } else if SkinRuntime.updateInterval(skin.settings.update) != nil {
-            skin.update()
-        }
-    }
+    private func startTimer() { ticks.startTimer(for: self) }
+    private func pause() { ticks.pause() }
+    private func resume(updateNow: Bool) { ticks.resume(updateNow: updateNow, target: self) }
+    private func wake() { ticks.wake(target: self) }
 
     /// Stops the clock and closes the skin: OnCloseAction runs while the skin can still handle bangs (it cannot reload
     /// or unload itself any more). Then the main thread hears of it (`.closed`, with the ticket of the reload the close is
     /// part of), and whoever waits for the close.
     private func close(ticket: SkinReloadTicket?) {
         guard !isClosing else { return }
-        timer?.cancel()
-        timer = nil
+        ticks.cancel()
         isClosing = true
         skin.close()
         isClosed = true
@@ -730,7 +1028,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         if size != requestedSize {
             requestedSize = size
             model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
-            request(.resize(size))
+            if !frames.contentMode.usesLayers { request(.resize(size)) }
         }
         frames.setNeedsFrame()
     }
@@ -813,7 +1111,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {
         HostCallAudit.note(self, "skinGlassRegionsChanged")
         guard !isClosed else { return }
-        request(.glass(regions))
+        if !frames.contentMode.usesLayers { request(.glass(regions)) }
     }
 
     /// From the window's facts. Debug builds compare with the live window while the skin runs on the main executor.
@@ -899,11 +1197,49 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                                                       autoSelectScreen: settings.autoSelectScreen)
         #if DEBUG
         if SnapshotAudit.isActive(self), let live = window?.liveEnvironment(for: skin) {
-            SnapshotAudit.compare("environment", self, snapshot: env, live: live, sides: SkinRuntime.auditSides)
+            let compared = Self.environmentForAudit(live, snapshot: env, model: model, requestedSize: requestedSize,
+                usesLayers: frames.contentMode.usesLayers, screens: EnvironmentStore.shared.currentScreens)
+            SnapshotAudit.compare("environment", self, snapshot: env, live: compared, sides: SkinRuntime.auditSides)
         }
         #endif
         return env
     }
+
+    #if DEBUG
+    /// A C frame's logical resize precedes its host acknowledgment. Adjust only this known comparison debt;
+    /// the actual window, returned environment and every unrelated audited value stay unchanged.
+    static func environmentForAudit(_ live: SkinEnvironment, snapshot: SkinEnvironment, model: SkinWindowModel,
+                                    requestedSize: CGSize?, usesLayers: Bool,
+                                    screens: [WindowGeometry.Screen]) -> SkinEnvironment {
+        guard usesLayers, let size = requestedSize, let facts = model.facts, let frame = model.frame,
+              facts.frame.size != size, model.sequence == facts.modelSequence, model.settings == facts.settings else {
+            return live
+        }
+        var resized = SkinWindowModel()
+        resized.take(facts)
+        resized.resize(to: size, screens: screens)
+        guard resized.frame == frame else { return live }
+        func geometry(_ frame: CGRect) -> SkinEnvironment {
+            EnvironmentStore.environment(windowFrame: frame, screens: screens, settingsPath: snapshot.settingsPath,
+                programPath: snapshot.programPath, configEditor: snapshot.configEditor, appearance: snapshot.appearance)
+        }
+        func selectedScreen(_ frame: CGRect) -> Int {
+            // The same frame-dependent selection as EnvironmentStore; a resize may change the selected screen.
+            guard model.settings.autoSelectScreen, frame.width > 1 || frame.height > 1 else { return 0 }
+            return WindowGeometry.screenIndex(for: frame, screens: screens) ?? 0
+        }
+        let before = geometry(facts.frame), after = geometry(frame)
+        guard live.windowFrame == before.windowFrame, snapshot.windowFrame == after.windowFrame,
+              live.screens == before.screens, snapshot.screens == after.screens,
+              live.currentScreen == selectedScreen(facts.frame), snapshot.currentScreen == selectedScreen(frame) else {
+            return live
+        }
+        var compared = live
+        compared.windowFrame = after.windowFrame
+        compared.currentScreen = selectedScreen(frame)
+        return compared
+    }
+    #endif
 
     // MARK: SkinImageQueries
 

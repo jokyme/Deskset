@@ -163,11 +163,17 @@ public enum PackageLoader {
                     let id = DeskFileID(path: entry.path)
                     if entry.size > limits.maximumFileBytes {
                         package.diagnostics.append(Diagnostic(id: .fileTooLarge, severity: .error, file: id, range: 0..<0))
-                    } else if let data = try? source.read(entry.path, limit: limits.maximumFileBytes + 1) {
-                        if data.count > limits.maximumFileBytes {
-                            package.diagnostics.append(Diagnostic(id: .fileTooLarge, severity: .error, file: id, range: 0..<0))
-                        } else {
-                            readText(data, file: id, kind: file.kind, into: &package)
+                    } else {
+                        do {
+                            let data = try source.read(entry.path, limit: limits.maximumFileBytes + 1)
+                            if data.count > limits.maximumFileBytes {
+                                package.diagnostics.append(Diagnostic(id: .fileTooLarge, severity: .error, file: id, range: 0..<0))
+                            } else {
+                                readText(data, file: id, kind: file.kind, into: &package)
+                            }
+                        } catch {
+                            package.diagnostics.append(Diagnostic(id: .packageFileUnreadable, severity: .error, file: id,
+                                                                  range: 0..<0, arguments: ["path": .code(entry.path)]))
                         }
                     }
                 case .image:

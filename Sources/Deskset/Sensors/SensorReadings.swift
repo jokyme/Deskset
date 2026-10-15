@@ -283,6 +283,19 @@ enum SensorReadings {
 
     // MARK: Battery
 
+    /// The raw capacity ratio shared by MacSensors and the battery-details fallback. Keep the Intel distinction:
+    /// a MaxCapacity at most 100 is a percentage, not a full-charge capacity in mAh.
+    static func batteryHealth(_ d: [String: Any]) -> Double? {
+        func number(_ key: String) -> Double? {
+            guard let n = d[key] as? NSNumber else { return nil }
+            return n.doubleValue.isFinite ? n.doubleValue : nil
+        }
+        let design = number("DesignCapacity")
+        let rawMax = number("AppleRawMaxCapacity") ?? number("MaxCapacity").flatMap { $0 > 100 ? $0 : nil }
+        guard let design, design > 0, let rawMax, rawMax > 0 else { return nil }
+        return rawMax / design * 100
+    }
+
     /// The battery group from AppleSmartBattery's properties: health = full-charge capacity (`AppleRawMaxCapacity`,
     /// or `MaxCapacity` when it is in mAh as on Intel Macs) ÷ `DesignCapacity`; `CycleCount`; `Voltage` (mV → V);
     /// `Amperage` (mA → A, negative while discharging; the registry stores it as an unsigned 64-bit pattern);
@@ -299,11 +312,9 @@ enum SensorReadings {
             return Double(n.int64Value)
         }
         let source = "AppleSmartBattery"
-        let design = number("DesignCapacity")
-        let rawMax = number("AppleRawMaxCapacity") ?? number("MaxCapacity").flatMap { $0 > 100 ? $0 : nil }
-        if let design, design > 0, let rawMax, rawMax > 0 {
+        if let health = batteryHealth(d) {
             reading.add(SensorInfo(key: SensorKeys.batteryHealth, label: "Battery health", kind: .percent,
-                                   source: "\(source) full-charge ÷ design capacity"), rawMax / design * 100)
+                                   source: "\(source) full-charge ÷ design capacity"), health)
         }
         if let cycles = number("CycleCount"), cycles >= 0 {
             reading.add(SensorInfo(key: SensorKeys.batteryCycles, label: "Battery cycle count", kind: .count,

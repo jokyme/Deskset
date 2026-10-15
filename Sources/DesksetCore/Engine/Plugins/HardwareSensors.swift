@@ -405,12 +405,13 @@ extension HardwareSensorSource {
     }
 }
 
-/// Where plugins look for hardware sensors: `skin.system` when it conforms to `HardwareSensorSource`, else `source`.
+/// Where plugins look for hardware sensors: their system data source when it conforms to `HardwareSensorSource`,
+/// else `source`.
 public enum HardwareSensors {
     /// A source for skins whose system data source is not one (tests). Main thread only.
     public static var source: HardwareSensorSource?
 
-    static func source(for skin: Skin) -> HardwareSensorSource? {
-        (skin.system as? HardwareSensorSource) ?? source
+    static func source(for system: SystemDataSource) -> HardwareSensorSource? {
+        (system as? HardwareSensorSource) ?? source
     }
 }

@@ -395,7 +395,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
                 }
             case .fadeWindow(let from, let to):
                 // The host animates the window; one that cannot gets the end value as !SetTransparency.
-                if skin.host?.skin(skin, fadeWindowFrom: from, to: to) != true {
+                if serviceHost?.skin(skin, fadeWindowFrom: from, to: to) != true {
                     skin.perform(Bang(name: "settransparency", args: [String(to)]), from: self)
                 }
             }
@@ -848,7 +848,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             let arguments = tokens.dropFirst().map(\.text)
             // Like `["target"]` in an action: an instance that must not act outside the widget records it instead.
             if let policy = skin.actionPolicy, !policy.skin(skin, allowsExecuting: target, arguments: arguments) { return 0 }
-            skin.host?.skin(skin, execute: target, arguments: arguments)
+            serviceHost?.skin(skin, execute: target, arguments: arguments)
             return 0
         }
         if !loggedExecute {

@@ -464,7 +464,8 @@ extension Checker {
         case .oneOf(let ts): return ts.contains { openFits(kind, $0) }
         case .binding(let inner): return openFits(kind, inner)
         case .number(let d): return kind == .dimension || (kind == .base && (d == .bytes || d == .bytesPerSecond))
-        case .anyNumber, .fraction, .lengthSpec: return kind == .dimension || kind == .base
+        case .anyNumber: return kind == .dimension || kind == .base
+        case .fraction, .lengthSpec: return kind == .dimension
         case .enumeration, .color, .paint: return kind == .type
         default: return false
         }
@@ -481,6 +482,9 @@ extension Checker {
         let r = range(node)
         if let slot = v.open, slot < openSlots.count, openFits(openSlots[slot].kind, type) {
             recordUse(slot, expected: type, at: r, description: usedAs(param: param, type: type, what: what))
+            if type == .fraction, openSlots[slot].kind == .dimension, mute == 0 {
+                numericCoercions[id(node)] = .percentAsFraction
+            }
             return true
         }
         if v.secret, let role = param?.role, ![.command, .webAddress].contains(role) {
@@ -584,7 +588,9 @@ extension Checker {
             return false
         }
         // Literal files, symbols and fonts.
-        if let s = v.stringLiteral {
+        if type == .symbolName, v.stringLiteral == nil {
+            checkSymbolBranches(node)
+        } else if let s = v.stringLiteral {
             switch type {
             case .symbolName: checkSymbol(s, node)
             case .imageSource: checkFile(s, node, kind: "image")
@@ -592,6 +598,7 @@ extension Checker {
             default: break
             }
         }
+        recordNumericCoercion(v, node, to: type)
         return true
     }
 

@@ -60,7 +60,7 @@ public final class PingMeasure: Measure, PluginLifecycle {
         guard !destination.isEmpty else {
             if !reportedFailure {
                 reportedFailure = true
-                skin.log("Ping [\(name)]: DestAddress is empty", level: .warning)
+                sectionContext.log("Ping [\(name)]: DestAddress is empty", level: .warning)
             }
             return
         }
@@ -75,7 +75,7 @@ public final class PingMeasure: Measure, PluginLifecycle {
                                 scripted: { $0.number.map { .success($0) } ?? .failure(.timeout) }) {
             ICMPEcho.ping(host: host, timeout: limit, cancel: flag)
         }
-        skin.startBackground(job) { [weak self] outcome in
+        sectionContext.startBackground(job) { [weak self] outcome in
             guard let self, self.generation == current, !flag.isCancelled else { return }
             self.finish(outcome)
         }
@@ -91,11 +91,11 @@ public final class PingMeasure: Measure, PluginLifecycle {
             result = timeoutValue
             if failure != .timeout && !reportedFailure {
                 reportedFailure = true
-                skin.log("Ping [\(name)]: \(destination): \(failure.description); using TimeoutValue", level: .notice)
+                sectionContext.log("Ping [\(name)]: \(destination): \(failure.description); using TimeoutValue", level: .notice)
             }
         }
         publishAsyncResult(number: result, string: nil)
-        if !finishAction.isEmpty { skin.execute(finishAction, from: self) }
+        if !finishAction.isEmpty { sectionContext.execute(finishAction, from: self) }
     }
 }
 

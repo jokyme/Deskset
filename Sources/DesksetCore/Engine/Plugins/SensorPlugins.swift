@@ -53,7 +53,7 @@ public final class CoreTempMeasure: Measure {
 
     public override func computeValue() -> Double {
         rawString = nil
-        let sensors = HardwareSensors.source(for: skin)
+        let sensors = HardwareSensors.source(for: sectionContext.system)
         /// 0, and a note once: no sensors at all, or the Mac does not report this value (not while it is pending).
         func missing(_ what: String, _ key: String) -> Double {
             guard let sensors else {
@@ -71,8 +71,8 @@ public final class CoreTempMeasure: Measure {
             rawString = CoreTempMeasure.cpuBrand
             return 0
         case .load:
-            guard index < skin.system.processorCount else { return 0 }
-            return skin.system.cpuUsage(processor: index + 1)
+            guard index < sectionContext.system.processorCount else { return 0 }
+            return sectionContext.system.cpuUsage(processor: index + 1)
         case .cpuSpeed:
             return coreFrequency(sensors, core: nil)
         case .coreSpeed:
@@ -103,7 +103,7 @@ public final class CoreTempMeasure: Measure {
     /// MHz: the sensor source's value for the core (the fastest cluster for the CPU), else the rated frequency.
     private func coreFrequency(_ sensors: HardwareSensorSource?, core: Int?) -> Double {
         if let f = sensors?.coreFrequency(core) { return f }
-        return (skin.system.cpuFrequency() ?? 0) / 1_000_000
+        return (sectionContext.system.cpuFrequency() ?? 0) / 1_000_000
     }
 
     /// `machdep.cpu.brand_string` (read once).
@@ -111,7 +111,7 @@ public final class CoreTempMeasure: Measure {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }
 
@@ -162,7 +162,7 @@ public final class SpeedFanMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        guard let sensors = HardwareSensors.source(for: skin) else {
+        guard let sensors = HardwareSensors.source(for: sectionContext.system) else {
             report("none", "SpeedFan [\(name)]: temperatures, fans and voltages need hardware sensors, which are not "
                    + "available here; the value is 0")
             return 0
@@ -194,7 +194,7 @@ public final class SpeedFanMeasure: Measure {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .notice)
+        sectionContext.log(message, level: .notice)
     }
 }
 
@@ -241,7 +241,7 @@ public final class ResMonMeasure: Measure, PluginLifecycle {
         if wanted == "rainmeter" || wanted == ProcessNames.normalized(ProcessInfo.processInfo.processName) {
             return Double(ResMonMeasure.fileDescriptorCount(pids: [getpid()]))
         }
-        let now = skin.clock()
+        let now = sectionContext.clock()
         let current = pids.flatMap { $0.name == processName ? $0 : nil }
         let stale = current.map { now - $0.time > ResMonMeasure.pidRefreshInterval } ?? true
         if !closed, lookingUp != processName, stale {
@@ -251,10 +251,10 @@ public final class ResMonMeasure: Measure, PluginLifecycle {
             let job = BackgroundJob(.resMon, subject: name, on: PluginIO.queue, fixture: false) {
                 ProcessNames.pids(named: name)
             }
-            skin.startBackground(job) { [weak self] list in
+            sectionContext.startBackground(job) { [weak self] list in
                 guard let self, !self.closed, self.lookingUp == name else { return }
                 self.lookingUp = nil
-                self.pids = (name, list, self.skin.clock())
+                self.pids = (name, list, self.sectionContext.clock())
             }
         }
         return Double(ResMonMeasure.fileDescriptorCount(pids: current?.list ?? []))
@@ -288,7 +288,7 @@ public final class WindowMessageMeasure: Measure {
         if !reported {
             reported = true
             let target = string("WindowClass").isEmpty ? string("WindowName") : string("WindowClass")
-            skin.log("WindowMessage [\(name)]: Windows window messages do not exist on macOS"
+            sectionContext.log("WindowMessage [\(name)]: Windows window messages do not exist on macOS"
                      + (target.isEmpty ? "" : " (window \"\(target)\")") + "; the value is 0", level: .notice)
         }
     }
@@ -299,7 +299,7 @@ public final class WindowMessageMeasure: Measure {
     }
 
     public override func execute(command: String) {
-        skin.logOnce("WindowMessage [\(name)]: \"\(command)\" ignored (no window messages on macOS)", level: .notice)
+        sectionContext.logOnce("WindowMessage [\(name)]: \"\(command)\" ignored (no window messages on macOS)", level: .notice)
     }
 }
 
@@ -332,7 +332,7 @@ public final class VirtualDesktopsMeasure: Measure {
     }
 
     public override func execute(command: String) {
-        skin.logOnce("VirtualDesktops [\(name)]: \"\(command)\" ignored (macOS Spaces cannot be controlled)",
+        sectionContext.logOnce("VirtualDesktops [\(name)]: \"\(command)\" ignored (macOS Spaces cannot be controlled)",
                      level: .notice)
     }
 }

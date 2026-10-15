@@ -1,0 +1,12 @@
+// DK8610 packageFileUnreadable
+//== expect: DK8610
+//== file: Broken.desk
+//== folder-generate: unreadableSource
+info { name: "Broken" }
+widget { Text("Broken") }
+//== folder-file: Good.desk
+info { name: "Good" }
+widget { Text("Good") }
+//== negative
+info { name: "Readable" }
+widget { Text("Readable") }

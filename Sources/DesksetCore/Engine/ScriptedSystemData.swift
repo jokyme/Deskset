@@ -15,6 +15,7 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
     private var frames: [SkinInputData.SystemFrame]
     private var index = 0
     private var batteryGiven: SkinInputData.Given<BatteryStatus>?
+    private var batteryDetailsGiven: SkinInputData.Given<BatteryDetails>?
     private var sensorValues: [String: SkinInputData.Sensor]?
     private var thermal: Int?
     private var desktop: SkinInputData.Given<String>?
@@ -23,6 +24,7 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
         self.base = base
         frames = data.system ?? []
         batteryGiven = data.battery
+        batteryDetailsGiven = data.batteryDetails
         sensorValues = data.sensors
         thermal = data.thermalState
         desktop = data.desktopImage
@@ -35,6 +37,7 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
         defer { lock.unlock() }
         switch kind {
         case .system: return !frames.isEmpty
+        // Details alone do not isolate battery(): an omitted status still reads the base provider.
         case .battery: return batteryGiven != nil
         case .sensors: return sensorValues != nil || thermal != nil
         default: return false
@@ -63,7 +66,13 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
             frames = system
             index = 0
         }
-        if let battery = data.battery { batteryGiven = battery }
+        if let battery = data.battery {
+            batteryGiven = battery
+            // An old-schema replacement also replaces earlier details with unavailable values.
+            batteryDetailsGiven = data.batteryDetails
+        } else if let details = data.batteryDetails {
+            batteryDetailsGiven = details
+        }
         if let sensors = data.sensors { sensorValues = sensors }
         if let t = data.thermalState { thermal = t }
         if let d = data.desktopImage { desktop = d }
@@ -156,6 +165,15 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
         lock.unlock()
         guard let given else { return base.battery() }
         return given.value
+    }
+
+    public func batteryDetails() -> BatteryDetailsReading {
+        lock.lock()
+        let given = batteryDetailsGiven, hasBattery = batteryGiven != nil
+        lock.unlock()
+        if let given { return .ready(given.value ?? BatteryDetails()) }
+        if hasBattery { return .ready(BatteryDetails()) }
+        return base.batteryDetails()
     }
 
     public func isProcessRunning(_ name: String) -> Bool {

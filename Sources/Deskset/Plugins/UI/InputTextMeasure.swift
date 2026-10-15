@@ -98,7 +98,7 @@ final class InputTextMeasure: MediaUIMeasure {
         let settings = settings(for: step.command)
         if prompt == nil {
             prompt = InputTextMeasure.promptFactory?(self)
-                ?? (skin.host as? SkinCompanionChannel).map { CompanionInputTextPrompt(channel: $0) }
+                ?? (serviceHost as? SkinCompanionChannel).map { CompanionInputTextPrompt(channel: $0) }
         }
         guard let prompt else {
             self.batch = nil

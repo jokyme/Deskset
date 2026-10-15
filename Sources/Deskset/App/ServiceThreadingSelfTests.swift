@@ -55,6 +55,68 @@ enum ServiceThreadingSelfTests {
     // MARK: SystemMonitor
 
     static func systemMonitorTests(_ t: AppTestRunner) {
+        t.suite("App: Desk review regressions: invalidated battery reads cannot refill the current cache") {
+            let old = BatteryStatus(percent: 80, isCharging: false, isPluggedIn: false)
+            let fresh = BatteryStatus(percent: 81, isCharging: true, isPluggedIn: true)
+            let clock = Guarded<TimeInterval>(1000)
+            let reads = Guarded(0)
+            let captured = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            let done = DispatchSemaphore(value: 0)
+            let oldResults = Collected<BatteryStatus?>()
+            let released = Collected<Bool>()
+            let monitor = SystemMonitor(clock: { clock.current }, readBattery: {
+                let call = reads.access { count -> Int in count += 1; return count }
+                if call == 1 {
+                    // This worker already holds the power snapshot from before the notification.
+                    captured.signal()
+                    released.add(release.wait(timeout: .now() + 10) == .success)
+                    return old
+                }
+                return fresh
+            })
+            let worker = Thread {
+                oldResults.add(monitor.battery())
+                done.signal()
+            }
+            worker.stackSize = 8 << 20
+            worker.start()
+            defer { release.signal() }
+            let didCapture = captured.wait(timeout: .now() + 10) == .success
+            t.check(didCapture, "the worker captured the old power snapshot")
+            guard didCapture else { return }
+
+            monitor.invalidateBatteryCache()
+            release.signal()
+            let didFinish = done.wait(timeout: .now() + 10) == .success
+            t.check(didFinish, "the old reading finishes after invalidation")
+            guard didFinish else { return }
+            t.equal(released.all, [true], "the test releases the reader without a timeout")
+            t.equal(oldResults.all, [old], "the in-flight caller keeps its captured result")
+            t.equal(monitor.battery(), fresh, "the next caller must read the new power state")
+            t.equal(reads.current, 2, "the invalidated result is not cached")
+            t.equal(monitor.battery(), fresh, "the current power state is then cached")
+            t.equal(reads.current, 2, "a current cached reading does not repeat IOKit work")
+
+            clock.access { $0 = 1004.9 }
+            t.equal(monitor.battery(), fresh, "a reading younger than five seconds is retained")
+            t.equal(reads.current, 2)
+            clock.access { $0 = 1005 }
+            t.equal(monitor.battery(), fresh, "the five-second boundary refreshes the reading")
+            t.equal(reads.current, 3)
+
+            let absentReads = Guarded(0)
+            let absent = SystemMonitor(clock: { clock.current }, readBattery: {
+                absentReads.access { $0 += 1 }
+                return nil
+            })
+            t.equal(absent.battery(), nil)
+            t.equal(absent.battery(), nil)
+            t.equal(absentReads.current, 1, "an unavailable battery is cached too")
+            absent.invalidateBatteryCache()
+            t.equal(absent.battery(), nil)
+            t.equal(absentReads.current, 2, "a power notification also invalidates an unavailable reading")
+        }
         t.suite("App: skin threading: the system monitor answers several threads at once") {
             // As the app's skins use it: most readings come from the caches, which one thread fills now and then.
             checkSystemMonitor(t, SystemMonitor.shared, rounds: 40)

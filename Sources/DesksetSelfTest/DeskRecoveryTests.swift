@@ -141,6 +141,32 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         t.equal(deskIDs(deskParse("widget ｛\n    Text(\"A\")\n｝")), ["DK1002", "DK1002"])
     }
 
+    t.suite("Desk: recovery — incomplete foreign bindings") {
+        // Keep the foreign-code diagnostic, but do not search backwards or borrow the next line for a fix-it.
+        for keyword in ["let", "var"] {
+            for newline in ["\n", "\r\n", "\r"] {
+                let bindings = ["if \(keyword)\(newline)x = y {}",
+                                "if \(keyword) x\(newline)= y {}",
+                                "if \(keyword) x =\(newline)y {}"]
+                for binding in bindings {
+                    let source = "widget { \(binding)\(newline)Text(\"After\")\(newline)}"
+                    let tree = deskParse(source)
+                    let diagnostic = tree.diagnostics.first { $0.id == .swiftIfLet }
+                    t.check(diagnostic != nil, source.debugDescription)
+                    t.equal(diagnostic?.fixIts, [], "an incomplete physical line has no exact rewrite")
+                    t.equal(deskFuzzProblems(source).problems, [], source.debugDescription)
+                }
+            }
+            for source in ["if \(keyword)", "if \(keyword) x", "if \(keyword) x ="] {
+                t.equal(deskFuzzProblems(source).problems, [], source)
+            }
+            let complete = deskParse("widget {\n    if \(keyword) x = y { Text(x) }\n}")
+            t.equal(deskIDs(complete), ["DK9110"])
+            t.equal(fixed(complete, "DK9110")?.text,
+                    "widget {\n    if not y.isMissing { Text(y) }\n}")
+        }
+    }
+
     t.suite("Desk: recovery — foreign code") {
         // A pasted SwiftUI view: one DK9105 and nothing else.
         let swiftUI = """

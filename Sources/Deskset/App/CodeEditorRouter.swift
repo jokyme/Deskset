@@ -36,7 +36,7 @@ final class WorkspaceEditorOpener: CodeEditorOpening {
 /// Settings ▸ Editor ▸ "Edit code with".
 ///
 /// - Built-in: the skin editor opens on the skin that owns the file (its main file or an included one; an unloaded
-///   skin file is loaded first) and reveals the line.
+///   skin file is loaded first) and reveals the line. Desk files open in their own document window instead.
 /// - An app: that app, at the line when it supports it (`CodeEditorLaunch`). An app that has been uninstalled falls
 ///   back to the built-in editor, with a one-time notice.
 /// - System default: the app macOS uses for that file type, at the line when it is a known editor.
@@ -141,10 +141,15 @@ enum CodeEditorRouter {
         return nil
     }
 
-    /// The skin editor on the skin owning `file`, revealing `line` (and showing `notice` as a warning toast). False
-    /// when no skin owns it (not a skin file, or an included file of a skin that is not loaded).
+    /// A Desk document window, or the skin editor on the skin owning `file`, revealing `line` (and showing `notice`
+    /// as a warning toast there). A Desk request is consumed even when strict loading fails: its error is shown by
+    /// `showCodeFile`, never handed to an external editor. Other files return false when no skin owns them.
     @discardableResult
     static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil) -> Bool {
+        if file.isFileURL, file.pathExtension.lowercased() == "desk" {
+            _ = app.showCodeFile(file, line: line)
+            return true
+        }
         // A skin that has just been loaded on the engine thread is edited once it started (at once with the main
         // executor).
         func show(_ c: SkinWindowController) {

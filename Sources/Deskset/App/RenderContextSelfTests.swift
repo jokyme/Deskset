@@ -8,6 +8,10 @@ import DesksetCore
 /// through AppKit.
 enum RenderContextSelfTests {
     static func run(_ t: AppTestRunner) {
+        #if DEBUG
+        roundDrawTests(t)
+        roundCapTests(t)
+        #endif
         t.suite("App: skin threading: each skin measures and draws with text layouts of its own") {
             let ini = "[Rainmeter]\nUpdate=-1\n[Title]\nMeter=String\nText=Hello there\nFontSize=12\n"
                 + "[Info]\nMeter=String\nY=20\nText=Second line\nFontSize=10\n"
@@ -193,6 +197,260 @@ enum RenderContextSelfTests {
             }
         }
     }
+
+    #if DEBUG
+    private static func roundDrawTests(_ t: AppTestRunner) {
+        let formats = [(1, false), (1, true), (2, false), (2, true)]
+        t.suite("App: round drawing values: Roundline keeps its pixels after its meter changes and goes away") {
+            for solid in [false, true] {
+                weak var releasedSkin: Skin?
+                weak var releasedMeter: RoundlineMeter?
+                let frozen = try autoreleasepool { () throws -> (draw: RoundlineDraw, pixels: [Data]) in
+                    let (skin, host) = try MediaUITests.bareSkin(t, """
+                    [Rainmeter]
+                    Update=-1
+                    [Variables]
+                    Value=20
+                    [Angle]
+                    Measure=Calc
+                    Formula=#Value#
+                    MinValue=0
+                    MaxValue=100
+                    DynamicVariables=1
+                    [Round]
+                    Meter=Roundline
+                    MeasureName=Angle
+                    X=8
+                    Y=8
+                    W=80
+                    H=80
+                    Solid=\(solid ? 1 : 0)
+                    LineStart=6
+                    LineLength=29
+                    LineWidth=3.25
+                    LineColor=220,90,40,180
+                    AntiAlias=1
+                    """)
+                    defer { skin.close(); withExtendedLifetime(host) {} }
+                    skin.update()
+                    guard let meter = skin.meter(named: "Round") as? RoundlineMeter else {
+                        throw CocoaError(.coderInvalidValue)
+                    }
+                    releasedSkin = skin
+                    releasedMeter = meter
+                    let draw = meter.lower()
+                    let before = try formats.map { scale, window in
+                        let pixels = try roundPixels(scale: scale, window: window) {
+                            SkinRenderer.drawRoundline(draw, $0)
+                        }
+                        let reference = try roundPixels(scale: scale, window: window) {
+                            LegacySkinRenderer.drawRoundline(meter, $0)
+                        }
+                        t.check(pixels.contains { $0 != 0 }, "the \(solid ? "sector" : "line") draws visible pixels")
+                        t.check(pixels == reference, "\(scale)x, window=\(window): the original Roundline pixels")
+                        return pixels
+                    }
+                    skin.setVariable("Value", "62.5")
+                    for (key, value) in [("X", "15"), ("LineLength", "34"), ("LineColor", "50,180,240,96"),
+                                         ("AntiAlias", "0")] {
+                        skin.perform(Bang(name: "setoption", args: ["Round", key, value]))
+                    }
+                    skin.update()
+                    let changed = meter.lower()
+                    t.check(changed != draw, "the next update produces a new drawing value")
+                    for (index, format) in formats.enumerated() {
+                        let (scale, window) = format
+                        let kept = try roundPixels(scale: scale, window: window) {
+                            SkinRenderer.drawRoundline(draw, $0)
+                        }
+                        let next = try roundPixels(scale: scale, window: window) {
+                            SkinRenderer.drawRoundline(changed, $0)
+                        }
+                        let reference = try roundPixels(scale: scale, window: window) {
+                            LegacySkinRenderer.drawRoundline(meter, $0)
+                        }
+                        t.check(kept == before[index], "the old value ignores later measure, paint and layout changes")
+                        t.check(next != before[index], "the new value draws the updated Roundline")
+                        t.check(next == reference, "the updated value preserves the original drawing algorithm")
+                    }
+                    return (draw, before)
+                }
+                t.check(releasedSkin == nil && releasedMeter == nil, "the drawing value retains no skin or meter")
+                for (index, format) in formats.enumerated() {
+                    let pixels = try roundPixels(scale: format.0, window: format.1) {
+                        SkinRenderer.drawRoundline(frozen.draw, $0)
+                    }
+                    t.check(pixels == frozen.pixels[index], "Roundline can be drawn after its skin is released")
+                }
+            }
+        }
+
+        t.suite("App: round drawing values: Rotator keeps its pixels after its meter changes and goes away") {
+            let image = t.temporaryDirectory("rotator-draw").appendingPathComponent("needle.png")
+            try writeTestImage(to: image)
+            weak var releasedSkin: Skin?
+            weak var releasedMeter: RotatorMeter?
+            let frozen = try autoreleasepool { () throws -> (draw: RotatorDraw, pixels: [Data]) in
+                let (skin, host) = try MediaUITests.bareSkin(t, """
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                Value=20
+                [Angle]
+                Measure=Calc
+                Formula=#Value#
+                MinValue=0
+                MaxValue=100
+                DynamicVariables=1
+                [Needle]
+                Meter=Rotator
+                MeasureName=Angle
+                ImageName=\(image.path)
+                X=24
+                Y=24
+                W=40
+                H=40
+                OffsetX=8
+                OffsetY=8
+                ImageCrop=-2,-1,20,18
+                ImageFlip=Horizontal
+                ImageRotate=25
+                ImageTint=128,255,80,192
+                UseExifOrientation=1
+                """)
+                defer { skin.close(); withExtendedLifetime(host) {} }
+                skin.update()
+                guard let meter = skin.meter(named: "Needle") as? RotatorMeter else {
+                    throw CocoaError(.coderInvalidValue)
+                }
+                releasedSkin = skin
+                releasedMeter = meter
+                let context = SkinRenderContext.of(skin), legacy = LegacySkinRenderContext.of(skin)
+                let draw = meter.lower()
+                let before = try formats.map { scale, window in
+                    let pixels = try roundPixels(scale: scale, window: window) {
+                        SkinRenderer.drawRotator(draw, $0, context)
+                    }
+                    let reference = try roundPixels(scale: scale, window: window) {
+                        LegacySkinRenderer.drawRotator(meter, $0, legacy)
+                    }
+                    t.check(pixels.contains { $0 != 0 }, "the processed image draws visible pixels")
+                    t.check(pixels == reference, "\(scale)x, window=\(window): the original Rotator pixels")
+                    return pixels
+                }
+                skin.setVariable("Value", "62.5")
+                for (key, value) in [("X", "34"), ("OffsetY", "4"), ("ImageCrop", "0,0,12,16"),
+                                     ("ImageTint", "255,70,180,96"), ("ImageFlip", "Vertical")] {
+                    skin.perform(Bang(name: "setoption", args: ["Needle", key, value]))
+                }
+                skin.update()
+                let changed = meter.lower()
+                t.check(changed != draw, "the next update produces a new drawing value")
+                for (index, format) in formats.enumerated() {
+                    let (scale, window) = format
+                    let kept = try roundPixels(scale: scale, window: window) {
+                        SkinRenderer.drawRotator(draw, $0, context)
+                    }
+                    let next = try roundPixels(scale: scale, window: window) {
+                        SkinRenderer.drawRotator(changed, $0, context)
+                    }
+                    let reference = try roundPixels(scale: scale, window: window) {
+                        LegacySkinRenderer.drawRotator(meter, $0, legacy)
+                    }
+                    t.check(kept == before[index], "the old value ignores later measure, processing and layout changes")
+                    t.check(next != before[index], "the new value draws the updated Rotator")
+                    t.check(next == reference, "the updated value preserves the original drawing algorithm")
+                }
+                t.equal(context.rotatorImages.count, 2, "each processing value has its own cached image")
+                return (draw, before)
+            }
+            t.check(releasedSkin == nil && releasedMeter == nil, "the drawing value retains no skin or meter")
+            let context = SkinRenderContext()
+            for (index, format) in formats.enumerated() {
+                let pixels = try roundPixels(scale: format.0, window: format.1) {
+                    SkinRenderer.drawRotator(frozen.draw, $0, context)
+                }
+                t.check(pixels == frozen.pixels[index], "Rotator can be drawn with a fresh cache after its skin is released")
+            }
+        }
+    }
+
+    /// New Desk round caps have their own native path oracle. The legacy default and its frozen comparison above
+    /// remain untouched, including the existing full-circle even-odd rendering branch.
+    private static func roundCapTests(_ t: AppTestRunner) {
+        t.suite("App: round drawing values: Gauge round caps match an independent native centerline") {
+            let color = RGBA(r: 230, g: 70, b: 40, a: 128)
+            for (scale, window) in [(1, false), (1, true), (2, false), (2, true)] {
+                for sweep in [Double.pi / 2, -Double.pi / 2, 0.01] {
+                    let value = RoundlineDraw(shape: .sector(centerX: 48, centerY: 48, innerRadius: 20,
+                        outerRadius: 30, startAngle: 0, sweep: sweep), color: color, antiAlias: true, roundCaps: true)
+                    let actual = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(value, $0) }
+                    let expected = try roundPixels(scale: scale, window: window) { ctx in
+                        ctx.setShouldAntialias(true)
+                        ctx.setStrokeColor(CGColor(srgbRed: 230.0 / 255, green: 70.0 / 255, blue: 40.0 / 255, alpha: 128.0 / 255))
+                        ctx.setLineWidth(10); ctx.setLineCap(.round)
+                        let path = CGMutablePath()
+                        path.addArc(center: CGPoint(x: 48, y: 48), radius: 25, startAngle: 0,
+                                    endAngle: sweep, clockwise: sweep < 0)
+                        ctx.addPath(path); ctx.strokePath()
+                    }
+                    t.equal(actual, expected, "single native stroke at \(scale)x window=\(window), sweep=\(sweep)")
+                    let alpha = stride(from: 3, to: actual.count, by: 4).map { actual[$0] }
+                    t.check(alpha.contains(128), "round-cap body is visible")
+                    t.check(alpha.allSatisfy { $0 <= 128 }, "short-arc caps do not accumulate translucent alpha")
+                    if sweep == Double.pi / 2 {
+                        let capOffset = ((44 * scale) * (96 * scale) + 73 * scale) * 4 + 3
+                        t.check(actual[capOffset] > 100, "the start cap extends before the 3 o'clock endpoint")
+                        let butt = RoundlineDraw(shape: value.shape, color: color, antiAlias: true)
+                        let old = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(butt, $0) }
+                        t.equal(old[capOffset], 0, "legacy sectors still have their original straight end")
+                    }
+                }
+            }
+        }
+
+        t.suite("App: round drawing values: Gauge full circles preserve legacy seams and zero arcs paint nothing") {
+            for (scale, window) in [(1, false), (1, true), (2, false), (2, true)] {
+                for sweep in [2 * Double.pi, -2 * Double.pi] {
+                    let shape = RoundlineMeter.Shape.sector(centerX: 48, centerY: 48, innerRadius: 20,
+                                                     outerRadius: 30, startAngle: 0.3, sweep: sweep)
+                    let ordinary = RoundlineDraw(shape: shape, color: .black, antiAlias: true)
+                    let capped = RoundlineDraw(shape: shape, color: .black, antiAlias: true, roundCaps: true)
+                    let before = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(ordinary, $0) }
+                    let after = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(capped, $0) }
+                    t.equal(after, before, "a full ring keeps the seam-free legacy ellipse fill")
+                }
+                let zero = RoundlineDraw(shape: .sector(centerX: 48, centerY: 48, innerRadius: 20,
+                    outerRadius: 30, startAngle: 0, sweep: 0), color: .black, antiAlias: true, roundCaps: true)
+                let bytes = try roundPixels(scale: scale, window: window) { SkinRenderer.drawRoundline(zero, $0) }
+                t.check(bytes.allSatisfy { $0 == 0 }, "zero sweep does not become a round dot")
+            }
+        }
+    }
+
+    /// Exact RGBA or window-format BGRA bytes at the requested backing scale, excluding row padding.
+    private static func roundPixels(scale: Int, window: Bool, _ draw: (CGContext) -> Void) throws -> Data {
+        let width = 96 * scale, height = 96 * scale
+        let info = window
+            ? CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+            : CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: info), let pixels = ctx.data else {
+            throw CocoaError(.featureUnsupported)
+        }
+        ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+        draw(ctx)
+        var result = Data(capacity: width * height * 4)
+        for row in 0..<height {
+            result.append(pixels.advanced(by: row * ctx.bytesPerRow).assumingMemoryBound(to: UInt8.self),
+                          count: width * 4)
+        }
+        return result
+    }
+    #endif
 
     /// Updates and draws `skin` `count` times, as the app does once per update, into one bitmap; returns how many text
     /// layouts the skin had built after each cycle.

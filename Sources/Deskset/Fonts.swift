@@ -1,6 +1,22 @@
 import AppKit
 import CoreText
+import CryptoKit
 import DesksetCore
+import DesksetDraw
+
+/// The drawing module's font service, backed by the app's existing registration and resolution.
+struct AppFontResolver: FontResolving {
+    var generation: Int { Fonts.generation }
+    func registerFolder(_ folder: String) { Fonts.registerFolder(folder) }
+    func resolve(_ request: FontRequest) -> ResolvedFont { Fonts.resolve(request) }
+}
+
+extension TextLayoutCache {
+    /// Existing app callers use the same font service as a skin's render context.
+    convenience init() {
+        self.init(fonts: AppFontResolver())
+    }
+}
 
 /// Fonts: Rainmeter sizes are points at 96 DPI; Windows font names are mapped to Mac equivalents.
 ///
@@ -33,46 +49,10 @@ enum Fonts {
     /// Rainmeter FontSize → macOS point size.
     static let sizeScale = 96.0 / 72.0
 
-    /// A font request. `size` is in skin points (pixels), i.e. already multiplied by `sizeScale`.
-    struct Request: Hashable {
-        var face: String
-        var size: CGFloat
-        /// Explicit `FontWeight` / inline `Weight`.
-        var weight: Int?
-        /// `StringStyle=Bold` (700 unless an explicit weight is given).
-        var bold = false
-        var italic = false
-        var oblique = false
-        /// Inline `Stretch` 1…9 (5 = normal).
-        var stretch: Int?
-        /// Inline `Typography` features (OpenType tag, value).
-        var features: [Feature] = []
-    }
-
-    struct Feature: Hashable {
-        var tag: String
-        var value: Int
-    }
-
-    struct Resolved {
-        let font: CTFont
-        /// Draw with an additional stroke to simulate bold (the family has no heavy enough member).
-        let syntheticBold: Bool
-        /// Characters to replace before shaping (Marlett, which has no Mac equivalent).
-        let characterMap: [UInt16: UInt16]?
-        /// Horizontal shear for simulated italic / oblique (0 = upright). Applied by the renderer through the text
-        /// matrix, because CTRunDraw ignores a font's own matrix.
-        let slant: CGFloat
-        /// Line metrics (pixels) of the Windows font this one stands in for, so that line heights — and every
-        /// layout stacked with `Y=0R` — match the original skin. Nil when the font is used as is.
-        let lineMetrics: LineMetrics?
-    }
-
-    struct LineMetrics: Hashable {
-        var ascent: CGFloat
-        var descent: CGFloat
-        var leading: CGFloat
-    }
+    typealias Request = FontRequest
+    typealias Feature = FontFeature
+    typealias Resolved = ResolvedFont
+    typealias LineMetrics = FontLineMetrics
 
     /// Shear of simulated italic / oblique text (about 11°).
     static let simulatedSlant: CGFloat = 0.2
@@ -146,6 +126,110 @@ enum Fonts {
     static let missingFolderRecheck: TimeInterval = 5
     /// Font file extensions loaded from `@Resources/Fonts` (TrueType, OpenType and their collections).
     static let fontFileExtensions: Set<String> = ["ttf", "otf", "ttc", "otc"]
+
+    /// Package registrations are content-addressed, separately owned from legacy folder registrations.
+    /// All state, including lease release, is confined to the fonts queue.
+    private struct PackageRegistration {
+        let copy: URL
+        let stamp: ImageStamp
+        var owners: Int
+    }
+    private static var packageRegistrations: [String: PackageRegistration] = [:]
+
+    final class PackageLease: @unchecked Sendable {
+        private let keys: [String]
+        let invalidPaths: [String]
+        let failedPaths: [String]
+        private var released = false
+
+        fileprivate init(keys: [String], invalidPaths: [String], failedPaths: [String]) {
+            self.keys = keys; self.invalidPaths = invalidPaths; self.failedPaths = failedPaths
+        }
+
+        var isActive: Bool {
+            Fonts.onQueue {
+                !released && keys.allSatisfy { key in
+                    guard let entry = Fonts.packageRegistrations[key] else { return false }
+                    return Images.imageStamp(atPath: entry.copy.path) == entry.stamp
+                }
+            }
+        }
+
+        func release() {
+            Fonts.onQueue {
+                guard !released else { return }
+                released = true
+                var changed = false
+                for key in keys {
+                    guard var entry = Fonts.packageRegistrations[key] else { continue }
+                    entry.owners -= 1
+                    if entry.owners > 0 {
+                        Fonts.packageRegistrations[key] = entry
+                    } else {
+                        Fonts.changingFonts {
+                            _ = CTFontManagerUnregisterFontsForURL(entry.copy as CFURL, .process, nil)
+                        }
+                        try? FileManager.default.removeItem(at: entry.copy)
+                        Fonts.packageRegistrations[key] = nil
+                        changed = true
+                    }
+                }
+                if changed { Fonts.invalidate() }
+            }
+        }
+
+        deinit { release() }
+    }
+
+    /// Only captured bytes are used. A valid font that Core Text refuses is not treated as registered
+    /// (in particular, a duplicate name is not ownership of another package's or an installed font).
+    static func acquirePackageFonts(_ files: [(path: String, bytes: Data)]) -> PackageLease {
+        onQueue {
+            var keys: [String] = [], invalid: [String] = [], failed: [String] = []
+            var seen = Set<String>(), changed = false
+            for file in files {
+                guard DeskFontFileInspector().families(inFontData: file.bytes, fileName: file.path) != nil,
+                      let descriptors = CTFontManagerCreateFontDescriptorsFromData(file.bytes as CFData) as? [CTFontDescriptor] else {
+                    invalid.append(file.path); continue
+                }
+                let key = SHA256.hash(data: file.bytes).map { String(format: "%02x", $0) }.joined()
+                guard seen.insert(key).inserted else { continue }
+                if var entry = packageRegistrations[key] {
+                    entry.owners += 1
+                    packageRegistrations[key] = entry
+                    keys.append(key)
+                    continue
+                }
+                // Distinct styles may share a family, but name matching cannot select different bytes
+                // with the same PostScript name. Never borrow another owner's registration on a collision.
+                let names = descriptors.compactMap { CTFontDescriptorCopyAttribute($0, kCTFontNameAttribute) as? String }
+                let available = Set(CTFontManagerCopyAvailablePostScriptNames() as? [String] ?? [])
+                guard names.count == descriptors.count, names.allSatisfy({ !available.contains($0) }),
+                      let folder = copiesFolder else { failed.append(file.path); continue }
+                copyCounter += 1
+                let copy = folder.appendingPathComponent("package-\(copyCounter)." + (file.path as NSString).pathExtension)
+                do { try file.bytes.write(to: copy, options: .withoutOverwriting) }
+                catch { failed.append(file.path); continue }
+                guard let stamp = Images.imageStamp(atPath: copy.path) else {
+                    try? FileManager.default.removeItem(at: copy)
+                    failed.append(file.path); continue
+                }
+                var error: Unmanaged<CFError>?
+                let accepted = changingFonts { CTFontManagerRegisterFontsForURL(copy as CFURL, .process, &error) }
+                if let error { _ = error.takeRetainedValue() }
+                guard accepted else {
+                    try? FileManager.default.removeItem(at: copy)
+                    failed.append(file.path)
+                    continue
+                }
+                packageRegistrations[key] = PackageRegistration(copy: copy, stamp: stamp, owners: 1)
+                keys.append(key)
+                changed = true
+            }
+            if changed { invalidate() }
+            return PackageLease(keys: keys, invalidPaths: invalid, failedPaths: failed)
+        }
+    }
 
     // MARK: Registration
 
@@ -474,8 +558,7 @@ enum Fonts {
     }
 
     static func request(for style: TextStyle) -> Request {
-        Request(face: style.fontFace, size: CGFloat(max(TextStyle.pixelSize(points: style.fontSize), 0.01)),
-                weight: style.fontWeight, bold: style.bold, italic: style.italic)
+        Request(style: style)
     }
 
     /// The font for `request`, cached until the fonts change. Any thread.

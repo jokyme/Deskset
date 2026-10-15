@@ -27,7 +27,7 @@ enum AudioPlugins {
     /// brings up a permission prompt or the recording indicator — unless every stream is the demo signal (`demo`),
     /// which records nothing and lets renders animate.
     static func mayCapture(for skin: Skin, demo: Bool = AudioCaptureEngine.demoSignal) -> Bool {
-        demo || skin.host is LiveSkinHost
+        demo || skin.serviceHost is LiveSkinHost
     }
 }
 

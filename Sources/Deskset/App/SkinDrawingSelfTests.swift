@@ -12,6 +12,7 @@ enum SkinDrawingSelfTests {
         threadFrameTests(t)
         windowFrameTests(t)
         releaseTests(t)
+        bitmapDeliveryTests(t)
         memoryTests(t)
         systemWidgetTests(t)
         repositorySkinTests(t)
@@ -1142,6 +1143,340 @@ enum SkinDrawingSelfTests {
             t.equal(frames.framesDrawn, drawn + 2, "and no second one when the window is ordered in")
             checkShown(t, w.content, host: w.view.layer, runtime.skin, scale: 2, space: sRGB, "shown again")
             runtime.send(.close(fadeOut: false, ticket: nil))
+        }
+    }
+
+    /// These use the independent value capture, not a synthetic live Skin. Main delivery is held explicitly and
+    /// its owner ACK is stepped through a real FIFO executor, without sleeps or a second owner thread.
+    private final class BitmapDeliveryFixture {
+        let view = NSView()
+        lazy var content = LayerContentProvider(in: view)
+        let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let context = SkinRenderContext()
+        var requests: [SkinBitmapRequest] = []
+        var presented: [UInt64] = []
+        var capturesAvailable = true
+        var failures = 0
+        var scene = WidgetScene(generation: 7, size: SkinSize(width: 8, height: 6),
+            background: [.fill(SkinRect(width: 8, height: 6), Paint(color: RGBA(r: 255, g: 0, b: 0)))],
+            backgroundImageDependencies: [], glass: [], elements: [], hitMap: SkinHitMap(),
+            environment: EnvironmentStamp(scale: 2, fontGeneration: 0,
+                appearance: AppearanceStamp(value: .light, name: NSAppearance.Name.aqua.rawValue), imageGeneration: 0))
+        var facts = SkinWindowFacts(frame: CGRect(x: 0, y: 0, width: 8, height: 6), isVisible: true,
+            isOrderedIn: true, scale: 2, colorSpace: SkinFrameProducer.sRGB, takesPointer: true, sequence: 0,
+            panelGeneration: 1)
+        lazy var frames = SkinFrameProducer(provider: content, bitmapCapture: { [weak self] _, _ in
+            guard let self, capturesAvailable else { return nil }
+            return SkinBitmapDrawing.Capture(scene: scene, context: context, cycle: Int(scene.generation),
+                size: CGSize(width: 8, height: 6), source: "Bitmap delivery test")
+        })
+
+        init(optIn: Bool = true, ordered: Bool = true) {
+            facts.isOrderedIn = ordered; facts.isVisible = ordered
+            if optIn { frames.requestBitmapDelivery = { [weak self] in self?.requests.append($0) } }
+            frames.bitmapResult = { [weak self] result in
+                switch result {
+                case .presented(let capture): self?.presented.append(capture.scene.generation)
+                case .failed: self?.failures += 1
+                }
+            }
+            frames.start(on: executor)
+            executor.runUntilIdle()
+            frames.take(facts)
+        }
+
+        func draw() { frames.setNeedsFrame(); frames.runLoopTurn(.beforeWaiting) }
+
+        func present(_ delivery: SkinBitmapDelivery) -> Bool {
+            guard case .bitmap(let frame) = delivery.content else { return false }
+            guard delivery.claimOnMain() else { return false }
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            let accepted = content.presentAccepted(frame)
+            CATransaction.commit()
+            _ = delivery.finishOnMain(accepted: accepted)
+            executor.async { [frames] in frames.finishBitmapDelivery(delivery) }
+            return accepted
+        }
+
+        func clear(_ invalidation: SkinBitmapInvalidation) -> Bool {
+            guard invalidation.claimOnMain() else { return false }
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            let accepted = content.releaseContentsAccepted()
+            CATransaction.commit()
+            _ = invalidation.finishOnMain(accepted: accepted)
+            executor.async { [frames] in frames.finishBitmapInvalidation(invalidation) }
+            return accepted
+        }
+
+        func close() { frames.stop(); content.teardown() }
+    }
+
+    private static func bitmapDeliveryTests(_ t: AppTestRunner) {
+        t.suite("App: bitmap delivery: held Main publication keeps one capture and ACK presents before latest redraw") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let first)? = f.requests.first else { return t.check(false, "one immutable request") }
+            t.check(f.content.shown.image == nil, "owner drawing never publishes before Main")
+            t.equal(f.frames.framesDrawn, 0); t.equal(f.presented, [])
+            t.equal(first.scene.generation, 7); t.equal(first.content.scale, 2)
+            t.equal(first.panelGeneration, 1); t.check(CFEqual(first.space, SkinFrameProducer.sRGB))
+            f.scene.generation = 8; f.draw()
+            f.scene.generation = 9; f.draw()
+            t.equal(f.requests.count, 1, "logic may advance while the one capture stays immutable")
+            t.equal(first.scene.generation, 7); t.check(f.frames.needsFrame)
+            t.check(f.present(first), "Main accepts its claimed frame in one transaction")
+            t.equal(f.frames.framesDrawn, 0, "presentation accounting waits for the owner FIFO ACK")
+            f.executor.runUntilIdle()
+            t.equal(f.frames.framesDrawn, 1); t.equal(f.presented, [7])
+            guard case .frame(let latest)? = f.requests.last else { return t.check(false, "latest draw queued") }
+            t.equal(f.requests.count, 2); t.equal(latest.scene.generation, 9)
+            t.check(latest.serial > first.serial)
+            t.check(!first.claimOnMain() && !first.finishOnMain(accepted: true), "duplicate Main completion is inert")
+            f.frames.finishBitmapDelivery(first)
+            t.equal(f.frames.framesDrawn, 1)
+            t.check(f.present(latest)); f.executor.runUntilIdle()
+            t.equal(f.presented, [7, 9]); t.equal(f.frames.framesDrawn, 2)
+            t.check(!f.frames.hasBitmapDelivery)
+        }
+        t.suite("App: bitmap delivery: cancelled frame and old clear cannot erase same-generation recovery") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let cancelled)? = f.requests.last else { return t.check(false, "frame") }
+            f.frames.clearBitmapContents()
+            guard case .clear(let oldClear)? = f.requests.last else { return t.check(false, "ordered clear") }
+            t.equal(cancelled.state, .cancelled)
+            t.check(!cancelled.claimOnMain() && !cancelled.finishOnMain(accepted: true))
+            f.frames.finishBitmapDelivery(cancelled)
+            t.equal(f.presented, []); t.equal(f.frames.framesDrawn, 0)
+            f.draw()
+            guard case .frame(let recovered)? = f.requests.last else { return t.check(false, "recovery frame") }
+            t.equal(recovered.scene.generation, cancelled.scene.generation)
+            t.check(recovered.serial > oldClear.serial && recovered.lifecycle > cancelled.lifecycle)
+            t.equal(oldClear.state, .cancelled)
+            t.check(f.present(recovered)); f.executor.runUntilIdle()
+            let held = f.content.shown.image
+            t.check(held != nil)
+            t.check(!f.clear(oldClear), "an old unclaimed clear cannot touch the newer picture")
+            f.frames.finishBitmapInvalidation(oldClear)
+            t.check(f.content.shown.image === held)
+            t.equal(f.presented, [7]); t.equal(f.frames.framesDrawn, 1)
+            f.frames.clearBitmapContents()
+            guard case .clear(let clear)? = f.requests.last else { return t.check(false, "new clear") }
+            t.check(f.content.shown.image === held, "owner clear also waits for Main")
+            t.check(f.clear(clear)); f.executor.runUntilIdle()
+            t.check(f.content.shown.image == nil)
+            f.frames.drawFirstFrame()
+            guard case .frame(let same)? = f.requests.last else { return t.check(false, "same scene can repaint") }
+            t.equal(same.scene.generation, 7); t.check(same.serial > clear.serial)
+            t.check(f.present(same)); f.executor.runUntilIdle()
+            t.equal(f.presented, [7, 7]); t.equal(f.frames.framesDrawn, 2)
+        }
+        t.suite("App: bitmap delivery: claimed cancellation retains capture until late ACK then clears in Main order") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let claimed)? = f.requests.last else { return t.check(false, "frame") }
+            t.check(claimed.claimOnMain())
+            f.frames.clearBitmapContents()
+            guard case .clear(let clear)? = f.requests.last else { return t.check(false, "ordered clear") }
+            t.equal(claimed.state, .applying); t.check(!claimed.cancel())
+            t.check(f.frames.hasBitmapDelivery)
+            f.draw(); t.equal(f.requests.count, 2, "claimed capture cannot be replaced before its ACK")
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            if case .bitmap(let frame) = claimed.content { t.check(f.content.presentAccepted(frame)) }
+            else { t.check(false, "the bitmap-only fixture must retain its bitmap payload") }
+            CATransaction.commit()
+            t.check(claimed.finishOnMain(accepted: true))
+            f.executor.async { f.frames.finishBitmapDelivery(claimed) }
+            t.check(f.clear(clear)); t.check(f.content.shown.image == nil)
+            f.executor.runUntilIdle()
+            t.equal(f.frames.framesDrawn, 0); t.equal(f.presented, [], "invalidated late ACK does not advance presented")
+            guard case .frame(let next)? = f.requests.last else { return t.check(false, "latest dirty scene resumes") }
+            t.check(next.serial > clear.serial)
+            t.check(f.present(next)); f.executor.runUntilIdle()
+            t.equal(f.presented, [7]); t.equal(f.frames.framesDrawn, 1)
+            f.draw()
+            guard case .frame(let closing)? = f.requests.last else { return t.check(false, "closing frame") }
+            t.check(closing.claimOnMain()); f.frames.stop(); f.frames.clearBitmapContents()
+            t.check(closing.finishOnMain(accepted: true))
+            f.frames.finishBitmapDelivery(closing)
+            t.equal(f.frames.framesDrawn, 1); t.equal(f.presented, [7])
+        }
+        t.suite("App: bitmap delivery: destination rejection and teardown leave legacy direct presentation intact") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let stale)? = f.requests.last else { return t.check(false, "frame") }
+            f.facts.panelGeneration += 1
+            f.frames.take(f.facts)
+            t.equal(stale.state, .cancelled); t.check(!stale.claimOnMain())
+            f.frames.finishBitmapDelivery(stale); f.frames.runLoopTurn(.beforeWaiting)
+            guard case .frame(let next)? = f.requests.last else { return t.check(false, "new destination") }
+            t.equal(next.panelGeneration, f.facts.panelGeneration)
+            t.check(next.lifecycle > stale.lifecycle)
+            t.check(next.finishOnMain(accepted: false), "Main may reject before touching its provider")
+            t.check(!next.finishOnMain(accepted: true))
+            f.frames.finishBitmapDelivery(next)
+            t.equal(f.frames.framesDrawn, 0); t.check(f.content.shown.image == nil)
+            f.executor.runUntilIdle()
+            guard case .frame(let retired)? = f.requests.last else { return t.check(false, "retry") }
+            f.content.teardown()
+            t.check(!f.present(retired), "provider rejection is an observable receipt")
+            t.equal(f.content.state.presented, 0)
+            let direct = BitmapDeliveryFixture(optIn: false)
+            defer { direct.close() }
+            direct.draw()
+            t.check(direct.content.shown.image != nil)
+            t.equal(direct.frames.framesDrawn, 1); t.equal(direct.presented, [7])
+            t.equal(direct.requests.count, 0)
+            direct.frames.clearBitmapContents()
+            t.check(direct.content.shown.image == nil, "legacy clear remains synchronous")
+        }
+        t.suite("App: bitmap delivery: failed drawing and unseen release queue clears without owner pixel writes") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let first)? = f.requests.last else { return t.check(false, "frame") }
+            t.check(f.present(first)); f.executor.runUntilIdle()
+            let held = f.content.shown.image
+            f.capturesAvailable = false; f.draw()
+            guard case .clear(let failed)? = f.requests.last else { return t.check(false, "failure queues an ordered clear") }
+            t.equal(f.failures, 1); t.equal(f.presented, [7]); t.equal(f.frames.framesDrawn, 1)
+            t.check(f.content.shown.image === held, "failure cannot clear the provider from its owner")
+            t.check(f.clear(failed)); f.executor.runUntilIdle()
+            t.check(f.content.shown.image == nil)
+            f.capturesAvailable = true; f.frames.drawFirstFrame()
+            guard case .frame(let same)? = f.requests.last else { return t.check(false, "same-generation recovery") }
+            t.check(f.present(same)); f.executor.runUntilIdle()
+            let recovered = f.content.shown.image
+            f.facts.isOrderedIn = false; f.facts.isVisible = false
+            f.frames.take(f.facts); f.frames.runLoopTurn(.beforeWaiting); f.frames.releaseUnseen()
+            guard case .clear(let unseen)? = f.requests.last else { return t.check(false, "unseen queues the same Main channel") }
+            t.check(f.content.shown.image === recovered)
+            t.equal(f.frames.releases.contents, 1)
+            t.check(f.clear(unseen)); f.executor.runUntilIdle()
+            t.check(f.content.shown.image == nil)
+            t.equal(f.presented, [7, 7]); t.equal(f.frames.framesDrawn, 2)
+        }
+        t.suite("App: bitmap delivery: unshown first-frame debt survives rejected and claimed stale ACKs") {
+            for claimed in [false, true] {
+                let f = BitmapDeliveryFixture(ordered: false)
+                defer { f.close() }
+                f.frames.setNeedsFrame(); f.frames.drawFirstFrame()
+                guard case .frame(let first)? = f.requests.last else { return t.check(false, "first frame before ordering in") }
+                if claimed { t.check(first.claimOnMain()) }
+                else { t.check(first.finishOnMain(accepted: false)) }
+                f.facts.panelGeneration += 1
+                f.frames.take(f.facts); f.frames.drawFirstFrame()
+                t.equal(f.requests.count, 1, "the finished/claimed capture stays held until its FIFO ACK")
+                t.check(f.frames.hasBitmapDelivery && f.frames.needsFrame)
+                t.check(!f.frames.canBeSeen)
+                if claimed {
+                    CATransaction.begin(); CATransaction.setDisableActions(true)
+                    if case .bitmap(let frame) = first.content { t.check(f.content.presentAccepted(frame)) }
+                    else { t.check(false, "the bitmap-only fixture must retain its bitmap payload") }
+                    CATransaction.commit()
+                    t.check(first.finishOnMain(accepted: true))
+                }
+                f.executor.async { f.frames.finishBitmapDelivery(first) }
+                f.executor.runUntilIdle()
+                t.equal(f.frames.framesDrawn, 0); t.equal(f.presented, [])
+                guard case .frame(let retry)? = f.requests.last else { return t.check(false, "first frame debt resumes without visibility") }
+                t.equal(f.requests.count, 2); t.equal(retry.panelGeneration, f.facts.panelGeneration)
+                t.equal(retry.scene.generation, first.scene.generation)
+                t.check(retry.serial > first.serial && retry.lifecycle > first.lifecycle)
+                t.check(!f.frames.canBeSeen, "no fake order-in is required")
+                t.check(f.present(retry)); f.executor.runUntilIdle()
+                t.equal(f.frames.framesDrawn, 1); t.equal(f.presented, [7])
+            }
+        }
+        t.suite("App: bitmap delivery: unseen release preserves a held clear and destination change replaces its responsibility") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let first)? = f.requests.last else { return t.check(false, "first frame") }
+            t.check(f.present(first)); f.executor.runUntilIdle()
+            f.frames.clearBitmapContents()
+            guard case .clear(let heldClear)? = f.requests.last else { return t.check(false, "held clear") }
+            f.facts.isOrderedIn = false; f.facts.isVisible = false
+            f.frames.take(f.facts); f.frames.runLoopTurn(.beforeWaiting); f.frames.releaseUnseen()
+            t.equal(heldClear.state, .pending, "unseen release cannot cancel the already owed Main clear")
+            t.check(f.content.shown.image != nil)
+            f.facts.panelGeneration += 1; f.frames.take(f.facts)
+            guard case .clear(let replacement)? = f.requests.last else { return t.check(false, "current destination clear") }
+            t.equal(heldClear.state, .cancelled)
+            t.equal(replacement.panelGeneration, f.facts.panelGeneration)
+            t.check(replacement.serial > heldClear.serial)
+            t.check(f.clear(replacement)); f.executor.runUntilIdle()
+            t.check(f.content.shown.image == nil)
+            t.equal(f.frames.framesDrawn, 1); t.equal(f.presented, [7])
+        }
+        t.suite("App: bitmap delivery: rejected clear keeps responsibility in either facts ACK order without spinning") {
+            for factsFirst in [false, true] {
+                let f = BitmapDeliveryFixture()
+                defer { f.close() }
+                f.draw()
+                guard case .frame(let first)? = f.requests.last else { return t.check(false, "first frame") }
+                t.check(f.present(first)); f.executor.runUntilIdle()
+                f.frames.clearBitmapContents()
+                guard case .clear(let rejected)? = f.requests.last else { return t.check(false, "clear") }
+                t.check(rejected.finishOnMain(accepted: false))
+                f.facts.panelGeneration += 1
+                if factsFirst {
+                    f.executor.async { f.frames.take(f.facts) }
+                    f.executor.async { f.frames.finishBitmapInvalidation(rejected) }
+                } else {
+                    f.executor.async { f.frames.finishBitmapInvalidation(rejected) }
+                    f.executor.runUntilIdle()
+                    t.equal(f.requests.count, 2, "false ACK alone never schedules a retry loop")
+                    t.check(f.content.shown.image != nil)
+                    f.executor.async { f.frames.take(f.facts) }
+                }
+                f.executor.runUntilIdle()
+                guard case .clear(let current)? = f.requests.last else { return t.check(false, "clear responsibility follows current facts") }
+                t.equal(f.requests.count, 3)
+                t.equal(current.panelGeneration, f.facts.panelGeneration)
+                t.check(current.serial > rejected.serial)
+                t.check(f.clear(current)); f.executor.runUntilIdle()
+                t.check(f.content.shown.image == nil)
+                t.equal(f.presented, [7]); t.equal(f.frames.framesDrawn, 1)
+            }
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.frames.clearBitmapContents()
+            guard case .clear(let rejected)? = f.requests.last else { return t.check(false, "clear without a picture") }
+            t.check(rejected.finishOnMain(accepted: false))
+            f.frames.finishBitmapInvalidation(rejected); f.executor.runUntilIdle()
+            t.equal(f.requests.count, 1)
+            f.facts.sequence += 1; f.frames.take(f.facts)
+            guard case .clear(let retry)? = f.requests.last else { return t.check(false, "new facts permit one retry") }
+            t.equal(f.requests.count, 2); t.check(retry.serial > rejected.serial)
+        }
+        t.suite("App: bitmap delivery: covered-only cancellation preserves latest dirty scene for uncovering") {
+            let f = BitmapDeliveryFixture()
+            defer { f.close() }
+            f.draw()
+            guard case .frame(let first)? = f.requests.last else { return t.check(false, "first frame") }
+            t.check(f.present(first)); f.executor.runUntilIdle()
+            let shown = f.content.shown.image
+            f.scene.generation = 8; f.draw()
+            guard case .frame(let pending)? = f.requests.last else { return t.check(false, "new held picture") }
+            t.check(!f.frames.needsFrame)
+            f.facts.isVisible = false
+            f.frames.take(f.facts); f.frames.runLoopTurn(.beforeWaiting); f.frames.releaseUnseen()
+            t.equal(pending.state, .cancelled)
+            t.check(f.frames.needsFrame, "discarded unpublished pixels retain their dirty scene debt")
+            t.equal(f.requests.count, 2, "a covered window keeps its old accepted provider contents")
+            t.check(f.content.shown.image === shown)
+            t.equal(f.frames.releases.contents, 0)
+            f.facts.isVisible = true; f.frames.take(f.facts); f.frames.runLoopTurn(.beforeWaiting)
+            guard case .frame(let latest)? = f.requests.last else { return t.check(false, "uncovered picture") }
+            t.equal(f.requests.count, 3); t.equal(latest.scene.generation, 8)
+            t.check(latest.serial > pending.serial)
+            t.check(f.present(latest)); f.executor.runUntilIdle()
+            t.equal(f.frames.framesDrawn, 2); t.equal(f.presented, [7, 8])
         }
     }
 

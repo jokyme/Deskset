@@ -381,7 +381,7 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         if isDesktop {
             // The window's place and the appearance come from the skin's environment (the host's, fresh: a check after
             // a move runs between updates).
-            let env = skin.host?.environment(for: skin)
+            let env = serviceHost?.environment(for: skin)
             request.dark = env?.appearance.isDark ?? false
             if samplesUnderSkin, let env {
                 let w = env.windowFrame
@@ -513,13 +513,13 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
         // The widget on the desktop, on whatever executor it runs: the settled moves come back as a message.
-        if let channel = skin.host as? SkinCompanionChannel {
+        if let channel = serviceHost as? SkinCompanionChannel {
             self.channel = channel
             followID = channel.followWindowMoves { [weak self] in self?.windowSettled() }
             return
         }
         // The Studio's instance runs on the main thread, with the desktop copy's window controller (never its skin).
-        guard let studio = skin.host as? StudioHost else { return }
+        guard let studio = serviceHost as? StudioHost else { return }
         // The window's moves come back like a service's news, and lead to a new sample of the desktop picture (a skin
         // window only: never in a render, so never in virtual time).
         let hop = skin.backgroundHop(.desktopImage)

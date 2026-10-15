@@ -206,7 +206,7 @@ final class FrostedGlassMeasure: MediaUIMeasure {
     private func apply() {
         if !channelTaken {
             channelTaken = true
-            channel = skin.host as? SkinCompanionChannel
+            channel = serviceHost as? SkinCompanionChannel
         }
         guard let channel, style != sentStyle else { return }
         sentStyle = style

@@ -19,13 +19,15 @@ import Foundation
 // - When the time-axis size changes (W/H via !SetOption, a new image), the newest samples are kept.
 
 /// Fixed-size ring buffer of graph samples.
-public struct GraphHistory {
+public struct GraphHistory: Sendable {
     /// Upper bound for the history length (a W of 1e9 must not allocate gigabytes).
     public static let maxCapacity = 8192
 
     public private(set) var capacity: Int
     /// Number of samples recorded so far (≤ capacity).
     public private(set) var count = 0
+    /// Changes whenever the stored samples or their capacity change, including direct meter updates.
+    private(set) var revision = 0
     private var storage: [Double]
     /// Next write position.
     private var head = 0
@@ -49,6 +51,7 @@ public struct GraphHistory {
     /// Adds the newest sample (non-finite values are stored as 0). No-op when the capacity is 0.
     public mutating func append(_ value: Double) {
         guard capacity > 0 else { return }
+        revision &+= 1
         storage[head] = value.isFinite ? value : 0
         head = (head + 1) % capacity
         count = min(count + 1, capacity)
@@ -66,6 +69,7 @@ public struct GraphHistory {
     public mutating func resize(to newCapacity: Int) {
         let c = GraphHistory.clampedCapacity(newCapacity)
         guard c != capacity else { return }
+        revision &+= 1
         let keep = min(count, c)
         var fresh = Array(repeating: 0.0, count: c)
         for j in 0..<keep { fresh[j] = value(age: keep - 1 - j) }  // oldest kept sample first
@@ -76,6 +80,7 @@ public struct GraphHistory {
     }
 
     public mutating func removeAll() {
+        revision &+= 1
         for i in storage.indices { storage[i] = 0 }
         count = 0
         head = 0

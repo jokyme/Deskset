@@ -25,6 +25,170 @@ func deskIDs(of snippet: String, context: CheckContext = CheckContext()) -> [Str
 }
 
 func runDeskCheckerTests(_ t: TestRunner) {
+    func ownLengthArgument(_ checked: CheckedFile, _ facts: ElementFacts?, facet: FacetID,
+                           modifier: String, source: String, value: Double) {
+        guard let candidate = facts?.facets[facet]?.first,
+              let node = checked.tree.resolve(candidate.value), let literal = NumberLiteralSyntax(node),
+              case .own(let origin) = candidate.origin,
+              let originNode = checked.tree.resolve(origin), let call = ModifierAppSyntax(originNode) else {
+            t.check(false, "\(facet): a written Length argument remains referable in its checked tree")
+            return
+        }
+        t.check(candidate.fixedValue == nil, "\(facet): own arguments retain their source reference")
+        t.equal(call.name.token.text, modifier)
+        t.check(call.arguments?.arguments.contains { checked.tree.id(of: $0.value.node) == candidate.value } == true,
+                "\(facet): the candidate points to the original modifier argument")
+        t.equal(node.node.trimmedText, source, "\(facet): written argument")
+        t.equal(literal.value, value)
+        t.equal(checked.canonicalNumericValues[candidate.value], value, "\(facet): checked Length value")
+    }
+
+    t.suite("Desk: checker: Progress plain literal fractions warn with the existing percent fix") {
+        let source = "info { name: \"T\" }\nwidget { Progress(60) }"
+        let checked = deskCheck(source)
+        t.equal(checked.diagnostics.map(\.id.rawValue), ["DK4013"], deskDescribe(checked))
+        guard let diagnostic = checked.diagnostics.first else { t.check(false); return }
+        t.equal(diagnostic.severity, .warning)
+        t.equal(diagnostic.fixIts.first.map { TextEdit.apply($0.edits, to: source) },
+                "info { name: \"T\" }\nwidget { Progress(60%) }")
+        t.check(diagnostic.message(in: .english).contains("60"))
+        t.check(diagnostic.message(in: .simplifiedChinese).contains("60"))
+        for body in ["Progress(0.6)", "Progress(1)", "Progress(60%)", "Progress(60, total: 100)",
+                     "Progress((60))", "Progress(30 + 30)", "Gauge(60)",
+                     "variable value = 60; Progress(value)", "computed value = 60; Progress(value)"] {
+            let value = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(value.diagnostics(.error).isEmpty, "\(body): \(deskDescribe(value))")
+            t.check(!value.diagnostics.contains { $0.id == .fractionOver1 }, body)
+        }
+    }
+
+    t.suite("Desk: checker: Progress total follows the checked value dimension and byte base") {
+        let cases: [(String, String, Int, Double)] = [
+            ("Progress(memory.used, total: 8GB)", "8GB", 1024, 8_589_934_592),
+            ("Gauge(memory.used, total: 8GB)", "8GB", 1024, 8_589_934_592),
+            ("Progress(memory.used, total: 4GB + 4GB)", "4GB", 1024, 4_294_967_296),
+            ("computed full = 8GB; Progress(memory.used, total: full)", "8GB", 1024, 8_589_934_592),
+            ("variable full = 8GB; computed alias = full; Progress(memory.used, total: alias)", "8GB", 1024, 8_589_934_592),
+            ("Progress(disk.used, total: 8GB)", "8GB", 1000, 8_000_000_000),
+            ("Progress(disk.used, total: 8GiB)", "8GiB", 1024, 8_589_934_592),
+            ("Progress(2GB, total: 8GB)", "8GB", 1000, 8_000_000_000),
+        ]
+        for (body, text, base, canonical) in cases {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let nodes = DeskNodeTable(tree: checked.tree).entries.map(\.positioned).filter {
+                $0.kind == .numberLiteral && $0.node.trimmedText == text
+            }
+            t.check(!nodes.isEmpty, body)
+            for node in nodes {
+                let id = checked.tree.id(of: node)
+                t.equal(checked.types[id]?.type, .bytes, body)
+                t.equal(checked.types[id]?.displayBase, base, body)
+                t.equal(checked.canonicalNumericValues[id], canonical, body)
+                t.check(checked.numericCoercions[id] == nil, body)
+            }
+            for declaration in checked.declarationTypes.values {
+                t.equal(declaration.type, .bytes, body); t.equal(declaration.displayBase, base, body)
+            }
+        }
+        for body in ["Progress(cpu.usage, total: 100)", "Progress(cpu.usage, total: 100%)",
+                     "variable full = 100; Progress(battery.level, total: full)"] {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let numbers = DeskNodeTable(tree: checked.tree).entries.map(\.positioned).filter { $0.kind == .numberLiteral }
+            t.equal(numbers.count, 1)
+            for node in numbers {
+                let id = checked.tree.id(of: node)
+                t.equal(checked.types[id]?.type, .percent, body)
+                t.equal(checked.canonicalNumericValues[id], 100, body)
+                t.check(checked.numericCoercions[id] == nil, "same dimension is not percent-as-fraction: \(body)")
+            }
+        }
+        for body in ["Progress(1s, total: 2GB)", "Gauge(1s, total: 2GB)"] {
+            let checked = deskCheck("info { name: \"T\" }; widget { \(body) }")
+            t.equal(checked.diagnostics(.error).map(\.id), [.unitMismatch], deskDescribe(checked))
+        }
+        t.equal(deskIDs(of: "widget { Progress(1s, total: 20) }"), ["DK4011"])
+    }
+
+    t.suite("Desk: checker: root facts: single roots publish the final flag independently of inheritance") {
+        let cases: [(String, String)] = [
+            ("Rectangle().rounded(8)", "Rectangle"),
+            ("Circle()", "Circle"),
+            ("Image(\"picture.png\")", "Image"),
+            ("Text(\"A\")", "Text"),
+            ("Column { Rectangle().rounded(8) }", "Column"),
+            ("Row { Text(\"A\") }", "Row"),
+            ("Freeform { Rectangle().position(x: -2) }", "Freeform"),
+        ]
+        for preset in ["small", "fit"] {
+            for (source, component) in cases {
+                let checked = deskCheck("info { name: \"T\", size: .\(preset) }\nwidget { \(source) }")
+                t.equal(checked.diagnostics.map(\.id.rawValue), [], "\(component), \(preset): \(deskDescribe(checked))")
+                guard let root = checked.root, let facts = checked.elements[root] else {
+                    t.check(false, "\(component), \(preset): the explicit root has published facts")
+                    continue
+                }
+                t.equal(facts.component, component)
+                t.check(facts.isRoot, "\(component), \(preset): the published root flag is current")
+                t.check(facts.parent == nil, "\(component), \(preset): the root has no parent")
+                t.equal(checked.elements.filter { $0.value.isRoot }.map(\.key), [root])
+                t.check(checked.elements.filter { $0.key != root }.allSatisfy {
+                    !$0.value.isRoot && $0.value.parent == root
+                }, "\(component), \(preset): children are not roots")
+            }
+        }
+        let sized = deskCheck("info { name: \"T\", size: .small }\nwidget { Rectangle().size(30, 20).rounded(8) }")
+        t.equal(sized.diagnostics.map(\.id.rawValue), ["DK5018"], "publishing the root keeps the existing ignored-size warning")
+        let facts = sized.root.flatMap { sized.elements[$0] }
+        t.check(facts?.isRoot == true)
+        ownLengthArgument(sized, facts, facet: "width", modifier: "size", source: "30", value: 30)
+        ownLengthArgument(sized, facts, facet: "height", modifier: "size", source: "20", value: 20)
+    }
+
+    t.suite("Desk: checker: root facts: nested and implicit-root elements retain their own role") {
+        let nested = deskCheck("""
+            info { name: "T", size: .small }
+            widget {
+                Column {
+                    Rectangle().width(20).name(box)
+                    Image("picture.png").size(12).name(picture)
+                    Text("A").name(title)
+                    Freeform { Rectangle().name(inner) }.name(layer)
+                }.padding(4).color(.dim)
+            }
+            """)
+        t.equal(nested.diagnostics.map(\.id.rawValue), [], deskDescribe(nested))
+        guard let root = nested.root, let layer = nested.elements.first(where: { $0.value.name == "layer" }) else {
+            t.check(false, "nested fixture has an explicit root and Freeform child")
+            return
+        }
+        t.equal(nested.elements.filter { $0.value.isRoot }.map(\.key), [root])
+        for name in ["box", "picture", "title", "layer"] {
+            let facts = nested.elements.values.first { $0.name == name }
+            t.check(facts?.isRoot == false, "\(name) is not the widget root")
+            t.equal(facts?.parent, root, "\(name) keeps its enclosing Column")
+        }
+        let inner = nested.elements.values.first { $0.name == "inner" }
+        t.check(inner?.isRoot == false)
+        t.equal(inner?.parent, layer.key)
+        t.check(nested.elements.values.first { $0.name == "title" }?.inherits.contains("color") == true,
+                "the root publication does not remove inherited facts")
+        ownLengthArgument(nested, nested.elements.values.first { $0.name == "box" },
+                          facet: "width", modifier: "width", source: "20", value: 20)
+
+        for source in ["Rectangle().width(20)\nText(\"A\").height(10)",
+                       "Column { Rectangle().width(20) }\nImage(\"picture.png\").size(12)"] {
+            let implicit = deskCheck("info { name: \"T\", size: .small }\nwidget {\n\(source)\n}")
+            t.equal(implicit.diagnostics.map(\.id.rawValue), ["DK2021"], deskDescribe(implicit))
+            t.check(implicit.root == nil, "the implicit Column has no source element ID")
+            t.check(implicit.elements.values.allSatisfy { !$0.isRoot }, "the implicit Column's children are not explicit roots")
+            t.equal(implicit.elements.values.filter { $0.parent == nil }.count, 2)
+            ownLengthArgument(implicit, implicit.elements.values.first { $0.component == "Rectangle" },
+                              facet: "width", modifier: "width", source: "20", value: 20)
+        }
+    }
+
     t.suite("Desk: checker — the design's error-message examples and their messages") {
         // (code, id, English message, Chinese message)
         let cases: [(String, String, String, String)] = [

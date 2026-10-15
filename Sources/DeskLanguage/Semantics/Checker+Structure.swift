@@ -400,6 +400,7 @@ extension Checker {
                 if let root = allElements[safe: before], root.node.range == statement.range {
                     root.isRoot = true
                     root.facts.isRoot = true
+                    finishElement(root)
                     rootElements = [root]
                 }
             } else if statement.kind == .callStmt, let element = allElements[safe: before],

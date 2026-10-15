@@ -37,9 +37,9 @@ public final class RecycleManagerMeasure: Measure, PluginLifecycle {
         let job = BackgroundJob<TrashMonitor.Status>(.trash, subject: TrashMonitor.homeTrash, start: { deliver in
             monitor.refresh(includeSize: includeSize) { deliver(monitor.latest) }
         }, scripted: TrashMonitor.Status.init(scripted:))
-        skin.startBackground(job) { [weak self] status in self?.received(status) }
+        sectionContext.startBackground(job) { [weak self] status in self?.received(status) }
         // The latest reading, whoever asked for it; in virtual time only what came back through the executor.
-        return value(of: skin.runsInVirtualTime ? (reading ?? TrashMonitor.Status()) : monitor.latest)
+        return value(of: sectionContext.runsInVirtualTime ? (reading ?? TrashMonitor.Status()) : monitor.latest)
     }
 
     /// The first reading has been applied (tests check that it waits for the skin's executor).
@@ -53,7 +53,7 @@ public final class RecycleManagerMeasure: Measure, PluginLifecycle {
         // The first reading is shown as soon as it arrives (skins often update this measure rarely).
         guard !hasReading else { return }
         hasReading = true
-        publishAsyncResult(number: value(of: skin.runsInVirtualTime ? status : TrashMonitor.shared.latest), string: nil)
+        publishAsyncResult(number: value(of: sectionContext.runsInVirtualTime ? status : TrashMonitor.shared.latest), string: nil)
     }
 
     /// `--render --data`'s `trash`: from now on every reading of the Trash is this one (`.none`: an empty Trash) and
@@ -77,13 +77,13 @@ public final class RecycleManagerMeasure: Measure, PluginLifecycle {
         if status.sizeDenied {
             if !reportedSize {
                 reportedSize = true
-                skin.log("RecycleManager [\(name)]: the Trash size needs Full Disk Access for Deskset (System Settings ▸ "
+                sectionContext.log("RecycleManager [\(name)]: the Trash size needs Full Disk Access for Deskset (System Settings ▸ "
                          + "Privacy & Security ▸ Full Disk Access); showing 0", level: .notice)
             }
-            skin.addIssue(RecycleManagerMeasure.sizeNote)
+            sectionContext.addIssue(RecycleManagerMeasure.sizeNote)
         } else if status.size != nil {
             // Readable now (access granted meanwhile): the note no longer applies.
-            skin.removeIssue(RecycleManagerMeasure.sizeNote)
+            sectionContext.removeIssue(RecycleManagerMeasure.sizeNote)
         }
         return status.size ?? 0
     }
@@ -92,15 +92,15 @@ public final class RecycleManagerMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         switch command.trimmingCharacters(in: .whitespaces).lowercased() {
         case "openbin":
-            skin.sideEffects.launch("/usr/bin/open", [TrashMonitor.homeTrash], completion: nil)
+            sectionContext.sideEffects.launch("/usr/bin/open", [TrashMonitor.homeTrash], completion: nil)
         case "emptybin":
-            skin.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: true),
-                                    on: skin.executor) { _ in
+            sectionContext.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: true),
+                                    on: sectionContext.executor) { _ in
                 TrashMonitor.shared.refresh(includeSize: true, force: true)
             }
         case "emptybinsilent":
-            skin.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: false),
-                                    on: skin.executor) { _ in
+            sectionContext.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: false),
+                                    on: sectionContext.executor) { _ in
                 TrashMonitor.shared.refresh(includeSize: true, force: true)
             }
         default:

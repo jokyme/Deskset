@@ -24,8 +24,8 @@ enum SkinSnapshotSelfTests {
             t.check(runtime.snapshot.generation != generation, "rebuilt meanwhile (a tooltip shows a measure)")
             t.equal(runtime.snapshot.updateCount, runtime.skin.updateCount, "the snapshot follows the updates")
             t.equal(runtime.snapshot.counter, runtime.skin.counter)
-            t.check(runtime.snapshot.hitMap.toolTipInfo(at: 5, 45)?.text.hasPrefix("Count ") == true)
-            t.equal(runtime.snapshot.hitMap.toolTipInfo(at: 5, 45), runtime.skin.toolTipInfo(at: 5, 45),
+            t.check(runtime.snapshot.hitMap.toolTipInfo(at: 5, 45, images: runtime)?.text.hasPrefix("Count ") == true)
+            t.equal(runtime.snapshot.hitMap.toolTipInfo(at: 5, 45, images: runtime), runtime.skin.toolTipInfo(at: 5, 45),
                     "its tooltip shows the counter as it is")
 
             // What the main thread acts on is posted, once per piece of work.
@@ -37,8 +37,8 @@ enum SkinSnapshotSelfTests {
             window.snapshotPosts = []
             runtime.send(.execute("[!DisableMouseAction MeterBox LeftMouseUpAction][!SetVariable A 1]", section: nil))
             t.equal(window.snapshotPosts, [], "the hit map is read when needed, not posted")
-            t.equal(runtime.snapshot.hitMap.handles(.leftUp, x: 10, y: 10), true, "a disabled action still catches")
-            t.equal(runtime.snapshot.hitMap.pointerCursorName(at: 10, 10), nil, "and shows the arrow")
+            t.equal(runtime.snapshot.hitMap.handles(.leftUp, x: 10, y: 10, images: runtime), true, "a disabled action still catches")
+            t.equal(runtime.snapshot.hitMap.pointerCursorName(at: 10, 10, images: runtime), nil, "and shows the arrow")
             runtime.send(.close(fadeOut: false))
         }
 
@@ -51,7 +51,7 @@ enum SkinSnapshotSelfTests {
             defer { SkinRuntimeSelfTests.finish(t, &runtime, executor) }
             guard let r = runtime, SkinRuntimeSelfTests.load(t, r, on: executor) else { return }
             t.check(AppSelfTest.spin(timeout: 30) { r.snapshot.updateCount >= 1 }, "the first update is published")
-            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10), true, "from the main thread")
+            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10, images: r), true, "from the main thread")
             t.equal(r.snapshot.toolTipAreas.count, 2)
 
             // The skin's thread is busy: the snapshot answers at once.
@@ -63,19 +63,21 @@ enum SkinSnapshotSelfTests {
             }
             _ = parked.wait(timeout: .now() + 30)
             let start = ProcessInfo.processInfo.systemUptime
-            let answers = (0..<200).map { i in r.snapshot.hitMap.hasAction(.leftUp, x: Double(i % 40), y: 10) }
+            let answers = (0..<200).map { i in
+                r.snapshot.hitMap.hasAction(.leftUp, x: Double(i % 40), y: 10, images: r)
+            }
             let seconds = ProcessInfo.processInfo.systemUptime - start
             t.check(answers.allSatisfy { $0 }, "the box, all along")
             t.check(seconds < 5, "200 answers while the skin is busy: \(seconds) s")
             // Work queued behind the busy piece: its snapshot comes once it ran, with a post for the main thread.
             window.snapshotPosts = []
             r.send(.execute("[!HideMeter MeterBox][!HideMeter MeterTip][!Redraw]", section: nil))
-            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10), true, "not yet")
+            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10, images: r), true, "not yet")
             gate.signal()
             t.check(AppSelfTest.spin(timeout: 30) { r.snapshot.toolTipAreas.isEmpty }, "published")
             t.check(AppSelfTest.spin(timeout: 30) { window.snapshotPosts.contains { $0.contains(.toolTips) } },
                     "the change is posted to the main thread")
-            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10), false, "and read there")
+            t.equal(r.snapshot.hitMap.hasAction(.leftUp, x: 10, y: 10, images: r), false, "and read there")
             t.equal(r.snapshot.toolTipAreas.count, 0)
             r.send(.close(fadeOut: false))
             _ = r.exclusive(timeout: 30) { _ in true }

@@ -688,6 +688,50 @@ private func runSeamPluginTests(_ t: TestRunner) {
 // MARK: - Lifetime
 
 private func runExecutorLifetimeTests(_ t: TestRunner) {
+    t.suite("Executor: delayed fixtures do not retain their owner or executor") {
+        var produced = 0, delivered = 0, dropped = 0
+        let job = BackgroundJob<Int>(.quote, subject: "lifetime", start: { _ in produced += 100 },
+                                    inline: { produced += 1; return 7 })
+        weak var weakOwner: Skin?
+        weak var weakExecutor: VirtualTimeExecutor?
+        do {
+            let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+            executor.background.setFake(BackgroundFake(.fixture, delay: 60), for: .quote)
+            let (skin, _) = try executorSkin(t, "[Rainmeter]\nUpdate=-1", executor: executor)
+            weakOwner = skin; weakExecutor = executor
+            skin.startBackground(job, then: { delivered += $0 }, orElse: { dropped += $0 })
+            t.check(executor.pendingCount > 0)
+            t.equal(produced, 0)
+        }
+        t.check(weakOwner == nil, "a delayed fixture must not retain its owner")
+        t.check(weakExecutor == nil, "an unadvanced delayed fixture must not retain its destination")
+        t.equal(produced, 0); t.equal(delivered, 0); t.equal(dropped, 0)
+
+        let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+        executor.background.setFake(BackgroundFake(.fixture, delay: 60), for: .quote)
+        var owner: Skin? = try executorSkin(t, "[Rainmeter]\nUpdate=-1", executor: executor).0
+        owner?.startBackground(job, then: { delivered += $0 }, orElse: { dropped += $0 })
+        executor.advance(by: 59)
+        t.equal(produced, 0); t.equal(delivered, 0)
+        executor.advance(by: 1); executor.runUntilIdle()
+        t.equal(produced, 1); t.equal(delivered, 7)
+        var order: [String] = []
+        owner?.startBackground(job, then: { _ in order.append("result") })
+        executor.async(after: 60) {
+            order.append("due")
+            executor.async { order.append("nested") }
+        }
+        executor.advance(by: 60); executor.runUntilIdle()
+        t.equal(order, ["due", "result", "nested"], "delivery keeps its second queue turn at the same deadline")
+        t.equal(produced, 2)
+        owner?.startBackground(job, then: { delivered += $0 }, orElse: { dropped += $0 })
+        weakOwner = owner; owner = nil
+        t.check(weakOwner == nil)
+        executor.advance(by: 60); executor.runUntilIdle()
+        t.equal(produced, 2, "retired deferred production must not run just to drop its result")
+        t.equal(delivered, 7); t.equal(dropped, 0)
+    }
+
     t.suite("Executor: queued work keeps the skin alive; results only while they run; delays and timers do not") {
         let ini = """
         [Rainmeter]

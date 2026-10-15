@@ -20,8 +20,11 @@ public final class ShapeMeter: Meter {
     public private(set) var shapes: [ShapeItem] = []
     /// Increases whenever `shapes` changes, so the host can cache what it builds from them.
     public private(set) var revision = 0
-    /// Opaque storage for the host's renderer (e.g. built CGPaths for the current `revision`).
+    /// Opaque storage for integrations. The app keeps its prepared shapes in the drawing context.
     public var renderCache: AnyObject?
+
+    /// Distinguishes drawings from different meters even when their revisions match. No object is retained by it.
+    let drawingIdentity = UUID()
 
     private var loggedWarnings: Set<String> = []
     /// Flattened geometry for hit testing, rebuilt when `revision` changes.

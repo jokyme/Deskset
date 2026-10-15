@@ -249,6 +249,7 @@ public enum DiagnosticID: String, Sendable, Hashable, CaseIterable {
     case tooManyFiles = "DK8607"
     case folderTooLarge = "DK8608"
     case unusedAsset = "DK8609"
+    case packageFileUnreadable = "DK8610"
     case symbolicAnd = "DK9001"
     case symbolicOr = "DK9002"
     case symbolicNot = "DK9003"

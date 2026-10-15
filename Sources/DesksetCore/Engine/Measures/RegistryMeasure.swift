@@ -56,10 +56,10 @@ public final class RegistryMeasure: Measure {
         let options = [hive, key, valueName, outputType, delimiter]
         if let cached, cached.options == options, !cached.live { return cached.result }
         let live = outputType == "value" && RegistryMeasure.isWallpaperValue(hive: hive, key: key, value: valueName)
-        let result = live ? skin.system.desktopPicturePath().map(Value.string) : lookup()
+        let result = live ? sectionContext.system.desktopPicturePath().map(Value.string) : lookup()
         cached = (options, result, live)
         if result == nil {
-            skin.addIssue("Registry value \(RegistryMeasure.displayName(hive: hive, key: key, value: valueName)) "
+            sectionContext.addIssue("Registry value \(RegistryMeasure.displayName(hive: hive, key: key, value: valueName)) "
                           + "does not exist on macOS (only a few Windows version / hardware values are emulated)")
         }
         return result
@@ -80,7 +80,7 @@ public final class RegistryMeasure: Measure {
     }
 
     private func lookup() -> Value? {
-        let facts = RegistryMeasure.Facts.current(system: skin.system)
+        let facts = RegistryMeasure.Facts.current(system: sectionContext.system)
         switch outputType {
         case "subkeylist":
             let names = RegistryMeasure.subKeys(hive: hive, key: key, facts: facts)

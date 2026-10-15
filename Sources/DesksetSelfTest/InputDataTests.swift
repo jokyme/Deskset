@@ -145,6 +145,45 @@ func runInputDataTests(_ t: TestRunner) {
         t.check(failure("nothing-here.json").hasPrefix("cannot read"), "a path that does not exist")
     }
 
+    t.suite("Seams: --data: battery charge estimates preserve replay units and old discharge values") {
+        let dir = t.temporaryDirectory("battery-estimates")
+        func read(_ source: String) throws -> SkinInputData { try SkinInputData.load(source, directory: dir) }
+        let charge = try read(#"{"battery":{"level":50,"charging":true,"timeRemaining":125,"timeUntilFull":45}}"#)
+        t.equal(charge.battery, .value(BatteryStatus(percent: 50, isCharging: true, isPluggedIn: true,
+                                                    minutesRemaining: 125, minutesUntilFull: 45)))
+        let replay = ScriptedSystemData(base: FakeSystem(), data: charge)
+        let input = ProgramSystemInput.sample(from: replay, for: [.batteryPresent, .batteryTimeRemaining])
+        t.equal(input.batteryPresent, true)
+        t.equal(input.batteryTimeRemaining, 2700, "the program converts charge minutes to seconds exactly once")
+        let drain = try read(#"{"battery":{"charging":false,"timeRemaining":125,"timeUntilFull":45}}"#)
+        t.equal(ProgramSystemInput.sample(from: ScriptedSystemData(base: FakeSystem(), data: drain),
+                                         for: [.batteryTimeRemaining]).batteryTimeRemaining, 7500,
+                "the discharge path keeps its existing field")
+        for field in ["", ",\"timeUntilFull\":null"] {
+            let unknown = try read("{\"battery\":{\"charging\":true\(field)}}")
+            t.equal(unknown.battery?.value?.minutesUntilFull, nil)
+            t.equal(ProgramSystemInput.sample(from: ScriptedSystemData(base: FakeSystem(), data: unknown),
+                                             for: [.batteryTimeRemaining]).batteryTimeRemaining, nil)
+        }
+        for (estimate, expected) in [(0, Optional(0.0)), (-1, nil)] {
+            let data = try read("{\"battery\":{\"charging\":true,\"timeUntilFull\":\(estimate)}}")
+            t.equal(ProgramSystemInput.sample(from: ScriptedSystemData(base: FakeSystem(), data: data),
+                                             for: [.batteryTimeRemaining]).batteryTimeRemaining, expected)
+        }
+        let absent = try read(#"{"battery":null}"#)
+        let none = ProgramSystemInput.sample(from: ScriptedSystemData(base: FakeSystem(), data: absent),
+                                            for: [.batteryPresent, .batteryTimeRemaining])
+        t.equal(none.batteryPresent, false); t.equal(none.batteryTimeRemaining, nil)
+        for invalid in ["true", "\"45\"", "[]", "{}"] {
+            do {
+                _ = try read("{\"battery\":{\"timeUntilFull\":\(invalid)}}")
+                t.check(false, "charge estimates require a numeric replay value")
+            } catch {
+                t.equal(String(describing: error), "battery.timeUntilFull: is not a number")
+            }
+        }
+    }
+
     t.suite("Seams: --data: programs, the weather transport and the device location") {
         let dir = t.temporaryDirectory("programs")
         let d = try SkinInputData.load(#"""

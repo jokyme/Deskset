@@ -102,11 +102,14 @@ struct SkinWindowFacts: Equatable {
     var modelSequence: Int
     /// Counts the facts the main thread published for this window.
     var sequence: Int
+    /// Actual panel replacements; unrelated to model changes or repeated facts publication.
+    var panelGeneration: UInt64
 
     init(frame: CGRect, screen: Int? = nil, display: CGDirectDisplayID? = nil, isVisible: Bool,
          isOrderedIn: Bool = false, scale: CGFloat, colorSpace: CGColorSpace? = nil,
          appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
-         settings: SkinWindowSettings = SkinWindowSettings(), modelSequence: Int = 0, sequence: Int) {
+         settings: SkinWindowSettings = SkinWindowSettings(), modelSequence: Int = 0, sequence: Int,
+         panelGeneration: UInt64 = 0) {
         self.frame = frame
         self.screen = screen
         self.display = display
@@ -119,6 +122,7 @@ struct SkinWindowFacts: Equatable {
         self.settings = settings
         self.modelSequence = modelSequence
         self.sequence = sequence
+        self.panelGeneration = panelGeneration
     }
 
     /// The same facts, whatever their sequence numbers.

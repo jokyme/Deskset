@@ -83,7 +83,7 @@ public final class SliderMeasure: MouseMeasure, SkinOutsidePointerObserver {
         case "right": return .right
         case "middle": return .middle
         default:
-            skin.logOnce("Slider [\(name)]: MouseButton=\(text) is not Left, Right or Middle; the left button is used",
+            sectionContext.logOnce("Slider [\(name)]: MouseButton=\(text) is not Left, Right or Middle; the left button is used",
                          level: .warning)
             return .left
         }
@@ -137,7 +137,7 @@ public final class SliderMeasure: MouseMeasure, SkinOutsidePointerObserver {
         // be enabled during the press.
         // On the skin's executor, like the move timer (on the main thread in the common modes: a hold goes on while a
         // menu is open).
-        holdTimer = skin.executor.timer(interval: holdDelay, leeway: 0, repeats: false) { [weak self] in
+        holdTimer = sectionContext.executor.timer(interval: holdDelay, leeway: 0, repeats: false) { [weak self] in
             guard let self else { return }
             self.holdTimer = nil
             self.holdElapsed()

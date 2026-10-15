@@ -154,6 +154,10 @@ struct StudioPage: Equatable {
         case toggle(Bool)
         /// 0…1, with the percentage beside it.
         case percent(Double)
+        /// A canonical numeric range, with an optional discrete step and a unit beside its value.
+        case slider(Slider)
+        /// A numeric field and the system's increment/decrement control.
+        case stepper(Number)
         /// One color swatch in a row (an option).
         case color(Swatch)
         case text(String)
@@ -164,6 +168,14 @@ struct StudioPage: Equatable {
         case colorLabel(ColorLabel)
         /// Two controls side by side (Size: W · H; Font · weight).
         case pair([Control])
+    }
+
+    struct Slider: Equatable {
+        var value: Double
+        var minimum: Double
+        var maximum: Double
+        var step: Double?
+        var unit: String?
     }
 
     struct Number: Equatable {

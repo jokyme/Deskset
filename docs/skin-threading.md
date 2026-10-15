@@ -1088,6 +1088,9 @@ executor lets go of a skin, so a skin, its measures and meters are always releas
   the skin off the executor, where an InputText prompt would close its window.
 - A result for a skin that is gone is dropped. `post(_:orElse:)` cleans up instead where something must not be left
   behind: a WebParser download saved to a temporary file.
+- A hop keeps its executor until it posts, but its queued closure holds only the weak skin target. An abandoned
+  virtual executor can therefore release its queue and captures without another virtual-time step. Destroying that
+  queue does not run callbacks; an owned executor still delivers work and dropped results in order on its thread.
 - Closures that run in the background hold measures weakly. WebParser's transfers used to hold their measure; now the
   measures of a skin dropped without being closed go with it and cancel their transfers.
 
@@ -1414,6 +1417,9 @@ when a skin runs on the engine thread.
 - The hit map holds value-type mouse shapes (`MouseShape`: a rectangle; a Shape's items with its transform and
   background; a Button's image, frames and flips). `Meter.isHit`, `ShapeMeter.hitTest` and `ButtonMeter.hitTest` use
   the same values, so there is one hit test, not two that could drift apart.
+  `SkinHitMap` is `Sendable` and holds no host or image service. Its point queries take `images: SkinImageQueries?`
+  explicitly; the window passes its runtime, whose image queries use the thread-safe cache without reading the skin.
+  A missing service or unknown pixel keeps the existing opaque fallback.
 
 **Not in these steps** (the later pass at the end of this section does them): stress runs on the engine thread, §10's
 measurements (Deskset and WindowServer CPU for ten skins, a visualizer's frame pacing while the Studio is open,

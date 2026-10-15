@@ -27,6 +27,8 @@ import Foundation
 public final class LineMeter: Meter {
     public static let maxLineCount = 64
     public static let defaultLineColor = RGBA.white
+    /// Separates captured history revisions from those of another graph instance.
+    let drawIdentity = UUID()
 
     public struct Line {
         public internal(set) var color: RGBA

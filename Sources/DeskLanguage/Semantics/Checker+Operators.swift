@@ -104,7 +104,12 @@ extension Checker {
         }
         if let slot = l.open { recordUse(slot, of: asUse(r), rightNode, description: comparedWith(r)) }
         if let slot = r.open { recordUse(slot, of: asUse(l), leftNode, description: comparedWith(l)) }
-        if l.open != nil || r.open != nil { return v }
+        if hasOpenDimension(l) || hasOpenDimension(r) {
+            if mute == 0, l.isNumber, r.isNumber {
+                deferredNumericUses.append(.comparison(leftNode, rightNode, node, l, r))
+            }
+            return v
+        }
         if l.isJson || r.isJson { return v }
         if l.type == .record("Size") && r.type == .enumeration("SizePreset") { return v }
         if r.type == .record("Size") && l.type == .enumeration("SizePreset") { return v }
@@ -154,7 +159,11 @@ extension Checker {
     /// plain literal above 1 compared with a fraction.
     func adoptPair(_ l: inout Val, _ leftNode: PositionedNode, _ r: inout Val, _ rightNode: PositionedNode,
                    operation: Operation) {
-        func adopt(_ literal: inout Val, _ literalNode: PositionedNode, other: Val) {
+        defer {
+            recordNumericAdoption(l, leftNode)
+            recordNumericAdoption(r, rightNode)
+        }
+        func adopt(_ literal: inout Val, _ literalNode: PositionedNode, other: Val, otherNode: PositionedNode) {
             guard literal.plainLiteral != nil, let d = other.dimension, d != .plain, other.plainLiteral == nil else { return }
             if other.range == .fixed(0...1) && d == .plain { return }
             if d.needsWrittenUnit {
@@ -165,10 +174,21 @@ extension Checker {
             literal.type = .number(d)
             literal.base = other.base
             literal.plainLiteral = nil
+            if mute == 0, d == .bytes || d == .bytesPerSecond {
+                numericBaseSources[id(literalNode)] = [id(otherNode)]
+            }
         }
         // A percentage literal compared with a plain value whose range is 0…1 means its fraction.
-        if l.dimension == .plain, l.range == .fixed(0...1), r.dimension == .percent { r.type = .number(.plain); return }
-        if r.dimension == .plain, r.range == .fixed(0...1), l.dimension == .percent { l.type = .number(.plain); return }
+        if l.dimension == .plain, l.range == .fixed(0...1), r.dimension == .percent {
+            recordPercentAsFraction(r, rightNode)
+            r.type = .number(.plain); r.literalValue = r.literalValue.map { $0 / 100 }
+            return
+        }
+        if r.dimension == .plain, r.range == .fixed(0...1), l.dimension == .percent {
+            recordPercentAsFraction(l, leftNode)
+            l.type = .number(.plain); l.literalValue = l.literalValue.map { $0 / 100 }
+            return
+        }
         if l.dimension == .plain, l.range == .fixed(0...1), let value = r.plainLiteral, value > 1 {
             reportFractionOver1(rightNode, what: .code(text(leftNode)), value: value)
             return
@@ -180,8 +200,8 @@ extension Checker {
         // °C / °F literals next to a difference of temperatures are differences.
         if l.dimension == .temperature, l.literalValue != nil, r.dimension == .temperatureDelta { l.type = .number(.temperatureDelta) }
         if r.dimension == .temperature, r.literalValue != nil, l.dimension == .temperatureDelta { r.type = .number(.temperatureDelta) }
-        adopt(&l, leftNode, other: r)
-        adopt(&r, rightNode, other: l)
+        adopt(&l, leftNode, other: r, otherNode: rightNode)
+        adopt(&r, rightNode, other: l, otherNode: leftNode)
         // Byte literals take the base of the data they meet.
         if l.adoptsBase, let b = r.base { l.base = b }
         if r.adoptsBase, let b = l.base { r.base = b }
@@ -284,7 +304,18 @@ extension Checker {
 
     func inferArithmetic(_ op: PositionedToken, _ leftNode: PositionedNode, _ rightNode: PositionedNode,
                          _ node: PositionedNode, _ context: ExprContext, expected: DeskType?) -> Val {
-        var (l, r) = inferPair(leftNode, rightNode, context)
+        let (l, r) = inferPair(leftNode, rightNode, context)
+        if mute == 0, !l.error, !r.error, l.isNumber, r.isNumber,
+           [.plus, .minus, .percent].contains(op.kind), hasOpenDimension(l) || hasOpenDimension(r) {
+            deferredNumericUses.append(.arithmetic(op, leftNode, rightNode, node, l, r))
+        }
+        return arithmeticValues(op, leftNode, rightNode, node, left: l, right: r)
+    }
+
+    /// The original arithmetic rules, also used to finish an already inferred open-slot relation.
+    func arithmeticValues(_ op: PositionedToken, _ leftNode: PositionedNode, _ rightNode: PositionedNode,
+                          _ node: PositionedNode, left: Val, right: Val) -> Val {
+        var l = left, r = right
         var deps = l.deps.union(r.deps)
         func result(_ v: Val) -> Val {
             var out = v
@@ -315,9 +346,19 @@ extension Checker {
         }
         if let slot = l.open { recordUse(slot, of: r, rightNode, description: comparedWith(r)) }
         if let slot = r.open { recordUse(slot, of: l, leftNode, description: comparedWith(l)) }
-        if l.open != nil && r.open == nil { var v = r; v.open = nil; v.plainLiteral = nil; return result(v) }
-        if r.open != nil && l.open == nil { var v = l; v.open = nil; v.plainLiteral = nil; return result(v) }
-        if l.open != nil && r.open != nil { var v = l; v.open = nil; return result(v) }
+        if hasOpenDimension(l) && !hasOpenDimension(r) {
+            var v = r
+            v.open = (r.dimension == .plain && [.plus, .minus, .percent].contains(kind)) ? l.open : nil
+            v.plainLiteral = nil
+            return result(v)
+        }
+        if hasOpenDimension(r) && !hasOpenDimension(l) {
+            var v = l
+            v.open = (l.dimension == .plain && [.plus, .minus, .percent].contains(kind)) ? r.open : nil
+            v.plainLiteral = nil
+            return result(v)
+        }
+        if hasOpenDimension(l) && hasOpenDimension(r) { var v = l; v.open = l.open; return result(v) }
         if l.isJson || r.isJson {
             var v = l.isJson ? r : l
             if l.isJson && r.isJson { v = Val(.number(.plain)) }
@@ -364,8 +405,15 @@ extension Checker {
             var ld = l.dimension, rd = r.dimension
             // A °C/°F literal that is a `+`/`-` operand of a temperature is a difference.
             if ld == .temperature, rd == .temperature {
-                if r.literalValue != nil && l.literalValue == nil { rd = .temperatureDelta }
-                else if l.literalValue != nil && r.literalValue == nil && kind == .plus { ld = .temperatureDelta }
+                if r.literalValue != nil && l.literalValue == nil {
+                    rd = .temperatureDelta
+                    var delta = r; delta.type = .number(.temperatureDelta)
+                    recordNumericAdoption(delta, rightNode)
+                } else if l.literalValue != nil && r.literalValue == nil && kind == .plus {
+                    ld = .temperatureDelta
+                    var delta = l; delta.type = .number(.temperatureDelta)
+                    recordNumericAdoption(delta, leftNode)
+                }
             }
             if ld == .temperature || rd == .temperature {
                 if ld == .temperature && rd == .temperature {
@@ -389,9 +437,11 @@ extension Checker {
             if a != b { return mismatch() }
             var v = Val(.number(a))
             v.base = l.base ?? r.base
-            v.adoptsBase = l.adoptsBase && r.adoptsBase
+            v.adoptsBase = (a == .bytes || a == .bytesPerSecond) && v.base == nil && (l.adoptsBase || r.adoptsBase)
             if let x = l.plainLiteral, let y = r.plainLiteral {
-                v.plainLiteral = kind == .plus ? x + y : kind == .minus ? x - y : x
+                v.plainLiteral = kind == .plus ? x + y : kind == .minus ? x - y
+                    : (y == 0 ? nil : x.truncatingRemainder(dividingBy: y))
+                if v.plainLiteral?.isFinite == false { v.plainLiteral = nil }
                 v.literalValue = v.plainLiteral
             }
             deps = l.deps.union(r.deps)
@@ -419,8 +469,13 @@ extension Checker {
             else if a == .bytes && b == .bytesPerSecond { v = Val(.number(.time)) }
             else { return mismatch() }
         }
+        if v.dimension == .bytes || v.dimension == .bytesPerSecond {
+            v.base = l.base ?? r.base
+            v.adoptsBase = v.base == nil && (l.adoptsBase || r.adoptsBase)
+        }
         if let x = l.plainLiteral, let y = r.plainLiteral {
             v.plainLiteral = kind == .star ? x * y : (y == 0 ? nil : x / y)
+            if v.plainLiteral?.isFinite == false { v.plainLiteral = nil }
             v.literalValue = v.plainLiteral
         }
         if l.plainLiteral != nil && r.plainLiteral == nil && a == .plain && b == .plain { v.plainLiteral = nil }

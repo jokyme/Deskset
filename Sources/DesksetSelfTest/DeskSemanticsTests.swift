@@ -67,6 +67,7 @@ func deskLargeWidget(lines: Int) -> String {
 }
 
 func runDeskSemanticsTests(_ t: TestRunner) {
+    runDeskNumericMetadataTests(t)
     t.suite("Desk: did-you-mean") {
         // Three wrong guesses per common name, each leading to the right name.
         let guesses: [(String, String)] = [
@@ -422,10 +423,500 @@ func runDeskCheckerFuzzTests(_ t: TestRunner) {
         ]
         for (name, text) in cases {
             let start = ProcessInfo.processInfo.systemUptime
-            let checked = Desk.check(Desk.parse(text, fileName: "P.desk"))
-            let elapsed = ProcessInfo.processInfo.systemUptime - start
+            let tree = Desk.parse(text, fileName: "P.desk")
+            let parsed = ProcessInfo.processInfo.systemUptime
+            let checked = Desk.check(tree)
+            let finished = ProcessInfo.processInfo.systemUptime
+            let elapsed = finished - start
+            print(String(format: "    checker pathological %@: parse %.6f s, check %.6f s, total %.6f s; diagnostics %d",
+                         name, parsed - start, finished - parsed, elapsed, checked.diagnostics.count))
             t.check(elapsed < 10, "\(name): check took \(elapsed) s")
             t.check(!checked.diagnostics.isEmpty || name == "nested fors", "\(name): diagnostics")
         }
+    }
+}
+
+
+private func deskNumericNodes(_ checked: CheckedFile, _ text: String, kind: SyntaxKind? = nil) -> [PositionedNode] {
+    let bytes = Array(checked.tree.text.utf8)
+    return DeskNodeTable(tree: checked.tree).entries.map(\.positioned).filter {
+        (kind == nil || $0.kind == kind) && String(decoding: bytes[$0.textRange], as: UTF8.self) == text
+    }
+}
+
+private func runDeskNumericMetadataTests(_ t: TestRunner) {
+    runDeskDeferredNumericTests(t)
+    func facts(_ checked: CheckedFile, _ text: String, _ type: DeskType, base: Int? = nil,
+               canonical: Double? = nil, coercion: NumericCoercion? = nil, kind: SyntaxKind? = nil) {
+        let nodes = deskNumericNodes(checked, text, kind: kind)
+        t.check(!nodes.isEmpty, "numeric nodes exist: \(text)")
+        for node in nodes {
+            let key = checked.tree.id(of: node)
+            t.equal(checked.types[key]?.type, type, "final type: \(text)")
+            t.equal(checked.types[key]?.displayBase, base, "final base: \(text)")
+            t.equal(checked.canonicalNumericValues[key], canonical, "canonical value: \(text)")
+            t.equal(checked.numericCoercions[key], coercion, "selected coercion: \(text)")
+        }
+    }
+    func declaration(_ checked: CheckedFile, _ type: DeskType, base: Int? = nil) {
+        t.equal(checked.declarationTypes.count, 1)
+        t.equal(checked.declarationTypes.values.first?.type, type)
+        t.equal(checked.declarationTypes.values.first?.displayBase, base)
+        t.equal(checked.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+    }
+    t.suite("Desk: checker — constant error ranges preserve exact isolation") {
+        let tree = Desk.parse(#"info { name: "T" }"# + "\n" +
+            #"widget { Column { Text("A").font(13); Text("B").font(17); Text("C").font(19) } }"#, fileName: "ConstantRanges.desk")
+        let nodes = DeskNodeTable(tree: tree).entries.filter { $0.kind == .numberLiteral }.map(\.positioned)
+        t.equal(nodes.count, 3)
+        guard let first = nodes.first, let last = nodes.last else { return }
+        let r = first.textRange
+        let spans: [(String, [Range<Int>])] = [
+            ("none", []),
+            ("empty", [r.lowerBound..<r.lowerBound, (r.lowerBound + 1)..<(r.lowerBound + 1), r.upperBound..<r.upperBound]),
+            ("touching outside", [(r.lowerBound - 1)..<r.lowerBound, r.upperBound..<(r.upperBound + 1)]),
+            ("exact", [r]),
+            ("adjacent inside", [r.lowerBound..<(r.lowerBound + 1), (r.lowerBound + 1)..<r.upperBound]),
+            ("nested", [(r.lowerBound - 1)..<(r.upperBound + 1), r]),
+            ("overlapping", [(r.lowerBound + 1)..<(r.upperBound + 1), (r.lowerBound - 1)..<(r.lowerBound + 1), r]),
+            ("unsorted duplicates", [last.textRange, r, last.textRange, (r.lowerBound + 1)..<(r.lowerBound + 1)]),
+        ]
+        for (label, ranges) in spans {
+            let checker = Checker(tree: tree, context: CheckContext())
+            checker.checkStructure()
+            let errors = ranges.map { Diagnostic(id: .outOfRange, severity: .error, file: tree.file, range: $0) }
+            let original = errors + [Diagnostic(id: .fractionOver1, severity: .warning, file: tree.file, range: r),
+                                     Diagnostic(id: .quotedOwnName, severity: .info, file: tree.file, range: last.textRange)]
+            checker.diagnostics = original
+            checker.completeNumericMetadata()
+            t.equal(checker.diagnostics, original, "\(label): order and diagnostic payloads are untouched")
+            for node in nodes {
+                let key = tree.id(of: node)
+                let blocked = errors.contains { $0.range.overlaps(node.textRange) }
+                let expected = blocked ? nil : NumberLiteralSyntax(unchecked: node).value
+                t.equal(checker.canonicalNumericValues[key], expected, "\(label): exact previous overlap semantics")
+                t.equal(checker.types[key]?.type, .length, "\(label): constant isolation does not drop type facts")
+            }
+            t.check(checker.numericCoercions.isEmpty)
+        }
+    }
+    t.suite("Desk: checker — unrelated name errors and numeric warnings keep canonical values") {
+        let source = #"info { name: "T" }"# + "\n" + #"widget { Column { "# +
+            String(repeating: #"Text("{cpu.usage}").font(13).opacity(60).name(x); "#, count: 40) + "} }"
+        let checked = deskCheck(source)
+        t.equal(checked.diagnostics(.error).map(\.id), Array(repeating: .duplicateElementName, count: 39))
+        t.equal(checked.diagnostics(.warning).map(\.id), Array(repeating: .fractionOver1, count: 40))
+        t.equal(checked.canonicalNumericValues.count, 80)
+        facts(checked, "13", .length, canonical: 13, kind: .numberLiteral)
+        facts(checked, "60", .plainNumber, canonical: 60, kind: .numberLiteral)
+    }
+    t.suite("Desk: checker — settled numeric metadata") {
+        let add = deskCheck("widget { computed b = 1KB + 1KiB; Text(\"{b}\") }")
+        declaration(add, .number(.bytes), base: 1024)
+        facts(add, "1KB", .number(.bytes), base: 1024, canonical: 1024)
+        facts(add, "1KiB", .number(.bytes), base: 1024, canonical: 1024)
+        facts(add, "1KB + 1KiB", .number(.bytes), base: 1024)
+        facts(add, "b", .number(.bytes), base: 1024, kind: .identifierExpr)
+
+        let assigned = deskCheck("widget { variable b = 1KB; Text(\"{b}\").onClick { b = 1KiB } }")
+        declaration(assigned, .number(.bytes), base: 1024)
+        facts(assigned, "1KB", .number(.bytes), base: 1024, canonical: 1024)
+        facts(assigned, "1KiB", .number(.bytes), base: 1024, canonical: 1024)
+        facts(assigned, "b", .number(.bytes), base: 1024, kind: .identifierExpr)
+
+        let percent = deskCheck("widget { variable p = 50%; Text(\"{p + 1}\"); Text(\"{p == 50}\") }")
+        declaration(percent, .number(.percent))
+        facts(percent, "50%", .number(.percent), canonical: 50)
+        facts(percent, "1", .number(.percent), canonical: 1)
+        facts(percent, "50", .number(.percent), canonical: 50)
+        facts(percent, "p", .number(.percent), kind: .identifierExpr)
+
+        let bare = deskCheck("widget { variable b = 1KB; Text(\"{b + 1}\") }")
+        declaration(bare, .number(.bytes), base: 1000)
+        facts(bare, "1KB", .number(.bytes), base: 1000, canonical: 1000)
+        facts(bare, "b + 1", .number(.bytes), base: 1000)
+        facts(bare, "1", .number(.bytes), base: 1000, canonical: 1)
+        facts(bare, "b", .number(.bytes), base: 1000, kind: .identifierExpr)
+
+        let product = deskCheck("widget { computed b = 50% * 2KB; Text(\"{b}\") }")
+        declaration(product, .number(.bytes), base: 1000)
+        facts(product, "50%", .number(.percent), canonical: 50)
+        facts(product, "2KB", .number(.bytes), base: 1000, canonical: 2000)
+        facts(product, "50% * 2KB", .number(.bytes), base: 1000)
+
+        let duration = deskCheck("widget { computed d = time.now - time.now; Text(\"{d, style: .clock}\") }")
+        declaration(duration, .number(.time))
+        facts(duration, "time.now - time.now", .number(.time))
+        t.check(duration.canonicalNumericValues.isEmpty, "Date subtraction does not invent a numeric constant")
+
+        let memory = deskCheck("widget { variable b = 1GB; Text(\"{b == memory.used}\") }")
+        declaration(memory, .number(.bytes), base: 1024)
+        facts(memory, "1GB", .number(.bytes), base: 1024, canonical: 1_073_741_824)
+        facts(memory, "b", .number(.bytes), base: 1024, kind: .identifierExpr)
+
+        let dimension = deskCheck("widget { variable b = 1; Text(\"{b == 1%}\") }")
+        declaration(dimension, .number(.percent))
+        facts(dimension, "1", .number(.percent), canonical: 1)
+        facts(dimension, "1%", .number(.percent), canonical: 1)
+        facts(dimension, "b", .number(.percent), kind: .identifierExpr)
+    }
+    t.suite("Desk: checker — numeric coercion receipts") {
+        let comparison = deskCheck("info { name: \"T\", permissions: [.systemAudio] }\nwidget { Text(\"A\").hidden(if: audio.level > 50%) }")
+        t.equal(comparison.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        facts(comparison, "50%", .number(.plain), canonical: 0.5, coercion: .percentAsFraction)
+
+        let dynamic = deskCheck("widget { variable p = 50%; Text(\"A\").opacity(p); Text(\"{p}\") }")
+        declaration(dynamic, .number(.percent))
+        facts(dynamic, "50%", .number(.percent), canonical: 50)
+        let reads = deskNumericNodes(dynamic, "p", kind: .identifierExpr)
+        t.equal(reads.count, 2)
+        t.equal(reads.map { dynamic.types[dynamic.tree.id(of: $0)]?.type }, [.number(.plain), .number(.percent)])
+        t.equal(reads.map { dynamic.numericCoercions[dynamic.tree.id(of: $0)] }, [.percentAsFraction, nil])
+        t.check(reads.allSatisfy { dynamic.canonicalNumericValues[dynamic.tree.id(of: $0)] == nil }, "mutable reads are not constants")
+
+        let folded = deskCheck("widget { Text(\"{memory.used + (1 + 2)}\") }")
+        t.equal(folded.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        facts(folded, "(1 + 2)", .number(.bytes), base: 1024, canonical: 3)
+        facts(folded, "1", .number(.plain), canonical: 1)
+        facts(folded, "2", .number(.plain), canonical: 2)
+
+        let inline = deskCheck("widget { Text(\"{memory.free < -(2GB + 512MB)}\") }")
+        t.equal(inline.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        facts(inline, "2GB", .number(.bytes), base: 1024, canonical: 2_147_483_648)
+        facts(inline, "512MB", .number(.bytes), base: 1024, canonical: 536_870_912)
+        facts(inline, "-(2GB + 512MB)", .number(.bytes), base: 1024)
+    }
+    t.suite("Desk: checker — numeric settling preserves scopes and facts") {
+        let linked = deskCheck("widget { variable a = 1; variable b = 1KB; Text(\"{a == b}\") }")
+        t.equal(linked.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        t.equal(linked.declarationTypes.count, 2)
+        t.equal(Set(linked.declarationTypes.values.map(\.type)), [.number(.bytes)])
+        facts(linked, "1", .number(.bytes), base: 1000, canonical: 1)
+        facts(linked, "1KB", .number(.bytes), base: 1000, canonical: 1000)
+        let left = deskCheck("widget { variable b = 1KB; Text(\"{1 + b, decimals: 3}\").onClick { b = 1KiB } }")
+        declaration(left, .number(.bytes), base: 1024)
+        facts(left, "1", .number(.bytes), base: 1024, canonical: 1)
+        facts(left, "1 + b", .number(.bytes), base: 1024)
+
+        let option = deskCheck("options { limit = Slider(\"Limit\", min: 1, max: 100, default: 50) }\nwidget { Text(\"{cpu.usage > options.limit}\") }")
+        t.equal(option.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        t.equal(option.options["limit"]?.type, .number(.percent))
+        facts(option, "1", .number(.percent), canonical: 1)
+        facts(option, "100", .number(.percent), canonical: 100)
+        facts(option, "50", .number(.percent), canonical: 50)
+        facts(option, "options.limit", .number(.percent))
+
+        let conflict = deskCheck("widget { variable n = 1; Text(\"{n == cpu.usage}\").font(n) }")
+        t.check(conflict.diagnostics.contains { $0.id.rawValue == "DK4041" })
+        t.check(conflict.declarationTypes.isEmpty, "conflicting dimensions remain poisoned")
+        for node in deskNumericNodes(conflict, "1") { t.check(conflict.canonicalNumericValues[conflict.tree.id(of: node)] == nil) }
+
+        let required = deskCheck("widget { variable delay = 1; Text(\"A\").onClick { after(delay) { log(\"A\") } } }")
+        t.check(required.diagnostics.contains { $0.id.rawValue == "DK4011" }, "settling does not swallow required-unit diagnostics")
+
+        let scoped = deskCheck("widget { variable n = 1; Text(\"{n + 1}\").onClick { n = 2 }.when(cpu.usage > 90) { n = n + 1 } }")
+        t.equal(scoped.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        t.equal(scoped.declarationTypes.count, 1)
+        t.equal(scoped.reactions.count, 1)
+        t.equal(scoped.reactions.first?.kind, .when)
+        t.equal(scoped.dataUses.first { $0.memberPath == "cpu.usage" }?.usage, .logic)
+        t.check(!scoped.dependencies.isEmpty)
+        for node in deskNumericNodes(scoped, "n", kind: .identifierExpr) {
+            t.check(scoped.canonicalNumericValues[scoped.tree.id(of: node)] == nil)
+        }
+        let plain = deskCheck("widget { Text(\"{1 / 0}\") }")
+        t.equal(plain.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        facts(plain, "1 / 0", .number(.plain))
+        let remainders = deskCheck("widget { Text(\"{7 % 3}\"); Text(\"{-7 % 3}\"); Text(\"{7 % 0}\"); Text(\"{memory.used + (7 % 3)}\") }")
+        t.equal(remainders.diagnostics.filter { $0.severity == .error }.map(\.id), [])
+        facts(remainders, "7 % 3", .number(.plain), canonical: 1)
+        facts(remainders, "-7 % 3", .number(.plain), canonical: -1)
+        facts(remainders, "7 % 0", .number(.plain))
+        facts(remainders, "(7 % 3)", .number(.bytes), base: 1024, canonical: 1)
+
+        // Branch values stored for semantic checks are not a folded conditional result.
+        let conditional = deskCheck("widget { computed n = false ? 1 : 2; Text(\"{n}\") }")
+        declaration(conditional, .number(.plain))
+        facts(conditional, "false ? 1 : 2", .number(.plain))
+        facts(conditional, "1", .number(.plain), canonical: 1)
+        facts(conditional, "2", .number(.plain), canonical: 2)
+        let prefixConditional = deskCheck("widget { computed n = -(false ? 1 : 2); Text(\"{n}\") }")
+        declaration(prefixConditional, .number(.plain))
+        facts(prefixConditional, "-(false ? 1 : 2)", .number(.plain))
+        facts(prefixConditional, "(false ? 1 : 2)", .number(.plain))
+    }
+}
+
+
+private func runDeskDeferredNumericTests(_ t: TestRunner) {
+    func facts(_ checked: CheckedFile, _ source: String, _ type: DeskType, canonical: Double? = nil,
+               kind: SyntaxKind? = nil) {
+        let nodes = deskNumericNodes(checked, source, kind: kind)
+        t.check(!nodes.isEmpty, "original expression exists: \(source)")
+        for node in nodes {
+            let key = checked.tree.id(of: node)
+            t.equal(checked.types[key]?.type, type, "settled use: \(source)")
+            t.equal(checked.types[key]?.displayBase, nil)
+            t.equal(checked.canonicalNumericValues[key], canonical)
+            t.check(checked.numericCoercions[key] == nil)
+        }
+    }
+    func byteFacts(_ checked: CheckedFile, _ source: String, base: Int, canonical: Double? = nil,
+                   type: DeskType = .number(.bytes), kind: SyntaxKind? = nil) {
+        let nodes = deskNumericNodes(checked, source, kind: kind)
+        t.check(!nodes.isEmpty, "original byte expression exists: \(source)")
+        for node in nodes {
+            let key = checked.tree.id(of: node)
+            t.equal(checked.types[key]?.type, type, source)
+            t.equal(checked.types[key]?.displayBase, base, source)
+            t.equal(checked.canonicalNumericValues[key], canonical, source)
+            t.check(checked.numericCoercions[key] == nil)
+        }
+    }
+    t.suite("Desk: checker — byte assignment owners supply open bases before canonical defaults") {
+        for expression in ["4GB", "((4GB))", "system.dark ? 4GB : 8GB",
+                           "(system.dark ? (4GB) : (system.dark ? 8GB : 2GB))", "4GB + 512MB"] {
+            let checked = deskCheck("widget { variable full = 8GB; Progress(memory.used, total: full).onClick { full = \(expression) } }")
+            t.equal(checked.diagnostics(.error).map(\.id), [], expression)
+            t.equal(checked.declarationTypes.values.first?.displayBase, 1024)
+            for (literal, number) in [("4GB", 4_294_967_296.0), ("8GB", 8_589_934_592.0),
+                                      ("2GB", 2_147_483_648.0), ("512MB", 536_870_912.0)] {
+                if !deskNumericNodes(checked, literal, kind: .numberLiteral).isEmpty {
+                    byteFacts(checked, literal, base: 1024, canonical: number, kind: .numberLiteral)
+                }
+            }
+            if expression.contains("?") {
+                byteFacts(checked, expression, base: 1024)
+            } else if expression == "((4GB))" {
+                byteFacts(checked, expression, base: 1024, canonical: 4_294_967_296)
+            }
+        }
+        let fixed = deskCheck(#"widget { variable full = 8GiB; Text("{full}").onClick { full = ((system.dark ? 4GB : 2GB)) } }"#)
+        t.equal(fixed.diagnostics(.error).map(\.id), [])
+        byteFacts(fixed, "4GB", base: 1024, canonical: 4_294_967_296)
+        byteFacts(fixed, "2GB", base: 1024, canonical: 2_147_483_648)
+        byteFacts(fixed, "((system.dark ? 4GB : 2GB))", base: 1024)
+        let speed = deskCheck(#"widget { variable full = 8GiB/s; Text("{full}").onClick { full = 4GB/s } }"#)
+        t.equal(speed.diagnostics(.error).map(\.id), [])
+        byteFacts(speed, "4GB/s", base: 1024, canonical: 4_294_967_296, type: .number(.bytesPerSecond))
+    }
+    t.suite("Desk: checker — byte assignment fixed units and data keep their chosen bases") {
+        let data = deskCheck(#"widget { variable full = 8GiB; Text("{full}").onClick { full = system.dark ? disk.used : 4GB } }"#)
+        t.equal(data.diagnostics(.error).map(\.id), [])
+        t.equal(data.declarationTypes.values.first?.displayBase, 1024)
+        byteFacts(data, "disk.used", base: 1000, kind: .memberExpr)
+        byteFacts(data, "4GB", base: 1000, canonical: 4_000_000_000)
+        byteFacts(data, "system.dark ? disk.used : 4GB", base: 1000)
+        let fixed = deskCheck(#"widget { variable full = disk.used; Text("{full}").onClick { full = system.dark ? 4GiB : 8GB } }"#)
+        t.equal(fixed.diagnostics(.error).map(\.id), [])
+        t.equal(fixed.declarationTypes.values.first?.displayBase, 1000)
+        byteFacts(fixed, "4GiB", base: 1024, canonical: 4_294_967_296)
+        byteFacts(fixed, "8GB", base: 1024, canonical: 8_589_934_592)
+        byteFacts(fixed, "system.dark ? 4GiB : 8GB", base: 1024)
+        let decimal = deskCheck(#"widget { variable full = disk.used; Text("{full}").onClick { full = ((4GB)) } }"#)
+        t.equal(decimal.diagnostics(.error).map(\.id), [])
+        byteFacts(decimal, "4GB", base: 1000, canonical: 4_000_000_000)
+        byteFacts(decimal, "((4GB))", base: 1000, canonical: 4_000_000_000)
+    }
+    t.suite("Desk: checker — byte assignment propagation respects dimension poison and mute guards") {
+        let wrong = deskCheck(#"widget { variable full = 8GiB; Text("{full}").onClick { full = 1s } }"#)
+        t.equal(wrong.diagnostics(.error).map(\.id), [.typeMismatch])
+        let poison = deskCheck(#"widget { variable full = 8; Text("{full == memory.used}").font(full).onClick { full = 4GB } }"#)
+        t.check(poison.diagnostics.contains { $0.id == .usesDisagree })
+        t.check(poison.declarationTypes.isEmpty)
+        t.check(!poison.diagnostics.contains { $0.id == .typeMismatch || $0.id == .unitMismatch })
+        byteFacts(poison, "4GB", base: 1000, canonical: 4_000_000_000)
+        let muted = deskCheck(#"widget { variable full = 8GB; Text("A", unused: system.dark ? 4GB : 2GB); Progress(memory.used, total: full) }"#)
+        t.check(!muted.diagnostics(.error).isEmpty)
+        t.equal(muted.declarationTypes.values.first?.displayBase, 1024)
+        for source in ["4GB", "2GB", "system.dark ? 4GB : 2GB"] {
+            for node in deskNumericNodes(muted, source) {
+                let key = muted.tree.id(of: node)
+                t.check(muted.types[key] == nil && muted.canonicalNumericValues[key] == nil && muted.numericCoercions[key] == nil)
+            }
+        }
+    }
+    t.suite("Desk: checker — ternary numeric assignments publish adopted branches after dimension settling") {
+        let expressions = ["points == 20 ? 80 : 20", "system.dark ? (80) : (20)", "(system.dark ? 80 : 20)",
+            "system.dark ? (system.dark ? 80 : 40) : (20)", "system.dark ? points : (80)", "system.dark ? 80pt : 20"]
+        for expression in expressions {
+            let checked = deskCheck("widget { variable points = 20; Text(\"A\").font(points).onClick { points = \(expression) } }")
+            t.equal(checked.diagnostics(.error).map(\.id), [], expression)
+            t.equal(checked.declarationTypes.values.first?.type, .length)
+            facts(checked, expression, .length)
+            for node in DeskNodeTable(tree: checked.tree).entries.map(\.positioned) where node.kind == .numberLiteral {
+                guard let literal = NumberLiteralSyntax(node), let number = literal.value else { continue }
+                let key = checked.tree.id(of: node)
+                t.equal(checked.types[key]?.type, .length, "literal receipt in \(expression)")
+                t.equal(checked.canonicalNumericValues[key], number)
+            }
+            let compiled = Desk.compile(checked)
+            t.equal(compiled.issues, [], expression)
+            t.check(compiled.program != nil, "the original typed condition and both branches form an executable program")
+        }
+        let plain = deskCheck(#"widget { variable points = 20; Text("A").onClick { points = system.dark ? 80 : 20 } }"#)
+        t.equal(plain.diagnostics(.error).map(\.id), [])
+        facts(plain, "system.dark ? 80 : 20", .plainNumber)
+        facts(plain, "80", .plainNumber, canonical: 80)
+    }
+    t.suite("Desk: checker — ternary numeric immediate expected types preserve literals typed peers and fraction receipts") {
+        let parameter = deskCheck(#"widget { Text("A").font(system.dark ? 20 : 80) }"#)
+        t.equal(parameter.diagnostics(.error).map(\.id), [])
+        facts(parameter, "system.dark ? 20 : 80", .length, kind: .ternaryExpr)
+        facts(parameter, "20", .length, canonical: 20); facts(parameter, "80", .length, canonical: 80)
+        t.check(Desk.compile(parameter).program != nil)
+        let immediate = deskCheck(#"widget { variable points = 20pt; Text("A").font(points).onClick { points = system.dark ? 80 : 20 } }"#)
+        t.equal(immediate.diagnostics(.error).map(\.id), [])
+        facts(immediate, "system.dark ? 80 : 20", .length)
+        facts(immediate, "80", .length, canonical: 80)
+        t.check(Desk.compile(immediate).program != nil)
+        let peer = deskCheck(#"widget { computed points = system.dark ? 20 : 80pt; Text("A").font(points) }"#)
+        t.equal(peer.diagnostics(.error).map(\.id), [])
+        facts(peer, "20", .length, canonical: 20)
+        facts(peer, "system.dark ? 20 : 80pt", .length)
+        t.check(Desk.compile(peer).program != nil)
+        let dynamic = deskCheck(#"widget { Text("A").font(system.dark ? cpu.coreCount : 20) }"#)
+        t.equal(dynamic.diagnostics(.error).map(\.id), [])
+        facts(dynamic, "system.dark ? cpu.coreCount : 20", .plainNumber, kind: .ternaryExpr)
+        facts(dynamic, "20", .plainNumber, canonical: 20)
+        t.check(Desk.compile(dynamic).program != nil, "Plain expressions remain supported at Length parameters without a global dimension rewrite")
+        let fraction = deskCheck(#"widget { Text("A").opacity(system.dark ? 50% : 25%) }"#)
+        t.equal(fraction.diagnostics(.error).map(\.id), [])
+        let nodes = deskNumericNodes(fraction, "system.dark ? 50% : 25%", kind: .ternaryExpr)
+        t.equal(nodes.count, 1)
+        if let node = nodes.first {
+            let key = fraction.tree.id(of: node)
+            t.equal(fraction.types[key]?.type, .plainNumber)
+            t.equal(fraction.numericCoercions[key], .percentAsFraction)
+            t.check(fraction.canonicalNumericValues[key] == nil, "a dynamic conditional is not a folded constant")
+        }
+        facts(fraction, "50%", .percent, canonical: 50); facts(fraction, "25%", .percent, canonical: 25)
+    }
+    t.suite("Desk: checker — ternary numeric mismatches required units unknown data and poisoned scopes remain rejected") {
+        let wrong = deskCheck(#"widget { variable points = 20pt; Text("A").font(points).onClick { points = system.dark ? 80pt : 20% } }"#)
+        t.equal(wrong.diagnostics(.error).map(\.id), [.typeMismatch])
+        t.equal(wrong.diagnostics(.error).first?.range, deskNumericNodes(wrong, "20%", kind: .numberLiteral).first?.textRange)
+        t.check(Desk.compile(wrong).program == nil)
+        let nonliteral = deskCheck(#"widget { variable points = 20; computed step = system.dark ? 4 : 8; Text("A").font(points).onClick { points = system.dark ? step : 20 } }"#)
+        t.equal(nonliteral.diagnostics(.error).map(\.id), [.typeMismatch])
+        t.equal(nonliteral.diagnostics(.error).first?.range, deskNumericNodes(nonliteral, "step", kind: .identifierExpr).first?.textRange)
+        t.check(Desk.compile(nonliteral).program == nil)
+        let required = deskCheck(#"widget { variable delay = 1s; Text("A").onClick { delay = system.dark ? 2 : 3 } }"#)
+        t.equal(required.diagnostics(.error).map { $0.id.rawValue }, ["DK4011", "DK4011"])
+        let requiredBytes = Array(required.tree.text.utf8)
+        t.equal(required.diagnostics(.error).map { String(decoding: requiredBytes[$0.range], as: UTF8.self) }, ["2", "3"])
+        t.check(Desk.compile(required).program == nil)
+        let unknown = deskCheck(#"widget { variable points = 20; Text("A").font(points).onClick { points = cpu.noSuchField ? 80 : 20 } }"#)
+        t.check(!unknown.diagnostics(.error).isEmpty)
+        t.check(Desk.compile(unknown).program == nil)
+        let poison = deskCheck(#"widget { variable points = 20; Text("{points == cpu.usage}").font(points).onClick { points = system.dark ? 80 : 20 } }"#)
+        t.check(poison.diagnostics.contains { $0.id == .usesDisagree })
+        t.check(!poison.diagnostics.contains { $0.id == .unitMismatch }, "a poisoned declaration produces no deferred mismatch cascade")
+        t.check(poison.declarationTypes.isEmpty)
+        t.check(Desk.compile(poison).program == nil)
+        let muted = deskCheck(#"widget { variable points = 20; Text("A", unused: system.dark ? 80 : 20).font(points) }"#)
+        t.check(!muted.diagnostics(.error).isEmpty)
+        for node in deskNumericNodes(muted, "system.dark ? 80 : 20") {
+            let key = muted.tree.id(of: node)
+            t.check(muted.types[key] == nil && muted.canonicalNumericValues[key] == nil && muted.numericCoercions[key] == nil)
+        }
+    }
+    t.suite("Desk: checker — ternary numeric comparison receipts settle independently of conditional expressions") {
+        for operation in ["==", "!=", "<", "<=", ">", ">="] {
+            let checked = deskCheck("widget { variable points = 20; computed match = points \(operation) 24; Text(\"{match}\").font(points) }")
+            t.equal(checked.diagnostics(.error).map(\.id), [], operation)
+            facts(checked, "24", .length, canonical: 24)
+            t.check(checked.declarationTypes.values.contains { $0.type == .bool })
+        }
+        let alias = deskCheck(#"widget { variable points = 20; computed mirror = points; computed match = mirror > 24; Text("{match}").font(points) }"#)
+        t.equal(alias.diagnostics(.error).map(\.id), [])
+        facts(alias, "mirror", .length, kind: .identifierExpr); facts(alias, "24", .length, canonical: 24)
+        let mismatched = deskCheck(#"widget { variable points = 20; computed step = system.dark ? 4 : 8; computed match = points > step; Text("{match}").font(points) }"#)
+        t.equal(mismatched.diagnostics(.error).map(\.id), [.unitMismatch])
+        t.equal(mismatched.diagnostics(.error).first?.range, deskNumericNodes(mismatched, "points > step", kind: .binaryExpr).first?.textRange)
+        let fixed = deskCheck(#"widget { variable points = 20pt; Text("{points > 1s}") }"#)
+        t.equal(fixed.diagnostics(.error).map(\.id), [.unitMismatch])
+        let required = deskCheck(#"widget { variable delay = 1; computed match = delay > 2; Text("{match}").onClick { after(delay) { log("A") } } }"#)
+        t.equal(required.diagnostics(.error).map { $0.id.rawValue }, ["DK4011", "DK4011"])
+        let poison = deskCheck(#"widget { variable points = 20; computed match = points > 24; Text("{points == cpu.usage}").font(points) }"#)
+        t.check(poison.diagnostics.contains { $0.id == .usesDisagree })
+        t.check(!poison.diagnostics.contains { $0.id == .unitMismatch })
+        let muted = deskCheck(#"widget { variable points = 20; Text("A", unused: points > 24).font(points) }"#)
+        t.check(!muted.diagnostics(.error).isEmpty)
+        t.check(!muted.diagnostics.contains { $0.id == .unitMismatch })
+        for node in deskNumericNodes(muted, "24", kind: .numberLiteral) {
+            t.check(muted.types[muted.tree.id(of: node)] == nil)
+        }
+    }
+    t.suite("Desk: checker — deferred numeric literals settle through arithmetic and assignments") {
+        let assigned = deskCheck(#"widget { variable size = 20; Text("A").font(size).onClick { size = size + 4 } }"#)
+        t.equal(assigned.diagnostics(.error).map(\.id), [])
+        t.equal(assigned.declarationTypes.values.first?.type, .length)
+        facts(assigned, "20", .length, canonical: 20)
+        facts(assigned, "4", .length, canonical: 4)
+        facts(assigned, "size + 4", .length)
+        facts(assigned, "size", .length, kind: .identifierExpr)
+        let inline = deskCheck(#"widget { variable size = 20; Text("A").font(size + 4) }"#)
+        t.equal(inline.diagnostics(.error).map(\.id), [])
+        facts(inline, "4", .length, canonical: 4)
+        facts(inline, "size + 4", .length, kind: .binaryExpr)
+        let literal = deskCheck(#"widget { variable size = 20; Text("A").font(size).onClick { size = 24 } }"#)
+        t.equal(literal.diagnostics(.error).map(\.id), [])
+        facts(literal, "24", .length, canonical: 24)
+        let nested = deskCheck(#"widget { variable size = 20; Text("A").font(size).onClick { size = ((size + 4) - 2) % 30 } }"#)
+        t.equal(nested.diagnostics(.error).map(\.id), [])
+        for (source, value) in [("4", 4.0), ("2", 2), ("30", 30)] { facts(nested, source, .length, canonical: value) }
+        for source in ["size + 4", "(size + 4) - 2", "((size + 4) - 2) % 30"] { facts(nested, source, .length) }
+        let linked = deskCheck(#"widget { variable size = 20; variable step = 4; Text("A").font(size).onClick { size = size + step } }"#)
+        t.equal(linked.diagnostics(.error).map(\.id), [])
+        t.equal(linked.declarationTypes.count, 2)
+        t.equal(Set(linked.declarationTypes.values.map(\.type)), [.length])
+        facts(linked, "step", .length, kind: .identifierExpr)
+        facts(linked, "size + step", .length)
+        facts(linked, "4", .length, canonical: 4)
+        t.check(!linked.symbols.isEmpty && !linked.dependencies.isEmpty, "the original scope/dependency pass is retained")
+    }
+    t.suite("Desk: checker — deferred numeric arithmetic rejects nonliteral dimension mismatches") {
+        for step in ["variable step = 1s / 1s", "computed step = system.dark ? 4 : 8"] {
+            for operation in ["+", "-", "%"] {
+                let expression = "size \(operation) step"
+                let source = "widget { variable size = 20; \(step); Text(\"A\").font(size).onClick { size = \(expression) } }"
+                let checked = deskCheck(source)
+                let errors = checked.diagnostics(.error)
+                t.equal(errors.map(\.id), [.unitMismatch], source)
+                let nodes = deskNumericNodes(checked, expression, kind: .binaryExpr)
+                t.equal(nodes.count, 1)
+                t.equal(errors.first?.range, nodes.first?.textRange)
+                t.check(!checked.canonicalNumericValues.keys.contains { $0 == nodes.first.map(checked.tree.id(of:)) })
+                let declarations = checked.declarationTypes.values.map(\.type)
+                t.check(declarations.contains(.length) && declarations.contains(.plainNumber))
+            }
+        }
+    }
+    t.suite("Desk: checker — deferred numeric relations respect poison mute and original isolation") {
+        let conflict = deskCheck(#"widget { variable size = 20; Text("{size == cpu.usage}").font(size).onClick { size = size + 4 } }"#)
+        t.check(conflict.diagnostics.contains { $0.id == .usesDisagree })
+        t.check(!conflict.diagnostics.contains { $0.id == .unitMismatch }, "poisoned slots do not cause a deferred cascade")
+        t.check(conflict.declarationTypes.isEmpty)
+        for source in ["size", "size + 4"] {
+            for node in deskNumericNodes(conflict, source) where node.kind.isExpression {
+                let key = conflict.tree.id(of: node)
+                t.check(conflict.types[key] == nil, "poisoned read/binary has no provisional type")
+                t.check(conflict.canonicalNumericValues[key] == nil && conflict.numericCoercions[key] == nil)
+            }
+        }
+        let muted = deskCheck(#"widget { variable size = 20; variable step = 1s / 1s; Text("A", unused: size + step).font(size) }"#)
+        t.check(!muted.diagnostics(.error).isEmpty, "the real unknown argument still reports its error")
+        t.check(!muted.diagnostics.contains { $0.id == .unitMismatch }, "speculative argument inference records no deferred relation")
+        for node in deskNumericNodes(muted, "size + step") {
+            t.check(muted.types[muted.tree.id(of: node)] == nil)
+            t.check(muted.canonicalNumericValues[muted.tree.id(of: node)] == nil)
+        }
+        let ordinary = deskCheck(#"widget { variable n = 1; Text("{n + 4}").onClick { n = n + 2 } }"#)
+        t.equal(ordinary.diagnostics(.error).map(\.id), [])
+        facts(ordinary, "4", .plainNumber, canonical: 4)
+        facts(ordinary, "2", .plainNumber, canonical: 2)
+        facts(ordinary, "n + 4", .plainNumber)
+        t.equal(ordinary.declarationTypes.values.first?.type, .plainNumber)
     }
 }
