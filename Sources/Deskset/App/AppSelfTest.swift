@@ -104,6 +104,7 @@ enum AppSelfTest {
         DeskWidgetInstallationSelfTests.run(t)
         DeskPackageStateSelfTests.run(t)
         DeskPackageCaptureSelfTests.run(t)
+        DeskPackageArchiveSelfTests.run(t)
         DeskPackageResourceSelfTests.run(t)
         DeskPackageStagingSelfTests.run(t)
         DeskPackageActivationSelfTests.run(t)
