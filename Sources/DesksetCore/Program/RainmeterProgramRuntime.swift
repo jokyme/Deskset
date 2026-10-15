@@ -78,7 +78,7 @@ package final class RainmeterProgramRuntime: SectionContext, LayoutSource, Scene
         for section in program.sections {
             let ini = section.ini
             switch section.kernel {
-            case .time, .calc, .cpu, .memory, .physicalmemory, .swapmemory, .uptime, .netin, .netout, .nettotal, .process, .freediskspace, .quoteplugin:
+            case .time, .calc, .cpu, .memory, .physicalmemory, .swapmemory, .uptime, .netin, .netout, .nettotal, .process, .freediskspace, .sysinfo, .quoteplugin:
                 guard let kernel = section.kernel, let selectedClass = kernel.measureClass,
                       let node = makeContextBuiltinMeasure(selectedClass, name: section.name, section: ini,
                                                            context: self, type: kernel.rawValue) else {
