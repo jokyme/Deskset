@@ -1,10 +1,11 @@
 import Foundation
 import DesksetCore
 
-/// Stable, versioned records for one installed instance. Values are checked against the current program after
+/// Stable, versioned records for an installed instance or package. Values are checked against the current schema after
 /// decoding; this format never stores a compiler slot, translated title or syntax identity.
 enum DeskProgramOptionStore {
     static let maximumValueBytes = 64 * 1024
+    /// An independent engineering bound for one instance record or one installed package record.
     static let maximumTotalBytes = 1024 * 1024
 
     struct Decoded {
@@ -18,13 +19,69 @@ enum DeskProgramOptionStore {
         let restoredNames: Set<String>
     }
 
+    struct ScopedValues {
+        let instance: ProgramOptionsInput
+        /// Only shared names visible to this member, not a changed-name diff. The caller selects the edited names
+        /// and merges them into the latest authoritative package input; this subset must never replace the full record.
+        let packagePatch: [String: ProgramOptionValue]
+    }
+
     static func restore(_ records: [String: JSONValue], for program: WidgetProgram,
                         live: ProgramOptionsInput? = nil) throws -> Restored {
         let schema = try ProgramOptionsSchema(options: program.options, translations: program.translations)
+        return restore(records, schema: schema, live: live)
+    }
+
+    /// A package caller supplies its complete package-only schema, including names overridden by some members.
+    /// Reconciliation is a read: it never writes recovered defaults back to either durable scope.
+    static func restore(_ records: [String: JSONValue], schema: ProgramOptionsSchema,
+                        live: ProgramOptionsInput? = nil) -> Restored {
         let decoded = decode(records)
         let reconciled = schema.reconcilePersisted(live?.values ?? decoded.values)
         return Restored(input: reconciled.input, defaults: schema.defaults,
                         restoredNames: Set(reconciled.restoredNames).union(decoded.invalidNames))
+    }
+
+    /// The package input has already been reconciled against the independent, complete package schema.
+    /// A same-name widget override is instance scope and therefore cannot read or alter that package value.
+    static func restoreInstance(_ records: [String: JSONValue], for program: WidgetProgram,
+                                package: ProgramOptionsInput, live: ProgramOptionsInput? = nil) throws -> Restored {
+        let schema = try ProgramOptionsSchema(options: program.options, translations: program.translations)
+        let scopes = optionScopes(program.options)
+        let decoded = decode(records)
+        let stored = live?.values ?? decoded.values
+        let local = stored.filter { scopes[$0.key] == .instance }
+        let reconciled = schema.reconcilePersisted(local)
+        var values = reconciled.input.values
+        for (name, scope) in scopes where scope == .package {
+            guard let value = package.values[name] else { throw ProgramRuntimeError.invalidOption(name) }
+            values[name] = value
+        }
+        // A mismatched shared schema is an error, never a member-specific fallback for an authoritative value.
+        let input = try schema.validate(ProgramOptionsInput(values: values))
+        let removed = stored.keys.filter { scopes[$0] != .instance }
+        return Restored(input: input, defaults: schema.defaults,
+                        restoredNames: Set(reconciled.restoredNames).union(decoded.invalidNames).union(removed))
+    }
+
+    static func split(_ input: ProgramOptionsInput, for program: WidgetProgram) throws -> ScopedValues {
+        let schema = try ProgramOptionsSchema(options: program.options, translations: program.translations)
+        let input = try schema.validate(input)
+        let scopes = optionScopes(program.options)
+        return ScopedValues(instance: ProgramOptionsInput(values: input.values.filter { scopes[$0.key] == .instance }),
+                            packagePatch: input.values.filter { scopes[$0.key] == .package })
+    }
+
+    /// Called only after schema validation has checked uniqueness, size and depth.
+    private static func optionScopes(_ options: [ProgramOptionNode]) -> [String: ProgramOptionScope] {
+        var pending = options, scopes: [String: ProgramOptionScope] = [:]
+        while let node = pending.popLast() {
+            switch node {
+            case .section(_, let items): pending.append(contentsOf: items)
+            case .option(let option): scopes[option.name] = option.scope
+            }
+        }
+        return scopes
     }
 
     static func encode(_ input: ProgramOptionsInput) throws -> [String: JSONValue] {

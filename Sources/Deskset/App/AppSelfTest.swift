@@ -97,6 +97,7 @@ enum AppSelfTest {
         DeskTextLineLimitSelfTests.run(t)
         BatteryDetailsServiceSelfTests.run(t)
         DeskBatteryDetailsSelfTests.run(t)
+        DeskPackageOptionStoreSelfTests.run(t)
         DeskOptionsIntegrationSelfTests.run(t)
         DeskProgramOptionsPanelSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)

@@ -177,24 +177,59 @@ struct DeskWidgetInstanceState: Codable, Equatable {
     }
 }
 
+/// One installed package's typed option records, independent of every member and instance.
+struct DeskPackageOptionState: Codable, Equatable {
+    var optionValues: [String: JSONValue] = [:]
+    var unknownKeys: [String: JSONValue] = [:]
+
+    init(optionValues: [String: JSONValue] = [:]) { self.optionValues = optionValues }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable { case optionValues }
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        optionValues = (try? c.decode([String: JSONValue].self, forKey: .optionValues)) ?? [:]
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        if !optionValues.isEmpty { try c.encode(optionValues, forKey: .optionValues) }
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
+    }
+}
+
 struct DeskWidgetState: Codable, Equatable {
     var sources: [String: DeskWidgetSourceState] = [:]
     var instances: [String: DeskWidgetInstanceState] = [:]
+    /// Keys are installed package UUIDs, written in lower case. Absence means schema defaults.
+    var packageOptions: [String: DeskPackageOptionState] = [:]
     var unknownKeys: [String: JSONValue] = [:]
-    var isEmpty: Bool { sources.isEmpty && instances.isEmpty && unknownKeys.isEmpty }
+    var isEmpty: Bool { sources.isEmpty && instances.isEmpty && packageOptions.isEmpty && unknownKeys.isEmpty }
 
     init() {}
-    private enum CodingKeys: String, CodingKey, CaseIterable { case sources, instances }
+    private enum CodingKeys: String, CodingKey, CaseIterable { case sources, instances, packageOptions }
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sources = ((try? c.decodeIfPresent([String: DeskWidgetSourceState].self, forKey: .sources)) ?? nil) ?? [:]
         instances = ((try? c.decodeIfPresent([String: DeskWidgetInstanceState].self, forKey: .instances)) ?? nil) ?? [:]
+        // A malformed package record cannot discard the other installed packages' saved values.
+        if let records = try? c.nestedContainer(keyedBy: AnyCodingKey.self, forKey: .packageOptions) {
+            for key in records.allKeys {
+                if let record = try? records.decode(DeskPackageOptionState.self, forKey: key) {
+                    packageOptions[key.stringValue] = record
+                }
+            }
+        }
         unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?.unknownValues(besides: Self.knownKeys) ?? [:]
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(sources, forKey: .sources); try c.encode(instances, forKey: .instances)
+        if !packageOptions.isEmpty { try c.encode(packageOptions, forKey: .packageOptions) }
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
     }
@@ -418,23 +453,62 @@ final class AppState {
         data.deskWidgets.instances[id.uuidString.lowercased()]
     }
 
-    enum DeskOptionsSaveFailure: Error { case instanceChanged, valueLimit, totalLimit }
+    enum DeskOptionsSaveFailure: Error { case instanceChanged, packageChanged, valueLimit, totalLimit }
+
+    struct DeskPackageOptionsChange {
+        let packageID: UUID
+        let values: [String: JSONValue]
+    }
+
+    func deskPackageOptions(_ packageID: UUID) -> DeskPackageOptionState? {
+        data.deskWidgets.packageOptions[packageID.uuidString.lowercased()]
+    }
+
+    /// The existing 1 MiB option-record budget applies independently to each installed package. A widget's
+    /// instance values and overrides never become shared defaults through this entry.
+    func saveDeskPackageOptions(_ packageID: UUID, values: [String: JSONValue]) throws {
+        precondition(Thread.isMainThread)
+        var next = data
+        try setDeskPackageOptions(DeskPackageOptionsChange(packageID: packageID, values: values), in: &next)
+        guard next.deskWidgets.packageOptions != data.deskWidgets.packageOptions else { return }
+        try write(next)
+        data = next
+    }
 
     /// Only a successfully written snapshot becomes durable state. Position/activation changes and unknown
     /// fields come from the latest instance, rather than from the panel's older copy.
-    func saveDeskOptions(_ id: UUID, sourceID: UUID, values: [String: JSONValue]) throws {
+    func saveDeskOptions(_ id: UUID, sourceID: UUID, values: [String: JSONValue],
+                         package: DeskPackageOptionsChange? = nil) throws {
         precondition(Thread.isMainThread)
         let key = id.uuidString.lowercased()
         guard var instance = data.deskWidgets.instances[key], instance.sourceID == sourceID else {
             throw DeskOptionsSaveFailure.instanceChanged
         }
         try DeskProgramOptionStore.validateSize(values)
-        guard instance.optionValues != values else { return }
         instance.optionValues = values
         var next = data
         next.deskWidgets.instances[key] = instance
+        if let package {
+            guard data.deskWidgets.sources[sourceID.uuidString.lowercased()]?.packageID == package.packageID else {
+                throw DeskOptionsSaveFailure.packageChanged
+            }
+            try setDeskPackageOptions(package, in: &next)
+        }
+        guard next.deskWidgets != data.deskWidgets else { return }
         try write(next)
         data = next
+    }
+
+    private func setDeskPackageOptions(_ change: DeskPackageOptionsChange, in next: inout AppStateData) throws {
+        guard next.deskWidgets.sources.values.contains(where: { $0.packageID == change.packageID }) else {
+            throw DeskOptionsSaveFailure.packageChanged
+        }
+        try DeskProgramOptionStore.validateSize(change.values)
+        let key = change.packageID.uuidString.lowercased()
+        var record = next.deskWidgets.packageOptions[key] ?? DeskPackageOptionState()
+        guard record.optionValues != change.values else { return }
+        record.optionValues = change.values
+        next.deskWidgets.packageOptions[key] = record
     }
 
     func deskSource(_ id: UUID) -> DeskWidgetSourceState? {
