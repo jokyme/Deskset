@@ -355,6 +355,40 @@ enum RainmeterProgramSelfTests {
             t.check(releases.current.allSatisfy { $0.0 && $0.1 },
                     "a parked worker explicitly authorizes release on main; physical-thread tests must use async")
         }
+        t.suite("App: Rainmeter bitmap owner: real fast worker consumes retirement before posting returns") {
+            let (program, skins, _, _) = try bitmapInput(t, "Counter")
+            let base = SkinThreadExecutor(name: "Fast retirement worker")
+            defer { base.stop() }
+            let executor = FastRetirementExecutor(base)
+            let held = Guarded<RainmeterProgramHost?>(nil), ready = Guarded(false)
+            let releases = Guarded<[(Bool, Bool)]>([]), errors = Guarded<[String]>([])
+            base.async {
+                do {
+                    let probe = ReleaseProbe(executor, releases)
+                    let clock = SkinClock(now: { withExtendedLifetime(probe) { Date(timeIntervalSince1970: 0) } },
+                        uptime: { 0 }, timeZone: { TimeZone(secondsFromGMT: 0)! })
+                    held.access { value in
+                        do {
+                            value = try RainmeterProgramHost(program: program, executor: executor, provider: nil,
+                                environment: RecordingSkinHost.fixedEnvironment, clock: clock, system: System(),
+                                effects: RecordingSideEffects(skinsDirectory: skins))
+                        } catch { errors.access { $0.append(String(describing: error)) } }
+                    }
+                }
+                ready.access { $0 = true }
+            }
+            t.check(AppSelfTest.spin(timeout: 30) { ready.current })
+            t.equal(errors.current, [])
+            executor.beforeReturn = { releases.current }
+            executor.armed = true
+            held.access { $0 = nil }
+            t.equal(executor.completed.current, true)
+            t.equal(executor.observed.current.count, 1)
+            t.check(executor.observed.current.allSatisfy { $0.0 && !$0.1 }, "release must precede posting return")
+            t.equal(releases.current.count, 1)
+            t.check(releases.current.allSatisfy { $0.0 && !$0.1 },
+                    "fast-worker final release: \(releases.current)")
+        }
         for worker in [false, true] {
             t.suite("App: Rainmeter bitmap owner: real \(worker ? "worker" : "main") executor owns ticks frames and final release") {
                 try liveBitmapOwner(t, worker: worker)
@@ -368,6 +402,33 @@ enum RainmeterProgramSelfTests {
     /// Only the return hop is held. Quote still constructs its real BackgroundJob and reads the
     /// real file on PluginIO.queue; this is neither VirtualTimeExecutor nor a background fake.
     /// All released work runs on the actual main/worker executor, never a parked exclusive loan.
+    private final class FastRetirementExecutor: SkinExecutor {
+        let base: SkinThreadExecutor
+        let completed = Guarded(false)
+        let observed = Guarded<[(Bool, Bool)]>([])
+        var armed = false // only the posting main thread arms and consumes this handshake
+        var beforeReturn: (() -> [(Bool, Bool)])?
+        init(_ base: SkinThreadExecutor) { self.base = base }
+        var isCurrent: Bool { base.isCurrent }
+        func async(_ work: @escaping () -> Void) {
+            if base.isCurrent || !armed { base.async(work); return }
+            armed = false
+            let done = DispatchSemaphore(value: 0)
+            base.async(work)
+            base.async { done.signal() }
+            completed.access { $0 = done.wait(timeout: .now() + 30) == .success }
+            observed.access { $0 = beforeReturn?() ?? [] }
+            withExtendedLifetime(work) {}
+        }
+        func async(after delay: TimeInterval, _ work: @escaping () -> Void) -> SkinScheduledWork {
+            base.async(after: delay, work)
+        }
+        func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
+                   _ fire: @escaping () -> Void) -> SkinScheduledWork {
+            base.timer(interval: interval, leeway: leeway, repeats: repeats, fire)
+        }
+    }
+
     private final class QuoteDeliveryGate: SkinExecutor {
         let base: SkinExecutor
         let pending = Guarded<[() -> Void]>([])
