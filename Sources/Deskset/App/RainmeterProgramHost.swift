@@ -99,16 +99,27 @@ final class RainmeterProgramHost {
     }
     func drawFirstFrame() { current.frames.drawFirstFrame() }
 
+    /// The posting thread retains only this holder, not the owned bundle. A fast worker
+    /// can consume it before async returns without leaving a last bundle reference on the caller.
+    private final class Retirement {
+        private var owner: Owner?
+        init(_ owner: Owner?) { self.owner = owner }
+        func finish() {
+            let value = owner
+            owner = nil
+            value?.close()
+            withExtendedLifetime(value) {}
+        }
+    }
+
     deinit {
-        guard let owner else { return }
-        self.owner = nil
         if executor.isCurrent {
-            owner.close()
+            owner?.close()
+            owner = nil
         } else {
-            executor.async {
-                owner.close()
-                withExtendedLifetime(owner) {}
-            }
+            let retirement = Retirement(owner)
+            owner = nil
+            executor.async { retirement.finish() }
         }
     }
 }
