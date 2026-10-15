@@ -44,18 +44,52 @@ enum DeskProgramResources {
     /// Installation copies the owner's immutable preparation, not the original user path. The descriptor and its
     /// recorded generation stay valid for the entire copy; no encoded image is decoded or rewritten here.
     static func withPreparedImage(_ source: Source, in prepared: Prepared, _ body: (Int32, Int) throws -> Void) throws {
-        guard let folder = prepared.folder, let image = prepared.images[source.literal],
-              image.path == folder.appendingPathComponent((image.path as NSString).lastPathComponent).path else {
-            throw Failure.changed(source.literal)
+        try prepared.lifetime.access {
+            guard let folder = prepared.folder, let image = prepared.images[source.literal],
+                  image.path == folder.appendingPathComponent((image.path as NSString).lastPathComponent).path else {
+                throw Failure.changed(source.literal)
+            }
+            let opened = try openFile(in: folder, literal: (image.path as NSString).lastPathComponent)
+            defer { Darwin.close(opened.fd) }
+            guard opened.stamp == image.stamp, opened.stamp.size >= 0, opened.stamp.size <= Int64(Int.max) else {
+                throw Failure.changed(source.literal)
+            }
+            try body(opened.fd, Int(opened.stamp.size))
+            var after = stat()
+            guard fstat(opened.fd, &after) == 0, stamp(after) == opened.stamp else { throw Failure.changed(source.literal) }
         }
-        let opened = try openFile(in: folder, literal: (image.path as NSString).lastPathComponent)
-        defer { Darwin.close(opened.fd) }
-        guard opened.stamp == image.stamp, opened.stamp.size >= 0, opened.stamp.size <= Int64(Int.max) else {
-            throw Failure.changed(source.literal)
+    }
+
+    /// Value copies are aliases of one preparation, not new independent owners. Explicit close is terminal;
+    /// dropping the last alias also cleans up cancelled or abandoned work. Separate preparations own separate copies.
+    final class Lifetime: @unchecked Sendable {
+        private let lock = NSLock()
+        private let folder: URL?
+        private let paths: Set<String>
+        private var released = false
+
+        init(folder: URL?, images: [String: ProgramImageResource]) {
+            self.folder = folder
+            paths = Set(images.values.map { $0.path })
         }
-        try body(opened.fd, Int(opened.stamp.size))
-        var after = stat()
-        guard fstat(opened.fd, &after) == 0, stamp(after) == opened.stamp else { throw Failure.changed(source.literal) }
+
+        func access<T>(_ body: () throws -> T) throws -> T {
+            lock.lock(); defer { lock.unlock() }
+            guard !released else { throw Failure.changed("resources") }
+            return try body()
+        }
+
+        func release() {
+            lock.lock(); defer { lock.unlock() }
+            guard !released else { return }
+            released = true
+            if let folder {
+                try? FileManager.default.removeItem(at: folder)
+                Images.discardFiles(paths)
+            }
+        }
+
+        deinit { release() }
     }
 
     struct Prepared: Sendable {
@@ -67,22 +101,28 @@ enum DeskProgramResources {
         let failure: String?
         let capture: DeskPackageCapture?
         let fonts: Fonts.PackageLease?
+        let lifetime: Lifetime
 
         init(root: URL, folder: URL?, files: [DeskPackageFile], images: [String: ProgramImageResource],
-             sources: [Source], failure: String?, capture: DeskPackageCapture? = nil, fonts: Fonts.PackageLease? = nil) {
+             sources: [Source], failure: String?, capture: DeskPackageCapture? = nil, fonts: Fonts.PackageLease? = nil,
+             lifetime: Lifetime? = nil) {
             self.root = root; self.folder = folder; self.files = files; self.images = images
             self.sources = sources; self.failure = failure; self.capture = capture; self.fonts = fonts
+            self.lifetime = lifetime ?? Lifetime(folder: folder, images: images)
         }
 
         func removeCopies() {
             fonts?.release()
-            if let folder { try? FileManager.default.removeItem(at: folder) }
+            lifetime.release()
         }
 
         /// A drawing owner consumes its already qualified package snapshot. It checks only those immutable
         /// private images here; refreshing the original package is separate file-worker work.
         func copiesUnchanged() -> Bool {
-            (fonts?.isActive ?? true) && images.values.allSatisfy { Images.imageStamp(atPath: $0.path) == $0.stamp }
+            (try? lifetime.access {
+                failure == nil && (fonts?.isActive ?? true)
+                    && images.values.allSatisfy { Images.imageStamp(atPath: $0.path) == $0.stamp }
+            }) ?? false
         }
 
         /// Package validation reads the whole captured directory and belongs on a file worker, not Main or a
@@ -272,7 +312,7 @@ enum DeskProgramResources {
                             failure: failure, capture: capture)
         }
         return Prepared(root: images.root, folder: images.folder, files: images.files, images: images.images,
-                        sources: images.sources, failure: nil, capture: capture, fonts: fonts)
+                        sources: images.sources, failure: nil, capture: capture, fonts: fonts, lifetime: images.lifetime)
     }
 
     private typealias ReadBytes = (Int) throws -> Data

@@ -32,8 +32,8 @@ import DesksetCore
 /// - Each of these is made by one thread at a time: whoever needs a file (or derived image, or mask) that another
 ///   thread is making right now waits for that one (`inFlight`) instead of decoding it a second time. The maker never
 ///   waits for anything while it makes it.
-/// - A result made from a version of the file that was replaced (or purged) meanwhile is handed to its caller but not
-///   kept.
+/// - A file replaced while decoding is rejected. A result made across a purge, or derived from an already owned
+///   image whose cache entry has retired, is handed to its caller but not kept.
 package enum Images {
     /// Installs the symbol renderer once at process startup, before any image requests. Purging the shared cache
     /// keeps this renderer: a cached path must never mix platform renderers. A symbol request without it is an error.
@@ -51,11 +51,10 @@ package enum Images {
     static let maxSourcePixels = 1 << 28
     /// Derived bitmaps larger than this many pixels are not created (the plain image is drawn instead).
     package static let maxDerivedPixels = 16_777_216
-    /// Memory budget (bytes) for decoded files. Beyond it the least recently used files are dropped — a slideshow
-    /// skin cycling through a photo folder must not keep every photo decoded — but never a file used in the last
-    /// `entryKeepAlive` seconds (it is still on screen; dropping it would decode it again on every frame).
+    /// Hard retained-storage budget for decoded files. Callers pin immutable Entry/CGImage references, not
+    /// cache membership: eviction never invalidates an image already accepted by a drawing. This does not bound
+    /// decoder working memory or references retained by callers.
     static let entryCostLimit = 512 << 20
-    static let entryKeepAlive: TimeInterval = 5
 
     /// Pixels per point of an image, per axis (files: 1).
     package struct Density: Hashable {
@@ -130,6 +129,8 @@ package enum Images {
     }
 
     private static var inFlight: Set<Work> = []
+    /// Only live work is tracked; repeated cleanup does not grow a permanent path tombstone map.
+    private static var discardedFiles: Set<String> = []
     /// Counts `purge()`s: what was being made when the caches were purged is not kept.
     private static var purges = 0
     private static var waiting = 0
@@ -137,6 +138,8 @@ package enum Images {
 
     /// Threads waiting right now for something another thread is making (self-tests).
     package static var waitingCount: Int { locked { waiting } }
+    /// Retained cache storage only; caller-owned images and decoder working memory are not included.
+    package static var retainedBitmapBytes: Int { locked { entriesCost + derivedCost } }
     /// The image decoded for `path` now (a file's path or a `drawnPath`), without decoding anything (self-tests).
     package static func cachedImage(_ path: String) -> CGImage? { locked { entries[path]?.image } }
     /// Called on the decoding thread, outside the lock, just before a file is decoded (self-tests: counts decodes, and
@@ -211,7 +214,10 @@ package enum Images {
             condition.lock()
             defer { condition.unlock() }
             finish(.file(path))
-            // Purged meanwhile (Refresh All): hand the result over, keep nothing.
+            let discarded = discardedFiles.remove(path) != nil
+            // Never label new bytes with an older stamp or resurrect an explicitly closed owner.
+            guard !discarded, FileStamp(path: file) == stamp else { return nil }
+            // Purged meanwhile (Refresh All): hand the immutable result over, keep nothing.
             let keep = purges == purged
             guard let decoded else {
                 if keep {
@@ -228,7 +234,7 @@ package enum Images {
             failures[path] = nil
             entries[path] = e
             entriesCost += e.cost
-            if entriesCost > entryCostLimit { evictEntries(now: now) }
+            if entriesCost > entryCostLimit { evictEntries() }
             return e
         }
     }
@@ -345,7 +351,7 @@ package enum Images {
             guard keep else { return e }
             entries[path] = e
             entriesCost += e.cost
-            if entriesCost > entryCostLimit { evictEntries(now: now) }
+            if entriesCost > entryCostLimit { evictEntries() }
             return e
         }
     }
@@ -363,12 +369,11 @@ package enum Images {
         dropDerived(path)
     }
 
-    /// Drops least recently used decoded files until the cache is back under 3/4 of its budget, keeping files used
-    /// within `entryKeepAlive` (with the lock held).
-    private static func evictEntries(now: TimeInterval) {
+    /// Drops least recently used decoded files back under 3/4 of the budget (with the lock held).
+    private static func evictEntries() {
         let target = entryCostLimit / 4 * 3
-        for (path, e) in entries.sorted(by: { $0.value.lastUse < $1.value.lastUse }) {
-            guard entriesCost > target, now - e.lastUse > entryKeepAlive else { break }
+        for (path, _) in entries.sorted(by: { $0.value.lastUse < $1.value.lastUse }) {
+            guard entriesCost > target else { break }
             removeEntry(path)
         }
     }
@@ -395,6 +400,23 @@ package enum Images {
     package static func exifOrientation(atPath path: String) -> Int {
         if let h = largeHeader(path) { return h.orientation }
         return entry(atPath: path)?.exifOrientation ?? 1
+    }
+
+    /// Release only an owner's files and drawn-size aliases, without purging unrelated shared resources.
+    /// Existing caller pins remain valid; work already decoding these paths is rejected when it returns.
+    package static func discardFiles(_ files: Set<String>) {
+        guard !files.isEmpty else { return }
+        locked {
+            func belongs(_ path: String) -> Bool {
+                !MacSymbol.isSymbolPath(path) && files.contains(decodeRequest(path)?.file ?? path)
+            }
+            for work in inFlight {
+                if case .file(let path) = work, belongs(path) { discardedFiles.insert(path) }
+            }
+            for path in Array(entries.keys) where belongs(path) { removeEntry(path) }
+            for path in Array(failures.keys) where belongs(path) { failures[path] = nil }
+            for path in files { headers[path] = nil }
+        }
     }
 
     /// Refresh All: every file is decoded again (a skin author may have edited it). What another thread is decoding or

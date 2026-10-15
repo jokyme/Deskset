@@ -23,6 +23,67 @@ enum SharedServiceThreadingSelfTests {
     // MARK: Images
 
     static func imageTests(_ t: AppTestRunner) {
+        t.suite("App: resource cache lifecycle: replacement during decode never publishes a stale generation") {
+            let folder = t.temporaryDirectory("image-generation")
+            let path = folder.appendingPathComponent("changing.png").path
+            try writePNG(to: path, width: 24, height: 12)
+            Images.purge()
+            defer { Images.willDecode = nil; Images.purge() }
+            Images.willDecode = { file in
+                guard file == path else { return }
+                Images.willDecode = nil
+                try? writePNG(to: path, width: 36, height: 18, replacing: true)
+            }
+            t.check(Images.entry(atPath: path) == nil, "changed input is rejected, not labeled with the old stamp")
+            t.check(Images.cachedImage(path) == nil)
+            t.equal(Images.entry(atPath: path)?.image.width, 36, "next request recovers with the new generation")
+        }
+        t.suite("App: resource cache lifecycle: targeted cancellation rejects in-flight aliases and recovers") {
+            let folder = t.temporaryDirectory("image-cancel")
+            let path = folder.appendingPathComponent("image.png").path
+            try writePNG(to: path, width: 24, height: 12)
+            Images.purge()
+            defer { Images.willDecode = nil; Images.purge() }
+            let alias = Images.drawnPath(path, maxPixelSide: 8)
+            Images.willDecode = { file in
+                guard file == path else { return }
+                Images.willDecode = nil
+                Images.discardFiles([path])
+            }
+            t.check(Images.entry(atPath: alias) == nil, "discard marks work outside the cache lock")
+            t.check(Images.cachedImage(alias) == nil)
+            let recovered = Images.entry(atPath: alias)
+            t.check(recovered != nil, "cancellation is not a permanent negative cache")
+            Images.discardFiles([path])
+            t.check(Images.cachedImage(alias) == nil)
+            t.check(recovered?.image.width == 8, "independent caller keeps its immutable pin")
+        }
+        t.suite("App: resource cache lifecycle: retained storage is bounded while caller pins survive pressure") {
+            let folder = t.temporaryDirectory("image-pressure")
+            let seed = folder.appendingPathComponent("seed.png").path
+            try writePNG(to: seed, width: 4096, height: 4096)
+            Images.purge()
+            defer { Images.purge() }
+            let pinned = Images.entry(atPath: seed)
+            t.check(pinned != nil)
+            var peak = 0
+            for index in 0..<10 {
+                let path = folder.appendingPathComponent("copy-\(index).png").path
+                try FileManager.default.copyItem(atPath: seed, toPath: path)
+                autoreleasepool { _ = Images.entry(atPath: path) }
+                let retained = Images.retainedBitmapBytes
+                peak = max(peak, retained)
+                print("CACHE sample=\(index) retained=\(retained) limit=\(512 << 20)")
+                t.check(retained <= 512 << 20, "recent use cannot bypass retained storage limit")
+            }
+            t.equal(pinned?.image.width, 4096, "an evicted cache entry remains owned by its caller")
+            Images.purge()
+            t.equal(Images.retainedBitmapBytes, 0)
+            t.equal(pinned?.image.height, 4096, "purge does not invalidate an already owned immutable image")
+            t.equal(Images.entry(atPath: seed)?.image.width, 4096)
+            print("CACHE peak=\(peak) recovered=\(Images.retainedBitmapBytes)")
+        }
+
         t.suite("App: skin threading: threads that want one file at once decode it once") {
             let folder = t.temporaryDirectory("images-threads")
             let file = folder.appendingPathComponent("photo.png").path

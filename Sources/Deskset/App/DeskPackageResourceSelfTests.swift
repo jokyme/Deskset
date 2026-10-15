@@ -67,6 +67,77 @@ enum DeskPackageResourceSelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
+        t.suite("App: Desk package resources: abandoned copies release and explicit release is idempotent") {
+            let folder = try root(t, files: [("a.png", try encodedImage())])
+            let captured = try capture(folder)
+            var owned: DeskProgramResources.Prepared? = prepare(captured, ["a.png"])
+            let copy = owned!.folder!
+            var alias = owned
+            owned = nil
+            t.check(FileManager.default.fileExists(atPath: copy.path), "a value copy shares the same lifetime")
+            t.check(alias?.copiesUnchanged() == true)
+            alias = nil
+            t.check(!FileManager.default.fileExists(atPath: copy.path), "last reference cleans abandoned preparation")
+            let explicit = prepare(captured, ["a.png"])
+            let destination = explicit.folder!
+            explicit.removeCopies()
+            t.check(!explicit.copiesUnchanged(), "released preparations cannot qualify again")
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: destination) }
+            explicit.removeCopies()
+            t.check(FileManager.default.fileExists(atPath: destination.path), "duplicate release never removes a replacement directory")
+            let empty = prepare(captured, [])
+            empty.removeCopies()
+            t.check(!empty.copiesUnchanged(), "even an empty released generation is invalid")
+            let standalone = DeskProgramResources.prepare(root: folder, literals: [], maximumBytes: 1024, maximumFiles: 2)
+            standalone.removeCopies()
+            t.check(!standalone.copiesUnchanged(), "standalone empty preparations also have terminal generations")
+        }
+
+        t.suite("App: Desk package resources: close drops owned cache aliases without releasing another owner") {
+            let folder = try root(t, files: [("a.png", try encodedImage())])
+            let captured = try capture(folder)
+            Images.purge()
+            defer { Images.purge() }
+            let other = prepare(captured, ["a.png"])
+            defer { other.removeCopies() }
+            let otherPath = try image(other, "a.png").path
+            let shared = Images.entry(atPath: otherPath)
+            t.check(shared != nil)
+            let retained = Images.retainedBitmapBytes
+            for index in 0..<32 {
+                let prepared = prepare(captured, ["a.png"])
+                let path = try image(prepared, "a.png").path
+                let alias = Images.drawnPath(path, maxPixelSide: 4)
+                let pinned = Images.entry(atPath: path)
+                t.check(pinned != nil && Images.entry(atPath: alias) != nil)
+                guard let pinned else { throw Failure.fixture("decoded pin") }
+                let key = Images.DerivedKey(path: path, generation: pinned.generation,
+                    recipe: .region(.oriented, x: 0, y: 0, width: 2, height: 2))
+                let crop = Images.derived(key) { pinned.image.cropping(to: CGRect(x: 0, y: 0, width: 2, height: 2)) }
+                t.check(crop != nil)
+                DispatchQueue.concurrentPerform(iterations: 8) { _ in prepared.removeCopies() }
+                prepared.removeCopies()
+                t.check(Images.cachedImage(path) == nil && Images.cachedImage(alias) == nil)
+                t.check(Images.cachedImage(otherPath) === shared?.image)
+                t.equal(pinned.image.width, 8, "caller pins outlive cache membership")
+                t.equal(crop?.width, 2, "derived caller pins also survive owner cleanup")
+                t.equal(Images.retainedBitmapBytes, retained, "cleanup returns exactly to the other owner's baseline")
+                t.check(!prepared.copiesUnchanged())
+                print("RESOURCE close=\(index) retained=\(Images.retainedBitmapBytes)")
+            }
+            weak var witness: Images.Entry?
+            autoreleasepool {
+                let prepared = prepare(captured, ["a.png"])
+                let path = prepared.images["a.png"]!.path
+                let entry = Images.entry(atPath: path)
+                witness = entry
+                prepared.removeCopies()
+                withExtendedLifetime(entry) { t.check(witness != nil) }
+            }
+            t.check(witness == nil, "last caller release deallocates the entry after cache removal")
+        }
+
         t.suite("App: Desk package resources: original encoded bytes and aliases share one private copy per preparation") {
             let png = try encodedImage(), path = "Pictures/Café.PNG"
             let folder = try root(t, files: [(path, png), ("unused.png", Data([1, 2, 3])), ("notes.txt", Data("notes".utf8))])
