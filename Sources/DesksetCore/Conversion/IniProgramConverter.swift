@@ -176,6 +176,7 @@ package enum IniProgramConverter {
                 case "netin", "netout", "nettotal":
                     kernels[name] = RainmeterProgram.Kernel(rawValue: raw.value.lowercased())
                     allowed = systemKeys.union(["interface", "cumulative", "usebits", "netinspeed", "netoutspeed"])
+                case "sysinfo": kernels[name] = .sysinfo; allowed = systemKeys.union(["sysinfotype", "sysinfodata"])
                 case "process": kernels[name] = .process; allowed = systemKeys.union(["processname"])
                 case "freediskspace":
                     kernels[name] = .freediskspace

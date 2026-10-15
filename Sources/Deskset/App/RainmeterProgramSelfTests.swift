@@ -69,6 +69,11 @@ enum RainmeterProgramSelfTests {
 
     static func run(_ t: AppTestRunner) {
         bitmapOwnerTests(t)
+        for worker in [false, true] {
+            t.suite("App: Rainmeter SysInfo: real \(worker ? "worker" : "main") owns sampling projection and retirement") {
+                try liveSysInfoOwner(t, worker: worker)
+            }
+        }
         t.suite("App: Rainmeter program: original Anchors matches native pixels after both Skin owners release") {
             guard let source = Paths.repositoryFolder("TestSkins")?.appendingPathComponent("Engine/Compat/Anchors.ini") else {
                 throw Failure.input
@@ -595,6 +600,176 @@ enum RainmeterProgramSelfTests {
             t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker })
             t.equal(effects.records, [])
         }
+    }
+
+    /// Deliberately separate from System: unrelated suites must still trap on every system read.
+    private final class SysInfoSystem: SystemDataSource {
+        let forbidden = System()
+        let executor: SkinExecutor
+        let reads: Guarded<[(String, String, Bool, Bool)]>
+        let networkReads: Guarded<Int>
+        var user = "native-user"
+        var idle = 42.0
+        init(_ executor: SkinExecutor, _ reads: Guarded<[(String, String, Bool, Bool)]>, _ networkReads: Guarded<Int>) {
+            self.executor = executor; self.reads = reads; self.networkReads = networkReads
+        }
+        var processorCount: Int { forbidden.processorCount }
+        func cpuUsage(processor: Int) -> Double { forbidden.cpuUsage(processor: processor) }
+        func memoryStatus() -> MemoryStatus { forbidden.memoryStatus() }
+        func networkInterfaces() -> [String] { networkReads.access { $0 += 1 }; return [] }
+        func networkCounters(interface: String?) -> NetworkCounters {
+            networkReads.access { $0 += 1 }; return NetworkCounters()
+        }
+        func diskSpace(path: String) -> (total: Double, free: Double)? { forbidden.diskSpace(path: path) }
+        func uptime() -> TimeInterval { forbidden.uptime() }
+        func battery() -> BatteryStatus? { forbidden.battery() }
+        func isProcessRunning(_ name: String) -> Bool { forbidden.isProcessRunning(name) }
+        func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
+            reads.access { $0.append((type, data, executor.isCurrent, Thread.isMainThread)) }
+            switch type {
+            case "USER_NAME": return (0, user)
+            case "IDLE_TIME": return (idle, nil)
+            default: preconditionFailure("Unexpected SysInfo source query: \(type):\(data)")
+            }
+        }
+    }
+
+    private static func liveSysInfoOwner(_ t: AppTestRunner, worker: Bool) throws {
+        let skins = t.temporaryDirectory("native-sysinfo-" + (worker ? "worker" : "main"))
+        let file = skins.appendingPathComponent("SysInfo.ini")
+        let source = """
+        [Rainmeter]
+        Update=-1
+        [Width]
+        Measure=SysInfo
+        SysInfoType=SCREEN_WIDTH
+        [Zone]
+        Measure=SysInfo
+        SysInfoType=TIMEZONE_BIAS
+        [User]
+        Measure=SysInfo
+        SysInfoType=USER_NAME
+        SysInfoData=en0
+        [Idle]
+        Measure=SysInfo
+        SysInfoType=IDLE_TIME
+        [Disabled]
+        Measure=SysInfo
+        SysInfoType=IDLE_TIME
+        Disabled=1
+        [Paused]
+        Measure=SysInfo
+        SysInfoType=IDLE_TIME
+        Paused=1
+        [Display]
+        Meter=String
+        MeasureName=Width
+        MeasureName2=Zone
+        MeasureName3=User
+        MeasureName4=Idle
+        Text=%1|%2|%3|%4
+        FontSize=14
+        FontColor=255,255,255,255
+        W=500
+        H=40
+        """
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock()
+        var initial = RecordingSkinHost.fixedEnvironment
+        initial.locale = Locale(identifier: "en_US_POSIX")
+        initial.screens = [SkinScreen(area: SkinRect(width: 1234, height: 800), workArea: SkinRect(width: 1234, height: 780))]
+        let program = try IniProgramConverter.convert(config: "SysInfo", fileURL: file, skinsDirectory: skins,
+            system: System(), environment: initial, clock: conversion.clock, executor: conversion, effects: effects)
+        t.equal(conversion.pendingCount, 0)
+        t.equal(conversion.background.reports, [])
+        let executor: SkinExecutor = worker ? SkinThreadExecutor(name: "Native SysInfo owner") : MainSkinExecutor.shared
+        let held = Guarded<RainmeterProgramHost?>(nil), errors = Guarded<[String]>([])
+        let reads = Guarded<[(String, String, Bool, Bool)]>([]), networkReads = Guarded(0)
+        let releases = Guarded<[(Bool, Bool)]>([]), ownership = Guarded<[Bool]>([])
+        let scenes = Guarded<[WidgetScene]>([]), weakOwner = WeakBitmapOwner()
+        let system = SysInfoSystem(executor, reads, networkReads)
+        let environment = Environment(.light, 1)
+        func onOwner(_ body: @escaping () throws -> Void) throws {
+            let done = Guarded(false)
+            executor.async {
+                do { try body() } catch { errors.access { $0.append(String(describing: error)) } }
+                done.access { $0 = true }
+            }
+            guard AppSelfTest.spin(timeout: 30, until: { done.current }) else { throw Failure.clock }
+            t.equal(errors.current, [])
+            guard errors.current.isEmpty else { throw Failure.input }
+        }
+        defer {
+            try? onOwner { held.access { $0?.close(); $0 = nil } }
+            (executor as? SkinThreadExecutor)?.stop()
+        }
+        try onOwner {
+            let probe = ReleaseProbe(executor, releases)
+            let fixed = conversion.clock
+            let dataClock = SkinClock(now: { withExtendedLifetime(probe) { fixed.now() } },
+                uptime: fixed.uptime, timeZone: fixed.timeZone)
+            let host = try RainmeterProgramHost(program: program, executor: executor, provider: nil,
+                environment: initial, clock: dataClock, system: system, effects: effects)
+            weakOwner.engine = host.engine; weakOwner.context = host.context
+            held.access { $0 = host }
+            try host.start()
+            ownership.access { $0.append(executor.isCurrent && Thread.isMainThread != worker) }
+            t.equal(host.engine.updateCount, 1)
+            let scene = try host.engine.project(environment: environment)
+            scenes.access { $0.append(scene) }
+        }
+        t.equal(ownership.current, [true])
+        t.equal(reads.current.map { $0.0 + ":" + $0.1 }, ["USER_NAME:en0", "IDLE_TIME:"])
+        t.equal(quoteTexts(scenes.current[0].drawingItems), ["1234|0|native-user|42"])
+        try onOwner {
+            guard let host = held.current else { throw Failure.input }
+            var changed = initial
+            changed.screens = [SkinScreen(area: SkinRect(width: 2345, height: 900), workArea: SkinRect(width: 2345, height: 880))]
+            system.user = "next-user"; system.idle = 84
+            host.take(SkinWindowFacts(frame: .zero, isVisible: true, isOrderedIn: true, scale: 1,
+                colorSpace: SkinFrameProducer.sRGB, takesPointer: true, sequence: 1), environment: changed)
+            t.equal(host.engine.updateCount, 1)
+            t.equal(try host.engine.project(environment: environment).drawingItems, scenes.current[0].drawingItems,
+                    "publishing environment and projecting do not sample or invent a tick")
+            t.equal(reads.current.count, 2)
+            host.engine.updateForTick()
+            t.equal(host.engine.updateCount, 2)
+            t.equal(host.engine.failure, nil)
+            let scene = try host.engine.project(environment: environment)
+            scenes.access { $0.append(scene) }
+            t.equal(quoteTexts(scene.drawingItems), ["2345|0|next-user|84"])
+            t.equal(reads.current.count, 4)
+            // Static inactive measures remain unread on every real owner tick; Core tests cover reactivation.
+            host.pause()
+            t.equal(reads.current.count, 4)
+            try host.resume(updateNow: false)
+            t.equal(reads.current.count, 4, "resume without update must not sample")
+            host.engine.updateForTick()
+            t.equal(reads.current.count, 6, "only the two active provider-backed measures sample")
+            host.close()
+            do { try host.update(); t.check(false, "closed host cannot sample") }
+            catch let error as RainmeterProgramError { t.equal(error, .closed) }
+            t.equal(reads.current.count, 6)
+        }
+        t.check(reads.current.allSatisfy { $0.2 && $0.3 != worker }, "every SysInfo read uses its physical owner")
+        let first = try pixels(scenes.current[0], scale: 1, cycle: 1, context: DrawContext(fonts: AppFontResolver()))
+        let second = try pixels(scenes.current[1], scale: 1, cycle: 2, context: DrawContext(fonts: AppFontResolver()))
+        t.check(first.contains { $0 != 0 } && second.contains { $0 != 0 })
+        t.check(first != second, "the ordinary tick changes native visible text pixels")
+        // Exercise Host.Retirement, not an exclusive loan or an on-owner final release.
+        if worker { held.access { $0 = nil } }
+        else { DispatchQueue.global().async { held.access { $0 = nil } } }
+        t.check(AppSelfTest.spin(timeout: 30) {
+            !releases.current.isEmpty && weakOwner.engine == nil && weakOwner.context == nil
+        })
+        t.equal(releases.current.count, 1)
+        t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker }, "SysInfo bundle releases on its physical owner")
+        t.check(weakOwner.engine == nil && weakOwner.context == nil)
+        t.equal(reads.current.count, 6)
+        t.equal(networkReads.current, 0)
+        t.equal(effects.records, [])
+        t.equal(errors.current, [])
+        t.equal(try String(contentsOf: file, encoding: .utf8), source)
     }
 
     private static func actualPointSize(_ image: CGImage, _ scale: Int) -> CGSize {

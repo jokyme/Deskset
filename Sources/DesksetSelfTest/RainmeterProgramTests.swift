@@ -21,7 +21,8 @@ private final class RainmeterFixtureText: RainmeterTextMeasuring {
 private final class RainmeterFixtureHost: FakeHost {
     let text: RainmeterFixtureText
     init(_ text: RainmeterFixtureText) { self.text = text }
-    override func environment(for skin: Skin) -> SkinEnvironment { RecordingSkinHost.fixedEnvironment }
+    var fixtureEnvironment = RecordingSkinHost.fixedEnvironment
+    override func environment(for skin: Skin) -> SkinEnvironment { fixtureEnvironment }
     override func textSize(_ value: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
         let size = text.measure(value, style: style, wrapWidth: wrapWidth, cycle: skin.updateCount)
         return (size?.width ?? 0, size?.height ?? 0)
@@ -50,8 +51,10 @@ private final class RainmeterSystemProbe: SystemDataSource {
     var processorCount: Int { fallback.processorCount }
     func battery() -> BatteryStatus? { fallback.battery() }
     func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
-        fallback.sysInfo(type: type, data: data)
+        reads.append("sysInfo:\(type):\(data)")
+        return sysInfoAnswers[type + ":" + data] ?? sysInfoAnswers[type]
     }
+    var sysInfoAnswers: [String: (number: Double, string: String?)] = [:]
     var reads: [String] = []
     var up = 90061.0
     var disk: (total: Double, free: Double)? = (1000, 250)
@@ -695,6 +698,247 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Engine: Rainmeter SysInfo: source answers recovery and cadence match Skin") {
+        let (skins, file, _) = try input("sysinfo-values")
+        let cases: [(String, String, String)] = [
+            ("User", " user_name ", " en0 "), ("Number", "IDLE_TIME", ""),
+            ("Empty", "", ""), ("Unknown", "NOT_A_TYPE", ""), ("Unsupported", "USER_SID", ""),
+            ("Nonfinite", "NONFINITE", ""), ("Slow", "IDLE_TIME", ""), ("Once", "IDLE_TIME", "")
+        ]
+        let sections = cases.map { name, type, data in
+            "[\(name)]\nMeasure=SysInfo\nSysInfoType=\(type)\nSysInfoData=\(data)\n" +
+                (name == "Slow" ? "UpdateDivider=2\n" : name == "Once" ? "UpdateDivider=-1\n" : "")
+        }.joined()
+        try ("[Rainmeter]\nUpdate=500\n" + sections).write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock()
+        let program = try convert(file, skins, conversion, effects)
+        t.equal(conversion.background.reports, [], "static SysInfo options do not sample")
+        let time = try clock(), oldTime = try clock(), system = RainmeterSystemProbe(), oldSystem = RainmeterSystemProbe()
+        system.sysInfoAnswers = ["USER_NAME:en0": (0, "fixture-user"), "IDLE_TIME": (12, nil), "NONFINITE": (.nan, nil)]
+        oldSystem.sysInfoAnswers = system.sysInfoAnswers
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: host.fixtureEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        t.equal(system.reads, []); t.equal(oldSystem.reads, [])
+        func update() throws {
+            skin.update(); try runtime.update()
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(runtime.orderedMeasures.map(\.valueUnavailable), skin.measures.map(\.valueUnavailable))
+            t.equal(system.reads, oldSystem.reads)
+            t.equal(time.background.reports, oldTime.background.reports)
+        }
+        try update()
+        t.equal(system.reads.count, 7)
+        t.equal(runtime.measure(named: "User")?.stringValue, "fixture-user")
+        t.equal(runtime.measure(named: "Number")?.value, 12)
+        t.equal(runtime.measure(named: "Empty")?.rawString, "")
+        t.equal(runtime.measure(named: "Unknown")?.valueUnavailable, false)
+        t.equal(runtime.measure(named: "Unsupported")?.valueUnavailable, true)
+        t.equal(runtime.measure(named: "Nonfinite")?.value, 0)
+        t.check(!system.reads.contains("sysInfo::"))
+        t.equal(runtime.logs.filter { $0.contains("NOT_A_TYPE") }.count, 1)
+        system.sysInfoAnswers["IDLE_TIME"] = (24, nil)
+        system.sysInfoAnswers["USER_SID"] = (7, "recovered")
+        system.sysInfoAnswers["NONFINITE"] = (.infinity, "finite-text")
+        oldSystem.sysInfoAnswers = system.sysInfoAnswers
+        try update()
+        t.equal(system.reads.count, 12)
+        t.equal(runtime.measure(named: "Slow")?.value, 12)
+        t.equal(runtime.measure(named: "Number")?.value, 24)
+        t.equal(runtime.measure(named: "Unsupported")?.valueUnavailable, false)
+        t.equal(runtime.measure(named: "Unsupported")?.rawString, "recovered")
+        t.equal(runtime.measure(named: "Nonfinite")?.value, 0)
+        t.equal(runtime.measure(named: "Nonfinite")?.rawString, "finite-text")
+        try update()
+        t.equal(system.reads.count, 18)
+        t.equal(runtime.measure(named: "Slow")?.value, 24)
+        t.equal(runtime.measure(named: "Once")?.value, 12)
+        t.equal(runtime.logs.filter { $0.contains("NOT_A_TYPE") }.count, 1)
+        try runtime.startTimer(); runtime.pause()
+        let reads = system.reads
+        time.advance(by: 3); t.equal(system.reads, reads)
+        try runtime.resume(updateNow: false)
+        t.equal(system.reads, reads)
+        time.advance(by: 0.5); t.check(system.reads.count > reads.count)
+        runtime.close(); let closedReads = system.reads
+        time.advance(by: 3); t.equal(system.reads, closedReads); t.equal(time.pendingCount, 0)
+        do { try runtime.update(); t.check(false) } catch RainmeterProgramError.closed {}
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter SysInfo: screens timezone and environment are consumed next tick") {
+        let (skins, file, _) = try input("sysinfo-environment")
+        let cases: [(String, String, String)] = [
+            ("Count", "NUM_MONITORS", ""), ("Width", "SCREEN_WIDTH", "2"),
+            ("OutOfRange", "SCREEN_WIDTH", "999"), ("Negative", "SCREEN_HEIGHT", "-1"),
+            ("TextData", "SCREEN_WIDTH", "en0"), ("Size", "SCREEN_SIZE", "2"),
+            ("Work", "WORK_AREA", "2"), ("Left", "VIRTUAL_SCREEN_LEFT", ""),
+            ("VirtualWidth", "VIRTUAL_SCREEN_WIDTH", ""), ("WorkLeft", "WORK_AREA_LEFT", "2"),
+            ("Bias", "TIMEZONE_BIAS", ""), ("DST", "TIMEZONE_ISDST", ""),
+            ("Standard", "TIMEZONE_STANDARD_NAME", ""), ("Daylight", "TIMEZONE_DAYLIGHT_NAME", ""),
+            ("StandardBias", "TIMEZONE_STANDARD_BIAS", ""), ("DaylightBias", "TIMEZONE_DAYLIGHT_BIAS", ""),
+            ("Bits", "OS_BITS", ""), ("Page", "PAGESIZE", "")
+        ]
+        try cases.map { "[\($0.0)]\nMeasure=SysInfo\nSysInfoType=\($0.1)\nSysInfoData=\($0.2)\n" }.joined()
+            .write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), program = try convert(file, skins, try clock(), effects)
+        guard let zone = TimeZone(identifier: "America/New_York") else { throw RainmeterFixtureError.utc }
+        let date = Date(timeIntervalSince1970: 1_798_761_598)
+        let time = VirtualTimeExecutor(start: date, timeZone: zone), oldTime = VirtualTimeExecutor(start: date, timeZone: zone)
+        let system = RainmeterSystemProbe(), oldSystem = RainmeterSystemProbe()
+        system.sysInfoAnswers["SCREEN_WIDTH"] = (9999, nil); oldSystem.sysInfoAnswers = system.sysInfoAnswers
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        host.fixtureEnvironment.screens = [
+            SkinScreen(area: SkinRect(width: 1920, height: 1080), workArea: SkinRect(width: 1920, height: 1055)),
+            SkinScreen(area: SkinRect(x: -1280, y: 100, width: 1280, height: 720),
+                       workArea: SkinRect(x: -1280, y: 120, width: 1280, height: 700))
+        ]
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: host.fixtureEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        func update() throws {
+            skin.update(); try runtime.update()
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(system.reads, []); t.equal(oldSystem.reads, [], "engine answers precede the source")
+        }
+        try update()
+        for (name, value) in [("Count", 2.0), ("Width", 1280), ("OutOfRange", 1920), ("Negative", 1080),
+                              ("TextData", 1920), ("Left", -1280), ("VirtualWidth", 3200), ("WorkLeft", -1280),
+                              ("Bias", 300), ("DST", 0), ("StandardBias", 0), ("DaylightBias", -60), ("Bits", 64)] {
+            t.equal(runtime.measure(named: name)?.value, value)
+        }
+        t.equal(runtime.measure(named: "Size")?.rawString, "1920 x 1080")
+        t.equal(runtime.measure(named: "Work")?.rawString, "1920 x 1055")
+        t.equal(runtime.measure(named: "Standard")?.rawString, zone.localizedName(for: .standard, locale: host.fixtureEnvironment.locale) ?? zone.identifier)
+        t.equal(runtime.measure(named: "Daylight")?.rawString, zone.localizedName(for: .daylightSaving, locale: host.fixtureEnvironment.locale) ?? zone.identifier)
+        let before = runtime.orderedMeasures.map(\.runtimeSnapshot), count = runtime.updateCount
+        host.fixtureEnvironment.screens = []; runtime.takeEnvironment(host.fixtureEnvironment)
+        t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), before); t.equal(runtime.updateCount, count)
+        try update()
+        for name in ["Count", "Width", "OutOfRange", "Negative", "TextData", "Left", "VirtualWidth", "WorkLeft"] {
+            t.equal(runtime.measure(named: name)?.value, 0)
+        }
+        t.equal(runtime.measure(named: "Size")?.rawString, "0 x 0")
+        t.equal(runtime.measure(named: "Work")?.rawString, "0 x 0")
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter SysInfo: scripted lookup and withdrawn frames preserve coverage") {
+        let (skins, file, _) = try input("sysinfo-scripted")
+        try "[Specific]\nMeasure=SysInfo\nSysInfoType=IP_ADDRESS\nSysInfoData=en0\n[Fallback]\nMeasure=SysInfo\nSysInfoType=IP_ADDRESS\nSysInfoData=en9\n[Missing]\nMeasure=SysInfo\nSysInfoType=USER_SID\n"
+            .write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for withdraw in [false, true] {
+            var frame = SkinInputData.SystemFrame(), empty = SkinInputData.SystemFrame()
+            frame.sysInfo = ["IP_ADDRESS:en0": .init(number: 1, string: "specific"), "IP_ADDRESS": .init(number: 2, string: "type")]
+            empty.sysInfo = [:]
+            var data = SkinInputData(); data.system = [frame, empty, SkinInputData.SystemFrame()]
+            let base = RainmeterSystemProbe(), system = ScriptedSystemData(base: base, data: data), time = try clock()
+            base.sysInfoAnswers = ["IP_ADDRESS": (9, "base")]
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            t.equal(base.reads, []); t.equal(time.background.reports, [])
+            if withdraw {
+                var replacement = SkinInputData(); replacement.system = []; system.apply(replacement)
+                try runtime.update()
+                t.equal(runtime.measure(named: "Specific")?.rawString, "base")
+                t.equal(base.reads, ["sysInfo:IP_ADDRESS:en0", "sysInfo:IP_ADDRESS:en9", "sysInfo:USER_SID:"])
+                t.equal(time.background.reports.map(\.faked), [false])
+                t.equal(time.background.unverifiable.map(\.kind), [.system])
+            } else {
+                try runtime.update()
+                t.equal(runtime.measure(named: "Specific")?.rawString, "specific")
+                t.equal(runtime.measure(named: "Specific")?.value, 1)
+                t.equal(runtime.measure(named: "Fallback")?.rawString, "type")
+                t.equal(runtime.measure(named: "Fallback")?.value, 2)
+                t.equal(runtime.measure(named: "Missing")?.valueUnavailable, true)
+                system.advance(); try runtime.update()
+                t.equal(runtime.measure(named: "Specific")?.rawString, "")
+                t.equal(runtime.measure(named: "Specific")?.valueUnavailable, true)
+                t.equal(base.reads, [], "empty tables must not consult base")
+                system.advance(); try runtime.update()
+                t.equal(runtime.measure(named: "Missing")?.valueUnavailable, true)
+                t.equal(runtime.measure(named: "Specific")?.valueUnavailable, true)
+                t.equal(base.reads, [], "a frame with no sysInfo field must not consult base")
+                t.equal(time.background.reports.map(\.faked), [true]); t.equal(time.background.unverifiable, [])
+            }
+        }
+    }
+
+    t.suite("Engine: Rainmeter SysInfo: inactive sources and admission remain bounded") {
+        let (skins, file, _) = try input("sysinfo-admission")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for option in ["Disabled", "Paused"] {
+            try "[N]\nMeasure=SysInfo\nSysInfoType=IDLE_TIME\n\(option)=1\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            system.sysInfoAnswers["IDLE_TIME"] = (42, nil)
+            let program = try convert(file, skins, try clock(), effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update(); t.equal(system.reads, []); t.equal(time.background.reports, [])
+            guard let node = runtime.measure(named: "N") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { node.setDisabled(false) } else { node.setPaused(false) }
+            try runtime.update(); t.equal(system.reads, ["sysInfo:IDLE_TIME:"]); t.equal(node.value, 42)
+        }
+        for (source, key, line) in [
+            ("[N]\nMeasure=Plugin\nPlugin=SysInfo\n", "Measure", 2),
+            ("[N]\nMeasure=SysInfo\nOnUpdateAction=[!Log no]\n", "OnUpdateAction", 3),
+            ("[N]\nMeasure=SysInfo\nSysInfoType=[Other]\n", "SysInfoType", 3),
+            ("[N]\nMeasure=SysInfo\nSysInfoData=[Other]\n", "SysInfoData", 3),
+            ("[N]\nMeasure=SysInfo\nSysInfoData=#SCREENAREAWIDTH#\n", "SysInfoData", 3),
+            ("[N]\nMeasure=SysInfo\nAverageSize=(Other+1)\n", "AverageSize", 3)
+        ] {
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+                t.check(false)
+            } catch RainmeterProgramError.outsideInitialProfile(let section, let actual, let location, _) {
+                t.equal(section, "N"); t.equal(actual, key); t.equal(location?.line, line); t.equal(location?.file, file)
+            }
+            t.equal(system.reads, []); t.equal(time.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: Rainmeter SysInfo: portable fallback remains legacy behavior not a snapshot") {
+        let (skins, file, _) = try input("sysinfo-portable")
+        let types = ["USER_NAME", "COMPUTER_NAME", "HOST_NAME", "OS_VERSION", "OS_PRODUCT_NAME"]
+        try types.map { "[\($0)]\nMeasure=SysInfo\nSysInfoType=\($0)\n" }.joined()
+            .write(to: file, atomically: true, encoding: .utf8)
+        var frame = SkinInputData.SystemFrame(); frame.sysInfo = [:]
+        var data = SkinInputData(); data.system = [frame]
+        let base = RainmeterSystemProbe(), oldBase = RainmeterSystemProbe()
+        let system = ScriptedSystemData(base: base, data: data), oldSystem = ScriptedSystemData(base: oldBase, data: data)
+        let time = try clock(), oldTime = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        let program = try convert(file, skins, try clock(), effects)
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: host.fixtureEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        skin.update(); try runtime.update()
+        t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+        t.equal(base.reads, []); t.equal(oldBase.reads, [])
+        // The source table is isolated, but the original measure still has process/host fallbacks.
+        // Do not claim these answers are supplied by the frame or remove them in this admission slice.
+        t.equal(runtime.measure(named: "USER_NAME")?.rawString, NSUserName())
+        t.equal(runtime.measure(named: "COMPUTER_NAME")?.rawString, runtime.measure(named: "HOST_NAME")?.rawString)
+        t.equal(runtime.measure(named: "OS_VERSION")?.rawString, runtime.measure(named: "OS_PRODUCT_NAME")?.rawString)
+        t.check(runtime.orderedMeasures.allSatisfy { !$0.valueUnavailable && $0.rawString != nil })
+        withExtendedLifetime(host) {}
+    }
+
     func quoteInput(_ suffix: String, divider: Int = 1, inactive: String = "") throws -> (URL, URL, URL, RainmeterProgram, RecordingSideEffects) {
         let (skins, file, _) = try input("quote-" + suffix)
         let asset = skins.appendingPathComponent("Engine/@Resources/quotes.txt")
@@ -1044,7 +1288,7 @@ func runRainmeterProgramTests(_ t: TestRunner) {
             let types: [(String, Measure.Type)] = [("CPU", CPUMeasure.self), ("Memory", MemoryMeasure.self),
                 ("PhysicalMemory", MemoryMeasure.self), ("SwapMemory", MemoryMeasure.self), ("Uptime", UptimeMeasure.self),
                 ("NetIn", NetMeasure.self), ("NetOut", NetMeasure.self), ("NetTotal", NetMeasure.self),
-                ("Process", ProcessMeasure.self), ("FreeDiskSpace", FreeDiskSpaceMeasure.self)]
+                ("Process", ProcessMeasure.self), ("FreeDiskSpace", FreeDiskSpaceMeasure.self), ("SysInfo", SysInfoMeasure.self)]
             for (type, original) in types {
                 MeasureRegistry.registerMeasure(type, original)
                 defer { MeasureRegistry.registerMeasure(type, original) }
@@ -1055,7 +1299,7 @@ func runRainmeterProgramTests(_ t: TestRunner) {
                 MeasureRegistry.registerMeasure(type, RainmeterUnqualifiedTime.self)
                 do { _ = try convert(file, skins, time, effects); t.check(false) }
                 catch RainmeterProgramError.outsideInitialProfile(let section, let key, let location, let reason) {
-                    t.equal(section, "N"); t.equal(key, "Measure"); t.check(location != nil)
+                    t.equal(section, "N"); t.equal(key, "Measure"); t.equal(location?.line, 2); t.equal(location?.file, file)
                     t.equal(reason, "registered measure implementation")
                 }
                 t.equal(RainmeterUnqualifiedTime.constructions, 0)
