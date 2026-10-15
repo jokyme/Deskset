@@ -43,13 +43,17 @@ private final class RainmeterSkinTick: TickTarget {
     func notifySystemWake() {}
 }
 
-private final class RainmeterSystemProbe: SystemDataSource {
+private final class RainmeterSystemProbe: SystemDataSource, HardwareSensorSource {
     private let fallback = FakeSystem()
     var cpu: Double { get { fallback.cpu } set { fallback.cpu = newValue } }
     var memory: MemoryStatus { get { fallback.memory } set { fallback.memory = newValue } }
     var net: NetworkCounters { get { fallback.net } set { fallback.net = newValue } }
     var processorCount: Int { fallback.processorCount }
-    func battery() -> BatteryStatus? { fallback.battery() }
+    var batteryAnswer: BatteryStatus?
+    func battery() -> BatteryStatus? { reads.append("battery"); return batteryAnswer }
+    func batteryDetails() -> BatteryDetailsReading { reads.append("details"); return .ready(BatteryDetails()) }
+    func cpuFrequency() -> Double? { reads.append("frequency"); return nil }
+    func sensorValue(_ key: String) -> Double? { reads.append("sensor:" + key); return nil }
     func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
         reads.append("sysInfo:\(type):\(data)")
         return sysInfoAnswers[type + ":" + data] ?? sysInfoAnswers[type]
@@ -695,6 +699,197 @@ func runRainmeterProgramTests(_ t: TestRunner) {
             if option == "Disabled" { node.setDisabled(false) } else { node.setPaused(false) }
             try runtime.update()
             t.equal(system.reads, ["process:Finder"]); t.equal(node.value, 1)
+        }
+    }
+
+    t.suite("Engine: Rainmeter Power: five states preserve Skin sampling and boundaries") {
+        let (skins, file, _) = try input("power-values")
+        let names = ["Percent", "ACLine", "Status", "Status2", "Lifetime"]
+        try names.map { "[\($0)]\nMeasure=Plugin\nPlugin=PowerPlugin.dll\n" +
+            ($0 == "Percent" ? "" : "PowerState=\($0)\n") }.joined()
+            .write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock(), probe = RainmeterSystemProbe()
+        let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+            system: probe, environment: RecordingSkinHost.fixedEnvironment, clock: conversion.clock, executor: conversion, effects: effects)
+        t.equal(probe.reads, []); t.equal(conversion.background.reports, [])
+        let time = try clock(), oldTime = try clock(), system = RainmeterSystemProbe(), oldSystem = RainmeterSystemProbe()
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: host.fixtureEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        t.equal(system.reads, []); t.equal(oldSystem.reads, [])
+        var updates = 0
+        func update(_ battery: BatteryStatus?, expected: [Double]) throws {
+            system.batteryAnswer = battery; oldSystem.batteryAnswer = battery
+            skin.update(); try runtime.update(); updates += 1
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(runtime.orderedMeasures.map(\.value), expected)
+            t.equal(system.reads, Array(repeating: "battery", count: updates * 5))
+            t.equal(system.reads, oldSystem.reads)
+            t.equal(time.background.reports, oldTime.background.reports)
+            t.equal(runtime.orderedMeasures.first?.liveInputs, [.battery, .system])
+        }
+        try update(nil, expected: [100, 1, 0, 128, -1])
+        t.equal(system.reads.count, 5)
+        for (percent, status, flags) in [(4.0, 2.0, 6.0), (5, 3, 2), (32, 3, 2), (33, 4, 0), (66, 4, 0), (67, 4, 1)] {
+            try update(BatteryStatus(percent: percent, isCharging: false, isPluggedIn: false, minutesRemaining: 90),
+                       expected: [percent, 0, status, flags, 5400])
+            t.equal(runtime.measure(named: "Lifetime")?.rawString, "01:30")
+        }
+        try update(BatteryStatus(percent: 4, isCharging: true, isPluggedIn: true, minutesRemaining: 90),
+                   expected: [4, 1, 1, 14, -1])
+        t.equal(runtime.measure(named: "Lifetime")?.rawString, "Unknown")
+        try update(BatteryStatus(percent: 66, isCharging: false, isPluggedIn: true, minutesRemaining: 90),
+                   expected: [66, 1, 4, 0, -1])
+        for (percent, status, flags) in [(Double.nan, 4.0, 0.0), (Double.infinity, 4.0, 1.0), (-Double.infinity, 2.0, 6.0)] {
+            try update(BatteryStatus(percent: percent, isCharging: false, isPluggedIn: false, minutesRemaining: 90), expected: [0, 0, status, flags, 5400])
+        }
+        let estimates: [Double?] = [nil, -1, .nan, .infinity, -.infinity, 0, 1e8]
+        for minutes in estimates {
+            let seconds = minutes.map { $0.isFinite && $0 >= 0 ? min($0, 1e7) * 60 : -1 } ?? -1
+            try update(BatteryStatus(percent: 50, isCharging: false, isPluggedIn: false, minutesRemaining: minutes),
+                       expected: [50, 0, 4, 0, seconds])
+            if seconds == -1 { t.equal(runtime.measure(named: "Lifetime")?.rawString, "Unknown") }
+            if seconds == 0 { t.equal(runtime.measure(named: "Lifetime")?.rawString, "00:00") }
+        }
+        guard let node = runtime.measure(named: "Lifetime"), let oldNode = skin.measures.last else {
+            throw RainmeterFixtureError.missingNode
+        }
+        for n in [node, oldNode] { n.overrides["format"] = "%H|%M|%S"; n.needsOptionRead = true }
+        try update(BatteryStatus(percent: 50, isCharging: false, isPluggedIn: false, minutesRemaining: 90),
+                   expected: [50, 0, 4, 0, 5400])
+        t.equal(node.rawString, "01|30|00")
+        for n in [node, oldNode] { n.overrides["powerstate"] = "Percent"; n.needsOptionRead = true }
+        try update(BatteryStatus(percent: 50, isCharging: false, isPluggedIn: false), expected: [50, 0, 4, 0, 50])
+        t.check(node.rawString == nil, "leaving Lifetime clears its old formatted string")
+        t.equal(time.background.unverifiable.map(\.kind), [.battery, .system])
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter Power: cadence inactive nodes pause and close") {
+        let (skins, file, _) = try input("power-cadence")
+        var source = "[Rainmeter]\nUpdate=500\n"
+        for (name, option) in [("Fast", ""), ("Slow", "UpdateDivider=2"), ("Once", "UpdateDivider=-1"),
+                               ("Disabled", "Disabled=1"), ("Paused", "Paused=1")] {
+            source += "[\(name)]\nMeasure=Plugin\nPlugin=PowerPlugin\n\(option)\n"
+        }
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), time = try clock(), oldTime = try clock()
+        let program = try convert(file, skins, try clock(), effects)
+        let system = RainmeterSystemProbe(), oldSystem = RainmeterSystemProbe(), host = RainmeterFixtureHost(RainmeterFixtureText())
+        system.batteryAnswer = BatteryStatus(percent: 25, isCharging: false, isPluggedIn: false)
+        oldSystem.batteryAnswer = system.batteryAnswer
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: host.fixtureEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        t.equal(system.reads, []); t.equal(oldSystem.reads, [])
+        for count in [3, 4, 6] {
+            skin.update(); try runtime.update()
+            t.equal(system.reads, Array(repeating: "battery", count: count)); t.equal(system.reads, oldSystem.reads)
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+        }
+        for node in runtime.orderedMeasures + skin.measures {
+            if node.name == "Disabled" { node.setDisabled(false) }
+            if node.name == "Paused" { node.setPaused(false) }
+        }
+        skin.update(); try runtime.update()
+        t.equal(system.reads, Array(repeating: "battery", count: 9)); t.equal(system.reads, oldSystem.reads)
+        t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+        try runtime.startTimer(); runtime.pause()
+        let paused = system.reads; time.advance(by: 2); t.equal(system.reads, paused)
+        try runtime.resume(updateNow: false); t.equal(system.reads, paused)
+        time.advance(by: 0.5); t.check(system.reads.count > paused.count)
+        runtime.close(); let closed = system.reads
+        time.advance(by: 2); t.equal(system.reads, closed); t.equal(time.pendingCount, 0)
+        do { try runtime.update(); t.check(false) } catch RainmeterProgramError.closed {}
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter Power: unsupported states and capabilities decline before sampling") {
+        let (skins, file, _) = try input("power-admission")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for (option, key) in [("PowerState=Hz", "PowerState"), ("PowerState=MHz", "PowerState"),
+            ("PowerState=Unknown", "PowerState"), ("PowerState=", "PowerState"),
+            ("PowerState=[Other]", "PowerState"), ("PowerState=#SCREENAREAWIDTH#", "PowerState"),
+            ("Format=[Other]", "Format"), ("OnUpdateAction=[!Log no]", "OnUpdateAction"),
+            ("AverageSize=(Other+1)", "AverageSize")] {
+            try "[N]\nMeasure=Plugin\nPlugin=PowerPlugin\n\(option)\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+                t.check(false)
+            } catch RainmeterProgramError.outsideInitialProfile(let section, let actual, let location, _) {
+                t.equal(section, "N"); t.equal(actual, key); t.equal(location?.line, 4); t.equal(location?.file, file)
+            }
+            t.equal(system.reads, []); t.equal(time.pendingCount, 0); t.equal(effects.records, [])
+        }
+        for plugin in ["Power", "PowerPluginExtra"] {
+            try "[N]\nMeasure=Plugin\nPlugin=\(plugin)\n".write(to: file, atomically: true, encoding: .utf8)
+            do { _ = try convert(file, skins, try clock(), effects); t.check(false) }
+            catch RainmeterProgramError.outsideInitialProfile(_, _, let location, _) { t.equal(location?.file, file) }
+        }
+        try "[N]\nMeasure=Plugin\nPlugin=PowerPlugin\nPowerState= percent \n".write(to: file, atomically: true, encoding: .utf8)
+        t.equal(try convert(file, skins, try clock(), effects).sections.first?.kernel, .powerplugin)
+    }
+
+    t.suite("Engine: Rainmeter Power: scripted status coverage does not borrow details coverage") {
+        let (skins, file, _) = try input("power-scripted")
+        try "[N]\nMeasure=Plugin\nPlugin=PowerPlugin\n".write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for mode in ["status", "status-system", "none", "details", "details-none", "omitted", "apply-details"] {
+            var data = SkinInputData()
+            if mode.hasPrefix("status") { data.battery = .value(BatteryStatus(percent: 25, isCharging: false, isPluggedIn: false)) }
+            if mode == "status-system" { data.system = [SkinInputData.SystemFrame()] }
+            if mode == "none" { data.battery = .some(.none) }
+            if mode == "details" { data.batteryDetails = .value(BatteryDetails(health: 90)) }
+            if mode == "details-none" { data.batteryDetails = .some(.none) }
+            let base = RainmeterSystemProbe(), time = try clock()
+            base.batteryAnswer = BatteryStatus(percent: 75, isCharging: true, isPluggedIn: true)
+            let system = ScriptedSystemData(base: base, data: data)
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            t.equal(base.reads, []); t.equal(time.background.reports, [])
+            if mode == "apply-details" {
+                var replacement = SkinInputData(); replacement.batteryDetails = .value(BatteryDetails(health: 94))
+                system.apply(replacement)
+            }
+            try runtime.update()
+            let isolated = mode.hasPrefix("status") || mode == "none"
+            t.equal(runtime.measure(named: "N")?.value, mode.hasPrefix("status") ? 25 : mode == "none" ? 100 : 75)
+            t.equal(base.reads, isolated ? [] : ["battery"])
+            t.equal(time.background.reports.filter { $0.kind == .battery }.map(\.faked), [isolated])
+            t.equal(time.background.reports.filter { $0.kind == .system }.map(\.faked), [mode == "status-system"])
+            t.equal(time.background.unverifiable.map(\.kind), mode == "status-system" ? [] : isolated ? [.system] : [.battery, .system])
+        }
+    }
+
+    let powerRegistrySuite = "Engine: Rainmeter registry: substituted Power plugin is declined before construction"
+    if CommandLine.arguments.dropFirst().first == powerRegistrySuite {
+        t.suite(powerRegistrySuite) {
+            let (skins, file, _) = try input("power-registry")
+            try "[N]\nMeasure=Plugin\nPlugin=PowerPlugin.dll\n".write(to: file, atomically: true, encoding: .utf8)
+            let effects = RecordingSideEffects(skinsDirectory: skins), time = try clock(), system = RainmeterSystemProbe()
+            defer { MeasureRegistry.registerPlugin("PowerPlugin", PowerPluginMeasure.self) }
+            RainmeterUnqualifiedTime.constructions = 0
+            MeasureRegistry.registerPlugin("PowerPlugin.dll", RainmeterUnqualifiedTime.self)
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+                t.check(false)
+            } catch RainmeterProgramError.outsideInitialProfile(let section, let key, let location, let reason) {
+                t.equal(section, "N"); t.equal(key, "Plugin"); t.equal(location?.line, 3); t.equal(location?.file, file)
+                t.equal(reason, "registered plugin implementation")
+            }
+            t.equal(RainmeterUnqualifiedTime.constructions, 0); t.equal(system.reads, [])
+            t.equal(effects.records, []); t.equal(time.pendingCount, 0)
         }
     }
 

@@ -219,6 +219,66 @@ func runProgramBatteryDetailsTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Program: battery details: live status fallback is reported in virtual time") {
+        CorePlugins.register()
+        let root = t.temporaryDirectory("battery-details-coverage")
+        let file = root.appendingPathComponent("Main.ini")
+        try "[Rainmeter]\nUpdate=-1\n[Power]\nMeasure=Plugin\nPlugin=PowerPlugin\nPowerState=Percent\n".write(to: file, atomically: true, encoding: .utf8)
+        let live = ProgramBatteryDetailsFixture()
+        live.status = BatteryStatus(percent: 23, isCharging: false, isPluggedIn: false)
+        var data = SkinInputData()
+        data.system = [SkinInputData.SystemFrame()]
+        data.batteryDetails = .value(BatteryDetails(health: 94))
+        let system = ScriptedSystemData(base: live, data: data)
+        let time = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let skin = Skin(config: "Battery", fileURL: file, skinsDirectory: root, system: system, host: nil)
+        skin.runInVirtualTime(time)
+        try skin.load()
+        defer { skin.close() }
+        t.equal(live.batteryCalls, 0)
+        skin.update()
+        t.equal(live.batteryCalls, 1); t.equal(live.detailsCalls, 0)
+        t.equal(skin.measures.first?.value, 23)
+        t.equal(time.background.reports.filter { $0.kind == .battery }.map(\.faked), [false])
+        t.equal(time.background.unverifiable.map(\.kind), [.battery])
+    }
+
+    t.suite("Program: battery details: details alone never claim isolated status") {
+        for absent in [false, true] {
+            for apply in [false, true] {
+                let live = ProgramBatteryDetailsFixture()
+                live.status = BatteryStatus(percent: 23, isCharging: false, isPluggedIn: false)
+                var data = SkinInputData()
+                data.batteryDetails = absent ? .some(.none) : .value(BatteryDetails(health: 94))
+                let replay = ScriptedSystemData(base: live, data: apply ? SkinInputData() : data)
+                if apply { replay.apply(data) }
+                t.check(!replay.gives(.battery))
+                t.equal(replay.battery()?.percent, 23)
+                t.equal(live.batteryCalls, 1)
+                live.status = BatteryStatus(percent: 47, isCharging: false, isPluggedIn: false)
+                t.equal(replay.battery()?.percent, 47, "status retains the legacy live fallback")
+                t.equal(live.batteryCalls, 2)
+                t.equal(replay.batteryDetails(), .ready(absent ? BatteryDetails() : BatteryDetails(health: 94)))
+                t.equal(live.detailsCalls, 0)
+                replay.apply(SkinInputData())
+                t.check(!replay.gives(.battery))
+            }
+        }
+        for absent in [false, true] {
+            for details in [false, true] {
+                let live = ProgramBatteryDetailsFixture()
+                var data = SkinInputData()
+                data.battery = absent ? .some(.none) : .value(BatteryStatus(percent: 25, isCharging: false, isPluggedIn: false))
+                if details { data.batteryDetails = .value(BatteryDetails(health: 90)) }
+                let replay = ScriptedSystemData(base: live, data: data)
+                t.check(replay.gives(.battery))
+                t.equal(replay.battery()?.percent, absent ? nil : 25)
+                _ = replay.batteryDetails()
+                t.equal(live.batteryCalls, 0); t.equal(live.detailsCalls, 0)
+            }
+        }
+    }
+
     t.suite("Program: battery details: replay replacement never borrows missing fields from the live machine") {
         let directory = t.temporaryDirectory("battery-details-replay")
         func read(_ source: String) throws -> SkinInputData { try SkinInputData.load(source, directory: directory) }

@@ -70,6 +70,9 @@ enum RainmeterProgramSelfTests {
     static func run(_ t: AppTestRunner) {
         bitmapOwnerTests(t)
         for worker in [false, true] {
+            t.suite("App: Rainmeter Power: real \(worker ? "worker" : "main") owns battery projection and retirement") {
+                try livePowerOwner(t, worker: worker)
+            }
             t.suite("App: Rainmeter SysInfo: real \(worker ? "worker" : "main") owns sampling projection and retirement") {
                 try liveSysInfoOwner(t, worker: worker)
             }
@@ -603,6 +606,186 @@ enum RainmeterProgramSelfTests {
     }
 
     /// Deliberately separate from System: unrelated suites must still trap on every system read.
+    private final class PowerSystem: SystemDataSource, HardwareSensorSource {
+        let forbidden = System()
+        let executor: SkinExecutor
+        let reads: Guarded<[(Bool, Bool)]>
+        let forbiddenReads: Guarded<[String]>
+        var answer = BatteryStatus(percent: 75, isCharging: false, isPluggedIn: false, minutesRemaining: 90)
+        init(_ executor: SkinExecutor, _ reads: Guarded<[(Bool, Bool)]>, _ forbiddenReads: Guarded<[String]>) {
+            self.executor = executor; self.reads = reads; self.forbiddenReads = forbiddenReads
+        }
+        var processorCount: Int { forbidden.processorCount }
+        func cpuUsage(processor: Int) -> Double { forbidden.cpuUsage(processor: processor) }
+        func memoryStatus() -> MemoryStatus { forbidden.memoryStatus() }
+        func networkInterfaces() -> [String] { forbiddenReads.access { $0.append("interfaces") }; return [] }
+        func networkCounters(interface: String?) -> NetworkCounters {
+            forbiddenReads.access { $0.append("network") }; return NetworkCounters()
+        }
+        func diskSpace(path: String) -> (total: Double, free: Double)? { forbidden.diskSpace(path: path) }
+        func uptime() -> TimeInterval { forbidden.uptime() }
+        func isProcessRunning(_ name: String) -> Bool { forbidden.isProcessRunning(name) }
+        func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
+            forbidden.sysInfo(type: type, data: data)
+        }
+        func battery() -> BatteryStatus? {
+            reads.access { $0.append((executor.isCurrent, Thread.isMainThread)) }; return answer
+        }
+        func batteryDetails() -> BatteryDetailsReading {
+            forbiddenReads.access { $0.append("details") }; return .ready(BatteryDetails())
+        }
+        func cpuFrequency() -> Double? { forbiddenReads.access { $0.append("frequency") }; return nil }
+        func sensorValue(_ key: String) -> Double? { forbiddenReads.access { $0.append("sensor:" + key) }; return nil }
+    }
+
+    /// Explicit normal ticks qualify owner confinement and projection, not hardware acquisition or timer delivery.
+    private static func livePowerOwner(_ t: AppTestRunner, worker: Bool) throws {
+        let skins = t.temporaryDirectory("native-power-" + (worker ? "worker" : "main"))
+        let file = skins.appendingPathComponent("Power.ini")
+        let source = """
+        [Rainmeter]
+        Update=-1
+        [Percent]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Percent
+        [ACLine]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=ACLine
+        [Status]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Status
+        [Status2]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Status2
+        [Lifetime]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Lifetime
+        [Disabled]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Percent
+        Disabled=1
+        [Paused]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Percent
+        Paused=1
+        [Display]
+        Meter=String
+        MeasureName=Percent
+        MeasureName2=ACLine
+        MeasureName3=Status
+        MeasureName4=Status2
+        MeasureName5=Lifetime
+        Text=%1|%2|%3|%4|%5
+        FontSize=14
+        FontColor=255,255,255,255
+        W=500
+        H=40
+        """
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock()
+        var initial = RecordingSkinHost.fixedEnvironment
+        initial.locale = Locale(identifier: "en_US_POSIX")
+        let executor: SkinExecutor = worker ? SkinThreadExecutor(name: "Native Power owner") : MainSkinExecutor.shared
+        let held = Guarded<RainmeterProgramHost?>(nil), errors = Guarded<[String]>([])
+        let reads = Guarded<[(Bool, Bool)]>([]), forbiddenReads = Guarded<[String]>([])
+        let releases = Guarded<[(Bool, Bool)]>([]), ownership = Guarded<[Bool]>([])
+        let scenes = Guarded<[WidgetScene]>([]), weakOwner = WeakBitmapOwner()
+        let system = PowerSystem(executor, reads, forbiddenReads)
+        let environment = Environment(.light, 1)
+        func onOwner(_ body: @escaping () throws -> Void) throws {
+            let done = Guarded(false)
+            executor.async {
+                do { try body() } catch { errors.access { $0.append(String(describing: error)) } }
+                done.access { $0 = true }
+            }
+            guard AppSelfTest.spin(timeout: 30, until: { done.current }) else { throw Failure.clock }
+            t.equal(errors.current, [])
+            guard errors.current.isEmpty else { throw Failure.input }
+        }
+        defer {
+            try? onOwner { held.access { $0?.close(); $0 = nil } }
+            (executor as? SkinThreadExecutor)?.stop()
+        }
+        let program = try IniProgramConverter.convert(config: "Power", fileURL: file, skinsDirectory: skins,
+            system: system, environment: initial, clock: conversion.clock, executor: conversion, effects: effects)
+        t.equal(reads.current.count, 0, "conversion does not sample battery")
+        t.equal(conversion.pendingCount, 0)
+        t.equal(conversion.background.reports, [])
+        try onOwner {
+            let probe = ReleaseProbe(executor, releases)
+            let fixed = conversion.clock
+            let dataClock = SkinClock(now: { withExtendedLifetime(probe) { fixed.now() } },
+                uptime: fixed.uptime, timeZone: fixed.timeZone)
+            let host = try RainmeterProgramHost(program: program, executor: executor, provider: nil,
+                environment: initial, clock: dataClock, system: system, effects: effects)
+            weakOwner.engine = host.engine; weakOwner.context = host.context
+            held.access { $0 = host }
+            t.equal(host.engine.updateCount, 0)
+            t.equal(reads.current.count, 0, "initialization does not sample battery")
+            try host.start()
+            ownership.access { $0.append(executor.isCurrent && Thread.isMainThread != worker) }
+            t.equal(host.engine.updateCount, 1)
+            t.equal(reads.current.count, 5, "exactly one battery read per active Power node")
+            let scene = try host.engine.project(environment: environment)
+            scenes.access { $0.append(scene) }
+        }
+        t.equal(ownership.current, [true])
+        t.equal(quoteTexts(scenes.current[0].drawingItems), ["75|0|4|1|01:30"])
+        try onOwner {
+            guard let host = held.current else { throw Failure.input }
+            system.answer = BatteryStatus(percent: 4, isCharging: true, isPluggedIn: true, minutesRemaining: 90)
+            t.equal(host.engine.updateCount, 1)
+            t.equal(try host.engine.project(environment: environment).drawingItems, scenes.current[0].drawingItems,
+                    "provider changes and projection do not sample or invent a tick")
+            t.equal(reads.current.count, 5)
+            host.engine.updateForTick()
+            t.equal(host.engine.updateCount, 2)
+            t.equal(host.engine.failure, nil)
+            let scene = try host.engine.project(environment: environment)
+            scenes.access { $0.append(scene) }
+            t.equal(quoteTexts(scene.drawingItems), ["4|1|1|14|Unknown"])
+            t.equal(reads.current.count, 10)
+            // Static inactive nodes remain unread; state reactivation is covered by Core tests.
+            host.pause()
+            t.equal(reads.current.count, 10)
+            try host.resume(updateNow: false)
+            t.equal(reads.current.count, 10, "resume without update must not sample")
+            host.engine.updateForTick()
+            t.equal(reads.current.count, 15, "only the five active nodes sample on the next normal tick")
+            host.close()
+            host.engine.updateForTick()
+            do { try host.update(); t.check(false, "closed host cannot sample") }
+            catch let error as RainmeterProgramError { t.equal(error, .closed) }
+            t.equal(reads.current.count, 15)
+        }
+        t.check(reads.current.allSatisfy { $0.0 && $0.1 != worker }, "every battery read uses its physical owner")
+        let first = try pixels(scenes.current[0], scale: 1, cycle: 1, context: DrawContext(fonts: AppFontResolver()))
+        let second = try pixels(scenes.current[1], scale: 1, cycle: 2, context: DrawContext(fonts: AppFontResolver()))
+        t.check(first.contains { $0 != 0 } && second.contains { $0 != 0 })
+        t.check(first != second, "the ordinary tick changes native visible Power text pixels")
+        // Exercise Host.Retirement with the final host release off its owner thread.
+        if worker { held.access { $0 = nil } }
+        else { DispatchQueue.global().async { held.access { $0 = nil } } }
+        t.check(AppSelfTest.spin(timeout: 30) {
+            !releases.current.isEmpty && weakOwner.engine == nil && weakOwner.context == nil
+        })
+        t.equal(releases.current.count, 1)
+        t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker }, "Power bundle releases on its physical owner")
+        t.check(weakOwner.engine == nil && weakOwner.context == nil)
+        t.equal(reads.current.count, 15)
+        t.equal(forbiddenReads.current, [], "no sensor, frequency, details or network reads")
+        t.equal(effects.records, [], "no actions")
+        t.equal(errors.current, [])
+        t.equal(try String(contentsOf: file, encoding: .utf8), source)
+    }
+
     private final class SysInfoSystem: SystemDataSource {
         let forbidden = System()
         let executor: SkinExecutor
