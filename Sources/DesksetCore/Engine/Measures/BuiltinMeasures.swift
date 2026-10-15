@@ -403,7 +403,10 @@ public final class FreeDiskSpaceMeasure: Measure {
     private var lastTotal: Double?
 
     public override var automaticMaxValue: Double {
-        max(lastTotal ?? sectionContext.system.diskSpace(path: path)?.total ?? 1, 1)
+        if let lastTotal { return max(lastTotal, 1) }
+        // Loading the initial range already reads the volume. Preserve the first-update check too.
+        if sectionContext.runsInVirtualTime { sectionContext.noteService(.system) }
+        return max(sectionContext.system.diskSpace(path: path)?.total ?? 1, 1)
     }
     override var allowsMaxValueOption: Bool { false }
     /// Before the first reading of `MacAvailable=1` a String meter keeps one line of height, as it will with the value.

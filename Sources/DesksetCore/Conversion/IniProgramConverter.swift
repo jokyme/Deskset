@@ -118,7 +118,8 @@ package enum IniProgramConverter {
                                    "accuratetext", "skinwidth", "skinheight", "clipstring", "clipstringw", "clipstringh", "trailingspaces",
                                    "lowbound", "highbound", "updaterandom", "uniquerandom", "dynamicvariables", "disabled", "paused",
                                    "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute", "processor", "total", "free",
-                                   "secondsvalue", "adddaystohours", "cumulative", "usebits", "netinspeed", "netoutspeed"]
+                                   "secondsvalue", "adddaystohours", "cumulative", "usebits", "netinspeed", "netoutspeed",
+                                   "label", "type", "ignoreremovable", "macavailable", "diskquota"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -163,6 +164,10 @@ package enum IniProgramConverter {
                 case "netin", "netout", "nettotal":
                     kernels[name] = RainmeterProgram.Kernel(rawValue: raw.value.lowercased())
                     allowed = systemKeys.union(["interface", "cumulative", "usebits", "netinspeed", "netoutspeed"])
+                case "process": kernels[name] = .process; allowed = systemKeys.union(["processname"])
+                case "freediskspace":
+                    kernels[name] = .freediskspace
+                    allowed = systemKeys.union(["drive", "total", "label", "type", "ignoreremovable", "macavailable", "diskquota"])
                 case "memory": kernels[name] = .memory; allowed = systemKeys.union(["total", "free"])
                 case "physicalmemory": kernels[name] = .physicalmemory; allowed = systemKeys.union(["total", "free"])
                 case "swapmemory": kernels[name] = .swapmemory; allowed = systemKeys.union(["total", "free"])
