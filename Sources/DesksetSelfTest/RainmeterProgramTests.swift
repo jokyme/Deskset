@@ -42,21 +42,38 @@ private final class RainmeterSkinTick: TickTarget {
     func notifySystemWake() {}
 }
 
-private final class RainmeterSystemProbe: FakeSystem {
+private final class RainmeterSystemProbe: SystemDataSource {
+    private let fallback = FakeSystem()
+    var cpu: Double { get { fallback.cpu } set { fallback.cpu = newValue } }
+    var memory: MemoryStatus { get { fallback.memory } set { fallback.memory = newValue } }
+    var net: NetworkCounters { get { fallback.net } set { fallback.net = newValue } }
+    var processorCount: Int { fallback.processorCount }
+    func battery() -> BatteryStatus? { fallback.battery() }
+    func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
+        fallback.sysInfo(type: type, data: data)
+    }
     var reads: [String] = []
     var up = 90061.0
-    override func uptime() -> TimeInterval { reads.append("uptime"); return up }
-    override func networkInterfaces() -> [String] { reads.append("interfaces"); return ["en0", "en1"] }
-    override func networkCounters(interface: String?) -> NetworkCounters {
+    var disk: (total: Double, free: Double)? = (1000, 250)
+    var volume: VolumeInfo? = VolumeInfo(label: "Fixture", kind: .fixed)
+    var available: Double?
+    var runningProcess = true
+    func diskSpace(path: String) -> (total: Double, free: Double)? { reads.append("disk:" + path); return disk }
+    func volumeInfo(path: String) -> VolumeInfo? { reads.append("volume:" + path); return volume }
+    func availableDiskSpace(path: String) -> Double? { reads.append("available:" + path); return available }
+    func isProcessRunning(_ name: String) -> Bool { reads.append("process:" + name); return runningProcess }
+    func uptime() -> TimeInterval { reads.append("uptime"); return up }
+    func networkInterfaces() -> [String] { reads.append("interfaces"); return ["en0", "en1"] }
+    func networkCounters(interface: String?) -> NetworkCounters {
         reads.append("network:" + (interface ?? "all")); return net
     }
-    override func cpuUsage(processor: Int) -> Double {
+    func cpuUsage(processor: Int) -> Double {
         reads.append("cpu:" + String(processor))
-        return super.cpuUsage(processor: processor)
+        return fallback.cpuUsage(processor: processor)
     }
-    override func memoryStatus() -> MemoryStatus {
+    func memoryStatus() -> MemoryStatus {
         reads.append("memory")
-        return super.memoryStatus()
+        return fallback.memoryStatus()
     }
 }
 
@@ -488,13 +505,204 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Engine: Rainmeter system services: disk loading missing and process recovery match Skin") {
+        let (skins, file, _) = try input("disk-process")
+        try """
+        [Rainmeter]
+        Update=500
+        [Available]
+        Measure=FreeDiskSpace
+        Drive=Fixture
+        MacAvailable=1
+        AverageSize=3
+        InvertMeasure=1
+        MaxValue=9
+        [Total]
+        Measure=FreeDiskSpace
+        Drive=Fixture
+        Total=1
+        [Type]
+        Measure=FreeDiskSpace
+        Drive=Fixture
+        Type=1
+        [Label]
+        Measure=FreeDiskSpace
+        Drive=Fixture
+        Label=1
+        IgnoreRemovable=0
+        [Process]
+        Measure=Process
+        ProcessName=Finder.exe
+        [EmptyProcess]
+        Measure=Process
+        ProcessName=
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins), conversion = try clock()
+        let program = try convert(file, skins, conversion, effects)
+        t.equal(conversion.background.unverifiable.map(\.kind), [.system])
+        let time = try clock(), oldTime = try clock(), system = RainmeterSystemProbe(), oldSystem = RainmeterSystemProbe()
+        let host = RainmeterFixtureHost(RainmeterFixtureText())
+        let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: oldSystem, host: host)
+        skin.runInVirtualTime(oldTime); skin.sideEffects = effects; try skin.load()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+        defer { skin.close(); runtime.close() }
+        t.equal(system.reads, oldSystem.reads)
+        t.equal(system.reads, Array(repeating: "disk:/Volumes/Fixture", count: 4))
+        func update() throws {
+            skin.update(); try runtime.update()
+            t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+            t.equal(runtime.orderedMeasures.map(\.valueUnavailable), skin.measures.map(\.valueUnavailable))
+            t.equal(runtime.orderedMeasures.map(\.maxValue), skin.measures.map(\.maxValue))
+            t.equal(system.reads, oldSystem.reads)
+            t.equal(time.background.reports, oldTime.background.reports)
+        }
+        try update()
+        t.equal(runtime.measure(named: "Available")?.value, -1)
+        t.equal(runtime.measure(named: "Available")?.valueUnavailable, true)
+        t.equal(runtime.measure(named: "Available")?.runtimeSnapshot.average, nil)
+        t.equal(runtime.measure(named: "Available")?.maxValue, 1000)
+        t.equal(runtime.measure(named: "Type")?.stringValue, "Fixed")
+        t.equal(runtime.measure(named: "Label")?.stringValue, "Fixture")
+        t.equal(runtime.measure(named: "Process")?.value, 1)
+        t.equal(runtime.measure(named: "EmptyProcess")?.value, -1)
+        t.check(!system.reads.contains("process:"))
+        t.check(system.reads.contains("process:Finder"), "the provider receives the normalized process name")
+        t.check(!system.reads.contains("process:Finder.exe"))
+        system.available = 600; oldSystem.available = 600
+        try update()
+        t.equal(runtime.measure(named: "Available")?.value, 400, "loading does not enter inversion or averaging")
+        t.equal(runtime.measure(named: "Available")?.valueUnavailable, false)
+        system.available = 500; oldSystem.available = 500
+        system.runningProcess = false; oldSystem.runningProcess = false
+        try update()
+        t.equal(runtime.measure(named: "Available")?.value, 450)
+        t.equal(runtime.measure(named: "Process")?.value, -1)
+        system.disk = nil; oldSystem.disk = nil; system.volume = nil; oldSystem.volume = nil
+        try update()
+        t.equal(runtime.measure(named: "Available")?.valueUnavailable, false, "missing volume differs from pending capacity")
+        t.equal(runtime.measure(named: "Type")?.value, 1)
+        t.equal(runtime.measure(named: "Type")?.stringValue, "Removed")
+        t.equal(runtime.measure(named: "Label")?.value, 0, "missing volume returns zero before any numeric transform")
+        system.disk = (1000, 250); oldSystem.disk = system.disk
+        system.volume = VolumeInfo(label: "USB", kind: .removable); oldSystem.volume = system.volume
+        system.runningProcess = true; oldSystem.runningProcess = true
+        try update()
+        t.equal(runtime.measure(named: "Type")?.value, 3)
+        t.equal(runtime.measure(named: "Total")?.value, 0, "removable volumes remain ignored by default")
+        t.equal(runtime.measure(named: "Label")?.value, 250)
+        t.equal(runtime.measure(named: "Label")?.stringValue, "USB")
+        t.equal(runtime.measure(named: "Process")?.value, 1)
+        try runtime.startTimer()
+        t.check(time.pendingCount > 0, "an active timer exists before close")
+        runtime.close(); let count = system.reads.count
+        time.advance(by: 10)
+        t.equal(time.pendingCount, 0)
+        do { try runtime.update(); t.check(false) } catch RainmeterProgramError.closed {}
+        t.equal(system.reads.count, count)
+        withExtendedLifetime(host) {}
+    }
+
+    t.suite("Engine: Rainmeter system services: inactive disk and invalid options stay inert") {
+        let (skins, file, _) = try input("disk-inactive")
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for option in ["Disabled", "Paused"] {
+            try "[N]\nMeasure=FreeDiskSpace\n\(option)=1\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update(); t.equal(system.reads, []); t.equal(time.background.reports, [])
+            guard let node = runtime.measure(named: "N") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { node.setDisabled(false) } else { node.setPaused(false) }
+            try runtime.update()
+            t.equal(system.reads, ["disk:/", "volume:/", "disk:/"])
+            t.equal(node.value, 250)
+        }
+        for (source, key) in [
+            ("[N]\nMeasure=FreeDiskSpace\nMacAvailable=(Other+1)\n", "MacAvailable"),
+            ("[N]\nMeasure=FreeDiskSpace\nOnUpdateAction=[!Log no]\n", "OnUpdateAction"),
+            ("[N]\nMeasure=Process\nProcessName=[Other]\n", "ProcessName")
+        ] {
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe()
+            do {
+                _ = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                    system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+                t.check(false)
+            } catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(system.reads, [])
+        }
+    }
+
+    t.suite("Engine: Rainmeter system services: scripted disks and processes never fall through while frames exist") {
+        let (skins, file, _) = try input("disk-scripted")
+        try "[Disk]\nMeasure=FreeDiskSpace\n[Process]\nMeasure=Process\nProcessName=Finder.exe\n".write(to: file, atomically: true, encoding: .utf8)
+        let effects = RecordingSideEffects(skinsDirectory: skins)
+        for withdraw in [false, true] {
+            var frame = SkinInputData.SystemFrame(), empty = SkinInputData.SystemFrame()
+            frame.disks = ["/": SkinInputData.Disk(total: 100, free: 30)]
+            frame.processes = [SkinInputData.Process(name: "Finder", pid: 1, cpu: 0)]
+            empty.disks = [:]; empty.processes = []
+            var data = SkinInputData(); data.system = [frame, empty]
+            let base = RainmeterSystemProbe(), system = ScriptedSystemData(base: base, data: data), time = try clock()
+            let program = try IniProgramConverter.convert(config: "Engine\\Compat", fileURL: file, skinsDirectory: skins,
+                system: system, environment: RecordingSkinHost.fixedEnvironment, clock: time.clock, executor: time, effects: effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            t.equal(time.background.reports.map(\.faked), [true])
+            t.equal(base.reads, [])
+            if withdraw {
+                var replacement = SkinInputData(); replacement.system = []; system.apply(replacement)
+                try runtime.update()
+                t.equal(runtime.measure(named: "Disk")?.value, 250)
+                t.equal(base.reads, ["volume:/", "disk:/", "process:Finder"])
+                t.equal(time.background.reports.map(\.faked), [true, false])
+                t.equal(time.background.unverifiable.map(\.kind), [.system])
+            } else {
+                try runtime.update()
+                t.equal(runtime.measure(named: "Disk")?.value, 30)
+                t.equal(runtime.measure(named: "Process")?.value, 1)
+                system.advance(); try runtime.update()
+                t.equal(runtime.measure(named: "Disk")?.value, 0)
+                t.equal(runtime.measure(named: "Disk")?.valueUnavailable, false)
+                t.equal(runtime.measure(named: "Process")?.value, -1)
+                t.equal(base.reads, [], "empty disk/process tables are missing data, never live fallback")
+                t.equal(time.background.unverifiable, [])
+            }
+        }
+    }
+
+    t.suite("Engine: Rainmeter system services: disabled and paused process sources stay unread") {
+        let (skins, file, _) = try input("process-inactive")
+        for option in ["Disabled", "Paused"] {
+            try "[N]\nMeasure=Process\nProcessName=Finder.exe\n\(option)=1\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), system = RainmeterSystemProbe(), effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try convert(file, skins, try clock(), effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: system, effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update(); t.equal(system.reads, []); t.equal(time.background.reports, [])
+            guard let node = runtime.measure(named: "N") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { node.setDisabled(false) } else { node.setPaused(false) }
+            try runtime.update()
+            t.equal(system.reads, ["process:Finder"]); t.equal(node.value, 1)
+        }
+    }
+
     let systemRegistrySuite = "Engine: Rainmeter registry: substituted system kernels are declined before construction"
     if CommandLine.arguments.dropFirst().first == systemRegistrySuite {
         t.suite(systemRegistrySuite) {
             let (skins, file, _) = try input("system-registry")
             let types: [(String, Measure.Type)] = [("CPU", CPUMeasure.self), ("Memory", MemoryMeasure.self),
                 ("PhysicalMemory", MemoryMeasure.self), ("SwapMemory", MemoryMeasure.self), ("Uptime", UptimeMeasure.self),
-                ("NetIn", NetMeasure.self), ("NetOut", NetMeasure.self), ("NetTotal", NetMeasure.self)]
+                ("NetIn", NetMeasure.self), ("NetOut", NetMeasure.self), ("NetTotal", NetMeasure.self),
+                ("Process", ProcessMeasure.self), ("FreeDiskSpace", FreeDiskSpaceMeasure.self)]
             for (type, original) in types {
                 MeasureRegistry.registerMeasure(type, original)
                 defer { MeasureRegistry.registerMeasure(type, original) }

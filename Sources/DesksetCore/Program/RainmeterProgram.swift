@@ -13,7 +13,7 @@ package struct RainmeterProgram: Equatable, Sendable {
         package let source: Source?
     }
     package enum Kernel: String, Equatable, Sendable {
-        case time, calc, cpu, memory, physicalmemory, swapmemory, uptime, netin, netout, nettotal, string, image
+        case time, calc, cpu, memory, physicalmemory, swapmemory, uptime, netin, netout, nettotal, process, freediskspace, string, image
 
         var measureClass: Measure.Type? {
             switch self {
@@ -21,6 +21,8 @@ package struct RainmeterProgram: Equatable, Sendable {
             case .calc: return CalcMeasure.self
             case .cpu: return CPUMeasure.self
             case .uptime: return UptimeMeasure.self
+            case .process: return ProcessMeasure.self
+            case .freediskspace: return FreeDiskSpaceMeasure.self
             case .netin, .netout, .nettotal: return NetMeasure.self
             case .memory, .physicalmemory, .swapmemory: return MemoryMeasure.self
             case .string, .image: return nil
