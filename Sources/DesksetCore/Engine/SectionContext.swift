@@ -42,6 +42,9 @@ protocol SectionContext: AnyObject {
     func removeIssue(_ issue: String)
     func currentEnvironment() -> SkinEnvironment
     func readablePath(_ path: String) -> String
+    /// Prepare on the owner; perform file IO only when the background job produces its result.
+    func quoteRead(path: String, separator: String, subfolders: Bool, filter: WildcardFilter)
+        -> () -> Result<[String], QuoteMeasure.ReadError>
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
     func noteService(_ kind: BackgroundWorkKind)
     func execute(_ actionText: String, from section: SkinSection?)
@@ -53,6 +56,12 @@ protocol SectionContext: AnyObject {
 }
 
 extension SectionContext {
+    func quoteRead(path: String, separator: String, subfolders: Bool, filter: WildcardFilter)
+        -> () -> Result<[String], QuoteMeasure.ReadError> {
+        let readPath = readablePath(path)
+        return { QuoteMeasure.readItems(path: readPath, separator: separator, subfolders: subfolders, filter: filter) }
+    }
+
     func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void) {
         startBackground(job, then: completion, orElse: nil)
     }

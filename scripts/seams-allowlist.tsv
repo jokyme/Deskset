@@ -548,7 +548,8 @@ random.hashSeed	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editi
 
 background.dispatch	Sources/DesksetCore/Engine/BackgroundWork.swift	1	the background seam itself: a job done in one go on its queue (live mode; a fake stands in for it in virtual time)
 background.hop	Sources/DesksetCore/Engine/BackgroundWork.swift	2	the background seam itself: in live mode results come back through SkinHop, as before; backgroundHop gives services the same way back
-timer.executorAfter	Sources/DesksetCore/Engine/BackgroundWork.swift	1	a fake's delay, on the executor (VirtualTimeExecutor)
+timer.executorAfter	Sources/DesksetCore/Engine/SkinExecutor.swift	1	the delayed SkinHop seam: weak destination avoids a virtual timer retaining its executor
+background.dispatch	Sources/DesksetCore/Engine/SkinExecutor.swift	1	the delayed SkinHop seam: second queue turn through the weak executor preserves fixture delivery ordering
 wait.deadline	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle: waits for real work that has no fake (a condition, with a real-time limit)
 wall.sinceNow	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle's real-time limit
 

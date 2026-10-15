@@ -81,10 +81,8 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
         loadingKey = k
         let path = self.path, separator = self.separator, subfolders = self.subfolders, filter = self.filter
         // A file the skin wrote to a recording's sandbox is read from its copy.
-        let readPath = sectionContext.readablePath(path)
-        let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true, reads: path) {
-            QuoteMeasure.readItems(path: readPath, separator: separator, subfolders: subfolders, filter: filter)
-        }
+        let read = sectionContext.quoteRead(path: path, separator: separator, subfolders: subfolders, filter: filter)
+        let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true, reads: path, read)
         sectionContext.startBackground(job) { [weak self] result in
             guard let self, !self.closed, self.loadingKey == k else { return }
             self.loadingKey = nil
@@ -111,11 +109,12 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
     }
 
     enum ReadError: Error, CustomStringConvertible {
-        case missing(String), unreadable(String)
+        case missing(String), unreadable(String), directoryNotAdmitted(String)
         var description: String {
             switch self {
             case .missing(let p): return "\(p) does not exist"
             case .unreadable(let p): return "cannot read \(p) (no permission?)"
+            case .directoryNotAdmitted(let p): return "directory Quote reads are not admitted by Program: \(p)"
             }
         }
     }
