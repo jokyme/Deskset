@@ -695,6 +695,348 @@ func runRainmeterProgramTests(_ t: TestRunner) {
         }
     }
 
+    func quoteInput(_ suffix: String, divider: Int = 1, inactive: String = "") throws -> (URL, URL, URL, RainmeterProgram, RecordingSideEffects) {
+        let (skins, file, _) = try input("quote-" + suffix)
+        let asset = skins.appendingPathComponent("Engine/@Resources/quotes.txt")
+        try FileManager.default.createDirectory(at: asset.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "Alpha\n".write(to: asset, atomically: true, encoding: .utf8)
+        try """
+        [Rainmeter]
+        Update=1000
+        [Q]
+        Measure=Plugin
+        Plugin=QuotePlugin
+        PathName=#@#quotes.txt
+        \(inactive)
+        UpdateDivider=\(divider)
+        [Text]
+        Meter=String
+        MeasureName=Q
+        Text=%1
+        W=120
+        H=20
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+        let program = try convert(file, skins, time, effects)
+        t.equal(time.pendingCount, 0, "conversion never starts a read or drains queued work")
+        t.equal(time.background.reports, []); t.equal(effects.records, [])
+        return (skins, file, asset, program, effects)
+    }
+
+    t.suite("Engine: Rainmeter Quote: results preserve Skin tick and meter boundaries") {
+        for divider in [1, -1] {
+            let (skins, file, asset, program, effects) = try quoteInput("timeline-" + String(divider), divider: divider)
+            let time = try clock(), oldTime = try clock(), host = RainmeterFixtureHost(RainmeterFixtureText())
+            let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: FakeSystem(), host: host)
+            skin.runInVirtualTime(oldTime); skin.sideEffects = effects; skin.random = SkinRandom(seed: 1)
+            try skin.load()
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            defer { skin.close(); runtime.close() }
+            t.equal(time.pendingCount, 0)
+            var updates = 0
+            runtime.didUpdate = { updates += 1 }
+            func compare() {
+                t.equal(runtime.orderedMeasures.map(\.runtimeSnapshot), skin.measures.map(\.runtimeSnapshot))
+                t.equal((runtime.meter(named: "Text") as? StringMeter)?.text, text(skin, "Text"))
+                t.equal(time.background.reports, oldTime.background.reports)
+            }
+            skin.update(); try runtime.update(); compare()
+            t.equal(runtime.measure(named: "Q")?.stringValue, "")
+            t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.isLoading, true)
+            oldTime.runUntilIdle(); time.runUntilIdle(); compare()
+            t.equal(runtime.measure(named: "Q")?.stringValue, "Alpha")
+            t.equal((runtime.meter(named: "Text") as? StringMeter)?.text, "")
+            t.equal(runtime.updateCount, 1); t.equal(updates, 1, "completion is not an extra update")
+            skin.update(); try runtime.update(); compare()
+            t.equal((runtime.meter(named: "Text") as? StringMeter)?.text, "Alpha")
+            if divider == 1 {
+                try "Beta\n".write(to: asset, atomically: true, encoding: .utf8)
+                oldTime.advance(by: 61); time.advance(by: 61)
+                skin.update(); try runtime.update(); compare()
+                t.equal(runtime.measure(named: "Q")?.stringValue, "Alpha")
+                oldTime.runUntilIdle(); time.runUntilIdle(); compare()
+                t.equal(runtime.measure(named: "Q")?.stringValue, "Beta")
+                t.equal((runtime.meter(named: "Text") as? StringMeter)?.text, "Alpha")
+                skin.update(); try runtime.update(); compare()
+                t.equal((runtime.meter(named: "Text") as? StringMeter)?.text, "Beta")
+            } else {
+                t.equal(runtime.measure(named: "Q")?.updateCount, 1)
+            }
+            t.equal(time.background.unverifiable, []); t.equal(effects.records, [])
+            withExtendedLifetime(host) {}
+        }
+    }
+
+    t.suite("Engine: Rainmeter Quote: missing empty and sandboxed files retain original meaning") {
+        let (_, _, asset, program, effects) = try quoteInput("files")
+        let time = try clock()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        try FileManager.default.removeItem(at: asset)
+        try runtime.update(); time.runUntilIdle()
+        t.equal(runtime.measure(named: "Q")?.stringValue, ""); t.equal(runtime.logs.count, 1)
+        try runtime.update(); time.runUntilIdle(); t.equal(runtime.logs.count, 1)
+        try "\n \n".write(to: asset, atomically: true, encoding: .utf8)
+        time.advance(by: 61); try runtime.update(); time.runUntilIdle()
+        t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.itemCount, 0)
+        t.equal(runtime.logs.count, 1, "an empty successful read is not another error")
+        try effects.writeFile(Data("Sandbox\n".utf8), to: asset, makingFolder: true)
+        time.advance(by: 61); try runtime.update(); time.runUntilIdle()
+        t.equal(runtime.measure(named: "Q")?.stringValue, "Sandbox")
+        t.equal(try String(contentsOf: asset, encoding: .utf8), "\n \n")
+    }
+
+    t.suite("Engine: Rainmeter Quote: queued reads cannot follow replaced files or ancestor chains") {
+        for replacement in ["file", "resources", "root", "root-parent", "sandbox-file", "sandbox-parent", "sandbox-root"] {
+            let (skins, _, asset, program, effects) = try quoteInput("queued-link-" + replacement)
+            let time = try clock()
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            defer { runtime.close() }
+            if replacement.hasPrefix("sandbox") {
+                try effects.writeFile(Data("Sandbox\n".utf8), to: asset, makingFolder: true)
+            }
+            let mapped = URL(fileURLWithPath: effects.readablePath(asset.path))
+            let replaced: URL
+            switch replacement {
+            case "resources": replaced = asset.deletingLastPathComponent()
+            case "root": replaced = asset.deletingLastPathComponent().deletingLastPathComponent()
+            case "root-parent": replaced = skins
+            case "sandbox-root": replaced = effects.fileSandbox!.directory
+            case "sandbox-parent": replaced = mapped.deletingLastPathComponent()
+            default: replaced = mapped
+            }
+            let outside = t.temporaryDirectory("quote-outside-" + replacement).appendingPathComponent("replacement")
+            let relative = String(mapped.path.dropFirst(replaced.path.count))
+            let outsideFile = relative.isEmpty ? outside : URL(fileURLWithPath: outside.path + relative)
+            try FileManager.default.createDirectory(at: outsideFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "OUTSIDE-SECRET\n".write(to: outsideFile, atomically: true, encoding: .utf8)
+            t.equal(time.pendingCount, 0)
+            try runtime.update()
+            t.check(time.pendingCount > 0, "the attack happens after authorization, before production")
+            t.equal(runtime.measure(named: "Q")?.stringValue, "")
+            let saved = replaced.deletingLastPathComponent().appendingPathComponent(replaced.lastPathComponent + "-saved")
+            try FileManager.default.moveItem(at: replaced, to: saved)
+            try FileManager.default.createSymbolicLink(at: replaced, withDestinationURL: outside)
+            defer {
+                try? FileManager.default.removeItem(at: replaced)
+                try? FileManager.default.moveItem(at: saved, to: replaced)
+            }
+            time.runUntilIdle()
+            t.equal(runtime.measure(named: "Q")?.stringValue, "")
+            t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.itemCount, 0)
+            t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.isLoading, false)
+            t.check(runtime.logs.contains { $0.contains("cannot read") })
+            t.equal(runtime.failure, nil)
+            t.equal(runtime.updateCount, 1)
+            t.equal(time.pendingCount, 0)
+        }
+    }
+
+    t.suite("Engine: Rainmeter Quote: root files and in-tree links keep shared text parsing") {
+        for location in ["root", "resources", "internal-link"] {
+            let (skins, file, asset, _, effects) = try quoteInput("regular-" + location)
+            let rootFile = asset.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("root.txt")
+            try "\r\nFirst\r\n\r\nSecond\r\n".write(to: rootFile, atomically: true, encoding: .utf8)
+            var source = rootFile
+            if location == "resources" {
+                try FileManager.default.removeItem(at: asset)
+                try FileManager.default.copyItem(at: rootFile, to: asset)
+                source = asset
+            } else if location == "internal-link" {
+                try FileManager.default.removeItem(at: asset)
+                try FileManager.default.createSymbolicLink(at: asset, withDestinationURL: rootFile)
+                source = asset
+            }
+            try "[Q]\nMeasure=Plugin\nPlugin=QuotePlugin\nPathName=\(source.path)\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock(), program = try convert(file, skins, time, effects)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            defer { runtime.close() }
+            t.equal(time.pendingCount, 0)
+            try runtime.update(); time.runUntilIdle()
+            t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.itemCount, 2)
+            t.check(["First", "Second"].contains(runtime.measure(named: "Q")?.stringValue ?? ""))
+            t.equal(runtime.logs, [])
+        }
+    }
+
+    t.suite("Engine: Rainmeter Quote: Program directories are explicitly unsupported") {
+        let (skins, file, asset, _, effects) = try quoteInput("directory")
+        try "[Q]\nMeasure=Plugin\nPlugin=QuotePlugin\nPathName=\(asset.deletingLastPathComponent().path)\n".write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), program = try convert(file, skins, time, effects)
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        try runtime.update(); time.runUntilIdle()
+        t.equal(runtime.measure(named: "Q")?.stringValue, "")
+        t.check(runtime.logs.contains { $0.contains("directory Quote reads are not admitted") })
+    }
+
+    t.suite("Engine: Rainmeter Quote: queued production and completed results respect owner retirement") {
+        let (_, _, asset, program, effects) = try quoteInput("retirement")
+        let time = try clock()
+        var runtime: RainmeterProgramRuntime? = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        weak var weakOwner = runtime
+        var produced = 0, delivered: [Int] = [], dropped: [Int] = []
+        let fixture = BackgroundJob<Int>(.quote, subject: asset.path, start: { _ in produced += 100 },
+                                        inline: { produced += 1; return 9 }, reads: asset.path)
+        runtime?.startBackground(fixture, then: { delivered.append($0) }, orElse: { dropped.append($0) })
+        runtime?.close(); time.runUntilIdle()
+        t.equal(produced, 0, "a closed owner must not perform deferred IO just to discard it")
+        t.equal(delivered, []); t.equal(dropped, [])
+        runtime = nil; t.check(weakOwner == nil)
+        for release in [false, true] {
+            time.background.setFake(.service, for: .quote)
+            var owner: RainmeterProgramRuntime? = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            weak var weak = owner
+            var finish: ((Int) -> Void)?
+            let real = BackgroundJob<Int>(.quote, subject: asset.path, start: { finish = $0 }, reads: asset.path)
+            owner?.startBackground(real, then: { delivered.append($0) }, orElse: { dropped.append($0) })
+            t.equal(time.background.outstanding, 1)
+            if release { owner = nil; t.check(weak == nil) } else { owner?.close() }
+            finish?(release ? 8 : 7); finish = nil
+            t.equal(delivered, [], "callback is never inline")
+            time.runUntilIdle(); t.equal(time.background.outstanding, 0)
+            owner = nil
+        }
+        t.equal(dropped, [7, 8]); t.equal(delivered, []); t.equal(time.pendingCount, 0)
+    }
+
+    t.suite("Engine: Rainmeter Quote: delayed fixture releases owner and executor without advancing") {
+        let (_, _, asset, program, effects) = try quoteInput("delayed-retirement")
+        weak var weakOwner: RainmeterProgramRuntime?
+        weak var weakExecutor: VirtualTimeExecutor?
+        var produced = 0, delivered = 0, dropped = 0
+        do {
+            let time = try clock()
+            time.background.setFake(BackgroundFake(.fixture, delay: 60), for: .quote)
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            weakOwner = runtime; weakExecutor = time
+            let job = BackgroundJob<Int>(.quote, subject: asset.path, start: { _ in produced += 100 },
+                inline: { produced += 1; return 7 }, reads: asset.path)
+            runtime.startBackground(job, then: { delivered += $0 }, orElse: { dropped += $0 })
+            t.check(time.pendingCount > 0)
+            t.equal(produced, 0)
+        }
+        t.check(weakOwner == nil)
+        t.check(weakExecutor == nil)
+        t.equal(produced, 0); t.equal(delivered, 0); t.equal(dropped, 0)
+    }
+
+    t.suite("Engine: Rainmeter Quote: strict coverage and closed plugin prevent new work") {
+        let (_, _, asset, program, effects) = try quoteInput("coverage")
+        let time = try clock()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        try runtime.update(); time.runUntilIdle()
+        t.equal(time.background.reports.map(\.faked), [true])
+        time.background.setFake(nil, for: .quote)
+        time.advance(by: 61); try runtime.update(); time.runUntilIdle()
+        t.equal(time.background.reports.map(\.faked), [true, false])
+        t.equal(runtime.measure(named: "Q")?.stringValue, "Alpha")
+        runtime.close()
+        var starts = 0
+        let job = BackgroundJob<Int>(.quote, subject: asset.path, start: { _ in starts += 1 }, reads: asset.path)
+        runtime.startBackground(job, then: { _ in starts += 10 }, orElse: nil)
+        t.equal(starts, 0)
+        let after = time.pendingCount
+        _ = runtime.measure(named: "Q")?.computeValue()
+        t.equal(time.pendingCount, after)
+    }
+
+    t.suite("Engine: Rainmeter Quote: static path and plugin boundaries reject before IO") {
+        let (skins, file, asset, _, effects) = try quoteInput("boundaries")
+        let outside = skins.appendingPathComponent("outside.txt")
+        try "Outside".write(to: outside, atomically: true, encoding: .utf8)
+        let link = asset.deletingLastPathComponent().appendingPathComponent("escape.txt")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        for (extra, key) in [("PathName=../../outside.txt", "PathName"), ("PathName=#@#escape.txt", "PathName"),
+                             ("PathName=%HOME%/private", "PathName"), ("FinishAction=[!Log no]", "FinishAction")] {
+            try "[Q]\nMeasure=Plugin\nPlugin=QuotePlugin\n\(extra)\n".write(to: file, atomically: true, encoding: .utf8)
+            let time = try clock()
+            do { _ = try convert(file, skins, time, effects); t.check(false) }
+            catch RainmeterProgramError.outsideInitialProfile(_, let actual, let location, _) {
+                t.equal(actual, key); t.check(location != nil)
+            }
+            t.equal(time.pendingCount, 0); t.equal(time.background.reports, [])
+        }
+        try "[Q]\nMeasure=Plugin\nPlugin=QuotePlugin\nPathName=#@#quotes.txt\n".write(to: file, atomically: true, encoding: .utf8)
+        let time = try clock(), program = try convert(file, skins, time, effects)
+        try FileManager.default.removeItem(at: asset)
+        try FileManager.default.createSymbolicLink(at: asset, withDestinationURL: outside)
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        do { try runtime.update(); t.check(false) }
+        catch RainmeterProgramError.unexpectedService(let reason) { t.equal(reason, "Quote read outside root config") }
+        t.equal(time.pendingCount, 0); t.equal(time.background.reports, [])
+    }
+
+    t.suite("Engine: Rainmeter Quote: inactive and unreadable sources do not manufacture values") {
+        for option in ["Disabled", "Paused"] {
+            let (_, _, _, program, effects) = try quoteInput("inactive-" + option, inactive: option + "=1")
+            let time = try clock()
+            let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+                environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+            defer { runtime.close() }
+            try runtime.update()
+            t.equal(time.pendingCount, 0); t.equal(time.background.reports, [])
+            guard let q = runtime.measure(named: "Q") else { throw RainmeterFixtureError.missingNode }
+            if option == "Disabled" { q.setDisabled(false) } else { q.setPaused(false) }
+            try runtime.update(); t.check(time.pendingCount > 0)
+            time.runUntilIdle(); t.equal(q.stringValue, "Alpha")
+        }
+        let (_, _, asset, program, effects) = try quoteInput("unreadable")
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: asset.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: asset.path) }
+        t.check(FileManager.default.contents(atPath: asset.path) == nil, "permission fixture must actually deny a read")
+        let time = try clock()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        try runtime.update(); time.runUntilIdle()
+        t.equal(runtime.measure(named: "Q")?.stringValue, "")
+        t.check(runtime.logs.contains { $0.contains("cannot read") })
+        t.equal((runtime.measure(named: "Q") as? QuoteMeasure)?.itemCount, 0)
+    }
+
+    t.suite("Engine: Rainmeter Quote: changed options discard a superseded queued read") {
+        let (_, _, asset, program, effects) = try quoteInput("superseded")
+        let other = asset.deletingLastPathComponent().appendingPathComponent("other.txt")
+        try "Beta".write(to: other, atomically: true, encoding: .utf8)
+        let time = try clock()
+        let runtime = try RainmeterProgramRuntime(program: program, executor: time, clock: time.clock,
+            environment: RecordingSkinHost.fixedEnvironment, system: FakeSystem(), effects: effects, text: nil)
+        defer { runtime.close() }
+        try runtime.update()
+        guard let q = runtime.measure(named: "Q") else { throw RainmeterFixtureError.missingNode }
+        q.overrides["pathname"] = other.path; q.needsOptionRead = true
+        try runtime.update(); time.runUntilIdle()
+        t.equal(q.stringValue, "Beta"); t.equal(runtime.updateCount, 2)
+    }
+
+    let quoteRegistrySuite = "Engine: Rainmeter registry: substituted Quote plugin is declined before construction"
+    if CommandLine.arguments.dropFirst().first == quoteRegistrySuite {
+        t.suite(quoteRegistrySuite) {
+            let (skins, file, _, _, effects) = try quoteInput("registry")
+            defer { MeasureRegistry.registerPlugin("QuotePlugin", QuoteMeasure.self) }
+            RainmeterUnqualifiedTime.constructions = 0
+            MeasureRegistry.registerPlugin("QuotePlugin.dll", RainmeterUnqualifiedTime.self)
+            do { _ = try convert(file, skins, try clock(), effects); t.check(false) }
+            catch RainmeterProgramError.outsideInitialProfile(_, let key, let location, let reason) {
+                t.equal(key, "Plugin"); t.check(location != nil); t.equal(reason, "registered plugin implementation")
+            }
+            t.equal(RainmeterUnqualifiedTime.constructions, 0)
+        }
+    }
+
     let systemRegistrySuite = "Engine: Rainmeter registry: substituted system kernels are declined before construction"
     if CommandLine.arguments.dropFirst().first == systemRegistrySuite {
         t.suite(systemRegistrySuite) {

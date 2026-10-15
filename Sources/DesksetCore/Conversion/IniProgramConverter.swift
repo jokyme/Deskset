@@ -46,7 +46,8 @@ package enum IniProgramConverter {
         skin.random = SkinRandom(seed: 1)
         defer { skin.close() }
         let builtins = skin.builtInVariables()
-        let kernels = try preflight(document, sources: loaded.sources, builtins: builtins)
+        let kernels = try preflight(document, sources: loaded.sources, builtins: builtins,
+                                    directory: fileURL.deletingLastPathComponent(), root: skin.rootConfigDirectory)
         // Skin consults extension registrations before built-ins. This profile qualifies exact built-in kernels,
         // so a substituted implementation must be declined before the temporary Skin can instantiate it.
         let measureSections = document.sections.filter { kernels[$0.name.lowercased()]?.measureClass != nil }
@@ -54,12 +55,14 @@ package enum IniProgramConverter {
             guard let kernel = kernels[section.name.lowercased()], let expected = kernel.measureClass else {
                 throw RainmeterProgramError.inconsistentFrozenInput
             }
-            if let registered = MeasureRegistry.measure(named: kernel.rawValue),
-               ObjectIdentifier(registered) != ObjectIdentifier(expected) {
-                let source = loaded.sources.location(section: section.name, key: "Measure")
+            let plugin = kernel == .quoteplugin
+            let registered = plugin ? MeasureRegistry.plugin(named: kernel.rawValue) : MeasureRegistry.measure(named: kernel.rawValue)
+            if let registered, ObjectIdentifier(registered) != ObjectIdentifier(expected) {
+                let key = plugin ? "Plugin" : "Measure"
+                let source = loaded.sources.location(section: section.name, key: key)
                     .map { RainmeterProgram.Source(file: $0.file, line: $0.line) }
-                throw RainmeterProgramError.outsideInitialProfile(section: section.name, key: "Measure",
-                                                                  source: source, reason: "registered measure implementation")
+                throw RainmeterProgramError.outsideInitialProfile(section: section.name, key: key, source: source,
+                    reason: plugin ? "registered plugin implementation" : "registered measure implementation")
             }
         }
         let fonts = skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true)
@@ -101,7 +104,7 @@ package enum IniProgramConverter {
     }
 
     private static func preflight(_ document: IniDocument, sources: IniSourceMap,
-                                  builtins: [String: String]) throws -> [String: RainmeterProgram.Kernel] {
+                                  builtins: [String: String], directory: URL, root: URL) throws -> [String: RainmeterProgram.Kernel] {
         let rootKeys: Set<String> = ["update", "backgroundmode", "solidcolor", "accuratetext", "skinwidth", "skinheight"]
         let common: Set<String> = ["x", "y", "w", "h", "solidcolor", "antialias", "meterstyle", "updatedivider", "hidden", "padding"]
         let stringKeys = common.union(["meter", "measurename", "text", "fontface", "fontsize", "fontcolor",
@@ -119,7 +122,7 @@ package enum IniProgramConverter {
                                    "lowbound", "highbound", "updaterandom", "uniquerandom", "dynamicvariables", "disabled", "paused",
                                    "minvalue", "maxvalue", "invertmeasure", "averagesize", "regexpsubstitute", "processor", "total", "free",
                                    "secondsvalue", "adddaystohours", "cumulative", "usebits", "netinspeed", "netoutspeed",
-                                   "label", "type", "ignoreremovable", "macavailable", "diskquota"]
+                                   "label", "type", "ignoreremovable", "macavailable", "diskquota", "subfolders"]
         let staticNames: Set<String> = ["@", "currentpath", "currentfile", "currentconfig", "rootconfig",
                                        "rootconfigpath", "skinspath", "crlf", "currentsection"]
         let definitions = document.section(named: "Variables")?.entries ?? []
@@ -157,6 +160,15 @@ package enum IniProgramConverter {
             else if name == "rainmeter" { allowed = rootKeys }
             else if let raw = section.entries.first(where: { $0.key.lowercased() == "measure" }) {
                 switch raw.value.lowercased() {
+                case "plugin":
+                    guard let plugin = section.entries.first(where: { $0.key.lowercased() == "plugin" }) else {
+                        throw decline(section, raw, "missing qualified plugin")
+                    }
+                    guard MeasureRegistry.normalizedPluginName(try value(plugin, in: section)) == "quoteplugin" else {
+                        throw decline(section, raw, "plugin type")
+                    }
+                    kernels[name] = .quoteplugin
+                    allowed = systemKeys.union(["plugin", "pathname", "separator", "subfolders", "filefilter"])
                 case "time": kernels[name] = .time; allowed = timeKeys
                 case "calc": kernels[name] = .calc; allowed = calcKeys
                 case "cpu": kernels[name] = .cpu; allowed = systemKeys.union(["processor"])
@@ -186,6 +198,13 @@ package enum IniProgramConverter {
                     throw decline(section, entry, "option capability")
                 }
                 let resolved = try value(entry, in: section)
+                if kernels[name] == .quoteplugin, key == "pathname", !resolved.trimmingCharacters(in: .whitespaces).isEmpty {
+                    let path = PluginPaths.resolve(resolved, relativeTo: directory.path)
+                    guard !resolved.contains("%"), !resolved.contains("~"),
+                          RainmeterProgram.allowsQuoteRead(path, root: root) else {
+                        throw decline(section, entry, "Quote path outside static root config")
+                    }
+                }
                 if name != "variables", numeric.contains(key) {
                     let number = (key == "x" || key == "y") && (resolved.hasSuffix("r") || resolved.hasSuffix("R"))
                         ? String(resolved.dropLast()) : resolved

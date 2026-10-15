@@ -336,10 +336,203 @@ enum RainmeterProgramSelfTests {
             t.equal(effects.records, [])
             provider.teardown(); withExtendedLifetime(view) {}
         }
+        t.suite("App: Rainmeter bitmap owner: real worker exclusive ownership is not physical thread identity") {
+            let executor = SkinThreadExecutor(name: "Native ownership negative control")
+            defer { executor.stop() }
+            let held = Guarded<ReleaseProbe?>(nil), ready = Guarded(false)
+            let releases = Guarded<[(Bool, Bool)]>([])
+            executor.async {
+                held.access { $0 = ReleaseProbe(executor, releases) }
+                ready.access { $0 = true }
+            }
+            guard AppSelfTest.spin(timeout: 30, until: { ready.current }) else { throw Failure.clock }
+            let owned = executor.exclusive(timeout: 30) {
+                held.access { $0 = nil }
+                return executor.isCurrent
+            }
+            t.equal(owned, true)
+            t.equal(releases.current.count, 1)
+            t.check(releases.current.allSatisfy { $0.0 && $0.1 },
+                    "a parked worker explicitly authorizes release on main; physical-thread tests must use async")
+        }
         for worker in [false, true] {
             t.suite("App: Rainmeter bitmap owner: real \(worker ? "worker" : "main") executor owns ticks frames and final release") {
                 try liveBitmapOwner(t, worker: worker)
             }
+            t.suite("App: Rainmeter bitmap owner: real \(worker ? "worker" : "main") Quote IO returns and retires on its owner") {
+                try liveQuoteOwner(t, worker: worker)
+            }
+        }
+    }
+
+    /// Only the return hop is held. Quote still constructs its real BackgroundJob and reads the
+    /// real file on PluginIO.queue; this is neither VirtualTimeExecutor nor a background fake.
+    /// All released work runs on the actual main/worker executor, never a parked exclusive loan.
+    private final class QuoteDeliveryGate: SkinExecutor {
+        let base: SkinExecutor
+        let pending = Guarded<[() -> Void]>([])
+        let posts = Guarded<[(Bool, Bool)]>([])
+        init(_ base: SkinExecutor) { self.base = base }
+        var isCurrent: Bool { base.isCurrent }
+        func async(_ work: @escaping () -> Void) {
+            posts.access { $0.append((base.isCurrent, Thread.isMainThread)) }
+            pending.access { $0.append(work) }
+        }
+        func async(after delay: TimeInterval, _ work: @escaping () -> Void) -> SkinScheduledWork {
+            base.async(after: delay, work)
+        }
+        func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
+                   _ fire: @escaping () -> Void) -> SkinScheduledWork {
+            base.timer(interval: interval, leeway: leeway, repeats: repeats, fire)
+        }
+        func deliverOnOwner() {
+            precondition(base.isCurrent)
+            let work = pending.access { value -> [() -> Void] in
+                let result = value; value.removeAll(); return result
+            }
+            for body in work { body() }
+        }
+    }
+
+    private static func quoteTexts(_ items: [DrawItem]) -> [String] {
+        items.flatMap { item -> [String] in
+            switch item {
+            case .text(let value): return [value.text]
+            case .transformed(_, let children), .antialias(_, let children): return quoteTexts(children)
+            case .container(_, let mask, let content): return quoteTexts(mask) + quoteTexts(content)
+            default: return []
+            }
+        }
+    }
+
+    private static func liveQuoteOwner(_ t: AppTestRunner, worker: Bool) throws {
+        for retirement in ["live", "close", "release"] {
+            let skins = t.temporaryDirectory("native-quote-" + retirement)
+            let file = skins.appendingPathComponent("Quote/Main.ini")
+            let asset = skins.appendingPathComponent("Quote/@Resources/quotes.txt")
+            try FileManager.default.createDirectory(at: asset.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "Native Quote payload\n".write(to: asset, atomically: true, encoding: .utf8)
+            try """
+            [Rainmeter]
+            Update=1000
+            [Q]
+            Measure=Plugin
+            Plugin=QuotePlugin
+            PathName=#@#quotes.txt
+            UpdateDivider=-1
+            [Text]
+            Meter=String
+            MeasureName=Q
+            Text=%1
+            W=240
+            H=30
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let conversion = try clock(), effects = RecordingSideEffects(skinsDirectory: skins)
+            let program = try IniProgramConverter.convert(config: "Quote", fileURL: file, skinsDirectory: skins,
+                system: System(), environment: RecordingSkinHost.fixedEnvironment, clock: conversion.clock,
+                executor: conversion, effects: effects)
+            t.equal(conversion.pendingCount, 0)
+            t.equal(conversion.background.reports, [])
+            let base: SkinExecutor = worker ? SkinThreadExecutor(name: "Native Quote owner") : MainSkinExecutor.shared
+            let gate = QuoteDeliveryGate(base), held = Guarded<RainmeterProgramRuntime?>(nil)
+            let weakOwner = WeakBitmapOwner(), errors = Guarded<[String]>([])
+            let reads = Guarded<[(Bool, Bool)]>([]), updates = Guarded(0)
+            let releases = Guarded<[(Bool, Bool)]>([])
+            let scenes = Guarded<[WidgetScene]>([])
+            let counts = Guarded<[Int]>([])
+            let environment = Environment(.light, 1)
+            func onOwner(_ body: @escaping () throws -> Void) throws {
+                let done = Guarded(false)
+                base.async {
+                    do { try body() } catch { errors.access { $0.append(String(describing: error)) } }
+                    done.access { $0 = true }
+                }
+                guard AppSelfTest.spin(timeout: 30, until: { done.current }) else { throw Failure.clock }
+                t.equal(errors.current, [])
+                guard errors.current.isEmpty else { throw Failure.input }
+            }
+            defer {
+                try? onOwner { held.access { $0?.close(); $0 = nil }; gate.deliverOnOwner() }
+                (base as? SkinThreadExecutor)?.stop()
+            }
+            try onOwner {
+                let probe = ReleaseProbe(base, releases)
+                let fixed = conversion.clock
+                let dataClock = SkinClock(now: fixed.now, uptime: {
+                    withExtendedLifetime(probe) {
+                        reads.access { $0.append((base.isCurrent, Thread.isMainThread)) }
+                        return 86_400
+                    }
+                }, timeZone: fixed.timeZone)
+                let runtime = try RainmeterProgramRuntime(program: program, executor: gate, clock: dataClock,
+                    environment: RecordingSkinHost.fixedEnvironment, system: System(), effects: effects,
+                    random: SkinRandom(seed: 1), text: Text())
+                weakOwner.engine = runtime
+                runtime.didUpdate = { updates.access { $0 += 1 } }
+                held.access { $0 = runtime }
+                try runtime.update()
+                let scene = try runtime.project(environment: environment)
+                scenes.access { $0.append(scene) }
+            }
+            guard AppSelfTest.spin(timeout: 30, until: { gate.pending.current.count == 1 }) else { throw Failure.clock }
+            t.equal(gate.posts.current.count, 1, "one real PluginIO result, not a synthetic Counter fixture")
+            t.check(gate.posts.current.allSatisfy { !$0.0 && !$0.1 }, "file production returns from a background thread")
+            t.equal(updates.current, 1)
+            let readsBefore = reads.current.count
+            t.check(readsBefore > 0)
+            t.check(!quoteTexts(scenes.current[0].drawingItems).contains("Native Quote payload"))
+            // The job has already produced its result. Removing the file proves delivery is not another read.
+            try FileManager.default.removeItem(at: asset)
+            try onOwner {
+                if retirement != "live" { held.current?.close() }
+                if retirement == "release" { held.access { $0 = nil } }
+            }
+            if retirement == "release" {
+                t.check(weakOwner.engine == nil, "a produced but undelivered result does not retain the owner")
+                t.equal(releases.current.count, 1)
+            }
+            try onOwner {
+                gate.deliverOnOwner()
+                if let runtime = held.current {
+                    counts.access { $0.append(runtime.updateCount) }
+                    if retirement == "live" {
+                        let scene = try runtime.project(environment: environment)
+                        scenes.access { $0.append(scene) }
+                    }
+                }
+            }
+            t.equal(gate.pending.current.count, 0)
+            t.equal(updates.current, 1, "completion never invents an engine/meter tick")
+            t.equal(reads.current.count, readsBefore + (retirement == "live" ? 1 : 0),
+                    "only a live Quote completion reads loadedAt; retired results are dropped")
+            t.check(reads.current.allSatisfy { $0.0 && $0.1 != worker }, "Quote completion runs on its physical owner")
+            if retirement == "live" {
+                t.equal(counts.current, [1])
+                t.equal(scenes.current[1].drawingItems, scenes.current[0].drawingItems,
+                        "the completed measure must not update its meter early")
+                try onOwner {
+                    guard let runtime = held.current else { throw Failure.input }
+                    runtime.updateForTick() // the normal TickTarget entry, not an async completion update
+                    let scene = try runtime.project(environment: environment)
+                    scenes.access { $0.append(scene) }
+                    counts.access { $0.append(runtime.updateCount) }
+                }
+                t.equal(counts.current, [1, 2])
+                t.equal(updates.current, 2)
+                t.check(quoteTexts(scenes.current[2].drawingItems).contains("Native Quote payload"),
+                        "the next ordinary tick sees the actual file result even with UpdateDivider=-1")
+                t.equal(gate.posts.current.count, 1, "no second read was needed after the file disappeared")
+                t.check(try pixels(scenes.current[2], scale: 1, cycle: 2,
+                                   context: DrawContext(fonts: AppFontResolver())).contains { $0 != 0 })
+            } else if retirement == "close" {
+                t.equal(counts.current, [1])
+                t.check(weakOwner.engine != nil, "close/drop is tested separately from owner destruction")
+            }
+            try onOwner { held.access { $0?.close(); $0 = nil } }
+            t.check(weakOwner.engine == nil)
+            t.equal(releases.current.count, 1)
+            t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker })
+            t.equal(effects.records, [])
         }
     }
 
@@ -355,8 +548,19 @@ enum RainmeterProgramSelfTests {
         let releases = Guarded<[(Bool, Bool)]>([]), ownership = Guarded<[Bool]>([]), weakOwner = WeakBitmapOwner()
         let dataTime = try clock()
         let fixed = SkinClock.fixed(dataTime.wallClock, timeZone: dataTime.timeZone)
+        // exclusive parks the worker and lends ownership to main; it is not a native-thread hop.
+        // In particular, releasing callbacks/caches there cannot prove physical worker confinement.
+        func onOwner<T>(_ body: @escaping () -> T) -> T? {
+            let result = Guarded<T?>(nil), done = Guarded(false)
+            executor.async {
+                result.access { $0 = body() }
+                done.access { $0 = true }
+            }
+            guard AppSelfTest.spin(timeout: 30, until: { done.current }) else { return nil }
+            return result.current
+        }
         defer {
-            _ = executor.exclusive(timeout: 30) { held.access { $0?.close(); $0 = nil } }
+            _ = onOwner { held.access { $0?.close(); $0 = nil } }
             provider.teardown()
             (executor as? SkinThreadExecutor)?.stop()
             withExtendedLifetime(view) {}
@@ -382,8 +586,8 @@ enum RainmeterProgramSelfTests {
         t.equal(errors.current, [])
         guard held.current != nil else { throw Failure.input }
         t.equal(ownership.current, [true])
-        t.equal(executor.exclusive(timeout: 30) { held.current?.engine.updateCount }, 1)
-        t.equal(executor.exclusive(timeout: 30) { held.current?.engine.isPaused }, true)
+        t.equal(onOwner { held.current?.engine.updateCount }, 1)
+        t.equal(onOwner { held.current?.engine.isPaused }, true)
         // A genuine native update clock fires on both supported executors; the fixed data clock only makes pixels repeatable.
         executor.async {
             do { try held.current?.resume(updateNow: false) }
@@ -391,17 +595,17 @@ enum RainmeterProgramSelfTests {
         }
         t.check(AppSelfTest.spin(timeout: 30) { provider.content.state.presented >= 2 || !errors.current.isEmpty })
         t.equal(errors.current, [])
-        _ = executor.exclusive(timeout: 30) { held.current?.pause() }
+        _ = onOwner { held.current?.pause() }
         let before = provider.content.state.presented
         executor.async {
             do { for _ in 0..<5 { try held.current?.update() } }
             catch { errors.access { $0.append(String(describing: error)) } }
         }
         t.check(AppSelfTest.spin(timeout: 30) { provider.content.state.presented > before || !errors.current.isEmpty })
-        _ = executor.exclusive(timeout: 30) {}
+        _ = onOwner {}
         t.equal(provider.content.state.presented, before + 1, "five updates in one owner turn produce one frame")
         t.check(provider.threads.current.allSatisfy { $0 != worker }, "all frames came from the actual owning thread")
-        guard let count = executor.exclusive(timeout: 30, { held.current?.engine.updateCount }) ?? nil,
+        guard let count = onOwner({ held.current?.engine.updateCount }) ?? nil,
               let image = provider.content.shown.image else { throw Failure.bitmap }
         let context = SkinRenderContext(), text = Text(context.drawing), oldHost = Host(text, RecordingSkinHost.fixedEnvironment)
         let skin = Skin(config: program.config, fileURL: file, skinsDirectory: skins, system: System(), host: oldHost)
@@ -414,14 +618,14 @@ enum RainmeterProgramSelfTests {
         t.check(try bitmapBytes(image).contains { $0 != 0 })
         t.equal(try bitmapBytes(image), try bitmapBytes(expected), "actual native provider frame matches the old Skin")
         skin.close(); withExtendedLifetime(oldHost) {}
-        t.equal(executor.exclusive(timeout: 30) { () -> Int? in
+        t.equal(onOwner { () -> Int? in
             guard let host = held.current else { return nil }
             let before = host.engine.updateCount
             do { try host.wake() } catch { errors.access { $0.append(String(describing: error)) } }
             host.pause()
             return host.engine.updateCount - before
         }, 1)
-        t.equal(executor.exclusive(timeout: 30) { () -> Bool? in
+        t.equal(onOwner { () -> Bool? in
             guard let host = held.current else { return nil }
             host.close()
             let frames = host.frames.framesDrawn
@@ -437,7 +641,8 @@ enum RainmeterProgramSelfTests {
             !releases.current.isEmpty && weakOwner.engine == nil && weakOwner.context == nil
         })
         t.equal(releases.current.count, 1)
-        t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker })
+        t.check(releases.current.allSatisfy { $0.0 && $0.1 != worker },
+                "release (isCurrent, isMainThread): \(releases.current)")
         t.check(weakOwner.engine == nil && weakOwner.context == nil, "no callback/cache/host cycle")
         t.equal(errors.current, [])
         t.equal(effects.records, [])

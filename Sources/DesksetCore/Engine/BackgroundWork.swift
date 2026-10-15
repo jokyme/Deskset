@@ -252,6 +252,21 @@ public struct BackgroundJob<T> {
     }
 }
 
+/// Shared dispatch for owners that use the existing live and virtual background-work seam.
+/// Result production, fixture authorization, accounting and executor delivery have one implementation.
+enum BackgroundWorkDelivery {
+    static func start<T>(_ job: BackgroundJob<T>, hop: SkinHop, executor: SkinExecutor, config: String, tree: URL,
+                         then completion: @escaping (T) -> Void, orElse dropped: ((T) -> Void)?) {
+        if let virtual = executor as? VirtualTimeExecutor {
+            virtual.background.start(job, hop: hop, config: config, tree: tree, then: completion, orElse: dropped)
+            return
+        }
+        job.start { result in
+            hop.post({ completion(result) }, orElse: dropped.map { drop in { drop(result) } })
+        }
+    }
+}
+
 // MARK: - Skin
 
 extension Skin {
@@ -264,14 +279,8 @@ extension Skin {
     public func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
                                    orElse dropped: ((T) -> Void)? = nil) {
         let hop = self.hop()
-        if let virtual = executor as? VirtualTimeExecutor {
-            virtual.background.start(job, hop: hop, config: config, tree: rootConfigDirectory, then: completion,
-                                     orElse: dropped)
-            return
-        }
-        job.start { result in
-            hop.post({ completion(result) }, orElse: dropped.map { drop in { drop(result) } })
-        }
+        BackgroundWorkDelivery.start(job, hop: hop, executor: executor, config: config, tree: rootConfigDirectory,
+                                     then: completion, orElse: dropped)
     }
 
     /// The way back for a shared service that calls the skin back when it likes (MacWeather and MacSun hear from the
@@ -464,12 +473,11 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         }
         if let produce {
             report(request, faked: true, how)
-            let deliver = { hop.post { completion(produce()) } }
             let delay = fake?.delay ?? 0
-            if delay > 0, let executor {
-                executor.async(after: delay, deliver)
+            if delay > 0, executor != nil {
+                hop.post(after: delay) { completion(produce()) }
             } else {
-                deliver()
+                hop.post { completion(produce()) }
             }
             return
         }

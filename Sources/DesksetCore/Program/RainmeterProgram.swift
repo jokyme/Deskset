@@ -13,7 +13,7 @@ package struct RainmeterProgram: Equatable, Sendable {
         package let source: Source?
     }
     package enum Kernel: String, Equatable, Sendable {
-        case time, calc, cpu, memory, physicalmemory, swapmemory, uptime, netin, netout, nettotal, process, freediskspace, string, image
+        case time, calc, cpu, memory, physicalmemory, swapmemory, uptime, netin, netout, nettotal, process, freediskspace, quoteplugin, string, image
 
         var measureClass: Measure.Type? {
             switch self {
@@ -22,6 +22,7 @@ package struct RainmeterProgram: Equatable, Sendable {
             case .cpu: return CPUMeasure.self
             case .uptime: return UptimeMeasure.self
             case .process: return ProcessMeasure.self
+            case .quoteplugin: return QuoteMeasure.self
             case .freediskspace: return FreeDiskSpaceMeasure.self
             case .netin, .netout, .nettotal: return NetMeasure.self
             case .memory, .physicalmemory, .swapmemory: return MemoryMeasure.self
@@ -68,6 +69,14 @@ package struct RainmeterProgram: Equatable, Sendable {
     package let sections: [Section]
     package let staticBuiltins: [String: String]
     package let window: Window
+
+    /// The initial asynchronous profile reads only static paths contained by its root config.
+    /// Rechecked when work starts; virtual fixture authorization remains a separate check.
+    static func allowsQuoteRead(_ path: String, root: URL) -> Bool {
+        let base = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let target = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+        return target == base || target.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+    }
 
     var sourceMap: IniSourceMap {
         var map = IniSourceMap()
