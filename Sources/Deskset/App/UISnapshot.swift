@@ -12,20 +12,9 @@ import DesksetCore
 /// - `install-zip`: the confirmation for a plain ZIP archive (no RMSKIN.ini) with fonts.
 /// - `icon`: the app icon at 1024 px.
 /// - `menubar`: the menu bar glyph, enlarged.
-/// - `inspector`: the skin editor on Deskset\System of TestSkins (or `--config` of a copy of `--skins-dir`) with
-///   `--select` (default MeterCPUValue; `A,B` selects several, `none` shows the skin) selected, zoomed to fit (or
-///   `--zoom N`), in `--mode design|split|code` (default design; `--code-below` puts the code under the canvas) with
-///   the sidebar on `--tab add|layers|live` (`library` and `data` are the old names; default: what the selection
-///   shows), `--size WxH` (default 1180x760; 1440x860 with the code showing) and
-///   `--inspector-width N` (default its minimum). States that need the pointer or a gesture: see `SnapshotOptions`
-///   (`--hover`, `--drag`, `--expert`, `--tip`, `--expand`, `--edit-text`, `--scroll`). The toolbar is drawn as
-///   stand-ins of its items (`drawToolbarStandIn`).
-/// - `studio2`: the new Studio window on a designed screen, `--screen NAME` (`StudioScreen`), `--language en|zh`,
-///   `--size WxH` (default 1400x860), at 2x (`StudioSnapshot`).
 /// - `settings`: the Settings window on its Editor pane (or `--pane general`), listing the editors installed here.
 /// - `codeeditor`: the built-in code editor on a copy of Deskset\System (System.ini and its @Include files), with a
 ///   section revealed and tinted (`--size WxH`, default 760x560).
-/// - `library`: the editor's component library with every thumbnail, filtered by `--search TEXT` / `--category NAME`.
 enum UISnapshot {
     static func run(_ arguments: [String]) -> Int32 {
         func value(after flag: String) -> String? {
@@ -47,34 +36,6 @@ enum UISnapshot {
             data = installPreview().flatMap(png)
         case "install-zip":
             data = installPreview(plainArchive: true).flatMap(png)
-        case "inspector":
-            let mode = value(after: "--mode").flatMap { InspectorWindowController.Mode(rawValue: $0.lowercased()) }
-            let tab = value(after: "--tab").flatMap(sidebarTab(named:))
-            let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
-                .map { $0.isFinite ? min(max($0, 400), 3000) : 1180 }
-            let options: SnapshotOptions
-            switch SnapshotOptions.parse(arguments) {
-            case .success(let parsed): options = parsed
-            case .failure(let problem):
-                fputs("error: \(problem.message)\n", stderr)
-                return 2
-            }
-            data = inspectorPreview(select: value(after: "--select") ?? "MeterCPUValue",
-                                    zoom: value(after: "--zoom").flatMap(Double.init).map { CGFloat($0) },
-                                    mode: mode ?? .design, tab: tab, codeBelow: arguments.contains("--code-below"),
-                                    size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil,
-                                    inspectorWidth: value(after: "--inspector-width").flatMap(Double.init)
-                                        .map { CGFloat($0) },
-                                    skinsDir: value(after: "--skins-dir"), config: value(after: "--config"),
-                                    options: options)
-        case "studio2":
-            // The new Studio window on a designed screen (`StudioSnapshot`).
-            switch StudioSnapshot.run(arguments) {
-            case .success(let rendered): data = rendered
-            case .failure(let problem):
-                fputs("error: \(problem.message)\n", stderr)
-                return 2
-            }
         case "settings":
             data = settingsPreview(pane: value(after: "--pane").flatMap(SettingsWindowController.Pane.init) ?? .editor)
         case "codeeditor":
@@ -82,9 +43,6 @@ enum UISnapshot {
                 .map { $0.isFinite ? min(max($0, 200), 3000) : 760 }
             data = codeEditorPreview(size: size.count == 2 ? NSSize(width: size[0], height: size[1])
                                                            : NSSize(width: 760, height: 560))
-        case "library":
-            data = ComponentLibraryView.snapshot(query: value(after: "--search"), category: value(after: "--category"))?
-                .representation(using: .png, properties: [:])
         case "manage":
             // Sizes are clamped (a typo like 90000x600 would otherwise ask for a gigabyte-sized bitmap).
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
@@ -95,7 +53,7 @@ enum UISnapshot {
                                  hidden: arguments.contains("--hidden"),
                                  coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil)
         default:
-            fputs("unknown snapshot \"\(what)\" (manage, inspector, studio2, settings, codeeditor, library, install, install-zip, icon, menubar)\n", stderr)
+            fputs("unknown snapshot \"\(what)\" (manage, settings, codeeditor, install, install-zip, icon, menubar)\n", stderr)
             return 2
         }
         guard let data else {
@@ -111,16 +69,6 @@ enum UISnapshot {
         }
         print("wrote \(output.path)")
         return 0
-    }
-
-    /// A sidebar tab by the name `--tab` takes: add, layers, live (and the old names library, data).
-    static func sidebarTab(named name: String) -> InspectorWindowController.SidebarTab? {
-        switch name.lowercased() {
-        case "add", "library": return .library
-        case "layers": return .layers
-        case "live", "data": return .data
-        default: return nil
-        }
     }
 
     private static func temporaryDirectory(_ label: String) -> URL {
@@ -181,65 +129,6 @@ enum UISnapshot {
         if let coordinates { manage.testTypeCoordinates(x: coordinates.x, y: coordinates.y) }
         let rep = manage.snapshot()
         let data = rep?.representation(using: .png, properties: [:])
-        withExtendedLifetime(app) {}
-        return data
-    }
-
-    private static func inspectorPreview(select: String, zoom: CGFloat?, mode: InspectorWindowController.Mode,
-                                         tab: InspectorWindowController.SidebarTab?, codeBelow: Bool,
-                                         size: NSSize?, inspectorWidth: CGFloat? = nil, skinsDir: String? = nil,
-                                         config: String? = nil, options: SnapshotOptions = SnapshotOptions()) -> Data? {
-        let root = temporaryDirectory("inspector")
-        let skins = root.appendingPathComponent("Skins")
-        if let skinsDir {
-            // A copy: the snapshot must not write into the folder it was given.
-            try? FileManager.default.copyItem(at: URL(fileURLWithPath: skinsDir), to: skins)
-        } else {
-            try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
-            if let test = Paths.repositoryFolder("TestSkins") {
-                try? FileManager.default.copyItem(at: test.appendingPathComponent("Deskset"),
-                                                  to: skins.appendingPathComponent("Deskset"))
-            }
-        }
-        let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
-                                skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
-                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
-        // View ▸ Show Rainmeter Details (a preference of this temporary state only).
-        if options.expert { app.state.updateEditor { $0.showIniNames = true } }
-        guard let c = app.activate(config: config ?? "Deskset\\System", file: nil) else {
-            fputs("error: \(config ?? "Deskset\\System") does not load from \(skins.path)\n", stderr)
-            return nil
-        }
-        app.showInspector(for: c)
-        guard let inspector = app.inspector else { return nil }
-        inspector.window?.setContentSize(size ?? (mode == .design ? NSSize(width: 1180, height: 760)
-                                                                   : NSSize(width: 1440, height: 860)))
-        inspector.setCodeBelow(codeBelow)
-        inspector.setMode(mode)
-        if let inspectorWidth {
-            inspector.layoutMemory.inspectorWidth = inspectorWidth
-            inspector.applyPaneSizes()
-        }
-        inspector.window?.contentView?.layoutSubtreeIfNeeded()
-        inspector.fitIfAutomatic()
-        if let zoom { inspector.canvas.setZoom(zoom) }
-        let names = select.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        if select.lowercased() == "none" {
-            inspector.canvasSelectionChanged([])
-        } else if names.count > 1 {
-            inspector.canvasSelectionChanged(names)
-        } else {
-            inspector.select(section: select)
-        }
-        if let tab { inspector.selectSidebarTab(tab) }
-        if inspector.sidebarTab == .library { inspector.libraryView.loadThumbnails() }
-        inspector.window?.contentView?.layoutSubtreeIfNeeded()
-        inspector.applySnapshotSidebarOptions(options)
-        inspector.applySnapshotCanvasOptions(options)
-        inspector.window?.contentView?.layoutSubtreeIfNeeded()
-        // Let the code pane's caret and the library settle.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        let data = inspector.snapshot()?.representation(using: .png, properties: [:])
         withExtendedLifetime(app) {}
         return data
     }
@@ -395,74 +284,3 @@ enum UISnapshot {
     }
 }
 
-/// Options of the inspector snapshot for states that need the pointer, a gesture or a preference
-/// (docs/editor-friendly.md §14.0). Each is applied by the part of the editor it concerns: the sidebar
-/// (`applySnapshotSidebarOptions`) or the canvas and window (`applySnapshotCanvasOptions`); `expert` is set before the
-/// editor opens.
-struct SnapshotOptions: Equatable {
-    /// A layer dragged by the canvas: the gesture is begun and previewed, not ended.
-    struct Drag: Equatable {
-        var name: String
-        var dx: Double
-        var dy: Double
-    }
-
-    struct Problem: Error, Equatable {
-        var message: String
-    }
-
-    /// `--hover NAME`: the pointer is over this layer on the canvas.
-    var hover: String?
-    /// `--drag NAME:DX,DY`: this layer dragged by (DX, DY) points.
-    var drag: Drag?
-    /// `--expert`: View ▸ Show Rainmeter Details is on.
-    var expert = false
-    /// `--tip N`: first-run tip N (1–3) is showing.
-    var tip: Int?
-    /// `--expand NAME`: the group row holding this layer (or data item) is open in the sidebar.
-    var expand: String?
-    /// `--edit-text NAME`: this text layer's words are being edited on the canvas.
-    var editText: String?
-    /// `--scroll "CARD TITLE"`: the inspector is scrolled to the card with this title.
-    var scroll: String?
-
-    /// The options among `arguments` (a flag's value is the argument after it, unless that is another flag).
-    static func parse(_ arguments: [String]) -> Result<SnapshotOptions, Problem> {
-        func value(after flag: String) -> String? {
-            guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count,
-                  !arguments[i + 1].hasPrefix("--") else { return nil }
-            return arguments[i + 1]
-        }
-        var o = SnapshotOptions()
-        o.hover = value(after: "--hover")
-        o.expert = arguments.contains("--expert")
-        o.expand = value(after: "--expand")
-        o.editText = value(after: "--edit-text")
-        o.scroll = value(after: "--scroll")
-        if arguments.contains("--tip") {
-            guard let tip = value(after: "--tip").flatMap(Int.init), (1...3).contains(tip) else {
-                return .failure(Problem(message: "--tip needs a tip number, 1 to 3"))
-            }
-            o.tip = tip
-        }
-        if arguments.contains("--drag") {
-            guard let drag = value(after: "--drag").flatMap(Self.drag) else {
-                return .failure(Problem(message: "--drag needs NAME:DX,DY (points), e.g. MeterTitle:60,0"))
-            }
-            o.drag = drag
-        }
-        return .success(o)
-    }
-
-    /// `NAME:DX,DY` (the last colon separates the name).
-    static func drag(_ text: String) -> Drag? {
-        guard let colon = text.lastIndex(of: ":") else { return nil }
-        let name = text[..<colon].trimmingCharacters(in: .whitespaces)
-        let parts = text[text.index(after: colon)...].split(separator: ",")
-            .map { Double($0.trimmingCharacters(in: .whitespaces)) }
-        guard !name.isEmpty, parts.count == 2, let dx = parts[0], let dy = parts[1], dx.isFinite, dy.isFinite else {
-            return nil
-        }
-        return Drag(name: name, dx: dx, dy: dy)
-    }
-}

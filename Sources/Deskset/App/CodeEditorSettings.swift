@@ -19,28 +19,6 @@ struct EditorPreferences: Equatable {
         case systemDefault
     }
 
-    /// The editor's centre when a skin is opened with the skin menu's `Edit Skin…`; code actions (`!EditSkin`, the
-    /// Manage window's Edit, source links) switch to Split regardless.
-    enum OpenSkinsIn: String, CaseIterable {
-        case design, split, code
-
-        var title: String {
-            switch self {
-            case .design: return "Design"
-            case .split: return "Split"
-            case .code: return "Code"
-            }
-        }
-
-        var help: String {
-            switch self {
-            case .design: return "Open skins with the canvas only"
-            case .split: return "Open skins with the canvas and the code side by side"
-            case .code: return "Open skins with the code only"
-            }
-        }
-    }
-
     /// An app picked with "Other…", remembered so it stays in the pop-up after the user switches to another choice.
     struct StoredApp: Codable, Equatable {
         var bundleID: String
@@ -48,28 +26,11 @@ struct EditorPreferences: Equatable {
     }
 
     var codeEditor = CodeEditor.builtIn
-    var openSkinsIn = OpenSkinsIn.design
-    /// View ▸ Show Rainmeter Details (Settings ▸ Editor): INI option names next to the inspector's plain labels
-    /// (otherwise only in tooltips), section names, and every setting (docs/editor-friendly.md §4).
-    var showIniNames = false
     /// Points, clamped to `fontSizes`.
     var codeFontSize: Double = 12
     /// "Refresh the skin when the file is saved elsewhere" (the editor's live reload).
     var liveReload = true
     var otherApp: StoredApp?
-    /// The first-run tips already shown ("T1", "T2", "T3"; docs/editor-friendly.md §12). Help ▸ Show Tips Again
-    /// empties it.
-    var seenTips: Set<String> = []
-    /// Layers locked in the editor, by widget: config (lowercased) → section names (lowercased). Editor state only,
-    /// never written to the skin's files (§9.6).
-    var editorLocks: [String: Set<String>] = [:]
-    /// Widgets (configs, lowercased) whose detected Background the user unlocked, so it is not locked by itself (§9.6).
-    var unlockedBackgrounds: Set<String> = []
-    /// View ▸ Show Content Outside the Widget: layers past the widget's edges are drawn ghosted (§9.10).
-    var showsContentOutside = true
-    /// The canvas Backdrop chosen for a widget (config, lowercased → `SkinCanvasView.Backdrop` raw value): the user's
-    /// pick, or Dark picked once for a see-through widget with light content.
-    var backdrops: [String: Int] = [:]
 
     static let fontSizes: ClosedRange<Double> = 9...32
     /// Where the skin editor kept live reload before it moved into state.json (migrated once, then unused).
@@ -88,8 +49,7 @@ struct EditorPreferences: Equatable {
 
 extension EditorPreferences: Codable {
     private enum CodingKeys: String, CodingKey {
-        case codeEditor, openSkinsIn, showIniNames, codeFontSize, liveReload, otherApp, seenTips, editorLocks,
-             unlockedBackgrounds, showsContentOutside, backdrops
+        case codeEditor, codeFontSize, liveReload, otherApp
     }
 
     /// Tolerant decoding (like `SkinState`): a missing, misspelt or mistyped key keeps its default instead of making
@@ -101,32 +61,18 @@ extension EditorPreferences: Codable {
         }
         let d = EditorPreferences()
         codeEditor = value(.codeEditor, d.codeEditor)
-        openSkinsIn = OpenSkinsIn(rawValue: value(.openSkinsIn, "").lowercased()) ?? d.openSkinsIn
-        showIniNames = value(.showIniNames, d.showIniNames)
         codeFontSize = value(.codeFontSize, d.codeFontSize)
         liveReload = value(.liveReload, d.liveReload)
         otherApp = (try? c.decodeIfPresent(StoredApp.self, forKey: .otherApp)) ?? nil
-        seenTips = value(.seenTips, d.seenTips)
-        editorLocks = value(.editorLocks, d.editorLocks)
-        unlockedBackgrounds = value(.unlockedBackgrounds, d.unlockedBackgrounds)
-        showsContentOutside = value(.showsContentOutside, d.showsContentOutside)
-        backdrops = value(.backdrops, d.backdrops)
         normalize()
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(codeEditor, forKey: .codeEditor)
-        try c.encode(openSkinsIn.rawValue, forKey: .openSkinsIn)
-        try c.encode(showIniNames, forKey: .showIniNames)
         try c.encode(codeFontSize, forKey: .codeFontSize)
         try c.encode(liveReload, forKey: .liveReload)
         try c.encodeIfPresent(otherApp, forKey: .otherApp)
-        try c.encode(seenTips.sorted(), forKey: .seenTips)
-        try c.encode(editorLocks.mapValues { $0.sorted() }, forKey: .editorLocks)
-        try c.encode(unlockedBackgrounds.sorted(), forKey: .unlockedBackgrounds)
-        try c.encode(showsContentOutside, forKey: .showsContentOutside)
-        if !backdrops.isEmpty { try c.encode(backdrops, forKey: .backdrops) }
     }
 }
 

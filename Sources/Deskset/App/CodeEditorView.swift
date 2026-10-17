@@ -1237,14 +1237,16 @@ final class CodeEditorView: NSView {
     }
 
     private static func symbolImage(for header: CodeDocument.Header) -> NSImage? {
-        let kind: InspectedSectionKind
+        let symbol: String
         switch header.name.lowercased() {
-        case "rainmeter": kind = .rainmeter
-        case "variables": kind = .variables
-        case "metadata": kind = .metadata
-        default: kind = header.measure != nil ? .measure : (header.meter != nil ? .meter : .other)
+        case "rainmeter": symbol = "slider.horizontal.3"
+        case "variables": symbol = "paintbrush"
+        case "metadata": symbol = "info.circle"
+        default:
+            symbol = header.measure != nil ? "gauge.with.dots.needle.33percent"
+                : (header.meter != nil ? "square.on.square" : "tag")
         }
-        return EditorStyle.image(EditorStyle.symbol(for: kind, type: header.meter?.lowercased() ?? ""), size: 11)
+        return EditorStyle.image(symbol, size: 11)
     }
 
     @objc private func filePicked(_ sender: NSPopUpButton) {
@@ -1572,3 +1574,65 @@ enum CodeEditorTheme {
         return NSColor(name: nil) { isDark($0) ? d : l }
     }
 }
+
+enum EditorStyle {
+    static func label(_ text: String, size: CGFloat = 12, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> NSTextField {
+        let f = NSTextField(labelWithString: text)
+        f.font = .systemFont(ofSize: size, weight: weight)
+        f.textColor = color
+        f.lineBreakMode = .byTruncatingTail
+        return f
+    }
+
+    static func hstack(_ views: [NSView], spacing: CGFloat = 6, alignment: NSLayoutConstraint.Attribute = .centerY) -> NSStackView {
+        let s = NSStackView(views: views)
+        s.orientation = .horizontal
+        s.alignment = alignment
+        s.spacing = spacing
+        return s
+    }
+
+    static func spacer() -> NSView {
+        let v = NSView()
+        v.setContentHuggingPriority(.init(1), for: .horizontal)
+        v.setContentHuggingPriority(.init(1), for: .vertical)
+        return v
+    }
+
+    static func symbol(for sectionName: String, type: String) -> String {
+        let lower = sectionName.lowercased()
+        if lower == "rainmeter" { return "slider.horizontal.3" }
+        if lower == "metadata" { return "info.circle" }
+        if lower == "variables" { return "function" }
+        switch type.lowercased() {
+        case "string": return "textformat"
+        case "image": return "photo"
+        case "shape": return "square.on.circle"
+        case "bar": return "chart.bar.xaxis"
+        case "line": return "chart.xyaxis.line"
+        case "histogram": return "waveform.path.ecg"
+        case "roundline": return "circle.dashed"
+        case "rotator": return "dial.medium"
+        case "button": return "hand.tap"
+        case "bitmap": return "number.square"
+        case "macglass": return "rectangle.on.rectangle"
+        case "macsymbol": return "star.square"
+        case "calc", "time", "cpu", "memory", "netin", "netout", "nettotal", "freespace", "uptime", "nowplaying",
+             "script", "webparser", "plugin", "loop", "mediakey", "sysinfo", "registry", "recyclemanager",
+             "process", "ping", "fileview", "folderinfo", "inputtext", "audiolevel", "wifistatus", "hotkeys":
+            return "gauge.medium"
+        default:
+            return "square.stack.3d.up"
+        }
+    }
+
+    static func image(_ symbol: String, size: CGFloat = 12, weight: NSFont.Weight = .medium, color: NSColor? = nil) -> NSImage {
+        let cfg = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
+        let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(cfg) ?? NSImage()
+        if let color {
+            return img.withSymbolConfiguration(.init(hierarchicalColor: color)) ?? img
+        }
+        return img
+    }
+}
+

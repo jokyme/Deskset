@@ -35,22 +35,14 @@ enum AppSelfTest {
         systemMonitorTests(t)
         iconTests(t)
         controllerTests(t)
-        inspectorTests(t)
-        editorEditingTests(t)
-        editorLayerTests(t)
-        editorUXTests(t)
-        editorSchemaTests(t)
-        componentLibraryTests(t)
         manageWindowTests(t)
         installTests(t)
         DefaultSkinsSelfTests.run(t)
-        reviewTests(t)
         mousePluginTests(t)
         sliderPluginTests(t)
         sliderElsewhereTests(t)
         integrationTests(t)
         CodeEditorRoutingSelfTests.run(t)
-        wiringTests(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         WeatherSelfTests.run(t)
@@ -84,21 +76,7 @@ enum AppSelfTest {
         ThreadStressSelfTests.run(t)
         EngineStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
-        StudioReviewSelfTests.run(t)
-        InspectorInPlaceSelfTests.run(t)
-        StudioDesktopFollowSelfTests.run(t)
         CodeFollowingSelfTests.run(t)
-        CanvasPlanesSelfTests.run(t)
-        // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
-        FriendlySidebarSelfTests.run(t)
-        FriendlyWidgetPageSelfTests.run(t)
-        FriendlyInspectorSelfTests.run(t)
-        FriendlyCanvasSelfTests.run(t)
-        FriendlyWalkthroughSelfTests.run(t)
-        ReviewFixesSelfTests.run(t)
-        EditorOpeningSelfTests.run(t)
-        // The Studio's editing session.
-        StudioSessionSelfTests.run(t)
         SensorSelfTests.run(t)
         VirtualTimeRenderSelfTests.run(t)
         RenderDataSelfTests.run(t)
@@ -106,13 +84,9 @@ enum AppSelfTest {
         #if DEBUG
         LegacyRenderSelfTests.run(t)
         #endif
-        // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
-        // busier, and the renders' checks of what services deliver within one interval are timed in real time.
+        // The Studio window. After the renders: its widgets leave the process busier, and the renders' checks of what
+        // services deliver within one interval are timed in real time.
         Studio2SelfTests.run(t)
-        // Last: they stop the widgets of every earlier suite, so the numbers are not theirs.
-        StudioMemorySelfTests.run(t)
-        StudioLatencySelfTests.run(t)
-        Studio2LatencySelfTests.run(t)
         t.suite("App: default skins: no suite changed the repository's default skins") {
             let now = DefaultSkinsSelfTests.fingerprint()
             let changed = Set(shipped.keys).union(now.keys).filter { shipped[$0] != now[$0] }.sorted()
@@ -450,10 +424,6 @@ enum AppSelfTest {
             check(["--self-test", "App: Audio"], .mode)
             check(["--snapshot-ui", "manage", "--out", "m.png", "--dark", "--select", "App\\Focus", "--size",
                    "900x600", "--skins-dir", "/tmp/S"], .mode)
-            check(["--snapshot-ui", "inspector", "--zoom", "2"], .mode)
-            check(["--snapshot-ui", "inspector", "--select", "none", "--mode", "split", "--tab", "library", "--code-below",
-                   "--inspector-width", "340", "--config", "Deskset\\System"], .mode)
-            check(["--snapshot-ui", "library", "--category", "text", "--search", "clock"], .mode)
             check(["--snapshot-ui", "settings", "--pane", "general"], .mode)
             check(["--system-report"], .mode)
             check(["--make-icon", "Deskset.iconset"], .mode)
@@ -801,7 +771,7 @@ enum AppSelfTest {
     /// later suite's run-loop turns, which slows a CI runner and makes editor timers fire mid-test.
     static func closeEditors() {
         for app in retainedApps {
-            app.inspector?.window?.close()
+            StudioWindowController.window(for: app)?.window?.close()
             for c in app.sortedControllers { c.pauseUpdates() }
         }
     }

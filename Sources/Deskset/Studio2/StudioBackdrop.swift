@@ -6,8 +6,6 @@ import DesksetCore
 enum StudioBackdropKind: String, CaseIterable {
     /// The desktop picture of the screen the widget is on, where the widget really is.
     case desktop
-    /// Samples: a bright, a busy and a dark picture.
-    case bright, busy, dark
     /// A quiet surface with a dot grid.
     case workbench
     /// A checkerboard: what the widget leaves transparent shows.
@@ -18,9 +16,6 @@ enum StudioBackdropKind: String, CaseIterable {
     var title: String {
         switch self {
         case .desktop: return StudioText[.backdropDesktop]
-        case .bright: return StudioText[.backdropBright]
-        case .busy: return StudioText[.backdropBusy]
-        case .dark: return StudioText[.backdropDark]
         case .workbench: return StudioText[.backdropWorkbench]
         case .transparent: return StudioText[.backdropTransparent]
         case .solid: return StudioText[.backdropSolid]
@@ -29,7 +24,8 @@ enum StudioBackdropKind: String, CaseIterable {
 
     /// The kinds the menu offers (Solid only while Reduce Transparency is on).
     static func offered(reduceTransparency: Bool) -> [StudioBackdropKind] {
-        allCases.filter { $0 != .solid || reduceTransparency }
+        let base: [StudioBackdropKind] = [.desktop, .workbench, .transparent]
+        return reduceTransparency ? base + [.solid] : base
     }
 }
 
@@ -41,11 +37,9 @@ enum StudioSample: Equatable {
     case dusk
     /// A pale, warm wash.
     case bright
-    /// City lights at night: busy and dark, for checking what stays readable.
-    case busy
 
     /// Whether text over it should be light.
-    var isDark: Bool { self == .dusk || self == .busy }
+    var isDark: Bool { self == .dusk }
 }
 
 /// How the widget's screen lies on the canvas: the widget's real frame (global coordinates, y up) is drawn at the
@@ -102,7 +96,6 @@ enum StudioWallpapers {
         case .dawn: drawHills(dawn: true, in: rect, ctx)
         case .dusk: drawHills(dawn: false, in: rect, ctx)
         case .bright: drawMesh(brightColors, columns: 3, in: rect, ctx)
-        case .busy: drawBusy(in: rect, ctx)
         }
         ctx.restoreGState()
     }
@@ -219,55 +212,11 @@ enum StudioWallpapers {
                  top: (0.03, 0.07, 0.09), bottom: (0.03, 0.07, 0.09), in: rect, ctx)
         }
     }
-
-    /// City lights at night, out of focus: a dark gradient, soft round lights and a few bright streaks.
-    static func drawBusy(in rect: CGRect, _ ctx: CGContext) {
-        let space = CGColorSpace(name: CGColorSpace.sRGB)
-        let sky = [CGColor(srgbRed: 0.05, green: 0.07, blue: 0.16, alpha: 1),
-                   CGColor(srgbRed: 0.14, green: 0.10, blue: 0.20, alpha: 1),
-                   CGColor(srgbRed: 0.30, green: 0.16, blue: 0.14, alpha: 1)] as CFArray
-        if let gradient = CGGradient(colorsSpace: space, colors: sky, locations: [0, 0.5, 1]) {
-            ctx.drawLinearGradient(gradient, start: CGPoint(x: rect.midX, y: rect.minY),
-                                   end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
-        }
-        let palette: [RGB] = [(1.0, 0.78, 0.35), (1.0, 0.45, 0.40), (0.45, 0.80, 1.0), (1.0, 0.95, 0.85),
-                              (0.95, 0.55, 0.95)]
-        var seed: UInt64 = 0x2F6B_FF11
-        func next() -> CGFloat {
-            seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            return CGFloat((seed >> 33) % 10_000) / 10_000
-        }
-        for _ in 0..<70 {
-            let x = next(), y = 0.15 + next() * 0.85, size = 0.02 + next() * 0.07
-            let color = palette[Int(next() * 5) % 5]
-            let centre = CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height)
-            let radius = size * rect.width / 2
-            let stops = [CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0.75),
-                         CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0.6),
-                         CGColor(srgbRed: color.0, green: color.1, blue: color.2, alpha: 0)] as CFArray
-            if let gradient = CGGradient(colorsSpace: space, colors: stops, locations: [0, 0.7, 1]) {
-                ctx.drawRadialGradient(gradient, startCenter: centre, startRadius: 0, endCenter: centre,
-                                       endRadius: radius * 1.15, options: [])
-            }
-        }
-        for i in 0..<6 {
-            ctx.saveGState()
-            let centre = CGPoint(x: rect.midX, y: rect.minY + rect.height * (0.72 + CGFloat(i) * 0.05))
-            ctx.translateBy(x: centre.x, y: centre.y)
-            ctx.rotate(by: CGFloat(-12 + i * 5) * .pi / 180)
-            let line = CGRect(x: -rect.width * 0.45, y: -1.5, width: rect.width * 0.9, height: 3)
-            ctx.addPath(CGPath(roundedRect: line, cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
-            ctx.setFillColor(CGColor(srgbRed: 1, green: 0.85, blue: 0.6, alpha: 0.45))
-            ctx.setShadow(offset: .zero, blur: 4, color: CGColor(srgbRed: 1, green: 0.85, blue: 0.6, alpha: 0.6))
-            ctx.fillPath()
-            ctx.restoreGState()
-        }
-    }
 }
 
 // MARK: - The backdrop view
 
-/// The canvas's backdrop plane: the desktop picture (or a sample in its place), a sample, the workbench, the
+/// The canvas's backdrop plane: the desktop picture (or a sample in its place), the workbench, the
 /// checkerboard or a plain color. The desktop picture is placed by the desktop mapping (the widget where it really
 /// is); the others fill the view.
 final class StudioBackdropView: NSView {
@@ -294,8 +243,6 @@ final class StudioBackdropView: NSView {
     var showsDarkBackdrop: Bool {
         switch kind {
         case .desktop: return desktopSample?.isDark ?? isDark
-        case .bright: return false
-        case .busy, .dark: return true
         case .workbench, .transparent, .solid: return isDark
         }
     }
@@ -315,9 +262,6 @@ final class StudioBackdropView: NSView {
             } else if let wallpaper {
                 drawWallpaper(wallpaper, ctx)
             }
-        case .bright: drawSample(.bright, ctx)
-        case .busy: drawSample(.busy, ctx)
-        case .dark: drawSample(.dusk, ctx)
         case .workbench: Self.drawWorkbench(bounds, dirty: dirtyRect, dark: dark, ctx)
         case .transparent: Self.drawCheckerboard(bounds, dirty: dirtyRect, dark: dark, ctx)
         case .solid:

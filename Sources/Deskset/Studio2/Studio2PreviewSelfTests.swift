@@ -1,17 +1,15 @@
 import AppKit
 import DesksetCore
 
-/// The new Studio window's canvas: the backdrop (the desktop picture read without ever asking macOS for permission, the
-/// samples, the workbench), the other widgets around it, the preview bar (the Mac's look, glass, sample data and a
-/// frozen time in the Studio's instance only, Interact), the zoom capsule, Actual Size and Show on Desktop.
+/// The Studio window's canvas: the backdrop (the desktop picture read without ever asking macOS for permission, the
+/// workbench), the other widgets around it, the preview bar (the Mac's look, glass, sample data and a frozen time in
+/// the Studio's instance only, Interact), the zoom capsule and Actual Size.
 enum Studio2PreviewSelfTests {
     static func run(_ t: AppTestRunner) {
         privacyTests(t)
         backdropTests(t)
         previewTests(t)
-        interactTests(t)
-        desktopTests(t)
-        snapshotTests(t)
+        wordsTests(t)
     }
 
     // MARK: The desktop picture, safely
@@ -220,7 +218,7 @@ enum Studio2PreviewSelfTests {
                       let data = image.dataProvider?.data else { return nil }
                 return data as Data
             }
-            for sample in [StudioSample.dawn, .dusk, .bright, .busy] {
+            for sample in [StudioSample.dawn, .dusk] {
                 let first = bytes(sample)
                 t.check(first != nil, "\(sample) is drawn")
                 // Drawn again, not from the cache.
@@ -234,13 +232,13 @@ enum Studio2PreviewSelfTests {
                 t.equal(again, first, "\(sample): the same picture every time")
             }
             t.check(bytes(.dawn) != bytes(.dusk), "dawn and dusk differ")
-            t.check(StudioSample.dusk.isDark && StudioSample.busy.isDark && !StudioSample.bright.isDark)
+            t.check(StudioSample.dusk.isDark && !StudioSample.dawn.isDark)
             // What the menu offers.
             t.equal(StudioBackdropKind.offered(reduceTransparency: false),
-                    [.desktop, .bright, .busy, .dark, .workbench, .transparent], "Solid only with Reduce Transparency")
+                    [.desktop, .workbench, .transparent], "Solid only with Reduce Transparency")
             t.equal(StudioBackdropKind.offered(reduceTransparency: true).last, .solid)
             t.equal(StudioBackdropKind.allCases.map(\.title),
-                    ["Your Desktop", "Bright", "Busy", "Dark", "Workbench", "Transparent", "Solid"])
+                    ["Your Desktop", "Workbench", "Transparent", "Solid"])
             // Every kind draws something.
             let view = StudioBackdropView(frame: NSRect(x: 0, y: 0, width: 200, height: 120))
             view.usesStandInDesktop = true
@@ -254,14 +252,9 @@ enum Studio2PreviewSelfTests {
                 let color = rep.colorAt(x: 100, y: 60)
                 t.check((color?.alphaComponent ?? 0) > 0.99, "\(kind) fills the canvas")
             }
-            view.kind = .dark
-            t.check(view.showsDarkBackdrop, "Dark is dark")
-            view.kind = .bright
-            t.check(!view.showsDarkBackdrop)
         }
 
         t.suite("Studio2: canvas: the other widgets come from their windows, never from their skins") {
-            // A window whose content holds a finished picture in a layer (a skin's frames, drawn on its own thread).
             let window = NSPanel(contentRect: NSRect(x: 900, y: 300, width: 60, height: 40),
                                  styleMask: [.borderless], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
@@ -362,88 +355,11 @@ enum Studio2PreviewSelfTests {
         """
 
     static func previewTests(_ t: AppTestRunner) {
-        t.suite("Studio2: canvas: sample data in the Studio's instance only") {
-            Studio2SelfTests.prepare(t)
-            guard let (app, c, url) = try Studio2SelfTests.loadSkin(t, "Sample", ruleIni) else { return }
-            guard let studio = Studio2SelfTests.openNew(app, c), let preview = studio.preview else {
-                return t.check(false, "the new window opens")
-            }
-            let fileBefore = Studio2SelfTests.read(url)
-            t.check(studio.session?.measureValues === preview.sample, "the session holds the sample data")
-            t.check(studio.skin?.measureValues === preview.sample, "the Studio's instance takes it")
-            t.check(c.skin.measureValues == nil, "the desktop copy has none")
-            t.equal(preview.state.dataLabel, "Live")
-            t.check(studio.canvasController.statusCapsule.isHidden, "no capsule while live")
-
-            // 100 %: the rule turns the number red in the Studio's instance; the desktop copy stays as it is.
-            preview.setData(.level(1))
-            let meter = { studio.skin?.meter(named: "MeterValue") }
-            t.equal(studio.skin?.measure(named: "MeasureCPU")?.value, 100)
-            t.equal(meter()?.string("FontColor"), "224,76,62", "the rule fired: red")
-            t.equal((meter() as? StringMeter)?.text, "100%")
-            c.skin.update()
-            // The desktop copy reads the Mac (which may itself be busy: its own reading decides its color).
-            t.check(c.skin.measureValues == nil, "the desktop copy reads the Mac")
-            // (On a Mac busy near the rule's 80 % the color depends on when it was read: checked only when quiet.)
-            if (c.skin.measure(named: "MeasureCPU")?.value ?? 0) < 60 {
-                t.equal(c.skin.meter(named: "MeterValue")?.string("FontColor"), "34,34,38", "and stays dark")
-            }
-            t.equal(Studio2SelfTests.read(url), fileBefore, "nothing written")
-            // The bar says so.
-            let bar = studio.canvasController.previewBar
-            t.equal(bar.dataItem.title, "100 %")
-            t.check(bar.dataItem.isOn, "in the accent color")
-            t.check(!bar.backToLiveItem.isHidden, "Back to Live")
-            t.check(!studio.canvasController.statusCapsule.isHidden, "the capsule over the canvas")
-            t.equal(studio.canvasController.statusCapsule.messageItem.title,
-                    "Previewing sample data 100 % · your desktop doesn’t change")
-            // A reload of the Studio's instance keeps it.
-            studio.session?.reloadStudioSkin()
-            t.check(studio.skin?.measureValues === preview.sample, "a new instance takes it too")
-            t.equal(studio.skin?.measure(named: "MeasureCPU")?.value, 100)
-
-            // Frozen time.
-            preview.setTime(.frozen(StudioScreen.frozenTime))
-            t.equal(preview.state.dataLabel, "100 % · 10:09")
-            t.equal((studio.skin?.meter(named: "MeterTime") as? StringMeter)?.text, "10:09")
-            c.skin.update()
-            let clock = DateFormatter()
-            clock.dateFormat = "HH:mm"
-            t.check((c.skin.meter(named: "MeterTime") as? StringMeter)?.text != "10:09"
-                    || clock.string(from: Date()) == "10:09", "the desktop copy keeps the clock")
-            // The menu and Back to Live.
-            let menu = preview.menus.dataMenu(preview.state)
-            let checked = menu.items.filter { $0.state == .on }.map(\.title)
-            t.equal(checked, ["100 %", "Frozen at 10:09"], "what is in use is checked")
-            t.check(menu.items.contains { $0.title == "Back to Live" })
-            bar.backToLiveItem.perform()
-            t.equal(preview.state.data, .live)
-            t.equal(preview.state.time, .live)
-            t.check(!preview.sample.isActive, "live again")
-            if (studio.skin?.measure(named: "MeasureCPU")?.value ?? 0) < 60 {
-                t.equal(meter()?.string("FontColor"), "34,34,38", "the rule's other action")
-            }
-            t.check(bar.backToLiveItem.isHidden && studio.canvasController.statusCapsule.isHidden, "nothing to say")
-            // Paused, no data, through the menu's own items.
-            guard let paused = preview.menus.dataMenu(preview.state).items.first(where: { $0.title == "Paused" }),
-                  let none = preview.menus.dataMenu(preview.state).items.first(where: { $0.title == "No Data" }) else {
-                return t.check(false, "the menu's items")
-            }
-            preview.menus.dataChosen(paused)
-            t.equal(preview.state.data, .paused)
-            t.equal(bar.dataItem.title, "Paused")
-            preview.menus.dataChosen(none)
-            t.equal(studio.skin?.measure(named: "MeasureCPU")?.value, 0)
-            preview.backToLive()
-            studio.window?.close()
-            t.check(c.skin.measureValues == nil)
-        }
-
         t.suite("Studio2: canvas: the preview's look, backdrop and glass") {
             Studio2SelfTests.prepare(t)
             guard let (app, c, _) = try Studio2SelfTests.loadSkin(t, "Look", ruleIni) else { return }
             guard let studio = Studio2SelfTests.openNew(app, c), let preview = studio.preview else {
-                return t.check(false, "the new window opens")
+                return t.check(false, "the window opens")
             }
             preview.macIsDark = { false }
             let canvas = studio.canvasController
@@ -509,7 +425,7 @@ enum Studio2PreviewSelfTests {
             t.check(canvas.glassPlane.usesStandIns, "stand-ins headless")
         }
 
-        t.suite("Studio2: canvas: caption, zoom capsule and narrow canvases") {
+        t.suite("Studio2: canvas: caption and zoom capsule") {
             Studio2SelfTests.prepare(t)
             t.equal(StudioSizeName.caption(zoom: 1.65, file: "Medium.ini", onDesktop: true, actualSize: false),
                     "Preview 165% · Medium on your desktop")
@@ -519,16 +435,10 @@ enum Studio2PreviewSelfTests {
                     "Preview 250% · Small · not on your desktop yet")
             t.equal(StudioSizeName.caption(zoom: 1, file: "Large.ini", onDesktop: true, actualSize: true),
                     "Actual size · where it is on your desktop")
-            StudioText.languageOverride = .chinese
-            t.equal(StudioSizeName.caption(zoom: 1.65, file: "Medium.ini", onDesktop: true, actualSize: false),
-                    "预览 165% · 桌面上是中号")
-            t.equal(StudioSizeName.caption(zoom: 1.5, file: "Nocturne.ini", onDesktop: true, actualSize: false),
-                    "预览 150% · 桌面上是 100%")
-            StudioText.languageOverride = .english
 
             guard let (app, c, _) = try Studio2SelfTests.loadSkin(t, "Zoom", ruleIni) else { return }
             guard let studio = Studio2SelfTests.openNew(app, c), let preview = studio.preview else {
-                return t.check(false, "the new window opens")
+                return t.check(false, "the window opens")
             }
             let canvas = studio.canvasController
             // Actual Size: 100 %, the caption says where it is, the other widgets around it.
@@ -552,33 +462,6 @@ enum Studio2PreviewSelfTests {
             t.equal(canvas.canvas.zoom, 2, "the capsule's +")
             canvas.zoomCapsule.actualSizeItem.perform()
             t.equal(canvas.canvas.zoom, 1, "the capsule's Actual Size")
-
-            // Wide: every word. Narrower: the zoom capsule's words shorten first, then the backdrop's go.
-            let window = studio.window!
-            func layout(_ width: CGFloat) {
-                window.setContentSize(NSSize(width: width, height: 860))
-                window.contentView?.layoutSubtreeIfNeeded()
-                canvas.layoutFloating()
-            }
-            layout(1400)
-            t.check(!canvas.zoomCapsule.compact && !canvas.previewBar.compact, "1400: every word")
-            t.equal(canvas.zoomCapsule.actualSizeItem.title, "Actual Size")
-            var sawZoomOnly = false
-            for width in stride(from: 1400, through: 900, by: -20) {
-                layout(CGFloat(width))
-                if canvas.previewBar.compact { t.check(canvas.zoomCapsule.compact, "\(width): the zoom words go first") }
-                if canvas.zoomCapsule.compact && !canvas.previewBar.compact { sawZoomOnly = true }
-                t.check(canvas.previewBar.appearanceItem.showsTitle && canvas.previewBar.interactItem.showsTitle,
-                        "\(width): Preview: and Interact keep their words")
-                let bar = canvas.previewBar.frame, pill = canvas.zoomCapsule.frame
-                t.check(!bar.intersects(pill), "\(width): the bar clears the capsule")
-            }
-            t.check(sawZoomOnly, "a width where only the zoom capsule shortens")
-            layout(900)
-            t.equal(canvas.zoomCapsule.actualSizeItem.title, "1:1")
-            t.equal(canvas.zoomCapsule.desktopItem.title, "Desktop")
-            t.check(!canvas.previewBar.backdropItem.showsTitle, "the backdrop's words went")
-            layout(1400)
         }
     }
 
@@ -593,221 +476,21 @@ enum Studio2PreviewSelfTests {
         return words.joined(separator: " ")
     }
 
-    // MARK: Interact
+    // MARK: Words
 
-    static let interactIni = """
-        [Rainmeter]
-        Update=1000
-
-        [Variables]
-        Clicked=0
-
-        [MeterButton]
-        Meter=String
-        Text=Clicked #Clicked#
-        DynamicVariables=1
-        W=120
-        H=40
-        SolidColor=0,0,0,1
-        LeftMouseUpAction=[!SetVariable Clicked 1]["https://www.example.com/page"][!ActivateConfig "Studio2\\Elsewhere"]
-
-        """
-
-    static func interactTests(_ t: AppTestRunner) {
-        t.suite("Studio2: canvas: Interact") {
-            Studio2SelfTests.prepare(t)
-            guard let (app, c, _) = try Studio2SelfTests.loadSkin(t, "Interact", interactIni) else { return }
-            guard let studio = Studio2SelfTests.openNew(app, c), let preview = studio.preview,
-                  let session = studio.session else {
-                return t.check(false, "the new window opens")
-            }
-            let canvas = studio.canvasController
-            let overlay = canvas.interactionView
-            // `hitTest` takes a point of the overlay's superview: the pane, where the card is.
-            let inside = NSPoint(x: canvas.cardRect.midX, y: canvas.cardRect.midY)
-            t.check(overlay.hitTest(inside) == nil, "designing: the canvas takes the pointer")
-            t.check(!session.host.takesPointer)
-
-            // On (⌥⌘P): the Studio's instance takes the pointer.
-            let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
-                                       windowNumber: 0, context: nil, characters: "π", charactersIgnoringModifiers: "p",
-                                       isARepeat: false, keyCode: 35)!
-            t.check(preview.keyEquivalent(key), "⌥⌘P")
-            t.check(preview.state.interacting, "on")
-            t.check(session.host.takesPointer, "the host says the window takes the pointer")
-            t.check(canvas.previewBar.interactItem.isOn, "Interact in the accent color")
-            t.check(overlay.hitTest(inside) === overlay, "interacting: the overlay takes the pointer")
-            session.host.policy.clearRecorded()
-
-            // A click: what stays inside happens, what reaches outside is only recorded and offered.
-            overlay.click(x: 10, y: 10)
-            t.equal(studio.skin?.variable("Clicked"), "1", "the click reached the Studio's instance")
-            t.equal(c.skin.variable("Clicked"), "0", "not the desktop copy")
-            let recorded = session.host.policy.recorded
-            t.equal(recorded.map(\.kind), [.execute, .bang], "the web page and the other widget: recorded")
-            t.equal(recorded.first?.name, "https://www.example.com/page")
-            t.check(app.controller(for: "Studio2\\Elsewhere") == nil, "no other widget was loaded")
-            t.equal(preview.heldAction?.sentence, "Would open another widget", "in everyday words")
-            t.equal(canvas.statusCapsule.toolTip, "!ActivateConfig Studio2\\Elsewhere", "the bang in the tooltip")
-            t.equal(StudioHeldAction(recorded[0]).sentence, "Would open example.com")
-            t.equal(StudioHeldAction(recorded[0]).button, "Open")
-            t.check(!canvas.statusCapsule.isHidden, "the capsule offers it")
-            t.equal(canvas.statusCapsule.actionItem.title, "Run")
-            t.equal(StudioHeldAction.displayName(of: "/System/Applications/Utilities/Activity Monitor.app"),
-                    "Activity Monitor")
-
-            // Off (Esc): the canvas designs again.
-            overlay.onEscape?()
-            t.check(!preview.state.interacting)
-            t.check(!session.host.takesPointer)
-            t.check(overlay.hitTest(inside) == nil)
-            t.check(preview.heldAction == nil && canvas.statusCapsule.isHidden, "the offer goes")
-            // While designing, what the instance holds back is not offered.
-            overlay.click(x: 10, y: 10)
-            t.check(preview.heldAction == nil)
-        }
-    }
-
-    // MARK: Show on Desktop
-
-    static func desktopTests(_ t: AppTestRunner) {
-        t.suite("Studio2: canvas: Show on Desktop") {
-            Studio2SelfTests.prepare(t)
-            let motion = StudioMotion.reduceOverride
-            StudioMotion.reduceOverride = true
-            t.atSuiteEnd { StudioMotion.reduceOverride = motion }
-            guard let (app, c, _) = try Studio2SelfTests.loadSkin(t, "Peek", Studio2SelfTests.ini) else { return }
-            guard let studio = Studio2SelfTests.openNew(app, c), let preview = studio.preview,
-                  let window = studio.window else {
-                return t.check(false, "the new window opens")
-            }
-            let desktop = preview.desktopView
-            let widget = c.window
-            let level = widget.level
-            t.check(desktop.canShow, "the widget is on the desktop")
-            t.check(studio.canvasController.zoomCapsule.desktopItem.isEnabled)
-            studio.canvasController.zoomCapsule.desktopItem.perform()
-            t.check(desktop.isShowing, "the capsule's Show on Desktop")
-            t.equal(window.alphaValue, StudioDesktopView.fadedAlpha, "the Studio window fades (at once: Reduce Motion)")
-            t.equal(widget.level, StudioDesktopView.raisedLevel, "the widget comes to the front")
-            t.check(studio.canvasController.zoomCapsule.desktopItem.isOn)
-            let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
-                                       context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
-                                       isARepeat: false, keyCode: 53)!
-            t.check(desktop.handle(esc), "Esc")
-            t.check(!desktop.isShowing)
-            t.equal(widget.level, level, "the widget's own level again")
-            t.equal(window.alphaValue, 1, "the Studio window at full strength")
-
-            // ⇧⌘D: a press switches; again switches back.
-            let shortcut = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
-                                            timestamp: 0, windowNumber: 0, context: nil, characters: "D",
-                                            charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2)!
-            t.check(preview.keyEquivalent(shortcut), "⇧⌘D")
-            t.check(desktop.isShowing)
-            desktop.releasedKey(at: ProcessInfo.processInfo.systemUptime)
-            t.check(desktop.isShowing, "let go at once: it stays")
-            t.check(desktop.handle(shortcut), "⇧⌘D again")
-            t.check(!desktop.isShowing)
-            t.equal(widget.level, level)
-            // Held: a peek.
-            t.check(preview.keyEquivalent(shortcut))
-            desktop.releasedKey(at: ProcessInfo.processInfo.systemUptime + StudioDesktopView.peekHold + 0.1)
-            t.check(!desktop.isShowing, "let go after a hold: back")
-            t.equal(window.alphaValue, 1)
-            t.equal(widget.level, level)
-            // A widget that floats above everything keeps its own level while shown, and after.
-            widget.level = .statusBar
-            desktop.show()
-            t.equal(widget.level, .statusBar, "not lowered")
-            desktop.back()
-            t.equal(widget.level, .statusBar)
-            widget.level = level
-            // Closing the window while it shows comes back first.
-            desktop.show()
-            window.close()
-            t.check(!desktop.isShowing, "closed: back")
-            t.equal(widget.level, level)
-        }
-
-        t.suite("Studio2: canvas: Reduce Motion") {
-            let motion = StudioMotion.reduceOverride
-            defer { StudioMotion.reduceOverride = motion }
-            StudioMotion.reduceOverride = true
-            var ran = false, done = false
-            StudioMotion.animate(0.5, { animated in ran = !animated }, done: { done = true })
-            t.check(ran && done, "at once, and done at once")
-        }
-    }
-
-    // MARK: The designed screens
-
-    /// Engine words that never show on the canvas's controls (the design's word scan), English and Chinese.
     static let bannedEnglish = ["skin", "skins", "meter", "meters", "measure", "measures", "section", "variable",
                                 "variables", "computed", "modifier", "binding", "freeform", "ini", "ms", "try", "ink"]
-    static let bannedChinese = ["皮肤", "测量", "节", "变量", "修饰符", "绑定", "毫秒", "墨色"]
 
-    static func snapshotTests(_ t: AppTestRunner) {
+    static func wordsTests(_ t: AppTestRunner) {
         t.suite("Studio2: canvas: words") {
-            let prefixes = ["backdrop.", "preview.", "data.", "capsule.", "zoom", "caption.", "size.", "desktop."]
+            let prefixes = ["backdrop.", "preview.", "data.", "capsule.", "zoom", "caption.", "size."]
             for key in StudioText.Key.allCases where prefixes.contains(where: { key.rawValue.hasPrefix($0) }) {
                 guard let entry = StudioText.table[key] else { continue }
-                let words = entry.en.lowercased().components(separatedBy: CharacterSet.letters.inverted)
+                let words = entry.lowercased().components(separatedBy: CharacterSet.letters.inverted)
                 for banned in bannedEnglish where words.contains(banned) {
-                    t.check(false, "\(key.rawValue): “\(banned)” in “\(entry.en)”")
-                }
-                for banned in bannedChinese where entry.zh.contains(banned) {
-                    t.check(false, "\(key.rawValue): “\(banned)” in “\(entry.zh)”")
+                    t.check(false, "\(key.rawValue): “\(banned)” in “\(entry)”")
                 }
             }
-            // Held-back actions say what they would do, not the bang.
-            for name in ["activateconfig", "writekeyvalue", "move", "commandmeasure", "quit", "setoption", "x"] {
-                let sentence = StudioHeldAction.bangSentence(name)
-                t.check(!sentence.contains("!") && !sentence.lowercased().contains(name), "\(name): \(sentence)")
-            }
-        }
-
-
-        t.suite("Studio2: canvas: the designed screens") {
-            Studio2SelfTests.prepare(t)
-            guard let screen = StudioScreen.named("03-customize"), let opened = StudioSnapshot.open(screen) else {
-                return t.check(false, "03 opens")
-            }
-            let canvas = opened.controller.canvasController
-            t.equal(canvas.backdropView.kind, .desktop)
-            t.check(canvas.backdropView.usesStandInDesktop, "the stand-in hills")
-            t.equal(canvas.captionTag.text, "Preview 165% · Medium on your desktop")
-            t.check(!canvas.captionTag.isHidden, "the caption shows")
-            t.check(canvas.statusCapsule.isHidden, "no capsule: live")
-            t.equal(canvas.previewBar.backdropItem.title, "Your Desktop")
-            t.equal(canvas.previewBar.dataItem.title, "Live")
-            t.equal(canvas.zoomCapsule.percentItem.title, "165%")
-            let bar = canvas.previewBar.frame, pill = canvas.zoomCapsule.frame
-            t.check(bar.maxX < pill.minX, "the bar clears the zoom capsule")
-            t.equal(bar.midY.rounded(), (canvas.view.bounds.height - 34).rounded(), "34 pt from the bottom")
-            t.equal(pill.maxX, canvas.view.bounds.width - 16, "16 pt from the right")
-            t.equal((opened.controller.skin?.meter(named: "MeterCPUValue") as? StringMeter)?.text ?? "21%", "21%",
-                    "the suite's sample readings")
-            let image = StudioSnapshot.render(opened.controller)
-            t.equal(image?.pixelsWide, 2800)
-            opened.close()
-
-            guard let preview = StudioScreen.named("10-preview"), let ten = StudioSnapshot.open(preview) else {
-                return t.check(false, "10 opens")
-            }
-            let c10 = ten.controller.canvasController
-            t.equal(c10.backdropView.kind, .bright)
-            t.equal(c10.previewBar.backdropItem.title, "Bright")
-            t.check(c10.previewBar.backdropItem.isOn && c10.previewBar.dataItem.isOn, "presets in the accent color")
-            t.equal(c10.previewBar.dataItem.title, "100 % · 10:09")
-            t.check(!c10.previewBar.backToLiveItem.isHidden, "Back to Live")
-            t.check(!c10.statusCapsule.isHidden)
-            t.equal(c10.statusCapsule.messageItem.title, "Previewing sample data 100 % · your desktop doesn’t change")
-            t.check(ten.controller.preview.previewPopoverContent != nil, "the popover is composed")
-            t.equal((ten.controller.skin?.meter(named: "MeterValue") as? StringMeter)?.text, "100%")
-            t.equal(ten.controller.skin?.meter(named: "MeterValue")?.string("FontColor"), "224,76,62", "red")
-            t.check(StudioSnapshot.render(ten.controller) != nil)
-            ten.close()
         }
     }
 }

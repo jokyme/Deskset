@@ -79,31 +79,3 @@ extension EditingSession {
         return mirrored
     }
 }
-
-extension InspectorWindowController {
-    /// The Studio's instance took a step without loading again (`SessionChange.patched`): everything that shows it
-    /// follows as after a reload (`studioSkinReloaded`) — the canvas, the layers, the inspector, the live values and the
-    /// code, the same parts — except binding the widget, which has not changed; the window's title follows
-    /// `[Metadata]`. Each part is timed in the session's phases.
-    func studioSkinPatched(_ summary: SkinPatchSummary) {
-        guard let c = controller, let skin else { return }
-        // A selection to apply comes with steps that add, copy or move layers, which load again; should one come with
-        // a patch, the window follows it as after a reload.
-        if pendingSelection != nil { return studioSkinReloaded() }
-        finishOpening()
-        let phases = session?.reloadPhases ?? StudioPhaseClock()
-        phases.run(windowPart: ("widget", { [weak self] in
-            guard let self else { return }
-            let name = Self.skinName(skin, config: c.config)
-            self.window?.title = name.isEmpty ? c.config : name
-        }))
-        // One naming of the layers for every part (the list's names, the identity strip, the live values): the skin does
-        // not change while they follow it.
-        // What is named from the whole widget follows on the next turn, once the canvas drew the step (on screen).
-        inPlace.defersNaming = defersInPlaceNaming
-        defer { inPlace.defersNaming = false }
-        LayerNaming.sharingWork(for: skin) {
-            for part in attachParts(c) where part.label != "widget" { phases.run(windowPart: part) }
-        }
-    }
-}

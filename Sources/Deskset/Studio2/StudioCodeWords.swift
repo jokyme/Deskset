@@ -83,8 +83,7 @@ enum StudioCodeWords {
                 parts.append(StudioText.format(.diagUnknownBangNoGuess, name))
             }
         }
-        let separator = StudioText.language == .chinese ? "" : " "
-        return parts.filter { !$0.isEmpty }.joined(separator: separator)
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     static func reasonText(_ reason: IniDiagnostic.FormulaReason) -> String {
@@ -133,7 +132,6 @@ enum StudioCodeWords {
         } else {
             text = StudioText.format(.capsuleCantDrawNamed, "\(meters.count) \(noun(for: meters, plural: true))")
         }
-        if StudioText.language == .chinese, text.hasPrefix(" ") { text.removeFirst() }
         if holding { text += " · " + StudioText[.capsuleKeeps] }
         return text
     }

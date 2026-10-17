@@ -764,3 +764,12 @@ extension EditingSession {
     /// How long the desktop copy took to follow the last step (milliseconds; `lastTimings["desktop"]`).
     func noteDesktopTiming(_ milliseconds: Double) { lastTimings["desktop"] = milliseconds }
 }
+
+final class EditorUndoManager: UndoManager {
+    private(set) var lastUndoneName: String?
+
+    override func undo() {
+        lastUndoneName = undoActionName
+        super.undo()
+    }
+}

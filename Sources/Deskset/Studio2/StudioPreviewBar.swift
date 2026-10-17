@@ -101,7 +101,20 @@ class StudioCapsuleView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard usesStandIn else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        StudioSnapshot.drawGlass(bounds.insetBy(dx: 0.5, dy: 0.5), dark: dark)
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: dark ? 0.35 : 0.10)
+        shadow.shadowBlurRadius = 6
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.set()
+        (dark ? NSColor(white: 0.24, alpha: 0.92) : NSColor(white: 1, alpha: 0.78)).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        (dark ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 0, alpha: 0.07)).setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
     }
 
     /// Clicks between the items land on the capsule, not on the canvas under it.
@@ -329,14 +342,11 @@ final class StudioDivider: NSView {
 
 // MARK: - The preview bar
 
-/// The glass capsule at the bottom of the canvas: Preview: Light Mode ▾ · Backdrop ▾ · Data ▾ · Interact, and Back
-/// to Live while a preset is in use. Everything on it changes only the Studio's view.
+/// The glass capsule at the bottom of the canvas: Preview: Light Mode ▾ · Backdrop ▾.
+/// Everything on it changes only the Studio's view.
 final class StudioPreviewBar: StudioCapsuleView {
     let appearanceItem = StudioBarItem()
     let backdropItem = StudioBarItem()
-    let dataItem = StudioBarItem()
-    let interactItem = StudioBarItem()
-    let backToLiveItem = StudioBarItem()
     private var dividers: [StudioDivider] = []
     static let height: CGFloat = 40
 
@@ -352,21 +362,14 @@ final class StudioPreviewBar: StudioCapsuleView {
         backdropItem.icon = .symbol("photo")
         backdropItem.showsChevron = true
         backdropItem.toolTip = StudioText[.backdrop]
-        dataItem.showsChevron = true
-        dataItem.toolTip = StudioText[.dataTip]
-        interactItem.icon = .symbol("hand.point.up.left")
-        interactItem.title = StudioText[.interact]
-        interactItem.toolTip = StudioText[.interactTip]
-        backToLiveItem.title = StudioText[.backToLive]
-        backToLiveItem.isLink = true
         for item in items { addSubview(item) }
-        dividers = (0..<4).map { _ in StudioDivider() }
+        dividers = [StudioDivider()]
         for d in dividers { addSubview(d) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    var items: [StudioBarItem] { [appearanceItem, backdropItem, dataItem, interactItem, backToLiveItem] }
+    var items: [StudioBarItem] { [appearanceItem, backdropItem] }
 
     /// Shows `state` (`macIsDark`: the Mac's own look, for "Follow Mac"; `fidelity`: how close "Your Desktop" is).
     func show(_ state: StudioPreviewState, macIsDark: Bool, fidelity: WallpaperFidelity) {
@@ -379,16 +382,9 @@ final class StudioPreviewBar: StudioCapsuleView {
         appearanceItem.title = dark ? StudioText[.darkMode] : StudioText[.lightMode]
         appearanceItem.isOn = state.appearance != .followMac || state.glass != .standard
         backdropItem.title = state.backdrop.title
-        // A sample picture is a preset of the preview (in the accent); the workbench and the others are where the user
-        // likes to work, remembered, and read as plain choices.
-        backdropItem.isOn = [.bright, .busy, .dark].contains(state.backdrop)
+        backdropItem.isOn = false
         backdropItem.suffix = state.backdrop == .desktop ? Self.fidelityWord(fidelity) : nil
         backdropItem.toolTip = state.backdrop == .desktop ? Self.fidelityTip(fidelity) : StudioText[.backdrop]
-        dataItem.title = state.dataLabel
-        dataItem.isOn = state.hasPreset
-        dataItem.icon = state.hasPreset ? .symbol("chart.bar.fill") : .liveDot
-        interactItem.isOn = state.interacting
-        backToLiveItem.isHidden = !state.hasPreset
         needsLayout = true
     }
 
@@ -408,7 +404,7 @@ final class StudioPreviewBar: StudioCapsuleView {
         }
     }
 
-    /// The backdrop's words go first on a narrow canvas (its icon stays); "Preview:" and "Interact" keep theirs.
+    /// The backdrop's words go first on a narrow canvas (its icon stays).
     var compact = false {
         didSet {
             backdropItem.showsTitle = !compact && !iconsOnly
@@ -416,7 +412,7 @@ final class StudioPreviewBar: StudioCapsuleView {
         }
     }
 
-    /// Next to the code the bar is compact: the look and the backdrop keep only their icons; "Interact" keeps its word.
+    /// Next to the code the bar is compact: the look and the backdrop keep only their icons.
     var iconsOnly = false {
         didSet {
             appearanceItem.showsTitle = !iconsOnly
@@ -437,14 +433,12 @@ final class StudioPreviewBar: StudioCapsuleView {
 
 // MARK: - The zoom capsule
 
-/// − 165% + · Actual Size · Show on Desktop. On a narrow canvas "Actual Size" becomes "1:1" and "Show on Desktop"
-/// "Desktop" (first of all the labels to go).
+/// − 165% + · Actual Size. On a narrow canvas "Actual Size" becomes "1:1".
 final class StudioZoomCapsule: StudioCapsuleView {
     let zoomOutItem = StudioBarItem()
     let percentItem = StudioBarItem()
     let zoomInItem = StudioBarItem()
     let actualSizeItem = StudioBarItem()
-    let desktopItem = StudioBarItem()
     private var dividers: [StudioDivider] = []
 
     override init(standIn: Bool) {
@@ -467,13 +461,8 @@ final class StudioZoomCapsule: StudioCapsuleView {
         actualSizeItem.title = StudioText[.actualSize]
         actualSizeItem.horizontalPadding = 9
         actualSizeItem.toolTip = "\(StudioText[.actualSize]) (⌘0)"
-        desktopItem.icon = .symbol("menubar.dock.rectangle")
-        desktopItem.iconSize = 11.5
-        desktopItem.title = StudioText[.showOnDesktop]
-        desktopItem.horizontalPadding = 9
-        desktopItem.toolTip = StudioText[.showOnDesktopTip]
-        for item in [zoomOutItem, percentItem, zoomInItem, actualSizeItem, desktopItem] { addSubview(item) }
-        dividers = (0..<2).map { _ in StudioDivider() }
+        for item in [zoomOutItem, percentItem, zoomInItem, actualSizeItem] { addSubview(item) }
+        dividers = [StudioDivider()]
         for d in dividers { addSubview(d) }
     }
 
@@ -482,15 +471,12 @@ final class StudioZoomCapsule: StudioCapsuleView {
     var compact = false {
         didSet {
             actualSizeItem.title = compact ? StudioText[.actualSizeShort] : StudioText[.actualSize]
-            desktopItem.title = compact ? StudioText[.showOnDesktopShort] : StudioText[.showOnDesktop]
             needsLayout = true
         }
     }
 
-    func show(zoom: CGFloat, showingDesktop: Bool, canShowDesktop: Bool) {
+    func show(zoom: CGFloat) {
         percentItem.title = StudioSizeName.zoomText(zoom)
-        desktopItem.isOn = showingDesktop
-        desktopItem.isEnabled = canShowDesktop
     }
 
     /// Next to the code the capsule leaves Actual Size out (⌘0 still does it).
@@ -502,7 +488,7 @@ final class StudioZoomCapsule: StudioCapsuleView {
     }
 
     private var groups: [[StudioBarItem]] {
-        [[zoomOutItem, percentItem, zoomInItem], [actualSizeItem], [desktopItem]].filter { $0.contains { !$0.isHidden } }
+        [[zoomOutItem, percentItem, zoomInItem], [actualSizeItem]].filter { $0.contains { !$0.isHidden } }
     }
 
     var fittingWidth: CGFloat {

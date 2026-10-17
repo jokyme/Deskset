@@ -13,9 +13,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let settingsDirectory: URL
     /// False for headless use (`--self-test`, `--snapshot-ui`): skin windows are created but never shown.
     let presentsWindows: Bool
-    /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
-    /// it opens (`InspectorWindowController.queueOpening`). Headless it is built at once, unless a self-test asks.
-    var opensEditorInSteps: Bool
     /// The widget on the desktop follows the Studio a moment later (`EditingSession`): a step's reload waits for the
     /// next turn of the run loop, after the canvas drew the step, and a gesture's previews reach it at most about 20
     /// times a second. Headless it follows at once, unless a self-test asks.
@@ -60,8 +57,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cachedLibrary: [SkinConfig]?
     private var lastMissRescan: TimeInterval = -.infinity
     private var manageWindow: ManageWindowController?
-    /// The skin inspector (one at a time).
-    private(set) var inspector: InspectorWindowController?
     /// The editing sessions of the widgets the Studio has edited, by lowercased config: a widget's undo stack belongs to
     /// the app, not to the Studio window, and lasts until the app quits.
     private(set) var studioSessions: [String: EditingSession] = [:]
@@ -104,7 +99,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.defaultSkinsSource = defaultSkinsSource
         self.settingsDirectory = settingsDirectory
         self.presentsWindows = presentsWindows
-        opensEditorInSteps = presentsWindows
         defersDesktopUpdates = presentsWindows
         super.init()
     }
@@ -222,7 +216,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// fails, Save / Discard / Cancel (Cancel keeps the app running).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isDuplicateInstance else { return .terminateNow }
-        if let inspector, !inspector.canTerminate() { return .terminateCancel }
         if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return .terminateCancel }
         for window in codeFileWindows where !window.canTerminate() { return .terminateCancel }
         return .terminateNow
@@ -311,7 +304,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The window a reopen brings back (nil: none is open).
     var reopenableWindow: NSWindow? {
-        Self.reopenTarget(editor: inspector?.window, settings: SettingsWindowController.openWindow,
+        Self.reopenTarget(editor: StudioWindowController.window(for: self)?.window, settings: SettingsWindowController.openWindow,
                           codeWindows: codeFileWindows.compactMap(\.window)) { $0.isVisible || $0.isMiniaturized }
     }
 
@@ -760,7 +753,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A skin loaded and made its first update (`.started`), and its window is placed and shown: the Studio attaches
     /// to it when it edits the config, the windows are stacked again and the app hears of it.
     func skinStarted(_ c: SkinWindowController) {
-        if let inspector, inspector.config.lowercased() == c.config.lowercased() { inspector.attach(c) }
         if c.restacksWhenStarted {
             restack()
         } else if activating == 0 {
@@ -820,7 +812,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !isTerminating, let c = controller(for: config) else { return }
         controllers[c.config.lowercased()] = nil
         state.update(c.config) { $0.active = false }
-        if let inspector, inspector.config.lowercased() == c.config.lowercased() { inspector.detach() }
         c.stop(fadeOut: fade)
         Log.write("Unloaded \(c.config)")
         notifyChanged()
@@ -1031,9 +1022,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let config { controller.select(config: config, file: file) }
     }
 
-    /// Opens the inspector on a loaded skin (moving it from another skin if it was open). A new editor window comes
-    /// to the front once it is ready to be shown (its panes, toolbar and the widget on the canvas: `whenReadyToShow`);
-    /// the rest of it is built while it shows.
+    /// Opens the Studio on a loaded skin (moving it from another skin if it was open).
     func showInspector(for c: SkinWindowController) {
         // A skin loading on the engine thread has no place and no first update yet: the Studio opens once it started
         // (at once with the main executor, where `activate` returns a started skin).
@@ -1043,18 +1032,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.showInspector(for: c)
             }
         }
-        // The new Studio window, while the StudioV2 switch is on (`StudioSwitch`).
-        if StudioSwitch.isOn(for: self) { return StudioWindowController.show(for: c, app: self) }
-        if let inspector {
-            inspector.attach(c)
-            return bringToFront(inspector)
-        }
-        let controller = InspectorWindowController(app: self, controller: c)
-        inspector = controller
-        controller.whenReadyToShow { [weak self, weak controller] in
-            guard let self, let controller, self.inspector === controller else { return }
-            self.bringToFront(controller)
-        }
+        StudioWindowController.show(for: c, app: self)
     }
 
     /// Activates the app and brings the window in front of the other apps' windows (a menu of the menu bar icon or
@@ -1073,10 +1051,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard presentsWindows, let window = controller.window else { return }
         AppActivation.track(window)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func inspectorDidClose(_ controller: InspectorWindowController) {
-        if inspector === controller { inspector = nil }
     }
 
     /// The editing session of a widget (made the first time the Studio edits it; kept until the app quits, with the
@@ -1183,7 +1157,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         buildMainMenu(menu)
-        StudioSwitch.addMenuItem(to: menu, for: self)
     }
 
     func buildMainMenu(_ menu: NSMenu) {

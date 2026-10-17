@@ -35,10 +35,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     // Editor pane.
     let editorPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let helperLabel = NSTextField(wrappingLabelWithString: "")
-    let modeControl = NSSegmentedControl(labels: EditorPreferences.OpenSkinsIn.allCases.map(\.title),
-                                         trackingMode: .selectOne, target: nil, action: nil)
-    /// View ▸ Show Rainmeter Details in the skin editor (docs/editor-friendly.md §4).
-    let iniNamesBox = NSButton(checkboxWithTitle: "Show Rainmeter details", target: nil, action: nil)
     let fontField = NSTextField()
     let fontStepper = NSStepper()
     let liveReloadBox = NSButton(checkboxWithTitle: "Refresh the skin when the file is saved elsewhere",
@@ -169,13 +165,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         helperLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         helperLabel.textColor = .secondaryLabelColor
         helperLabel.preferredMaxLayoutWidth = 340
-        modeControl.target = self
-        modeControl.action = #selector(modeChosen)
-        for (i, mode) in EditorPreferences.OpenSkinsIn.allCases.enumerated() {
-            modeControl.setToolTip(mode.help, forSegment: i)
-        }
-        iniNamesBox.target = self
-        iniNamesBox.action = #selector(iniNamesToggled)
         liveReloadBox.target = self
         liveReloadBox.action = #selector(liveReloadToggled)
         let formatter = NumberFormatter()
@@ -242,13 +231,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         return makePane(rows: [
             [label("Edit code with:"), editorPopUp],
             [empty(), helperLabel],
-            [label("Open skins in:"), modeControl],
-            [empty(), note("How Edit Skin… opens a skin. Source links and code actions always show the code.")],
-            [label("Inspector:"), iniNamesBox],
-            [empty(), note("Adds option names, section names and every setting to the editor.")],
             [label("Code font size:"), font],
             [label("Live reload:"), liveReloadBox],
-        ], spacingAfter: [1: 8, 3: 8, 5: 8])
+        ], spacingAfter: [1: 8])
     }
 
     private func makeGeneralPane() -> NSView {
@@ -333,9 +318,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         helperLabel.stringValue = Self.helperText(for: e.codeEditor, locator: CodeEditorRouter.locator,
                                                   systemDefault: systemDefault)
-        modeControl.selectedSegment = EditorPreferences.OpenSkinsIn.allCases.firstIndex(of: e.openSkinsIn) ?? 0
-        modeControl.isEnabled = e.codeEditor == .builtIn
-        iniNamesBox.state = e.showIniNames ? .on : .off
         fontField.integerValue = Int(e.codeFontSize)
         fontStepper.doubleValue = e.codeFontSize
         liveReloadBox.state = e.liveReload ? .on : .off
@@ -416,16 +398,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         refreshEditorPopUp()
         updateControls()
-    }
-
-    @objc private func modeChosen() {
-        let modes = EditorPreferences.OpenSkinsIn.allCases
-        guard modes.indices.contains(modeControl.selectedSegment) else { return }
-        app.state.updateEditor { $0.openSkinsIn = modes[modeControl.selectedSegment] }
-    }
-
-    @objc private func iniNamesToggled() {
-        app.state.updateEditor { $0.showIniNames = iniNamesBox.state == .on }
     }
 
     @objc private func liveReloadToggled() {

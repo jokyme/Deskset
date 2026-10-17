@@ -57,7 +57,7 @@ final class DesktopLink {
     func link(_ c: SkinController) -> Bool {
         linked = c
         isUnloaded = false
-        keyValueWrites = InspectorWindowController.keyValueWrites(of: c)
+        keyValueWrites = c.runtime.snapshot.keyValueWrites
         let otherFile = session.bind(desktop: c)
         if session.studioSkin == nil || otherFile { session.reloadStudioSkin(notify: false) }
         return otherFile
@@ -80,7 +80,7 @@ final class DesktopLink {
         isUnloaded = false
         let own = session.isOwnReload(now)
         linked = now
-        keyValueWrites = InspectorWindowController.keyValueWrites(of: now)
+        keyValueWrites = now.runtime.snapshot.keyValueWrites
         let otherFile = session.bind(desktop: now)
         if own && !otherFile {
             onChange?(.reloaded(own: true))
@@ -105,7 +105,7 @@ final class DesktopLink {
     /// of its last piece of work.
     func takeOwnWrites() -> Bool {
         guard let c = session.runningDesktop else { return false }
-        let writes = InspectorWindowController.keyValueWrites(of: c)
+        let writes = c.runtime.snapshot.keyValueWrites
         defer { keyValueWrites = writes }
         return writes != keyValueWrites
     }

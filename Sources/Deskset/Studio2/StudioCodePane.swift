@@ -58,7 +58,7 @@ final class StudioCodeContainer: NSView {
         StudioCodeHeader.fill.setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: StudioCanvasViewController.toolbarHeight).fill()
         NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: 1, height: bounds.height).fill()
+        NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height).fill()
     }
 }
 
@@ -73,7 +73,6 @@ final class StudioCodeHeader: NSView {
     let warningsChip = StudioCodeChip(symbol: "exclamationmark.triangle.fill", tint: StudioCodeColors.warning)
     let logChip = StudioCodeChip(symbol: "list.bullet.rectangle", tint: nil)
     let moreButton = StudioCodeChip(symbol: "ellipsis.circle", tint: nil, plain: true)
-    let inspectorButton = StudioCodeChip(symbol: "sidebar.trailing", tint: nil)
 
     static let fill = NSColor(name: "StudioCodeHeader") { appearance in
         StudioPageStyle.isDark(appearance) ? NSColor(srgbRed: 0.15, green: 0.15, blue: 0.17, alpha: 1)
@@ -93,10 +92,7 @@ final class StudioCodeHeader: NSView {
         logChip.toolTip = StudioText[.codeLogTip]
         moreButton.toolTip = StudioText[.codeMore]
         moreButton.setAccessibilityLabel(StudioText[.codeMore])
-        inspectorButton.title = StudioText[.inspector]
-        inspectorButton.toolTip = StudioText[.codeInspectorTip]
-        for v in [fileButton, crumbChevron, crumb, problemsChip, warningsChip, logChip, moreButton, inspectorButton]
-            as [NSView] {
+        for v in [fileButton, crumbChevron, crumb, problemsChip, warningsChip, logChip, moreButton] as [NSView] {
             addSubview(v)
         }
     }
@@ -113,7 +109,7 @@ final class StudioCodeHeader: NSView {
     }
 
     /// Counts, the file's name and the crumb as the pane has them now.
-    func show(file: String, section: String?, problems: Int, warnings: Int, log: Int, showsInspector: Bool) {
+    func show(file: String, section: String?, problems: Int, warnings: Int, log: Int) {
         fileButton.title = file
         crumb.stringValue = section.map { "[\($0)]" } ?? ""
         crumbChevron.isHidden = section == nil
@@ -128,7 +124,6 @@ final class StudioCodeHeader: NSView {
         warningsChip.setAccessibilityLabel(StudioText.format(warnings == 1 ? .codeWarnings : .codeWarningsMany, warnings))
         logChip.title = StudioText.format(.codeLog, log)
         logChip.isHidden = log == 0
-        inspectorButton.isHidden = !showsInspector
         needsLayout = true
     }
 
@@ -136,7 +131,7 @@ final class StudioCodeHeader: NSView {
         super.layout()
         let midY = bounds.height / 2
         var right = bounds.width - 12
-        for chip in [inspectorButton, moreButton, logChip, warningsChip, problemsChip] where !chip.isHidden {
+        for chip in [moreButton, logChip, warningsChip, problemsChip] where !chip.isHidden {
             let w = chip.fittingWidth
             chip.frame = NSRect(x: right - w, y: midY - 11, width: w, height: 22)
             right -= w + 6
