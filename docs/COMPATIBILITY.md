@@ -61,17 +61,17 @@ shipped with Deskset.
 
 | Area | Overall | What works | What does not (or differs most) |
 | --- | --- | --- | --- |
-| Skin files, variables, formulas, bangs | identical | INI rules, `@Include`, `@Inherit`, `SyntaxVersion=5`, `#Var#` / section variables, `[%EnvVar]`, `[$Skin…]` / `[$Display…]`, bracketed and unbracketed formulas, `Group=a\|b` / `a&b`, `!SetOption` (2- and 3-arg), colon-namespaced bangs (`!Skin:…`, `!<Measure>:…`) and the other skin bangs | Exotic PCRE regex features; unbracketed `%APPDATA%` in ordinary options (use `[%APPDATA]`) |
+| Skin files, variables, formulas, bangs | identical | INI rules, `@Include`, `@Inherit`, `SyntaxVersion`, `#Var#` / section variables, `%Env%` / `[%Env]`, `[$Skin…]` / `[$Display…]`, bracketed and unbracketed formulas, `Group=a\|b` / `a&b`, `!SetOption` (2- and 3-arg), colon-namespaced bangs (`!Skin:…`, `!<Measure>:…`) and the other skin bangs | Exotic PCRE regex features; target-first `!Skin:` bangs; `!SendKey` media keys |
 | Layout and text | emulated | `r`/`R` positions, StringAlign (including `Justify`), window sizing, inline options, fonts in `@Resources\Fonts` | Microsoft fonts are substituted; text can be a pixel wider or narrower |
 | Meters (String, Image, Bar, Bitmap, Button, Line, Histogram, Roundline, Rotator, Shape, SVG, TextEdit) | emulated | All documented 4.x and 5.0 meter types and options | Histogram `PrimaryImageRotate` / ColorMatrix options |
-| System measures (CPU, memory, network, disk, time, uptime, SysInfo, Process, battery, DragDrop) | emulated | All of them, mapped to macOS data, plus 5.0 `NumberConversionFormat` and `TimeStampFormat=ISO8601` | Drive letters all mean the startup disk; Windows adapter names fall back to the active interface |
+| System measures (CPU, memory, network, disk, time, uptime, SysInfo, Process, battery, DragDrop) | emulated | All of them, mapped to macOS data, plus 5.0 `NumberConversionFormat=Locale` and the new `TimeStampFormat` codes | Drive letters all mean the startup disk; Windows adapter names fall back to the active interface |
 | Registry | emulated (a fixed set) | Windows version, CPU / GPU name, core count, user folders, the wallpaper | Every other registry value reads `0` / empty |
-| Lua (`Measure=Script`, inline Lua) | identical | Lua 5.1, the whole SKIN / SELF / Measure / Meter API, and Rainmeter 5.0 UTF-8 `string.u*` / `SetOption` / `ReadTextFile` / `WriteTextFile` additions | `os.execute` only opens files and URLs; a few unsafe functions are removed |
+| Lua (`Measure=Script`, inline Lua) | identical | Lua 5.1, the whole SKIN / SELF / Measure / Meter API, and Rainmeter 5.0 Unicode `string.uc*` / `SetOption` / `ReadTextFile` / `WriteTextFile` additions | `os.execute` only opens files and URLs; a few unsafe functions are removed |
 | Rainmeter's bundled plugins | emulated | Every one except two (six of them partly): ActionTimer, AudioLevel, NowPlaying, InputText, RunCommand, UsageMonitor, CoreTemp and SpeedFan (real temperatures, fans, clocks and power), … | WindowMessage and VirtualDesktops have no macOS counterpart |
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layouts are installed but not applied yet |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, zoom (`DefaultZoomFactor`, `!SetZoomFactor`), visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | Window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup, no Aero blur, no stored anchors; layouts cannot be loaded yet |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, `!SetZoomFactor` (5.0, partial), visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | No zoom menu, edge-drag zoom, `DefaultZoom` or multiple skin selection yet; window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup, no Aero blur, no stored anchors; layouts cannot be loaded yet |
 
 ---
 
@@ -155,13 +155,13 @@ by the 15 tested packages.
 | InputText | emulated | Native text field in a non-activating panel; works even on Stay Topmost skins |
 | iTunes (deprecated `iTunesPlugin`) | identical | Reads and controls Music.app (or Spotify) |
 | MediaKey | emulated | Real media keys with Accessibility; otherwise player commands and direct volume changes; `Stop` goes to the player |
-| NowPlaying | emulated | Music.app and Spotify for every `PlayerName`; "whichever is playing" rule; `!NowPlaying:…` bangs |
+| NowPlaying | emulated | Music.app and Spotify for every `PlayerName` (5.0 `PlayerName=Windows` included); "whichever is playing" rule; `!NowPlaying:…` bangs |
 | PerfMon (deprecated) | partial | Common counters mapped to Darwin data; others read 0 |
 | Ping (`PingPlugin`) | identical | Unprivileged ICMP echo on a background thread |
 | PowerPlugin | emulated | Battery status; `Percent` 100 / `ACLine` 1 on Macs without a battery; `Hz` / `MHz` = the current CPU clock on Apple silicon |
 | Process | emulated | Mac process names (`.exe` dropped from ProcessName) |
 | QuotePlugin | identical | Random line of a file or random file of a folder; Windows paths mapped to Mac folders |
-| RecycleManager | partial | The Trash (`Drives` supported): `Count` works; `Size` needs Full Disk Access; emptying goes through Finder (`!RecycleManager:…` bangs too) |
+| RecycleManager | partial | The Trash (the old `Drives=` is ignored): `Count` works; `Size` needs Full Disk Access; emptying goes through Finder (`!RecycleManager:…` bangs too) |
 | Registry (measure) | emulated | A fixed set of machine facts answered with macOS values; everything else 0 / empty |
 | ResMon | partial | `Handle` = open file descriptors; GDI / USER / Window read 0 |
 | RunCommand | partial | Runs through `/bin/sh` (`!RunCommand:Run/Close/Kill` too); Windows-only command lines fail with error 103 before anything starts |
@@ -170,7 +170,7 @@ by the 15 tested packages.
 | SysInfo | emulated | Mac answers for OS, user, screens, network adapters; a few Windows-only types read 0 / empty |
 | UsageMonitor | partial | CPU, RAM, IO per process, per-core load, memory, paging, network, disks, CPU temperature, whole-GPU usage; per-process GPU and exotic counters 0 |
 | VirtualDesktops (older Rainmeter versions; not in the current manual) | not supported | One desktop is reported; commands ignored (macOS Spaces have no public API) |
-| WebParser | identical | PCRE patterns translated to ICU; 5.0 `JsonPointer`, `KeepOldData` and `!WebParser:…` bangs; see [§11](#11-webparser-and-the-skin-installer) |
+| WebParser | identical | PCRE patterns translated to ICU; 5.0 `JsonPointer` and `!WebParser:Refetch` / `:ClearResults`; see [§11](#11-webparser-and-the-skin-installer) |
 | WiFiStatus | emulated | CoreWLAN; SSID / LIST need Location Services; RXRate equals TXRate |
 | Win7AudioPlugin | emulated | Default output device volume, mute, device switching (`!Audio:…` bangs too); no permission |
 | WindowMessage | not supported | macOS has no window messages; value 0, commands ignored |
@@ -432,24 +432,36 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   need `DynamicVariables=1`, as in Rainmeter.
 - **Status:** emulated
 
-#### Variables (details, `[%EnvVar]`, `[$Skin…]`, `[$Display…]`)
-- **Windows:** `#Var#`, `[#Var]`, escapes `#*Var*#` / `[*Name*]`, character variables `[\x263A]` for
-  x0–xFFFE, `[M:]` with up to ten decimals; Rainmeter 5.0 adds `[%EnvVar]`, `[$SkinX/Y/W/H]`,
-  `[$SkinPhysicalX/Y/W/H]`, `[$SkinUpdate]`, `[$SkinZoomFactor]`, `[$SkinZPos]`, `[$SkinVisible]`,
-  `[$DisplayX/Y/W/H]`, `[$DisplayWorkX/Y/W/H]`, `[$DisplayScale]`, `[$DisplayDPI]` and `[$DisplayDevice…@N]`
-  (with optional `:N` decimal formatting, and usable unbracketed in formulas).
-- **Mac:** the same, plus: character variables accept any Unicode code point (emoji) and an upper-case `X`; a
-  variable's value is scanned again where it is used (so `!SetVariable V "[MeasureCPU]"` behaves as text
-  substitution); `#Var#` is resolved before section variables; `[M:%]` is clamped to 0–100; `[M:/N]` accepts any
-  non-zero divisor; numbers are rounded half away from zero; `:EscapeRegExp` and `:EncodeURL` use exactly the
-  manual's character sets. `[%EnvVar]` expands macOS environment variables and maps common Windows ones (`APPDATA`,
-  `LOCALAPPDATA`, `USERPROFILE`, `HOMEPATH`, `TEMP`, `TMP`, `USERNAME`, `PROGRAMFILES`); unbracketed `%APPDATA%` is
-  **not** expanded in ordinary options (plugins and Lua map the common ones, see [§9](#9-bundled-plugins-core) and
-  [§8](#8-lua-scripting)). On Retina displays `[$DisplayScale]` is `200` (100 × backing scale) and `[$DisplayDPI]` is
-  `192` (96 × backing scale); `[$SkinPhysicalW]` / `[$SkinPhysicalH]` multiply by `ZoomFactor`.
-- **Why:** judgment calls where the manual is silent; macOS draws every Unicode plane.
-- **Skin impact:** none for valid skins.
-- **Status:** identical (+ leniencies)
+#### Variables (details, environment variables, `[$Skin…]`, `[$Display…]`)
+- **Windows:** `#Var#`, `[#Var]`, escapes `#*Var*#` / `[*Name*]`, character variables `[\x263A]` for x0–xFFFE, `[M:]` with
+  up to ten decimals; Windows environment variables as `%Name%`. Rainmeter 5.0 adds `[%Name]` (nestable, escapable);
+  skins with `SyntaxVersion=2` leave `%Name%` unchanged and use `[%Name]`. It also adds `[$Skin…]` (the skin's position
+  and size, including physical pixel values and zoomed sizes, its DPI factor, zoom factor, z-position and visibility)
+  and `[$Display…]` / `[$DisplayDevice…]` (positions, sizes, work areas, physical coordinates, virtual screen bounds,
+  DPI factors, names, numbers and counts; without a number, the display that holds the skin).
+- **Mac:** the same, plus: character variables accept any Unicode code point (emoji) and an upper-case `X`; a variable's
+  value is scanned again where it is used (so `!SetVariable V "[MeasureCPU]"` behaves as text substitution); `#Var#` is
+  resolved before section variables; `[M:%]` is clamped to 0–100; `[M:/N]` accepts any non-zero divisor; numbers are
+  rounded half away from zero; `:EscapeRegExp` and `:EncodeURL` use exactly the manual's character sets.
+  - Environment variables: `[%Name]` is always expanded; `%Name%` is expanded in options and bangs of skins with the
+    default `SyntaxVersion=1` and left as written with `SyntaxVersion=2`. Only names Deskset knows are expanded, so text
+    such as `%1`, `50%` or `%20` is untouched, and values of measures, meters and built-in variables are never expanded
+    again. Names are case-insensitive and map as follows: `USERPROFILE` / `HOMEPATH` / `HOME` → the home folder, `APPDATA` / `LOCALAPPDATA` → `~/Library/Application Support`,
+  `PROGRAMDATA` / `ALLUSERSPROFILE` → `/Library/Application Support`, `PROGRAMFILES` / `PROGRAMFILES(X86)` /
+  `PROGRAMW6432` → `/Applications`, `TEMP` / `TMP` → the temporary folder, `PUBLIC` → `/Users/Shared`, `WINDIR` /
+  `SYSTEMROOT` → `/System`, `HOMEDRIVE` / `SYSTEMDRIVE` → empty (so `%HOMEDRIVE%%HOMEPATH%` is the home folder),
+  `USERNAME` → the user name, `COMPUTERNAME` / `USERDOMAIN` → the Mac's name (without `.local`),
+  `NUMBER_OF_PROCESSORS` → the active core count, `OS` → `Windows_NT`, `PROCESSOR_ARCHITECTURE` → `ARM64` (Apple
+  silicon) or `AMD64` (Intel); any other name reads Deskset's process environment (exact case first, then any
+  case) and stays as written when it is not set. Answering `OS` and `PROCESSOR_ARCHITECTURE` the
+    Windows way is a judgment call: skins compare them with Windows values.
+  - `[$Skin…]` / `[$Display…]`: skin coordinates are points, so `[$SkinX/Y/W/H]` match Windows at 100 % scaling;
+    physical values (`[$SkinPhysicalX/Y/W/H]`, `[$DisplayPhysical…]`) multiply by the display's backing scale (2 on
+    Retina) and the skin's zoom factor; `[$SkinDpiFactor]` / `[$DisplayDpiFactor]` are `2` on Retina displays.
+- **Why:** judgment calls where the manual is silent; macOS draws every Unicode plane; the Mac has none of Windows'
+  environment variables.
+- **Skin impact:** none for valid skins; paths built from other Windows-only environment variables usually do not exist.
+- **Status:** identical (+ leniencies; environment variables: emulated)
 
 #### Light and dark mode variables (`#MACAPPEARANCE#`, `#MACDARKMODE#`, `#MACACCENTCOLOR#`…)
 - **Windows:** no such variables.
@@ -483,13 +495,12 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 #### Formulas
 - **Windows:** the operators and functions of the Formulas page; precedence is not documented; `.5` must be written
-  `0.5`; `&&` / `||` operands "must" be in parentheses; `?:` nests at most 30 deep; with `SyntaxVersion=5` (Rainmeter
-  5.0), numeric options evaluate formulas without outer parentheses (`X=10 + 20`) and accept `$Skin…` / `$Display…`
-  identifiers directly.
+  `0.5`; `&&` / `||` operands "must" be in parentheses; `?:` nests at most 30 deep; since Rainmeter 5.0, measure names and
+  `$Skin…` / `$Display…` variables can be used without brackets in formulas throughout a skin.
 - **Mac:** C-like precedence (lowest to highest: `?:`, `||`, `&&`, `= <>`, `< > <= >=`, `|`, `^`, `&`, `+ -`,
   `* / %`, unary `- + ~`, `**`). Division or modulo by zero and non-finite results give 0; `%` is C `fmod`;
-  `Round(x)` rounds half away from zero; `Min` / `Max` take more than two arguments; `SyntaxVersion=5` unbracketed
-  formulas and `$Skin…` / `$Display…` identifiers work as documented. Leniencies: `.5`, `5.`, `1e3`,
+  `Round(x)` rounds half away from zero; `Min` / `Max` take more than two arguments; unbracketed measure names
+  and `$Skin…` / `$Display…` variables in formulas follow the 5.0 manual (whatever the `SyntaxVersion`). Leniencies: `.5`, `5.`, `1e3`,
   lower-case `0b` / `0o` / `0x` prefixes in every formula, `&&` / `||` without parentheses, `==`, no nesting limit;
   a plain number option reads its leading number (`12px` → 12).
 - **Why:** a formula must never crash or return NaN; judgment calls where the manual is silent.
@@ -525,9 +536,9 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Status:** emulated
 
 #### Time and Uptime formats
-- **Windows:** strftime codes with the `#` flag; value = seconds since 1601; `TimeStampFormat=ISO8601` (5.0); Uptime
+- **Windows:** strftime codes with the `#` flag; value = seconds since 1601; Rainmeter 5.0's `TimeStampFormat` also reads ordinal, week-number and ISO week dates and `%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z` (offsets converted to UTC); Uptime
   `%1`…`%4` with printf specs; FormatLocale uses Windows locale data.
-- **Mac:** the same codes, plus `TimeStampFormat=ISO8601` (with or without fractional seconds and time-zone offsets).
+- **Mac:** the same codes, including the new 5.0 `TimeStampFormat` codes.
   Judgment calls: `%r` is upper-case "10:55:03 PM"; `%Z` is the English zone name; unknown
   codes are shown as written; an empty Format means `%H:%M:%S`; with Format set, the number is the leading number
   of the text; TimeZone accepts fractional hours and is not applied to TimeStamp values (numeric ones included);
@@ -543,12 +554,13 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 #### Actions, bangs, Substitute and regular expressions
 - **Windows:** `[!Bang arg "arg"]`, magic quotes `"""…"""`, legacy `!Rainmeter…` names; Rainmeter 5.0 adds `Group=a|b`
   (OR) and `Group=a&b` (AND) group selectors, 2-argument `[!SetOption Option Value]` (targeting the enclosing section),
-  `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor` / `!SetZoomFactorGroup`, and
+  `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor`, and
   colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`, `!ActionTimer:Execute/Stop`,
-  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults/UpdateData/ResetData`,
+  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults`,
   `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
   `!WindowMessage:Send`); Substitute and RegExpSubstitute use PCRE.
-- **Mac:** the same syntax and all 5.0 bangs / group selectors; bang names are case-insensitive; brackets inside quotes
+- **Mac:** the same syntax, with the 5.0 bangs and group selectors above (`!Skin:` bangs still take their target
+  last, see "Rainmeter 5.0 features not implemented yet"); bang names are case-insensitive; brackets inside quotes
   do not end a bang; text between bracketed bangs is ignored; `!Execute` nesting stops after 8 levels. Plain
   substitution is case-sensitive; `'a':'b'` is accepted (the manual says it fails). Regular expressions are PCRE
   patterns translated to ICU: `(?U)`,
@@ -572,7 +584,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 #### Update interval, `Invisible` update rate and Counter
 - **Windows:** `Update` minimum 16 ms, -1 = once; Rainmeter 5.0 accepts `Update=<visible> | Invisible <invisible>`
-  (separate update rate while hidden, `-1` pausing updates while hidden), `!SetUpdate`, and `!ForceEnableVisibleMode`;
+  (separate update rate while hidden; `Invisible 0` pauses regular updates while hidden, a refresh or `!Update` still updates), `!SetUpdate`, and `!ForceEnableVisibleMode`;
   Calc's `Counter` only resets when the skin is unloaded.
 - **Mac:** the same.
 - **Why:** as documented.
@@ -692,16 +704,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** those parts of a skin stay empty; the skin never crashes.
 - **Status:** not supported (fallback)
 
-#### Rainmeter 5.0 measure additions (`DragDrop`, `NumberConversionFormat`, `UseRandomSeed`, `Loop` `ResetValue`)
-- **Windows:** Rainmeter 5.0 adds `Measure=DragDrop` (file/folder drag-and-drop onto the skin or a `TargetMeter`,
-  with `Type=FileCount|FileList|FilePath|FileFolder|FileName|FileExt`, `SubFolders`, `Limit`, `Separator`,
-  `Format=Path|Quote|URI`, `MatchPattern`, `OnEnterAction`, `OnLeaveAction`, `OnDropAction`),
-  `NumberConversionFormat=None|Binary|Octal|Hexadecimal|Scientific|FileSize` on any measure, `UseRandomSeed=1` on Calc,
-  and `ResetValue` on Loop (`!ResetMeasure` / `!Loop:Reset`).
-- **Mac:** all supported (`DragDrop` also as `Plugin=DragDrop`, wired to Finder file drag-and-drop on `SkinView`).
-- **Why:** as documented in the Rainmeter 5.0 manual.
-- **Skin impact:** none.
-- **Status:** identical
+#### Rainmeter 5.0 measure options (`DragDrop`, `NumberConversionFormat`)
+- **Windows:** Rainmeter 5.0 builds in `Measure=DragDrop` (the former Drag&Drop plugin: `Action=Path|Move|Copy|Shortcut|Delete`,
+  `Path`, `Silent`, `ReplaceIfExists`, `ProcessAllFiles` with `$FileNr$`, `Parent` and `Bounds` on child measures,
+  `OnDropAction` / `OnEnterAction` / `OnLeaveAction`; `FancyRenderer` was removed) and `NumberConversionFormat=Locale` on
+  String, Registry and WebParser measures (numbers read in the Windows regional format, e.g. `1.234,56` as 1234.56).
+- **Mac:** both supported (`Plugin=Drag&Drop` / `Plugin=DragDrop` too); files are dropped from Finder. `Shortcut` makes a
+  symbolic link instead of a `.lnk`, `Delete` moves the item to the Trash; `FancyRenderer` is ignored with a log line.
+  `NumberConversionFormat=Locale` uses the number format of macOS Language & Region.
+- **Why:** the Mac has no `.lnk` shortcuts and no Windows regional settings.
+- **Skin impact:** none, except that shortcuts are symbolic links.
+- **Status:** emulated
 
 #### Other measure details (judgment calls)
 - **Windows:** the manual does not settle these.
@@ -832,20 +845,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Status:** emulated
 
 #### Rainmeter 5.0 meters (`Meter=SVG`, `Meter=TextEdit`, `StringAlign=Justify`)
-- **Windows:** Rainmeter 5.0 adds `Meter=SVG` (`SVGName` or `InlineSVG`, `ImportStyleSheet`, `InlineStyleSheet`,
-  `PreserveAspectRatio`, `[Meter:Attribute(selector, attr)]`, general image options), `Meter=TextEdit` (in-canvas
-  editable text with `MultiLine`, `AcceptReturn`, `AcceptTab`, `ReadOnly`, `Password`, `MaxLength`, `NumberOnly`,
-  `PlaceholderText`, `SelectionColor`, `CursorColor`, `FilterRegex`, `[$Input]`, `[$Input:MatchN]`,
-  `OnTextChange`/`OnFocus`/`OnUnfocus`/`OnEnter`/`OnEscape` actions, and `!TextEdit:Focus/Unfocus/SelectAll/Clear/SetText`
-  bangs), and `StringAlign=Justify` (`JustifyLeft`, `JustifyCenter`, `JustifyRight`, `JustifyTop`,
-  `JustifyCenterCenter`, `JustifyBottom`).
-- **Mac:** all supported. `Meter=SVG` parses SVG elements (`svg`, `g`, `path`, `rect`, `circle`, `ellipse`, `line`,
-  `polyline`, `polygon`, `defs`, `linearGradient`, `radialGradient`, `use`) and CSS style rules (`#id`, `.class`, tag
-  selectors) and renders with CoreGraphics. `Meter=TextEdit` draws directly in the skin canvas and accepts keyboard
-  events, selection and clipboard shortcuts (`⌘A`, `⌘C`, `⌘X`, `⌘V`) when clicked or focused by `!TextEdit:Focus`.
-- **Why:** CoreGraphics SVG/text rendering and macOS `⌘` clipboard shortcuts.
-- **Skin impact:** none for typical skins; exotic SVG filters or embedded `<text>` / `<foreignObject>` elements are not
-  drawn by the lightweight SVG renderer.
+- **Windows:** Rainmeter 5.0 adds `Meter=SVG` (`SVGImage` names a `.svg` file or holds inline SVG code; `Attribute`,
+  `Attribute2`, … change element attributes by ID, on the root `svg` element or on every element with `*`),
+  `Meter=TextEdit` (editable text fields: single-line and multiline, selection, copy and paste, undo, scrolling,
+  placeholders, password masking, input filtering, read-only; `[$Input]` and `[$Input:MatchN]` in its actions;
+  `!TextEdit:Focus`, `:Dismiss`, `:Submit`, `:Select`, `:SelectAll`, `:SetText`, `:Clear`, `:Reset`, `:ScrollByLine`,
+  `:ResetScroll`) and `StringAlign=Justify` (with `JustifyTop`, `JustifyCenter`, `JustifyBottom`).
+- **Mac:** all supported. `Meter=SVG` parses the common SVG elements, gradients and style rules and renders with
+  CoreGraphics, with the general image options. `Meter=TextEdit` draws and edits in the skin itself, with the macOS ⌘
+  shortcuts (⌘A, ⌘C, ⌘X, ⌘V). Justified text aligns every wrapped line but the last.
+- **Why:** CoreGraphics / CoreText drawing; ⌘ instead of Ctrl on the Mac.
+- **Skin impact:** none for typical skins; exotic SVG filters and `<text>` / `<foreignObject>` elements are not drawn.
 - **Status:** emulated
 
 #### Mouse hit areas
@@ -1061,17 +1071,24 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** a newly loaded skin sits behind all windows; change it in the skin menu → Position.
 - **Status:** emulated (judgment call)
 
-#### `Default…` options in `[Rainmeter]` and `ZoomFactor`
+#### `Default…` options in `[Rainmeter]` and skin zoom
 - **Windows:** `DefaultWindowX/Y`, `DefaultAnchorX/Y`, `DefaultSavePosition`, `DefaultAlwaysOnTop`, `DefaultDraggable`,
   `DefaultSnapEdges`, `DefaultStartHidden`, `DefaultAlphaValue`, `DefaultOnHover`, `DefaultFadeDuration`,
-  `DefaultClickThrough`, `DefaultKeepOnScreen`, `DefaultAutoSelectScreen`, `DefaultZoomFactor` (5.0, clamped to
-  `0.1…10.0`) seed a config's settings the first time; `!SetZoomFactor` / `!SetZoomFactorGroup` (5.0) scale the skin
-  window.
-- **Mac:** the same, with state.json in place of Rainmeter.ini; positions accept the WindowX / WindowY forms (`%`,
-  `R` / `B`, formulas, `@N`). The anchor is applied once, to place the skin (see Positions below).
-- **Why:** —
-- **Skin impact:** none.
-- **Status:** identical
+  `DefaultClickThrough`, `DefaultKeepOnScreen`, `DefaultAutoSelectScreen` seed a config's settings the first time.
+  Rainmeter 5.0 zooms a skin from 10 % to 500 % (the skin's `Zoom` setting in Rainmeter.ini), from the skin menu
+  (Settings → Zoom), by dragging the edges of selected skins, or with `!SetZoomFactor Factor|Default [Config|*]`; the
+  global default is `DefaultZoom` / `ForceDefaultZoom` in Rainmeter.ini's `[Rainmeter]` section (Manage → Settings).
+- **Mac:** the `Default…` options work the same, with state.json in place of Rainmeter.ini; positions accept the WindowX /
+  WindowY forms (`%`, `R` / `B`, formulas, `@N`). The anchor is applied once, to place the skin (see Positions below).
+  Zoom: `!SetZoomFactor Factor` works, the factor is kept in state.json and `[$SkinZoomFactor]` and friends follow it;
+  but the range is clamped to 0.25–10 (not 0.1–5), and the `Default` argument, the skin menu's zoom items, zooming by
+  dragging edges and `DefaultZoom` / `ForceDefaultZoom` are not implemented yet. Deskset also reads `DefaultZoomFactor`
+  in a skin's `[Rainmeter]` section as the first zoom (not an option of the manual) and `!SetZoomFactorGroup Factor Group`
+  (Deskset extension).
+- **Why:** the 5.0 zoom UI and global settings are not done yet.
+- **Skin impact:** skins that zoom through the bang work; `[!SetZoomFactor Default]` does nothing; users can zoom only
+  through bangs.
+- **Status:** partial
 
 #### Dragging, `DragMargins` and the Ctrl override
 - **Windows:** Draggable (default 1); a LeftMouseDownAction disables dragging; DragMargins limits where a drag can
@@ -1125,7 +1142,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### StartHidden and `Invisible` update rate
 - **Windows:** the skin starts hidden; `!Show` shows it; with `Update=<visible> | Invisible <invisible>` (5.0), a hidden
-  skin updates at `<invisible>` ms (or pauses when `<invisible>` is `-1`) unless `!ForceEnableVisibleMode 1` is active.
+  skin updates at `<invisible>` ms (`Invisible 0` pauses regular updates) unless `!ForceEnableVisibleMode 1` is active.
 - **Mac:** the same (also from `DefaultStartHidden`). The Manage window marks a hidden skin and can show it
   ([§7.3](#73-menus-and-the-manage-window)).
 - **Why:** —
@@ -1148,15 +1165,29 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated / partial (stored anchors)
 
 #### Display changes (`OnDisplayMetricsChange`)
-- **Windows:** Rainmeter 5.0 adds `[Rainmeter] OnDisplayMetricsChange=Refresh | KeepOnScreen | None | DoNothing` and
-  `OnDisplayMetricsChangeAction` when display resolution, scale or layout changes.
-- **Mac:** when displays are connected, disconnected or rearranged, skins with a saved position are placed from it again
-  (a skin returns to a display that comes back), `OnDisplayMetricsChange` is applied (`Refresh` reloads the skin,
-  `KeepOnScreen` clamps it on screen, `None` / `DoNothing` leaves it), and `OnDisplayMetricsChangeAction` runs.
+- **Windows:** `[Rainmeter] OnDisplayMetricsChange` is an action; since Rainmeter 5.0 it runs when any display's layout,
+  resolution or scaling changes.
+- **Mac:** when displays are connected, disconnected, rearranged or change resolution, skins with a saved position are
+  placed from it again (a skin returns to a display that comes back), then `OnDisplayMetricsChange` runs.
 - **Why:** follows the 5.0 manual while preserving saved display placement.
-- **Skin impact:** skins without `OnDisplayMetricsChange=Refresh` that computed their layout from `#SCREENAREAWIDTH#`
-  without DynamicVariables keep it until refreshed.
+- **Skin impact:** skins that computed their layout from `#SCREENAREAWIDTH#` without DynamicVariables and do not refresh
+  in that action keep their layout until refreshed (as on Windows).
 - **Status:** emulated
+
+#### Rainmeter 5.0 features not implemented yet
+- **Windows:** Rainmeter 5.0 also adds: selecting several skins with Ctrl-Alt-click to move, zoom and set them together;
+  the new Debug dialog (Log, Skins with watches, Plugins, Display and Network tabs, refresh on file change); Shift in
+  the context menus turning Exit into Restart and Refresh skin into Focus skin; `!SendKey` with media and volume keys
+  (`MediaNextTrack`, `MediaPrevTrack`, `MediaStop`, `MediaPlayPause`, `VolumeMute`, `VolumeDown`, `VolumeUp`); `!Skin:`
+  bangs with the target first (`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`, `"Group=Name"`); `Rainmeter.exe
+  [!Launch][!Bang]`; crash dumps and Safe Start; new Skin Packager features.
+- **Mac:** none of these yet. `!Skin:Load` / `Unload` / `Toggle` / `Edit` and the other `!Skin:` names work as aliases of
+  the old bangs, but their arguments are still read in the old order (target last); `!SendKey` does nothing (the
+  MediaKey measure still works); `!Debug` opens the Manage window; packaging is covered by Deskset's installer and Skin
+  Studio.
+- **Why:** not done yet; the Debug dialog, Safe Start and the packager are part of the Windows app's UI.
+- **Skin impact:** `!Skin:` bangs written target-first and `!SendKey` media keys do nothing on the Mac.
+- **Status:** not supported
 
 #### Sleep, displays asleep, other user sessions
 - **Windows:** OnWakeAction runs "when Windows returns from the sleep or hibernate states".
@@ -1603,11 +1634,10 @@ paths and a few functions that have no Mac meaning. Details: [`compat/lua.md`](c
 - **Skin impact:** none.
 - **Status:** identical
 
-#### Rainmeter 5.0 UTF-8 `string` functions (`string.uchar`, `string.ucodepoint`, `string.ulen`, `string.uc*`…)
-- **Windows:** Rainmeter 5.0 adds UTF-8-aware functions to Lua's `string` library: `string.uchar`, `string.ucodepoint`,
-  `string.ulen`, `string.uoffset`, Unicode-aware `string.upper` / `string.lower`, and codepoint-indexed
-  `string.ucfind`, `string.ucgmatch`, `string.ucgsub`, `string.ucmatch`, `string.ucreverse` and `string.ucsub`.
-- **Mac:** all supported, available both as `string.u*(s, …)` and on string methods `s:u*(…)`.
+#### Rainmeter 5.0 Unicode string functions (`string.uc*`)
+- **Windows:** Rainmeter 5.0 adds character-based (codepoint) `string.ucfind`, `ucmatch`, `ucgmatch`, `ucgsub`, `uclen`,
+  `ucsub`, `uclower`, `ucupper`, `ucreverse`, `ucbyte` and `ucchar`; scripts saved with a UTF-8 BOM are read as Unicode.
+- **Mac:** all supported, both as `string.ucfind(s, …)` and as `s:ucfind(…)`.
 - **Why:** as documented in the Rainmeter 5.0 manual.
 - **Skin impact:** none.
 - **Status:** identical
@@ -1764,8 +1794,8 @@ Afterburner plugin and Deskset's own MacSensors (§9.3). Details: [`compat/plugi
 - **Windows:** Path / PathName / Folder / StartInFolder / OutputFile / IconPath take Windows paths.
 - **Mac:** `\` becomes `/`; `%USERPROFILE%`, `%HOMEDRIVE%%HOMEPATH%` → home folder; `%APPDATA%` / `%LOCALAPPDATA%` →
   `~/Library/Application Support`; `%TEMP%` → the temporary folder; `%PUBLIC%` → `/Users/Shared`;
-  `%PROGRAMFILES%` → `/Applications`; `%PROGRAMDATA%` → `/Library/Application Support`; `%WINDIR%` → `/System`;
-  `C:\Users\<anyone>\X` → `~/X` (Videos → Movies, My Pictures → Pictures, …); other drive-letter paths → the same path
+  `%PROGRAMFILES%` → `/Applications`; `%PROGRAMDATA%` → `/Library/Application Support`; `%WINDIR%` → `/System` (the full mapping is under Variables;
+  unbracketed `%Name%` is not expanded in skins with `SyntaxVersion=2`); `C:\Users\<anyone>\X` → `~/X` (Videos → Movies, My Pictures → Pictures, …); other drive-letter paths → the same path
   under `/`; relative paths from the skin folder.
 - **Why:** the Mac has no drives and a different home layout (judgment call).
 - **Skin impact:** galleries of `%USERPROFILE%\Pictures`, notes in Documents etc. work; paths to other drives usually
@@ -2031,15 +2061,14 @@ Intel Macs are untested.
 - **Status:** partial
 
 #### RecycleManager
-- **Windows:** `Count` / `Size` of the Recycle Bin; `Drives=` (5.0, e.g. `Drives=ALL` or `C:|D:`); OpenBin, EmptyBin,
-  EmptyBinSilent (`!CommandMeasure` or `!RecycleManager:…` bangs).
+- **Windows:** `Count` / `Size` of the Recycle Bin; OpenBin, EmptyBin, EmptyBinSilent (`!CommandMeasure`, and since
+  Rainmeter 5.0 `!RecycleManager:OpenBin` / `:EmptyBin` / `:EmptyBinSilent`).
 - **Mac:** the Trash (`~/.Trash` plus the Trash of other internal volumes). Count works without permission; Size
   needs Full Disk Access (else 0, with a compatibility note and a log line saying where to grant it; the note goes
-  away once the size can be read). OpenBin opens the Trash in Finder;
-  EmptyBin asks through Finder's own confirmation, EmptyBinSilent empties without it (Automation permission for
-  Finder). `Drives=` filters volumes (`C:` / `/` selects `~/.Trash`, `/Volumes/Name` selects `/Volumes/Name/.Trashes/$UID`,
-  `ALL` or empty reads all Trash folders).
-- **Why:** macOS protects the Trash's contents; the Trash belongs to Finder.
+  away once the size can be read). OpenBin opens the Trash in Finder; EmptyBin asks through Finder's own confirmation,
+  EmptyBinSilent empties without it (Automation permission for Finder). The `Drives=` option of old skins is ignored:
+  every volume's Trash counts.
+- **Why:** macOS protects the Trash's contents; the Trash belongs to Finder and is not split by drive letter.
 - **Skin impact:** item counts work; size skins show 0 until Full Disk Access is granted.
 - **Status:** partial
 
@@ -2669,19 +2698,19 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 ### 11.1 WebParser
 
 WebParser follows the manual, including Rainmeter 5.0's `JsonPointer` (RFC 6901 JSON Pointer extraction on parent and
-child measures), `KeepOldData` (preserving or clearing values when a fetch or match fails), and `!WebParser:Refetch` /
-`!WebParser:ClearResults` / `!WebParser:UpdateData` / `!WebParser:ResetData` bangs; the regular expressions are PCRE
+child measures; `JsonPointer=1` parses JSON without selecting a value), the `!WebParser:Refetch` /
+`!WebParser:ClearResults` bangs, and encoding detection of local `file://` URLs with `CodePage=0`; the regular expressions are PCRE
 patterns translated to ICU (see
 [Actions, bangs, Substitute and regular expressions](#actions-bangs-substitute-and-regular-expressions)). The notes
 below come from the implementation notes of the WebParser work and its review, checked against the current code.
 
 #### Values of parents and children (judgment calls)
 - **Windows:** the manual does not say what `StringIndex=0`, an empty RegExp or a failing child give, nor how a string
-  becomes a number; Rainmeter 5.0 adds `JsonPointer` and `KeepOldData` (default 1).
+  becomes a number; Rainmeter 5.0 adds `JsonPointer`.
 - **Mac:** StringIndex 0 (the default) is the whole match; without a RegExp or `JsonPointer` the whole text is the
   value; `JsonPointer` extracts scalars or compact JSON subtrees from the parent's JSON text before or instead of
-  `RegExp`; the number is the leading number of the string ("23.5°C" → 23.5). With `KeepOldData=1` (default) a failing
-  child or parent keeps its old value, whereas `KeepOldData=0` clears it; a StringIndex pointing at a capture that does
+  `RegExp`; the number is the leading number of the string ("23.5°C" → 23.5). A child whose RegExp fails keeps
+  its old value, like the parent; a StringIndex pointing at a capture that does
   not exist empties that child and everything below it (the lookahead tip's "null value"). All values of a tree are set
   before any action runs.
 - **Why:** the manual is silent on the legacy edge cases; 5.0 options follow the 5.0 manual.

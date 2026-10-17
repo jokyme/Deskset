@@ -129,6 +129,9 @@ final class VarExpansion {
     /// and `[%EnvVar]`, keeping every other nesting form (`[&M]`, `[\x…]`, `[$…]`) and every escape as written. Used
     /// for `[Variables]` definitions, where `[#Var]` and `[%EnvVar]` behave like `#Var#` (see `VarDefinitionTable`).
     private let nestedVariables: Bool
+    /// With `fullSyntax`: also expand the unbracketed `%Name%` environment form (`SyntaxVersion=1`; see
+    /// `expandLegacyEnvironment`).
+    private let legacyEnvironment: Bool
     /// Optional budget shared with other runs (see `VarBudget`).
     private let budget: VarBudget?
 
@@ -151,6 +154,7 @@ final class VarExpansion {
          fullSyntax: Bool,
          rescanValues: Bool,
          nestedVariables: Bool = false,
+         legacyEnvironment: Bool = false,
          budget: VarBudget? = nil) {
         self.variableLookup = variableLookup
         self.sectionLookup = fullSyntax ? sectionLookup : nil
@@ -160,6 +164,7 @@ final class VarExpansion {
         self.fullSyntax = fullSyntax
         self.rescanValues = rescanValues
         self.nestedVariables = nestedVariables
+        self.legacyEnvironment = fullSyntax && legacyEnvironment
         self.budget = budget
     }
 
@@ -172,10 +177,47 @@ final class VarExpansion {
         if fullSyntax {
             marked = expandNested(marked)
             marked = expandSections(marked)
+            if legacyEnvironment { marked = expandLegacyEnvironment(marked) }
         } else if nestedVariables {
             marked = expandNested(marked)
         }
         return changed ? marked.string : text
+    }
+
+    // MARK: Stage 4 — legacy %Name% environment variables (SyntaxVersion=1)
+
+    /// `%Name%` → the environment lookup's value, on live bytes only (measure values, built-in values and escapes
+    /// are frozen, so a measure showing `%PATH%` stays as it is). A name is 1–64 ASCII letters, digits, `_`, `(` or
+    /// `)`; anything else, an unknown name or a lone `%` stays as written, so `%1`, `50%`, `%H:%M` and URL escapes
+    /// such as `%20` survive. After an unknown name the closing `%` may open the next reference (`%x%PATH%`).
+    private func expandLegacyEnvironment(_ m: VarMarkedText) -> VarMarkedText {
+        guard let lookup = environmentLookup, scan(m.count) else { return m }
+        let n = m.count
+        guard (0..<n).contains(where: { m.isLive($0, VarByte.percent) }) else { return m }
+        func isNameByte(_ b: UInt8) -> Bool {
+            (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)
+                || b == UInt8(ascii: "_") || b == UInt8(ascii: "(") || b == UInt8(ascii: ")")
+        }
+        var out = VarMarkedText()
+        var i = 0
+        var run = 0
+        while i < n {
+            guard m.isLive(i, VarByte.percent) else { i += 1; continue }
+            var j = i + 1
+            while j < n, j - i <= 65, !m.frozen[j], isNameByte(m.bytes[j]) { j += 1 }
+            guard j < n, j > i + 1, j - i <= 65, m.isLive(j, VarByte.percent),
+                  substitutions < Self.maxSubstitutions, canLookUp else { i += 1; continue }
+            lookups += 1
+            let name = String(decoding: m.bytes[(i + 1)..<j], as: UTF8.self)
+            guard let value = lookup(name), record(value) else { i = j; continue }
+            out.append(m, run..<i)
+            out.appendFrozen(value.utf8)
+            i = j + 1
+            run = i
+        }
+        guard run > 0 else { return m }
+        out.append(m, run..<n)
+        return out
     }
 
     // MARK: Stage 1 — #Var#, #*Var*#, $Event$

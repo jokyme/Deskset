@@ -145,7 +145,8 @@ public struct SectionNumberFormat: Equatable {
 ///   be resolved by the second call. `#**Var**#` → `#*Var*#` gives two levels of protection.
 /// - Character references accept any Unicode scalar up to U+10FFFF (manual: x0–xFFFE / 0–65536 on Windows); a
 ///   surrogate or larger value stays as written.
-/// - Windows environment variables (`%APPDATA%`) are not handled here.
+/// - Environment variables: `[%Name]` always (through `environmentLookup`); the unbracketed `%Name%` only when
+///   `legacyEnvironmentVariables` is set.
 /// - Limits against hostile input: 32 variables deep, 32 bracket levels, 20 000 substitutions, 1 MiB of
 ///   substituted text, 50 000 lookups and 4 MiB (+ 4× the input) of scanned text per call; past them references
 ///   stay as written.
@@ -166,6 +167,10 @@ public struct VariableResolver {
     /// Environment variable name after `[%` (e.g. `APPDATA`, `USERPROFILE`) → value, or nil when undefined.
     /// Defaults to `BuiltInVariables.environmentValue`.
     public var environmentLookup: ((String) -> String?)?
+    /// Also expand the unbracketed `%Name%` form through `environmentLookup` (Rainmeter 5.0: skins with the default
+    /// `SyntaxVersion=1`; `SyntaxVersion=2` leaves `%Name%` as written). Only live text is expanded — never measure,
+    /// meter, built-in or event values — and only names the lookup knows; `%1`, `50%` and `%20` stay as written.
+    public var legacyEnvironmentVariables = false
 
     public init(variableLookup: @escaping (String) -> String?,
                 sectionLookup: ((String, SectionVariableParameter) -> String?)? = nil,
@@ -197,10 +202,13 @@ public struct VariableResolver {
     /// Undefined names are left as written. Never loops forever on self-referencing values.
     /// See the type documentation for the complete rules.
     public func resolve(_ text: String) -> String {
-        guard Self.mayContainSyntax(text, events: eventLookup != nil) else { return text }
+        guard Self.mayContainSyntax(text, events: eventLookup != nil, percent: legacyEnvironmentVariables) else {
+            return text
+        }
         return VarExpansion(variableLookup: variableLookup, sectionLookup: sectionLookup, eventLookup: eventLookup,
                             dollarLookup: dollarLookup, environmentLookup: environmentLookup,
-                            fullSyntax: true, rescanValues: true).run(text)
+                            fullSyntax: true, rescanValues: true,
+                            legacyEnvironment: legacyEnvironmentVariables).run(text)
     }
 
     /// Resolves only the standard `#Var#` form (recursively through variable values), leaving the escape
@@ -251,15 +259,17 @@ public struct VariableResolver {
                            dollarLookup: dollarLookup, environmentLookup: environmentLookup).table()
     }
 
-    /// Quick reject: text without `#`, `[` (and `$` when event variables are on) has nothing to resolve.
-    private static func mayContainSyntax(_ text: String, events: Bool) -> Bool {
+    /// Quick reject: text without `#`, `[` (and `$` when event variables are on, `%` when the legacy environment form
+    /// is on) has nothing to resolve.
+    private static func mayContainSyntax(_ text: String, events: Bool, percent: Bool = false) -> Bool {
+        func hit(_ b: UInt8) -> Bool {
+            b == VarByte.hash || b == VarByte.open || (events && b == VarByte.dollar) || (percent && b == VarByte.percent)
+        }
         let scan: (UnsafeBufferPointer<UInt8>) -> Bool = { buffer in
-            for b in buffer where b == VarByte.hash || b == VarByte.open || (events && b == VarByte.dollar) {
-                return true
-            }
+            for b in buffer where hit(b) { return true }
             return false
         }
         if let result = text.utf8.withContiguousStorageIfAvailable(scan) { return result }
-        return text.utf8.contains { $0 == VarByte.hash || $0 == VarByte.open || (events && $0 == VarByte.dollar) }
+        return text.utf8.contains(where: hit)
     }
 }

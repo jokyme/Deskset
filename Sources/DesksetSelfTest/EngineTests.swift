@@ -4462,6 +4462,55 @@ private func runEngineCompatTests(_ t: TestRunner) {
         skin.fontsDidChange()
     }
 
+    t.suite("Engine: Rainmeter 5.0 — %Name% environment variables follow SyntaxVersion") {
+        let v1 = try makeSkin(t, """
+        [Rainmeter]
+        [Variables]
+        Folder=%APPDATA%\\Deskset
+        [MeasureLiteral]
+        Measure=String
+        String=xPATHx
+        Substitute="x":"%"
+        [MeterEnv]
+        Meter=String
+        Text=%USERNAME%|#Folder#|%username%|%NoSuchVariable42%|50%|%1|%20|%x%USERNAME%|[%USERNAME]
+        [MeterMeasure]
+        Meter=String
+        DynamicVariables=1
+        Text=[MeasureLiteral]
+        [MeterMachine]
+        Meter=String
+        Text=%OS%,%PROCESSOR_ARCHITECTURE%,%NUMBER_OF_PROCESSORS%
+        """).0
+        v1.update()
+        let user = NSUserName()
+        let appData = NSHomeDirectory() + "/Library/Application Support"
+        t.equal(text(v1, "MeterEnv"),
+                "\(user)|\(appData)\\Deskset|\(user)|%NoSuchVariable42%|50%|%1|%20|%x\(user)|\(user)",
+                "SyntaxVersion=1 expands known %Name% (any case); unknown names, %1, 50% and %20 stay")
+        t.equal(text(v1, "MeterMeasure"), "%PATH%", "a measure's value is never read as an environment reference")
+        #if arch(arm64)
+        let arch = "ARM64"
+        #else
+        let arch = "AMD64"
+        #endif
+        t.equal(text(v1, "MeterMachine"),
+                "Windows_NT,\(arch),\(ProcessInfo.processInfo.activeProcessorCount)")
+        t.check(!(BuiltInVariables.environmentValue("COMPUTERNAME") ?? "").hasSuffix(".local"))
+        t.equal(PluginPaths.environmentValue("NUMBER_OF_PROCESSORS"),
+                BuiltInVariables.environmentValue("NUMBER_OF_PROCESSORS"), "plugin paths share the mapping")
+
+        let v2 = try makeSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=2
+        [MeterEnv]
+        Meter=String
+        Text=%USERNAME%|[%USERNAME]
+        """).0
+        v2.update()
+        t.equal(text(v2, "MeterEnv"), "%USERNAME%|\(user)", "SyntaxVersion=2 leaves %Name% as written")
+    }
+
     t.suite("Engine: Rainmeter 5.0 Phase 1 — SyntaxVersion, @Inherit, [%Env], [$Skin/$Display], formulas & bangs") {
         // 1. Packed RMSKIN version comparison
         t.equal(RmskinManifest.versionComponents("5000000"), [5, 0, 0, 0])

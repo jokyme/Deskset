@@ -175,24 +175,9 @@ enum PluginPaths {
         return out + rest
     }
 
+    /// The same mapping as `[%Name]` (`BuiltInVariables.environmentValue`).
     static func environmentValue(_ name: String) -> String? {
-        guard !name.isEmpty, name.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_()".unicodeScalars.contains($0) })
-        else { return nil }
-        let home = NSHomeDirectory()
-        switch name.uppercased() {
-        case "USERPROFILE", "HOMEPATH", "HOME": return home
-        case "HOMEDRIVE", "SYSTEMDRIVE": return ""
-        case "APPDATA", "LOCALAPPDATA": return home + "/Library/Application Support"
-        case "TEMP", "TMP":
-            let t = NSTemporaryDirectory()
-            return t.hasSuffix("/") ? String(t.dropLast()) : t
-        case "PUBLIC": return "/Users/Shared"
-        case "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432": return "/Applications"
-        case "PROGRAMDATA", "ALLUSERSPROFILE": return "/Library/Application Support"
-        case "WINDIR", "SYSTEMROOT": return "/System"
-        case "USERNAME": return NSUserName()
-        default: return ProcessInfo.processInfo.environment[name]
-        }
+        BuiltInVariables.environmentValue(name)
     }
 
     private static func standardize<S: StringProtocol>(_ p: S) -> String {

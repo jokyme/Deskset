@@ -843,7 +843,8 @@ enum AudioSelfTests {
             activity.playing = true
             // The apps playing at each look (by the pid of the app they work for).
             let appsLock = NSLock()
-            var apps: Set<pid_t> = [501]
+            var apps: Set<pid_t>?
+            var turn: pid_t = 600
             func setApps(_ value: Set<pid_t>) { appsLock.lock(); apps = value; appsLock.unlock() }
             var latest: AppSelfTest.SilenceBackend?
             var made = 0
@@ -854,7 +855,13 @@ enum AudioSelfTests {
             engine.silenceCheckInterval = 0.05
             engine.standbyDelay = 0.05
             engine.outputActivity = activity
-            engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
+            engine.appsPlayingAudio = {
+                appsLock.lock()
+                defer { appsLock.unlock() }
+                if let fixed = apps { return fixed }
+                turn += 1
+                return [turn]
+            }
             // No new tap in the first part: the delays and the quick window come later.
             engine.retapDelays = [3600]
             engine.quickRetapWindow = 0
@@ -898,11 +905,8 @@ enum AudioSelfTests {
             t.equal(read(access), "0 ", "nothing is missing")
 
             // Silence while a different app plays at each look is no verdict: the same app must play at both.
-            var turn: pid_t = 600
             t.check(!wait(timeout: 0.6) {
-                turn += 1
-                setApps([turn])
-                return engine.status(for: key).refusalSuspected
+                engine.status(for: key).refusalSuspected
             }, "a different app at every look")
             setApps([501])
             t.check(wait { engine.status(for: key).refusalSuspected }, "silence at two looks while the same app plays")

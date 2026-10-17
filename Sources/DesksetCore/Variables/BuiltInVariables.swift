@@ -221,6 +221,16 @@ public enum BuiltInVariables {
         case "PROGRAMDATA", "ALLUSERSPROFILE": return "/Library/Application Support"
         case "WINDIR", "SYSTEMROOT": return "/System"
         case "USERNAME": return NSUserName()
+        case "COMPUTERNAME", "USERDOMAIN": return localComputerName
+        case "NUMBER_OF_PROCESSORS": return String(ProcessInfo.processInfo.activeProcessorCount)
+        // Judgment call: skins compare these with Windows' values, so they answer as Windows would on this CPU.
+        case "OS": return "Windows_NT"
+        case "PROCESSOR_ARCHITECTURE":
+            #if arch(arm64)
+            return "ARM64"
+            #else
+            return "AMD64"
+            #endif
         default:
             guard name.count >= 2 else { return nil }
             let env = ProcessInfo.processInfo.environment
@@ -232,6 +242,15 @@ public enum BuiltInVariables {
     }
 
     // MARK: Internal
+
+    /// The Mac's local host name without `.local` (Windows' `%COMPUTERNAME%` is the short NetBIOS name). Read once
+    /// with `gethostname`, which never waits for the network (`ProcessInfo.hostName` can).
+    private static let localComputerName: String = {
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard gethostname(&buffer, buffer.count - 1) == 0 else { return "" }
+        let host = String(cString: buffer)
+        return host.hasSuffix(".local") ? String(host.dropLast(6)) : host
+    }()
 
     private static let keys: Set<String> = Set((names + macAppearanceNames).map { $0.lowercased() })
     private static let macAppearanceKeys: Set<String> = Set(macAppearanceNames.map { $0.lowercased() })

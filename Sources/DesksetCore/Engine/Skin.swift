@@ -681,9 +681,13 @@ public final class Skin {
     private func parseUpdateOption(_ raw: String?, in section: SkinSection) -> (update: Int, invisibleUpdate: Int?) {
         guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return (1000, nil) }
         return Formula.withLookup({ self.formulaValue(of: $0, from: section) }) {
+            func boundedInt(_ text: String) -> Int? {
+                guard let d = OptionValue.number(text), d.isFinite, abs(d) < Double(Int.max / 2) else { return nil }
+                return Int(d)
+            }
             let parts = raw.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
             let visibleText = parts[0].trimmingCharacters(in: .whitespaces)
-            let rawVisible = visibleText.isEmpty ? 1000 : (OptionValue.int(visibleText) ?? 1000)
+            let rawVisible = visibleText.isEmpty ? 1000 : (boundedInt(visibleText) ?? 1000)
             let visibleUpdate = rawVisible < 0 ? -1 : max(rawVisible, 16)
             var invisibleUpdate: Int?
             if parts.count > 1 {
@@ -693,7 +697,7 @@ public final class Skin {
                     if arg.hasPrefix("=") || arg.hasPrefix(":") {
                         arg = arg.dropFirst().trimmingCharacters(in: .whitespaces)
                     }
-                    if let inv = OptionValue.int(arg) {
+                    if let inv = boundedInt(arg) {
                         invisibleUpdate = inv <= 0 ? 0 : max(inv, 16)
                     }
                 }
@@ -1473,7 +1477,9 @@ public final class Skin {
 
     /// Resolves variables in `text`; section variables too when `sectionVariables` is true.
     public func resolve(_ text: String, in section: SkinSection?, sectionVariables: Bool) -> String {
-        if !Skin.containsVariableSyntax(text, dollar: mouseContext != nil) { return text }
+        if !Skin.containsVariableSyntax(text, dollar: mouseContext != nil, percent: expandsLegacyEnvironment) {
+            return text
+        }
         return resolver(for: section, sectionVariables: sectionVariables).resolve(text)
     }
 
@@ -1483,21 +1489,28 @@ public final class Skin {
         return resolver(for: section, sectionVariables: false).resolveStandardVariables(text)
     }
 
-    /// Quick reject for `resolve`: `#`, `[` (or `$` while a mouse action runs). A byte scan: `String.contains("#")`
-    /// resolves to Foundation's substring search, which was a large part of every dynamic option read.
-    private static func containsVariableSyntax(_ text: String, dollar: Bool) -> Bool {
-        let hash = UInt8(ascii: "#"), open = UInt8(ascii: "["), sign = UInt8(ascii: "$")
-        return text.utf8.contains { $0 == hash || $0 == open || (dollar && $0 == sign) }
+    /// Rainmeter 5.0: `%Name%` environment variables are expanded unless the skin opts into `SyntaxVersion=2`
+    /// (`[%Name]` works in both).
+    var expandsLegacyEnvironment: Bool { settings.syntaxVersion < 2 }
+
+    /// Quick reject for `resolve`: `#`, `[` (or `$` while a mouse action runs, `%` for SyntaxVersion=1). A byte scan:
+    /// `String.contains("#")` resolves to Foundation's substring search, which was a large part of every dynamic
+    /// option read.
+    private static func containsVariableSyntax(_ text: String, dollar: Bool, percent: Bool = false) -> Bool {
+        let hash = UInt8(ascii: "#"), open = UInt8(ascii: "["), sign = UInt8(ascii: "$"), pct = UInt8(ascii: "%")
+        return text.utf8.contains { $0 == hash || $0 == open || (dollar && $0 == sign) || (percent && $0 == pct) }
     }
 
     private func resolver(for section: SkinSection?, sectionVariables: Bool) -> VariableResolver {
-        VariableResolver(
+        var resolver = VariableResolver(
             variableLookup: { [unowned self] name in self.variableValue(name, section: section) },
             sectionLookup: sectionVariables ? { [unowned self] name, parameter in
                 self.sectionVariableValue(name, parameter)
             } : nil,
             eventLookup: mouseContext.map { context in { name in Skin.mouseVariable(name, context) } },
             dollarLookup: { [unowned self] name in self.skinOrDisplayVariable(name) })
+        resolver.legacyEnvironmentVariables = expandsLegacyEnvironment
+        return resolver
     }
 
     /// Resolves `[$Skin…]`, `[$Display…]`, `[$DisplayDevice…]` (with optional `:numberFormat` parameter),
