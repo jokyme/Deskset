@@ -107,11 +107,11 @@ enum CodeEditorRoutingSelfTests {
             let hash = CodeEditorLaunch.command(family: forkyFamily, appURL: forky,
                                                 file: URL(fileURLWithPath: "/tmp/a#b?.ini"), line: 3)
             t.equal(hash, link("forky://file/tmp/a%23b%3F.ini:3", forky), "# and ? are encoded in the path")
-            // Antigravity IDE is a VS Code fork with its own scheme.
-            let agy = fakeApp(dir, "Antigravity IDE", product: ["urlProtocol": "antigravity-ide",
-                                                                "applicationName": "antigravity-ide"])
-            t.equal(command(CodeEditorCatalog.family(bundleID: "com.google.antigravity-ide", appURL: agy), agy),
-                    link("antigravity-ide://file\(spacePath):29", agy))
+            // Windsurf is a VS Code fork with its own scheme.
+            let windsurf = fakeApp(dir, "Windsurf", product: ["urlProtocol": "windsurf",
+                                                              "applicationName": "windsurf"])
+            t.equal(command(CodeEditorCatalog.family(bundleID: "com.exafunction.windsurf", appURL: windsurf), windsurf),
+                    link("windsurf://file\(spacePath):29", windsurf))
             // Listed without product.json: the catalog's scheme.
             let code = fakeApp(dir, "Visual Studio Code")
             t.equal(CodeEditorCatalog.family(bundleID: "com.microsoft.VSCode", appURL: code),
@@ -181,10 +181,10 @@ enum CodeEditorRoutingSelfTests {
             t.check(!EditorFamily.vsCode(urlProtocol: nil, applicationName: nil).jumpsToLine)
             t.equal(CodeEditorCatalog.family(bundleID: "com.example.unknown", appURL: dir), .plain)
             t.equal(CodeEditorCatalog.family(bundleID: nil, appURL: dir), .plain)
-            // The agent hub app is not an editor; the IDE is listed under its own identifier.
-            t.check(CodeEditorCatalog.isExcluded("com.google.antigravity"))
-            t.check(CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.google.antigravity-ide") })
-            t.check(!CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.google.antigravity") })
+            // Launcher apps are excluded from the editor catalog.
+            t.check(CodeEditorCatalog.isExcluded("com.jetbrains.toolbox"))
+            t.check(CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.exafunction.windsurf") })
+            t.check(!CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.jetbrains.toolbox") })
         }
     }
 
@@ -332,21 +332,21 @@ enum CodeEditorRoutingSelfTests {
             let locator = FakeLocator()
             let code = fakeApp(dir, "Visual Studio Code", product: ["urlProtocol": "vscode", "applicationName": "code"])
             let zed = fakeApp(dir, "Zed")
-            let hub = fakeApp(dir, "Antigravity")
-            let ide = fakeApp(dir, "Antigravity IDE", product: ["urlProtocol": "antigravity-ide"])
+            let hub = fakeApp(dir, "JetBrains Toolbox")
+            let ide = fakeApp(dir, "Cursor", product: ["urlProtocol": "cursor"])
             let claimer = fakeApp(dir, "Ini Pad")
             let own = fakeApp(dir, "Deskset Copy")
             let other = fakeApp(dir, "Other Editor")
-            locator.apps = ["com.microsoft.VSCode": code, "dev.zed.Zed": zed, "com.google.antigravity-ide": ide]
+            locator.apps = ["com.microsoft.VSCode": code, "dev.zed.Zed": zed, "com.todesktop.230313mzl4w4u92": ide]
             locator.claimers = [ide, code, hub, claimer, own]
-            locator.ids = [hub.path: "com.google.antigravity", claimer.path: "com.example.inipad",
+            locator.ids = [hub.path: "com.jetbrains.toolbox", claimer.path: "com.example.inipad",
                            own.path: "com.example.deskset", other.path: "com.example.other"]
             var prefs = EditorPreferences()
             prefs.otherApp = .init(bundleID: "com.example.other", path: other.path)
             let found = CodeEditorDetector.detect(preferences: prefs, locator: locator, ownBundleID: "com.example.deskset")
-            t.equal(found.map(\.name), ["Antigravity IDE", "Ini Pad", "Other Editor", "Visual Studio Code", "Zed"],
+            t.equal(found.map(\.name), ["Cursor", "Ini Pad", "Other Editor", "Visual Studio Code", "Zed"],
                     "catalog ∪ claimers ∪ Other…, sorted, without the hub app or Deskset, each once")
-            t.equal(found.first?.family, .vsCode(urlProtocol: "antigravity-ide", applicationName: "antigravity-ide"),
+            t.equal(found.first?.family, .vsCode(urlProtocol: "cursor", applicationName: "cursor"),
                     "a product.json without the CLI name keeps the catalog's")
             t.equal(found.first { $0.name == "Ini Pad" }?.family, .plain)
 
@@ -359,7 +359,7 @@ enum CodeEditorRoutingSelfTests {
             // A path now holding another app is not the stored one.
             t.equal(CodeEditorDetector.resolve(bundleID: "com.example.inipad", lastKnownPath: other.path, locator: locator), nil)
             locator.defaultApp = ide
-            t.equal(CodeEditorDetector.systemDefaultApp(locator: locator)?.name, "Antigravity IDE")
+            t.equal(CodeEditorDetector.systemDefaultApp(locator: locator)?.name, "Cursor")
 
             // What this Mac has (printed, not asserted).
             let real = CodeEditorDetector.detect(preferences: EditorPreferences(), locator: WorkspaceApplicationLocator())

@@ -177,7 +177,7 @@ extension Notification.Name {
 
 /// How an editor is asked to open a file at a line. Verified per editor in docs/research/editor-2026-09-24-code.json.
 enum EditorFamily: Equatable {
-    /// Visual Studio Code and its forks (Cursor, Windsurf, VSCodium, Antigravity IDE…), recognised by
+    /// Visual Studio Code and its forks (Cursor, Windsurf, VSCodium…), recognised by
     /// `Contents/Resources/app/product.json`: `<urlProtocol>://file/abs/path:LINE`, else the bundled CLI
     /// `bin/<applicationName> --goto path:LINE`.
     case vsCode(urlProtocol: String?, applicationName: String?)
@@ -242,9 +242,6 @@ enum CodeEditorCatalog {
               family: .vsCode(urlProtocol: "cursor", applicationName: "cursor")),
         Entry(name: "Windsurf", bundleIDs: ["com.exafunction.windsurf"],
               family: .vsCode(urlProtocol: "windsurf", applicationName: "windsurf")),
-        // The IDE, not the agent "hub" app com.google.antigravity (which registers antigravity:// but edits nothing).
-        Entry(name: "Antigravity IDE", bundleIDs: ["com.google.antigravity-ide"],
-              family: .vsCode(urlProtocol: "antigravity-ide", applicationName: "antigravity-ide")),
         Entry(name: "Zed", bundleIDs: ["dev.zed.Zed", "dev.zed.Zed-Preview", "dev.zed.Zed-Nightly", "dev.zed.Zed-Dev"],
               family: .zed),
         Entry(name: "Sublime Text", bundleIDs: ["com.sublimetext.4", "com.sublimetext.3"], family: .sublime),
@@ -264,7 +261,7 @@ enum CodeEditorCatalog {
 
     /// Apps that register for .ini (or would match a prefix below) but are not text editors.
     static let excludedBundleIDs: Set<String> = [
-        "com.google.antigravity", "com.jetbrains.toolbox", "com.jetbrains.fleet", "com.jetbrains.gateway",
+        "com.jetbrains.toolbox", "com.jetbrains.fleet", "com.jetbrains.gateway",
     ]
 
     static func isExcluded(_ bundleID: String?) -> Bool {
@@ -300,7 +297,7 @@ enum CodeEditorCatalog {
 
 /// The fields of a VS Code-family `Contents/Resources/app/product.json` that matter here.
 struct VSCodeProduct: Equatable {
-    /// URL scheme the app registers (`vscode`, `cursor`, `antigravity-ide`…).
+    /// URL scheme the app registers (`vscode`, `cursor`, `windsurf`…).
     var urlProtocol: String?
     /// Name of the bundled CLI in `Contents/Resources/app/bin`.
     var applicationName: String?
@@ -338,7 +335,7 @@ struct VSCodeProduct: Equatable {
 struct CodeEditorApp: Equatable {
     var url: URL
     var bundleID: String?
-    /// The name Finder shows ("Visual Studio Code", "Antigravity IDE").
+    /// The name Finder shows ("Visual Studio Code", "Cursor").
     var name: String
     var family: EditorFamily
 
