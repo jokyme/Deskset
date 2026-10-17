@@ -1,0 +1,8 @@
+// DK4030 fileOutsideWidget
+//== expect: DK4030
+//== context: resources
+info { name: "T" }
+widget { Image("../x.png") }
+//== negative
+info { name: "T" }
+widget { Image("pause.png") }

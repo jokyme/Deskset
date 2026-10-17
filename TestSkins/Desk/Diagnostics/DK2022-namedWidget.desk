@@ -1,0 +1,7 @@
+// DK2022 namedWidget
+//== expect: DK2022
+info { name: "T" }
+widget CPU { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

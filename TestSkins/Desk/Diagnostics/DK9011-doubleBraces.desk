@@ -1,0 +1,7 @@
+// DK9011 doubleBraces
+//== expect: DK9011
+info { name: "T" }
+widget { Text("{{ cpu.usage }}%") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}%") }

@@ -1,0 +1,7 @@
+// DK2011 blockNeeded
+//== expect: DK2011
+info { name: "T" }
+widget { Text("A").onClick }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { log("clicked") } }

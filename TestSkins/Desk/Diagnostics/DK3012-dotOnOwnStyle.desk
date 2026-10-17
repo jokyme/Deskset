@@ -1,0 +1,9 @@
+// DK3012 dotOnOwnStyle
+//== expect: DK3012
+info { name: "T" }
+widget { Text("A").style(.todayCell) }
+style todayCell { .bold() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(todayCell) }
+style todayCell { .bold() }

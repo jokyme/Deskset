@@ -1,0 +1,10 @@
+// DK5022 controlInWrongPlace
+//== expect: DK5022
+info { name: "T" }
+widget { Toggle("Show seconds") }
+//== negative
+info { name: "T" }
+widget {
+    variable seconds = false
+    Toggle("Show seconds", seconds)
+}

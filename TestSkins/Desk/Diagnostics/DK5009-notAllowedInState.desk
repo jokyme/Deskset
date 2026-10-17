@@ -1,0 +1,7 @@
+// DK5009 notAllowedInState
+//== expect: DK5009
+info { name: "T" }
+widget { Text("A").hover { .onClick { log("x") } } }
+//== negative
+info { name: "T" }
+widget { Text("A").hover { .bold() }.onClick { log("x") } }

@@ -1,0 +1,13 @@
+// DK3028 componentAsValue
+//== expect: DK3028
+info { name: "T" }
+widget {
+    computed c = Column
+    Text("{c}")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed c = 1
+    Text("{c}")
+}

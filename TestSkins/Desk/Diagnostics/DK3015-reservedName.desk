@@ -1,0 +1,13 @@
+// DK3015 reservedName
+//== expect: DK3015
+info { name: "T" }
+widget {
+    variable widget = 0
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable widgetValue = 0
+    Text("{widgetValue}")
+}

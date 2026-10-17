@@ -1,0 +1,7 @@
+// DK4047 jsonTypeUnclear
+//== expect: DK4047
+info { name: "T", network: ["x.com"] }
+widget { Text("A").font(web.json("https://x.com/a").size) }
+//== negative
+info { name: "T", network: ["x.com"] }
+widget { Text("A").font(web.json("https://x.com/a").size.asNumber()) }

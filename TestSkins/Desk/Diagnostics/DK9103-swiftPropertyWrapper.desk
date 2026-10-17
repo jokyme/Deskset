@@ -1,0 +1,13 @@
+// DK9103 swiftPropertyWrapper
+//== expect: DK9103
+info { name: "T" }
+widget {
+    @State var page = 0
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}")
+}

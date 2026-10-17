@@ -1,0 +1,10 @@
+// DK4037 randomOutsideAction
+//== expect: DK4037
+info { name: "T" }
+widget { Text("{random(1, 6)}") }
+//== negative
+info { name: "T" }
+widget {
+    variable dice = random(1, 6)
+    Text("{dice}")
+}

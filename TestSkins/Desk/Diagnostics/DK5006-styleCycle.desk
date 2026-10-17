@@ -1,0 +1,11 @@
+// DK5006 styleCycle
+//== expect: DK5006
+info { name: "T" }
+widget { Text("A").style(a) }
+style a { .style(b) }
+style b { .style(a) }
+//== negative
+info { name: "T" }
+widget { Text("A").style(a) }
+style a { .style(b) }
+style b { .bold() }

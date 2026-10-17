@@ -1,0 +1,9 @@
+// DK8005 optionLabelMissing
+//== expect: DK8005
+info { name: "T" }
+options { seconds = Toggle(default: true) }
+widget { Text("A").hidden(if: options.seconds) }
+//== negative
+info { name: "T" }
+options { seconds = Toggle("Show seconds", default: true) }
+widget { Text("A").hidden(if: options.seconds) }

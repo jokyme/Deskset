@@ -1,0 +1,8 @@
+// DK8011 tooManyOptions
+//== expect: DK8011
+//== generate: manyOptions
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

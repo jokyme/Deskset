@@ -1,0 +1,7 @@
+// DK9310 rainmeterPlaceholderInText
+//== expect: DK9310
+info { name: "T" }
+widget { Text("%1%") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}%") }

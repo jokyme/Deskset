@@ -1,0 +1,13 @@
+// DK4035 savedNotConstant
+//== expect: DK4035
+info { name: "T" }
+widget {
+    saved start = time.now
+    Text("{start}")
+}
+//== negative
+info { name: "T" }
+widget {
+    saved note = ""
+    Text(note)
+}

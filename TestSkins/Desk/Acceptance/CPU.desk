@@ -1,0 +1,12 @@
+info { name: "CPU", size: .small }
+
+widget {
+    Column(align: .left) {
+        Text("CPU").font(.caption).color(.dim)
+        Text("{cpu.usage}%").font(.largeNumber)
+        Spacer()
+        Progress(cpu.usage)
+    }
+    .padding(14)
+    .background(.glass)
+}

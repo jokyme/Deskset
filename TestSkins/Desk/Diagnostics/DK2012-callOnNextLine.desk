@@ -1,0 +1,12 @@
+// DK2012 callOnNextLine
+//== expect: DK2012
+info { name: "T" }
+widget {
+    Text
+    ("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A")
+}

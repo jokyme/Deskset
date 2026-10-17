@@ -1,0 +1,16 @@
+// DK2032 modifierAfterIfOrFor
+//== expect: DK2032
+info { name: "T" }
+widget {
+    Column {
+        for d in disks { Text(d.name) }
+        .padding(4)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Column {
+        for d in disks { Text(d.name).padding(4) }
+    }
+}

@@ -1,0 +1,7 @@
+// DK9007 powerOperator
+//== expect: DK9007
+info { name: "T" }
+widget { Text("{2 ** 3}") }
+//== negative
+info { name: "T" }
+widget { Text("{math.power(2, 3)}") }

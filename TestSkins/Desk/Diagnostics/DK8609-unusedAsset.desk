@@ -1,0 +1,15 @@
+// DK8609 unusedAsset
+//== expect: DK8609
+//== file: Frame.desk
+info { name: "Frame" }
+widget { Image("photo.png") }
+//== asset: photo.png 64x48
+//== asset: old.png 16x16
+//== negative
+info { name: "Frame" }
+widget {
+    Column {
+        Image("photo.png")
+        Image("old.png")
+    }
+}

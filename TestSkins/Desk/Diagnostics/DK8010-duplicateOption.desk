@@ -1,0 +1,12 @@
+// DK8010 duplicateOption
+//== expect: DK8010
+info { name: "T" }
+options {
+    accent = ColorPicker("Accent")
+    accent = ColorPicker("Accent 2")
+}
+widget { Text("A").color(options.accent) }
+//== negative
+info { name: "T" }
+options { accent = ColorPicker("Accent") }
+widget { Text("A").color(options.accent) }

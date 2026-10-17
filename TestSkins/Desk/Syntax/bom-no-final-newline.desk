@@ -1,0 +1,3 @@
+﻿info { name: "BOM" }
+
+widget { Text("A") }

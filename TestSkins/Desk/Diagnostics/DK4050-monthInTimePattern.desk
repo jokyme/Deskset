@@ -1,0 +1,7 @@
+// DK4050 monthInTimePattern
+//== expect: DK4050
+info { name: "T" }
+widget { Text("{time.now, format: "HH:MM"}") }
+//== negative
+info { name: "T" }
+widget { Text("{time.now, format: "HH:mm"}") }

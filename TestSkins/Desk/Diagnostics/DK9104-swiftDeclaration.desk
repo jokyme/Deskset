@@ -1,0 +1,13 @@
+// DK9104 swiftDeclaration
+//== expect: DK9104
+info { name: "T" }
+widget {
+    let x = 1
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed x = 1
+    Text("{x}")
+}

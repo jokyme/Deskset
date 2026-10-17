@@ -1,0 +1,7 @@
+// DK5001 duplicateModifier
+//== expect: DK5001
+info { name: "T" }
+widget { Text("A").color(.red).color(.blue) }
+//== negative
+info { name: "T" }
+widget { Text("A").color(.red) }

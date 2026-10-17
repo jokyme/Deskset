@@ -1,0 +1,7 @@
+// DK1014 unterminatedInterpolation
+//== expect: DK1014
+info { name: "T" }
+widget { Text("{cpu.usage%") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}%") }

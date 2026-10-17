@@ -1,0 +1,13 @@
+// DK8601 packageWithoutWidget
+//== expect: DK8601
+//== file: package.desk
+package {
+    name: "Harbor Set"
+}
+//== negative
+package {
+    name: "Harbor Set"
+}
+//== folder-file: Tide.desk
+info { name: "Tide" }
+widget { Text("High tide at noon") }

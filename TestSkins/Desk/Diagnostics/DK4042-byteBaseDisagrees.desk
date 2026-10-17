@@ -1,0 +1,13 @@
+// DK4042 byteBaseDisagrees
+//== expect: DK4042
+info { name: "T" }
+widget {
+    computed low = 2GB
+    Text("A").hidden(if: memory.free > low or disk.free > low)
+}
+//== negative
+info { name: "T" }
+widget {
+    computed low = 2GiB
+    Text("A").hidden(if: memory.free > low or disk.free > low)
+}

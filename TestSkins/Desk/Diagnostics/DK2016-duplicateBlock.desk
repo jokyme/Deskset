@@ -1,0 +1,8 @@
+// DK2016 duplicateBlock
+//== expect: DK2016
+info { name: "T" }
+widget { Text("A") }
+widget { Text("B") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

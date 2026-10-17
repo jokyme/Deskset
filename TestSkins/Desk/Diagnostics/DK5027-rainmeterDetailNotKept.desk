@@ -1,0 +1,7 @@
+// DK5027 rainmeterDetailNotKept
+//== expect: DK5027
+info { name: "T", convertedFrom: "rainmeter" }
+widget { Text("A").rainmeter("BarBorder", "2") }
+//== negative
+info { name: "T", convertedFrom: "rainmeter" }
+widget { Text("A").rainmeter("AntiAlias", "0") }

@@ -1,0 +1,7 @@
+// DK9004 nilCoalescing
+//== expect: DK9004
+info { name: "T", permissions: [.music] }
+widget { Text(music.title ?? "–") }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { Text(music.title.ifMissing("–")) }

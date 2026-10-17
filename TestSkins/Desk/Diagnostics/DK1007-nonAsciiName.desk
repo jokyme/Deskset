@@ -1,0 +1,13 @@
+// DK1007 nonAsciiName
+//== expect: DK1007
+info { name: "T" }
+widget {
+    variable 页码 = 0
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}")
+}

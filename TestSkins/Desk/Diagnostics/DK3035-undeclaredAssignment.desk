@@ -1,0 +1,13 @@
+// DK3035 undeclaredAssignment
+//== expect: DK3035
+info { name: "T" }
+widget {
+    page = 0
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}")
+}

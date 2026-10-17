@@ -1,0 +1,17 @@
+// DK6002 referenceNotSibling
+//== expect: DK6002
+info { name: "T" }
+widget {
+    Column {
+        Freeform { Text("A").name(title) }
+        Freeform { Text("B").position(x: title.right) }
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(title)
+        Text("B").position(x: title.right)
+    }
+}

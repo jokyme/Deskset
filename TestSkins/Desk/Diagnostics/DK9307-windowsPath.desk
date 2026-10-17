@@ -1,0 +1,7 @@
+// DK9307 windowsPath
+//== expect: DK9307
+info { name: "T" }
+widget { Text("A").onClick { open("C:\Program Files\Steam\steam.exe") } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { open("Steam") } }

@@ -1,0 +1,7 @@
+// DK1001 fullWidthQuote
+//== expect: DK1001
+info { name: "T" }
+widget { Text(“CPU”) }
+//== negative
+info { name: "T" }
+widget { Text("CPU") }

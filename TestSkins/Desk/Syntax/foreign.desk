@@ -1,0 +1,26 @@
+import SwiftUI
+
+struct Clock: View {
+    @State var now = Date()
+    var body: some View {
+        Text(now, style: .time)
+    }
+}
+
+[Rainmeter]
+Update=1000
+; a Rainmeter comment
+[MeterTime]
+Meter=String
+FontColor=255,255,255
+
+<div class="clock">
+  <span>12:00</span>
+</div>
+
+widget {
+    let x = 1
+    flex-direction: row;
+    # a hash comment
+    Text("still parsed")
+}

@@ -1,0 +1,7 @@
+// DK7002 actionOutsideEvent
+//== expect: DK7002
+info { name: "T" }
+widget { Column { open("Calendar") } }
+//== negative
+info { name: "T" }
+widget { Column { Text("A").onClick { open("Calendar") } } }

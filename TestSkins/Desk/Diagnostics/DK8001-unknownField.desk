@@ -1,0 +1,7 @@
+// DK8001 unknownField
+//== expect: DK8001
+info { name: "T", titel: "CPU" }
+widget { Text("A") }
+//== negative
+info { name: "T", description: "CPU" }
+widget { Text("A") }

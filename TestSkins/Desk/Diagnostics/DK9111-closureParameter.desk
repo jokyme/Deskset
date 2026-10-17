@@ -1,0 +1,17 @@
+// DK9111 closureParameter
+//== expect: DK9111
+info { name: "T", permissions: [.music] }
+widget {
+    variable plays = 0
+    Text("{plays}").onChange(of: music.title) { newValue in
+        plays = plays + 1
+    }
+}
+//== negative
+info { name: "T", permissions: [.music] }
+widget {
+    variable plays = 0
+    Text("{plays}").onChange(of: music.title) {
+        plays = plays + 1
+    }
+}

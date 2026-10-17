@@ -1,0 +1,7 @@
+// DK6010 widgetSizeInFitWidget
+//== expect: DK6010
+info { name: "T" }
+widget { Text("A").width(widget.size.width / 2) }
+//== negative
+info { name: "T" }
+widget { Text("A").width(100) }

@@ -1,0 +1,13 @@
+// DK9106 swiftBinding
+//== expect: DK9106
+info { name: "T" }
+widget {
+    variable on = false
+    Toggle("A", isOn: $on)
+}
+//== negative
+info { name: "T" }
+widget {
+    variable on = false
+    Toggle("A", on)
+}

@@ -1,0 +1,7 @@
+// DK4004 duplicateLabel
+//== expect: DK4004
+info { name: "T" }
+widget { Text("A").padding(top: 4, top: 8) }
+//== negative
+info { name: "T" }
+widget { Text("A").padding(top: 4) }

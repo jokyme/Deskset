@@ -1,0 +1,10 @@
+// DK4007 notBindable
+//== expect: DK4007
+info { name: "T" }
+widget { Toggle("A", cpu.usage > 5) }
+//== negative
+info { name: "T" }
+widget {
+    variable on = false
+    Toggle("A", on)
+}

@@ -1,0 +1,7 @@
+// DK1002 fullWidthPunctuation
+//== expect: DK1002
+info { name: "T" }
+widget { Text("CPU")。font(.caption) }
+//== negative
+info { name: "T" }
+widget { Text("CPU").font(.caption) }

@@ -1,0 +1,8 @@
+// DK4021 listTooLong
+//== expect: DK4021
+//== generate: longList
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

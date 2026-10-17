@@ -1,0 +1,7 @@
+// DK2009 missingParens
+//== expect: DK2009
+info { name: "T" }
+widget { Row { Text("A"); Spacer } }
+//== negative
+info { name: "T" }
+widget { Row { Text("A"); Spacer() } }

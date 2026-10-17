@@ -1,0 +1,13 @@
+// DK9204 htmlAttribute
+//== expect: DK9204
+info { name: "T" }
+widget {
+    Text("A")
+    class="x"
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A").style(x)
+}
+style x { .bold() }

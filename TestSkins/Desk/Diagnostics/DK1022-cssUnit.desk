@@ -1,0 +1,7 @@
+// DK1022 cssUnit
+//== expect: DK1022
+info { name: "T" }
+widget { Text("A").width(10em) }
+//== negative
+info { name: "T" }
+widget { Text("A").width(10) }

@@ -1,0 +1,7 @@
+// DK2006 unexpected
+//== expect: DK2006
+info { name: "T" }
+widget { Text("A") ) }
+//== negative
+info { name: "T" }
+widget { Text("A") }

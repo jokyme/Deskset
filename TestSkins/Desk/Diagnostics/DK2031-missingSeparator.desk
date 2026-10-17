@@ -1,0 +1,7 @@
+// DK2031 missingSeparator
+//== expect: DK2031
+info { name: "T" }
+widget { Row { Icon("wifi") Text("A") } }
+//== negative
+info { name: "T" }
+widget { Row { Icon("wifi"); Text("A") } }

@@ -1,0 +1,7 @@
+// DK9107 swiftName
+//== expect: DK9107
+info { name: "T" }
+widget { Text("A").align(.leading) }
+//== negative
+info { name: "T" }
+widget { Text("A").align(.left) }

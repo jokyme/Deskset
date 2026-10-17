@@ -1,0 +1,9 @@
+// DK9015 foreignFile
+//== expect: DK9015
+//== also: DK9302
+//== generate: iniFile
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

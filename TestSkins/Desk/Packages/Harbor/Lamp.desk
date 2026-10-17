@@ -1,0 +1,25 @@
+info {
+    name: "Lamp"
+    description: "Opens a page you choose."
+    size: .small
+    category: .productivity
+    permissions: [.commands]
+}
+
+options {
+    target = Input("Page to open", default: "https://example.com", placeholder: "https://…")
+}
+
+widget {
+    saved clicks = 0
+    Column(spacing: 6) {
+        Text("Lamp").style(heading)
+        Image("images/paper.jpg").size(40)
+        Text("Opened {clicks} times")
+    }
+    .style(card)
+    .onClick {
+        clicks = clicks + 1
+        run("open {options.target}")
+    }
+}

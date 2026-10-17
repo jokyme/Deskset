@@ -1,0 +1,7 @@
+// DK4023 notOrdered
+//== expect: DK4023
+info { name: "T", permissions: [.music] }
+widget { if music.title < "M" { Text("A") } }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { if music.title == "M" { Text("A") } }

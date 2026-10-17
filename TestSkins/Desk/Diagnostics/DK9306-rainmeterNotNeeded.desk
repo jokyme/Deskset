@@ -1,0 +1,12 @@
+// DK9306 rainmeterNotNeeded
+//== expect: DK9306
+info { name: "T" }
+widget {
+    Text("A")
+    DynamicVariables=1
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A")
+}

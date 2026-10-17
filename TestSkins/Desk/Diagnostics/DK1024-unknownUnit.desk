@@ -1,0 +1,7 @@
+// DK1024 unknownUnit
+//== expect: DK1024
+info { name: "T" }
+widget { Text("A").padding(12pc) }
+//== negative
+info { name: "T" }
+widget { Text("A").padding(12) }

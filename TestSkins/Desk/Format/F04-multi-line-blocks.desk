@@ -1,0 +1,9 @@
+widget {
+    Row {
+        Text("A") }
+    Column { Text("B")
+    }
+    Row {
+
+    }
+}

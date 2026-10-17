@@ -1,0 +1,14 @@
+// DK8605 widgetInSubfolder
+//== expect: DK8605
+//== file: Clock.desk
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: Extras/Alarm.desk
+info { name: "Alarm" }
+widget { Text("Wake up") }
+//== negative
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: Alarm.desk
+info { name: "Alarm" }
+widget { Text("Wake up") }

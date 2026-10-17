@@ -1,0 +1,14 @@
+// DK8602 fileNameClash
+//== expect: DK8602
+//== file: Clock.desk
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: clock.desk
+info { name: "Small Clock" }
+widget { Text("Ready") }
+//== negative
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: Timer.desk
+info { name: "Timer" }
+widget { Text("Ready") }

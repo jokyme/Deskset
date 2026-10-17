@@ -1,0 +1,8 @@
+widget {
+// comment for A
+            Text("A")    // end of line A
+    /* block
+       comment */
+  Text("B")   /* inline */   .font(.caption)
+      // last comment
+}

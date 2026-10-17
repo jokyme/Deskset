@@ -1,0 +1,8 @@
+// DK8302 needsNewerApp
+//== expect: DK8302
+//== context: future target=1.0
+info { name: "T" }
+widget { Text("A").sparkle(2) }
+//== negative
+info { name: "T" }
+widget { Text("A").bold() }

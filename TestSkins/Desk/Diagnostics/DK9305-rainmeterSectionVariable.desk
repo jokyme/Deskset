@@ -1,0 +1,7 @@
+// DK9305 rainmeterSectionVariable
+//== expect: DK9305
+info { name: "T" }
+widget { Text("[MeasureCPU]%") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}%") }

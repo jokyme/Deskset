@@ -1,0 +1,7 @@
+widget {
+    Text("A")   ))
+    Text("B")
+    Text(“C”)。font(.caption)
+       <div>
+    Text("D")
+}

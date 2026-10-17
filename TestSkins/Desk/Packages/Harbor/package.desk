@@ -1,0 +1,35 @@
+package {
+    name: "Harbor"
+    description: "Tides, a lamp and a radio for the desk."
+    author: "Deskset"
+    version: "1.0"
+    license: "MIT"
+    deskVersion: 1
+    requires: "1.0"
+}
+
+options {
+    accent = ColorPicker("Accent color", default: .teal)
+    Section("Units") {
+        metric = Toggle("Use metric units", default: true)
+            .help("Meters and degrees Celsius.")
+    }
+}
+
+style card { .padding(14).rounded(18).background(.glass) }
+style heading { .font(.headline).color(options.accent) }
+
+translations {
+    "zh-Hans" {
+        "Harbor": "港湾"
+        "Tides, a lamp and a radio for the desk.": "桌上的潮汐、台灯和收音机。"
+        "Accent color": "强调色"
+        "Units": "单位"
+        "Use metric units": "使用公制单位"
+        "Meters and degrees Celsius.": "米和摄氏度。"
+        "Tide": "潮汐"
+    }
+    "ja" {
+        "Harbor": "ハーバー"
+    }
+}

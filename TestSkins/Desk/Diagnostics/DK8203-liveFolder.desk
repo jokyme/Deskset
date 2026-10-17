@@ -1,0 +1,7 @@
+// DK8203 liveFolder
+//== expect: DK8203
+info { name: "T", permissions: [.files, .music] }
+widget { Text("{folder("{music.album}").size}") }
+//== negative
+info { name: "T", permissions: [.files, .music] }
+widget { Text("{music.album} {folder("~/Music").size}") }

@@ -1,0 +1,24 @@
+info {
+    name: "Radio"
+    description: "What is playing, and the station's news."
+    size: .medium
+    category: .media
+    permissions: [.music]
+    network: ["api.example.com"]
+}
+
+options {
+    apiKey = Secret("Station key")
+}
+
+widget {
+    Row(spacing: 10) {
+        Icon("radio")
+        Column(align: .left) {
+            Text(music.title.ifMissing("Nothing playing")).style(heading)
+            Text("{web.json("https://api.example.com/news?key={options.apiKey}").headline}")
+            Text("Glass").hidden(if: not supports(.liquidGlass))
+        }
+    }
+    .style(card)
+}

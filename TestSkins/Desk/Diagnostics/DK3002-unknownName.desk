@@ -1,0 +1,7 @@
+// DK3002 unknownName
+//== expect: DK3002
+info { name: "T" }
+widget { Text("{cpuu.usage}") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}") }

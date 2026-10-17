@@ -1,0 +1,7 @@
+// DK1003 wrongQuoteStyle
+//== expect: DK1003
+info { name: "T" }
+widget { Text('CPU') }
+//== negative
+info { name: "T" }
+widget { Text("CPU") }

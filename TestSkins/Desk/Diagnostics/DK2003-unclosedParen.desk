@@ -1,0 +1,11 @@
+// DK2003 unclosedParen
+//== expect: DK2003
+info { name: "T" }
+widget {
+    Text("A"
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A")
+}

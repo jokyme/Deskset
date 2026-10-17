@@ -1,0 +1,7 @@
+// DK5026 textBoxSize
+//== expect: DK5026
+info { name: "T" }
+widget { Text("A").size(13) }
+//== negative
+info { name: "T" }
+widget { Text("A").font(13) }

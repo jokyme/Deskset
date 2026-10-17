@@ -1,0 +1,17 @@
+// DK6007 duplicateElementName
+//== expect: DK6007
+info { name: "T" }
+widget {
+    Column {
+        Text("A").name(title)
+        Text("B").name(title)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Column {
+        Text("A").name(title)
+        Text("B").name(title2)
+    }
+}

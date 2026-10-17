@@ -1,0 +1,7 @@
+// DK9108 olderDeskName
+//== expect: DK9108
+info { name: "T" }
+widget { Layers { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Freeform { Text("A") } }

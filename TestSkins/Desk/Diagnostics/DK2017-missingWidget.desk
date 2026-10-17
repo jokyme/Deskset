@@ -1,0 +1,7 @@
+// DK2017 missingWidget
+//== expect: DK2017
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

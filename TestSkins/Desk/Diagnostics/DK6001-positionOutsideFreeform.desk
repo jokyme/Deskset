@@ -1,0 +1,7 @@
+// DK6001 positionOutsideFreeform
+//== expect: DK6001
+info { name: "T" }
+widget { Column { Text("A").position(x: 10) } }
+//== negative
+info { name: "T" }
+widget { Freeform { Text("A").position(x: 10) } }

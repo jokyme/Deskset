@@ -1,0 +1,7 @@
+// DK4015 notWholeNumber
+//== expect: DK4015
+info { name: "T" }
+widget { Text("A").lines(1.5) }
+//== negative
+info { name: "T" }
+widget { Text("A").lines(2) }

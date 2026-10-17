@@ -1,0 +1,7 @@
+// DK5018 rootSizeIgnored
+//== expect: DK5018
+info { name: "T", size: .small }
+widget { Column { Text("A") }.size(200, 100) }
+//== negative
+info { name: "T", size: .small }
+widget { Column { Text("A") } }

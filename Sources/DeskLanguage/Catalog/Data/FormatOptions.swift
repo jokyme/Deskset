@@ -1,0 +1,103 @@
+import Foundation
+
+// Format options of `"{value, option: …}"`: how data shows in text. An option that does not apply to the value's
+// type is DK4024. Defaults per type are in §4.11 of the language reference; data members carry their own
+// (`MemberSpec.defaultFormat`).
+
+extension CatalogData {
+    /// The number dimensions whose values show a unit (`12.3 GB`, `52°`, `3.5 GHz`).
+    static let dimensionsWithUnits: [DeskType] = [
+        .bytes, .rate, .temperature, .number(.temperatureDelta), .frequency, .power, .voltage, .current, .angle, .rpm,
+        .speed, .rainfall, .pressure,
+    ]
+
+    /// How each type shows in text when nothing else is written (§4.11). Units and separators follow the Mac's
+    /// region; words (Yes, Sunday, 3 days) the language the widget is shown in.
+    static let typeFormats: [TypeFormatSpec] = [
+        TypeFormatSpec(type: .plainNumber, rule: L("Whole numbers as they are; otherwise at most 2 decimals, without trailing zeros",
+                                                    "整数原样显示；否则最多 2 位小数，去掉末尾的 0"), examples: ["3", "0.6", "12,345"]),
+        TypeFormatSpec(type: .percent, decimals: 0, rule: L("A whole number without the % sign: you write it",
+                                                            "整数，不带 %（% 由你自己写）"), examples: ["23"]),
+        TypeFormatSpec(type: .bytes, rule: L("The best unit with the Mac's names; 1 decimal below 100 in that unit, else none; 1024-based for memory, 1000-based for disks, networks and literals",
+                                             "选最合适的单位（用 Mac 的叫法）；在该单位下小于 100 时保留 1 位小数，否则不保留；内存按 1024，磁盘、网络和直接写的数按 1000"),
+                       examples: ["12.3 GB", "512 MB"]),
+        TypeFormatSpec(type: .rate, rule: L("As an amount of data, followed by /s", "和数据量一样，后面加 /s"), examples: ["1.2 MB/s"]),
+        TypeFormatSpec(type: .duration, style: .style(".full"),
+                       rule: L("The data's own style; otherwise the two largest units that are not zero",
+                               "按数据自己的样式；否则显示最大的两个不为 0 的单位"), examples: ["3 days 4 hours", "3:05"]),
+        TypeFormatSpec(type: .date, style: .style(".time"), rule: L("The data's own style; otherwise the short local time",
+                                                                    "按数据自己的样式；否则是本地的简短时间"),
+                       examples: ["14:05", "2:05 PM"]),
+        TypeFormatSpec(type: .temperature, decimals: 0, rule: L("A whole number and °, in the unit the Mac uses",
+                                                                "整数加 °，用 Mac 设置的单位"), examples: ["52°"]),
+        TypeFormatSpec(type: .number(.temperatureDelta), decimals: 0,
+                       rule: L("A whole number and °; on a Mac that uses °F, × 9/5 with no offset", "整数加 °；Mac 用 °F 时乘以 9/5，不加偏移"),
+                       examples: ["10°", "18°"]),
+        TypeFormatSpec(type: .frequency, rule: L("GHz with 1 decimal from 1 GHz, else MHz as a whole number",
+                                                 "1 GHz 以上用 GHz 保留 1 位小数，否则用 MHz 取整"), examples: ["3.5 GHz", "600 MHz"]),
+        TypeFormatSpec(type: .power, decimals: 1, rule: L("1 decimal and W", "1 位小数加 W"), examples: ["12.4 W"]),
+        TypeFormatSpec(type: .voltage, decimals: 2, rule: L("2 decimals and V", "2 位小数加 V"), examples: ["1.05 V"]),
+        TypeFormatSpec(type: .current, decimals: 1, rule: L("1 decimal and A", "1 位小数加 A"), examples: ["2.1 A"]),
+        TypeFormatSpec(type: .angle, decimals: 0, rule: L("A whole number and °", "整数加 °"), examples: ["45°"]),
+        TypeFormatSpec(type: .rpm, decimals: 0, rule: L("A whole number and rpm", "整数加 rpm"), examples: ["2317 rpm"]),
+        TypeFormatSpec(type: .speed, decimals: 0, rule: L("In the region's unit (km/h or mph), a whole number",
+                                                          "用所在地区的单位（km/h 或 mph），取整"), examples: ["12 km/h"]),
+        TypeFormatSpec(type: .rainfall, decimals: 1, rule: L("In the region's unit (mm or in), 1 decimal",
+                                                             "用所在地区的单位（mm 或 in），1 位小数"), examples: ["2.5 mm"]),
+        TypeFormatSpec(type: .pressure, decimals: 0, rule: L("In the region's unit (hPa or inHg), a whole number",
+                                                             "用所在地区的单位（hPa 或 inHg），取整"), examples: ["1013 hPa"]),
+        TypeFormatSpec(type: .length, rule: L("As a plain number", "和普通数字一样"), examples: ["18"]),
+        TypeFormatSpec(type: .bool, rule: L("“Yes” or “No”, in the widget's language", "“是”或“否”，用组件显示的语言"),
+                       examples: ["Yes", "No"]),
+        TypeFormatSpec(type: .string, rule: L("As it is", "原样显示"), examples: ["Oslo"]),
+        TypeFormatSpec(type: .json, rule: L("A number as a plain number, text as it is, yes or no as Yes or No; objects, lists and null read missing",
+                                            "数字按普通数字显示，文字原样，是/否显示为是或否；对象、数组和 null 取不到值"),
+                       examples: ["21", "Cloudy"]),
+        TypeFormatSpec(type: .any, rule: L("A missing value shows as “–”; a list can't be shown (join it with .joined(\", \"))",
+                                           "取不到的值显示为“–”；列表不能直接显示（用 .joined(\", \") 连起来）"), examples: ["–"]),
+    ]
+
+    static let formatOptions: [FormatOptionSpec] = [
+        FormatOptionSpec(label: "decimals", appliesTo: [.anyNumber], type: .plainNumber, range: 0...10,
+                         doc: doc("A fixed number of decimals", "固定的小数位数", #"Text("{cpu.usage, decimals: 1}%")"#,
+                                  [meter("String", "NumOfDecimals")],
+                                  keywords: ["NumOfDecimals", "precision", "fractionDigits", "toFixed", "places", "小数位"],
+                                  rank: 80)),
+        FormatOptionSpec(label: "unit", appliesTo: [.bytes, .rate], type: e("ByteUnit"),
+                         doc: doc("A fixed unit for an amount of data or a data speed; .kb… use the value's base, .kib… 1024",
+                                  "数据量或网速的固定单位；.kb 等跟随数据的进制，.kib 等按 1024",
+                                  #"Text("{memory.used, unit: .gb}")"#, [meter("String", "AutoScale")],
+                                  keywords: ["AutoScale", "units", "scale", "单位"], rank: 70)),
+        FormatOptionSpec(label: "unit", appliesTo: [.temperature, .number(.temperatureDelta)], type: e("TemperatureUnit"),
+                         doc: doc("A fixed unit for a temperature", "温度的固定单位",
+                                  #"Text("{sensors.cpuTemperature, unit: .fahrenheit}")"#, [plugin("MacSensors", "Scale")],
+                                  keywords: ["Scale", "celsius", "fahrenheit", "温度单位"], rank: 50)),
+        FormatOptionSpec(label: "unit", appliesTo: [.frequency], type: e("FrequencyUnit"),
+                         doc: doc("A fixed unit for a frequency", "频率的固定单位", #"Text("{sensors.cpuClock, unit: .mhz}")"#,
+                                  keywords: ["mhz", "ghz", "频率单位"], rank: 20)),
+        FormatOptionSpec(label: "unitStyle", appliesTo: dimensionsWithUnits, type: e("UnitStyle"),
+                         doc: doc("How much of the unit is shown: none, short (12.3 GB, 52°) or full (52 °C)",
+                                  "单位显示多少：不显示、简短（12.3 GB、52°）或完整（52 °C）",
+                                  #"Text("{sensors.cpuTemperature, unitStyle: .full}")"#,
+                                  keywords: ["unit style", "suffix", "单位样式"], rank: 30)),
+        FormatOptionSpec(label: "bits", appliesTo: [.rate], type: .bool,
+                         doc: doc("Shows a data speed in bits per second (9.6 Mb/s)", "网速按比特每秒显示（9.6 Mb/s）",
+                                  #"Text("{network.download, bits: true}")"#, [measure("NetIn", "UseBits")],
+                                  keywords: ["UseBits", "bps", "Mbps", "比特"], rank: 30)),
+        FormatOptionSpec(label: "format", appliesTo: [.date], type: .oneOf([.string, e("DatePreset")]),
+                         doc: doc("A date pattern such as \"HH:mm\", or a preset such as .weekday",
+                                  "日期格式，比如 \"HH:mm\"，或者 .weekday 这样的预设",
+                                  #"Text("{time.now, format: "HH:mm"}")"#, [measure("Time", "Format")],
+                                  keywords: ["Format", "date format", "dateFormat", "strftime", "pattern", "日期格式"], rank: 85)),
+        FormatOptionSpec(label: "style", appliesTo: [.duration], type: e("DurationStyle"),
+                         doc: doc("How a duration is written: full (3 days 4 hours), short (3d 4h) or clock (76:04:12)",
+                                  "时长的写法：完整（3 天 4 小时）、简短（3d 4h）或时钟（76:04:12）",
+                                  #"Text("{uptime, style: .short}")"#, [measure("Uptime", "Format")],
+                                  keywords: ["Format", "duration style", "时长样式"], rank: 45)),
+        FormatOptionSpec(label: "missing", appliesTo: [.any], type: .string,
+                         doc: doc("Text shown instead of “–” while the value is missing", "取不到值时代替“–”显示的文字",
+                                  #"Text("{music.title, missing: "Nothing playing"}")"#,
+                                  [plugin("MacWeather", "UnavailableText").approx("the text a weather measure shows without data")],
+                                  keywords: ["UnavailableText", "placeholder", "fallback", "default", "取不到"], rank: 40)),
+    ]
+}

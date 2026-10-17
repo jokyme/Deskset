@@ -1,0 +1,7 @@
+// DK6009 marginWithPosition
+//== expect: DK6009
+info { name: "T" }
+widget { Freeform { Text("A").position(x: 4).margin(8) } }
+//== negative
+info { name: "T" }
+widget { Freeform { Text("A").position(x: 12) } }

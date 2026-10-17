@@ -1,0 +1,8 @@
+// DK2028 nestingTooDeep
+//== expect: DK2028
+//== generate: deepNesting
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

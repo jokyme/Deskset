@@ -1,0 +1,17 @@
+// DK3009 unknownElementName
+//== expect: DK3009
+info { name: "T" }
+widget {
+    Column {
+        Text("A").onClick { show(detials) }
+        Text("B").name(details)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Column {
+        Text("A").onClick { show(details) }
+        Text("B").name(details)
+    }
+}

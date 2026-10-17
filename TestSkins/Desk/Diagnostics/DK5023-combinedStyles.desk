@@ -1,0 +1,11 @@
+// DK5023 combinedStyles
+//== expect: DK5023
+info { name: "T" }
+widget { Text("A").style(a | b) }
+style a { .bold() }
+style b { .italic() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(a).style(b) }
+style a { .bold() }
+style b { .italic() }

@@ -1,0 +1,7 @@
+// DK9102 swiftUIModifier
+//== expect: DK9102
+info { name: "T" }
+widget { Text("A").foregroundColor(.red) }
+//== negative
+info { name: "T" }
+widget { Text("A").color(.red) }

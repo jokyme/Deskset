@@ -1,0 +1,17 @@
+widget {
+    VStack {
+        Text(“CPU”).colour(.red)
+        Text("{cpuu.usage}%")
+        Progress(cpu.usage).color(.red).color(.blue)
+        if cpu.usage > 80 && not battery.charging {
+            Text("Hot").padding("18px")
+        }
+    .padding(14)
+    Text("A" )) ]
+    x = a ?? b
+    Text(month.days[0], 12 px)
+    page += 1
+    Text("Use { to open")
+    Text("a } b")
+}
+}

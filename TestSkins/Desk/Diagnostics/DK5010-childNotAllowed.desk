@@ -1,0 +1,7 @@
+// DK5010 childNotAllowed
+//== expect: DK5010
+info { name: "T" }
+widget { Column { Item("A") } }
+//== negative
+info { name: "T" }
+widget { Column { Text("A").menu { Item("A") } } }

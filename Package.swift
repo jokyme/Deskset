@@ -21,6 +21,7 @@ let package = Package(
         ),
         // Pure logic engine. Foundation (+ embedded Lua) only.
         .target(name: "DesksetCore", dependencies: ["CLua"]),
+        .target(name: "DeskLanguage", path: "Sources/DeskLanguage"),
         // Rendering values and capabilities; AppKit implementations stay in the app.
         .target(name: "DesksetDraw", dependencies: ["DesksetCore"]),
         // AppKit menu bar app.
@@ -34,6 +35,6 @@ let package = Package(
             ]
         ),
         // Self-test runner (no XCTest): `swift run DesksetSelfTest [suite-filter]`
-        .executableTarget(name: "DesksetSelfTest", dependencies: ["DesksetCore"]),
+        .executableTarget(name: "DesksetSelfTest", dependencies: ["DesksetCore", "DeskLanguage"]),
     ]
 )

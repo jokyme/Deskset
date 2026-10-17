@@ -1,0 +1,19 @@
+// DK9006 indexBrackets
+//== expect: DK9006
+info { name: "T" }
+widget {
+    computed month = calendar.month()
+    Column {
+        Text(month.title)
+        Text("{month.days[0].number}")
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    computed month = calendar.month()
+    Column {
+        Text(month.title)
+        Text("{month.days.item(1).number}")
+    }
+}

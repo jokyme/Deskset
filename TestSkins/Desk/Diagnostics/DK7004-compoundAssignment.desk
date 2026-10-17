@@ -1,0 +1,13 @@
+// DK7004 compoundAssignment
+//== expect: DK7004
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick { page += 1 }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick { page = page + 1 }
+}

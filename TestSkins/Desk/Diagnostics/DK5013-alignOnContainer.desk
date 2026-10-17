@@ -1,0 +1,7 @@
+// DK5013 alignOnContainer
+//== expect: DK5013
+info { name: "T" }
+widget { Column { Text("A") }.align(.left) }
+//== negative
+info { name: "T" }
+widget { Column(align: .left) { Text("A") } }

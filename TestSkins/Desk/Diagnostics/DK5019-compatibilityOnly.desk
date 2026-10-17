@@ -1,0 +1,7 @@
+// DK5019 compatibilityOnly
+//== expect: DK5019
+info { name: "T" }
+widget { Text("A").rainmeter("AntiAlias", "0") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

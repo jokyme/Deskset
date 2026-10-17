@@ -1,0 +1,14 @@
+// DK8603 duplicateWidgetName
+//== expect: DK8603
+//== file: Clock.desk
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: Alarm.desk
+info { name: "Clock" }
+widget { Text("Wake up") }
+//== negative
+info { name: "Clock" }
+widget { Text("Ready") }
+//== folder-file: Alarm.desk
+info { name: "Alarm" }
+widget { Text("Wake up") }

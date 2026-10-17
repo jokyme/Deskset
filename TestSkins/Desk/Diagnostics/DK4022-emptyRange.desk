@@ -1,0 +1,7 @@
+// DK4022 emptyRange
+//== expect: DK4022
+info { name: "T" }
+widget { Column { for i in 5...1 { Text("{i}") } } }
+//== negative
+info { name: "T" }
+widget { Column { for i in 1...5 { Text("{i}") } } }

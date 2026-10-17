@@ -1,0 +1,13 @@
+// DK2020 declarationAfterView
+//== expect: DK2020
+info { name: "T" }
+widget {
+    Text("{page}")
+    variable page = 0
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}")
+}

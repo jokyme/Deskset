@@ -1,0 +1,7 @@
+// DK5020 unknownRainmeterOption
+//== expect: DK5020
+info { name: "T", convertedFrom: "rainmeter" }
+widget { Text("A").rainmeter("FontColr", "1") }
+//== negative
+info { name: "T", convertedFrom: "rainmeter" }
+widget { Text("A").rainmeter("AntiAlias", "0") }

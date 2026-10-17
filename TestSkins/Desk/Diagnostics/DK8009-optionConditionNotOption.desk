@@ -1,0 +1,12 @@
+// DK8009 optionConditionNotOption
+//== expect: DK8009
+info { name: "T" }
+options { seconds = Toggle("Seconds").hidden(if: cpu.usage > 5) }
+widget { Text("A").hidden(if: options.seconds) }
+//== negative
+info { name: "T" }
+options {
+    compact = Toggle("Compact")
+    seconds = Toggle("Seconds").hidden(if: options.compact)
+}
+widget { Text("A").hidden(if: options.seconds or options.compact) }

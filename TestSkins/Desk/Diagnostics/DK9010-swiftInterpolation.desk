@@ -1,0 +1,7 @@
+// DK9010 swiftInterpolation
+//== expect: DK9010
+info { name: "T" }
+widget { Text("\(cpu.usage)%") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}%") }

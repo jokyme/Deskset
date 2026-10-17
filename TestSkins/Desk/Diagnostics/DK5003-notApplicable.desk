@@ -1,0 +1,7 @@
+// DK5003 notApplicable
+//== expect: DK5003
+info { name: "T" }
+widget { Progress(cpu.usage).font(.caption) }
+//== negative
+info { name: "T" }
+widget { Progress(cpu.usage) }

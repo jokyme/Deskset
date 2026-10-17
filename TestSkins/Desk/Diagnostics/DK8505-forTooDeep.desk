@@ -1,0 +1,7 @@
+// DK8505 forTooDeep
+//== expect: DK8505
+info { name: "T" }
+widget { Column { for a in 1...2 { for b in 1...2 { for c in 1...2 { for d in 1...2 { for e in 1...2 { Text("{a}{b}{c}{d}{e}") } } } } } } }
+//== negative
+info { name: "T" }
+widget { Column { for a in 1...2 { for b in 1...2 { for c in 1...2 { for d in 1...2 { Text("{a}{b}{c}{d}") } } } } } }

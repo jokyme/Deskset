@@ -1,0 +1,7 @@
+// DK5021 menuHiddenByRightClick
+//== expect: DK5021
+info { name: "T" }
+widget { Column { Text("A").onRightClick { log("x") }.menu { Item("B").onClick { log("y") } } } }
+//== negative
+info { name: "T" }
+widget { Column { Text("A").menu { Item("B").onClick { log("y") } } } }

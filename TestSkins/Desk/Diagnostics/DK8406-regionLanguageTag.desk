@@ -1,0 +1,13 @@
+// DK8406 regionLanguageTag
+//== expect: DK8406
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-CN" { "CPU": "处理器" }
+}
+//== negative
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "CPU": "处理器" }
+}

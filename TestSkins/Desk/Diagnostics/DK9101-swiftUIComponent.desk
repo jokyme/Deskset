@@ -1,0 +1,7 @@
+// DK9101 swiftUIComponent
+//== expect: DK9101
+info { name: "T" }
+widget { VStack { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Column { Text("A") } }

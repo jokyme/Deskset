@@ -1,0 +1,7 @@
+// DK4019 textPlus
+//== expect: DK4019
+info { name: "T" }
+widget { Text("CPU " + cpu.usage) }
+//== negative
+info { name: "T" }
+widget { Text("CPU {cpu.usage}") }

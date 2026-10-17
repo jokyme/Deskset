@@ -1,0 +1,13 @@
+// DK3016 nameStartsUppercase
+//== expect: DK3016
+info { name: "T" }
+widget {
+    variable Page = 0
+    Text("{Page}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}")
+}

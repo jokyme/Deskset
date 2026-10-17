@@ -1,0 +1,7 @@
+// DK4014 outOfRange
+//== expect: DK4014
+info { name: "T" }
+widget { Grid(columns: 0) { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Grid(columns: 1) { Text("A") } }

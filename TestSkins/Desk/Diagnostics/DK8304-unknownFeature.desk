@@ -1,0 +1,7 @@
+// DK8304 unknownFeature
+//== expect: DK8304
+info { name: "T" }
+widget { Text("A").hidden(if: supports(.glassy)) }
+//== negative
+info { name: "T" }
+widget { Text("A").hidden(if: supports(.liquidGlass)) }

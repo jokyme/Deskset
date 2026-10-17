@@ -1,0 +1,6 @@
+widget {
+    Row { Text("A"); Spacer(); Text("B") }
+    Row { Text("A very long label that goes on and on and on"); Spacer(); Text("Another very long label that goes on and on") }
+    Row { /* note */ Text("A") }
+    Row { }
+}

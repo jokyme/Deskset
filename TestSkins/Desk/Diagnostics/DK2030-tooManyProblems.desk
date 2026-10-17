@@ -1,0 +1,9 @@
+// DK2030 tooManyProblems
+//== expect: DK2030
+//== also: DK3004
+//== generate: manyProblems
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

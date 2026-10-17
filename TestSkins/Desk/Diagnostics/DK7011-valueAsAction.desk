@@ -1,0 +1,7 @@
+// DK7011 valueAsAction
+//== expect: DK7011
+info { name: "T" }
+widget { Text("A").onClick { cpu.usage } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { log("{cpu.usage}") } }

@@ -1,0 +1,9 @@
+widget {
+    Column {
+        Text("A"); Text("B"), Spacer()
+        Text("C") Text("D")
+        Text("E"); .bold()
+        x = 1; else { }
+        if a { }; else { }
+    }
+}

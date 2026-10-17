@@ -1,0 +1,17 @@
+// DK9309 rainmeterRelativePosition
+//== expect: DK9309
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(first).position(x: 4)
+        Text("B").position(x: 4R)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(first).position(x: 4)
+        Text("B").position(x: first.right + 4)
+    }
+}

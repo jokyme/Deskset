@@ -1,0 +1,13 @@
+// DK3019 choiceNeedsContext
+//== expect: DK3019
+info { name: "T" }
+widget {
+    computed x = .zzz
+    Text("{x}")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed x = 1
+    Text("{x}")
+}

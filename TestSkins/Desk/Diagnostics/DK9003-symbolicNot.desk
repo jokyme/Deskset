@@ -1,0 +1,7 @@
+// DK9003 symbolicNot
+//== expect: DK9003
+info { name: "T" }
+widget { Text("A").hidden(if: !battery.charging) }
+//== negative
+info { name: "T" }
+widget { Text("A").hidden(if: not battery.charging) }

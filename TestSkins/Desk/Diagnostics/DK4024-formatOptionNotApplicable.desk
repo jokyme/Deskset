@@ -1,0 +1,7 @@
+// DK4024 formatOptionNotApplicable
+//== expect: DK4024
+info { name: "T" }
+widget { Text("{cpu.usage, unit: .gb}") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage, decimals: 1}") }

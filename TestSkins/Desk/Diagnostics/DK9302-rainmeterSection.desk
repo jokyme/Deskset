@@ -1,0 +1,8 @@
+// DK9302 rainmeterSection
+//== expect: DK9302
+info { name: "T" }
+[MeterCPU]
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

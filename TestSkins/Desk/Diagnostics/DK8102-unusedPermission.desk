@@ -1,0 +1,7 @@
+// DK8102 unusedPermission
+//== expect: DK8102
+info { name: "T", permissions: [.calendar] }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

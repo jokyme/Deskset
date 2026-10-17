@@ -1,0 +1,7 @@
+// DK9001 symbolicAnd
+//== expect: DK9001
+info { name: "T" }
+widget { if cpu.usage > 5 && memory.usage > 5 { Text("A") } }
+//== negative
+info { name: "T" }
+widget { if cpu.usage > 5 and memory.usage > 5 { Text("A") } }

@@ -1,0 +1,7 @@
+// DK4002 missingArgument
+//== expect: DK4002
+info { name: "T" }
+widget { Grid { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Grid(columns: 7) { Text("A") } }

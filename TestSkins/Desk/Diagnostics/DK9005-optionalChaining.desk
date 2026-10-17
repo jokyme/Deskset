@@ -1,0 +1,7 @@
+// DK9005 optionalChaining
+//== expect: DK9005
+info { name: "T", permissions: [.music] }
+widget { Text(music?.title) }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { Text(music.title) }

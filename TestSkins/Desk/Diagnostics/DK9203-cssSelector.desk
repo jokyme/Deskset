@@ -1,0 +1,9 @@
+// DK9203 cssSelector
+//== expect: DK9203
+info { name: "T" }
+widget { Text("A") }
+.title { color: red }
+//== negative
+info { name: "T" }
+widget { Text("A").style(title) }
+style title { .color(.red) }

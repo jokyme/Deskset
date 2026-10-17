@@ -1,0 +1,13 @@
+// DK7005 incrementOperator
+//== expect: DK7005
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick { page++ }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick { page = page + 1 }
+}

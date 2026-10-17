@@ -1,0 +1,7 @@
+// DK7007 everyTooFast
+//== expect: DK7007
+info { name: "T" }
+widget { Text("A").every(5ms) { log("x") } }
+//== negative
+info { name: "T" }
+widget { Text("A").every(1s) { log("x") } }

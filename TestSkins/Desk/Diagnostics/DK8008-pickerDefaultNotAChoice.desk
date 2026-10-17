@@ -1,0 +1,9 @@
+// DK8008 pickerDefaultNotAChoice
+//== expect: DK8008
+info { name: "T" }
+options { day = Picker("A", [.sunday, .monday], default: .friday) }
+widget { Text("{options.day}") }
+//== negative
+info { name: "T" }
+options { day = Picker("A", [.sunday, .monday], default: .monday) }
+widget { Text("{options.day}") }

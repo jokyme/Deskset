@@ -1,0 +1,360 @@
+import Foundation
+
+// Weather, sun, moon and sensors. `weather` and `sun` are the records for this Mac's approximate location (reading
+// them needs `.location`); `weather.at(place)` and `sun.at(place)` are records for a named place and need nothing.
+
+extension CatalogData {
+    static let placeNamespaces: [NamespaceSpec] = [weatherNamespace, sunNamespace, moonNamespace, sensorsNamespace]
+
+    static func macWeather(_ type: String) -> RainmeterMapping { plugin("MacWeather", "Type", type).noted("Deskset") }
+
+    /// The members of a `Weather` record. `automatic`: the members of the `weather` namespace itself, which read
+    /// this Mac's location.
+    static func weatherFields(automatic: Bool) -> [MemberSpec] {
+        let permission = automatic ? "location" : nil
+        func lower(_ name: String) -> DataLowering {
+            automatic ? nativeKernel("weather", ["Location": .literal("auto")], field: name) : .recordField(name)
+        }
+        func w(_ name: String, _ en: String, _ zh: String, _ type: DeskType, max: MaxCount? = nil, cadence: Cadence = .service,
+               needs: Bool = true, preview: String? = nil, doc: Doc) -> MemberSpec {
+            field(name, en, zh, type, max: max, cadence: automatic ? cadence : .ofRecord,
+                  permission: needs ? permission : nil, lower: lower(name), preview: preview, doc: doc)
+        }
+        return [
+            w("now", "Weather now", "现在的天气", r("WeatherNow"),
+              doc: doc("The weather now", "现在的天气", #"Text("{weather.now.temperature}")"#, [macWeather("Temperature")],
+                       keywords: ["MacWeather", "now", "current", "conditions", "现在的天气"], mac: true, rank: 70)),
+            w("today", "Today's forecast", "今天的天气", r("DayForecast"),
+              doc: doc("Today's summary (high, low, icon…)", "今天的概况", #"Text("{weather.today.high} / {weather.today.low}")"#,
+                       [macWeather("High"), plugin("MacWeather", "Day", "0").noted("Deskset")],
+                       keywords: ["High", "Low", "MacWeather", "today", "today's forecast", "今天"], mac: true, rank: 60)),
+            w("hourly", "Next 48 hours", "未来 48 小时", list(r("HourForecast")), max: .fixed(48),
+              doc: doc("The next 48 hours", "未来 48 小时", "Graph(values: weather.hourly.temperature)",
+                       [plugin("MacWeather", "Hour").noted("Hour=0…47")],
+                       keywords: ["Hour", "MacWeather", "hourly", "next hours", "forecast", "逐小时"], mac: true, rank: 50)),
+            w("daily", "Next 10 days", "未来 10 天", list(r("DayForecast")), max: .fixed(10),
+              doc: doc("Today and the next 9 days", "今天和之后 9 天", #"for d in weather.daily.first(5) { Text("{d.high}") }"#,
+                       [plugin("MacWeather", "Day").noted("Day=0…9")],
+                       keywords: ["Day", "MacWeather", "daily", "next days", "week", "逐日", "预报"], mac: true, rank: 50)),
+            w("place", "Place", "地点", .string, preview: #""Saint-Rémy-de-Provence""#,
+              doc: doc("The place's name", "地点名称", "Text(weather.place)", [macWeather("Place")],
+                       keywords: ["Place", "MacWeather", "city", "location", "town", "地点"], mac: true, rank: 45)),
+            w("placeDetail", "Place and region", "详细地点", .string, preview: #""Saint-Rémy-de-Provence, Provence, France""#,
+              doc: doc("The place, with its region and country", "地点，连同地区和国家", "Text(weather.placeDetail)",
+                       [macWeather("PlaceDetail")], keywords: ["PlaceDetail", "MacWeather", "region", "详细地点"], mac: true, rank: 20)),
+            w("country", "Country", "国家", .string,
+              doc: doc("The place's country", "地点所在的国家", "Text(weather.country)", [macWeather("Country")],
+                       keywords: ["Country", "MacWeather", "country", "国家"], mac: true, rank: 15)),
+            w("countryCode", "Country code", "国家代码", .string,
+              doc: doc("The country's two-letter code", "国家的两字母代码", "Text(weather.countryCode)", [macWeather("CountryCode")],
+                       keywords: ["CountryCode", "MacWeather", "country code", "国家代码"], mac: true, rank: 10)),
+            w("latitude", "Latitude", "纬度", .angle,
+              doc: doc("The rounded latitude used", "使用的（取整后的）纬度", #"Text("{weather.latitude}")"#, [macWeather("Latitude")],
+                       keywords: ["Latitude", "MacWeather", "lat", "纬度"], mac: true, rank: 10)),
+            w("longitude", "Longitude", "经度", .angle,
+              doc: doc("The rounded longitude used", "使用的（取整后的）经度", #"Text("{weather.longitude}")"#, [macWeather("Longitude")],
+                       keywords: ["Longitude", "MacWeather", "lon", "lng", "经度"], mac: true, rank: 10)),
+            w("timeZone", "Time zone", "时区", .string,
+              doc: doc("The place's time zone name", "地点的时区", "Text(weather.timeZone)", [macWeather("TimeZone")],
+                       keywords: ["TimeZone", "MacWeather", "time zone", "时区"], mac: true, rank: 15)),
+            w("status", "Weather status", "天气数据状态", e("WeatherStatus"),
+              doc: doc("Ready, loading, offline…", "数据状态：就绪、加载中、离线…", ".hidden(if: weather.status == .ready)",
+                       [macWeather("Status")], keywords: ["Status", "MacWeather", "state", "loading", "状态"], mac: true, rank: 30)),
+            w("statusText", "Weather status text", "天气状态文字", .string, preview: #""Can't reach the weather service""#,
+              doc: doc("The status in words", "状态文字", #"Label(weather.statusText, icon: weather.statusSymbol)"#,
+                       [macWeather("Status")], keywords: ["Status", "MacWeather", "status text", "状态文字"], mac: true, rank: 20)),
+            w("statusSymbol", "Weather status symbol", "天气状态图标", .symbolName,
+              doc: doc("The status as an SF Symbol", "状态图标", #"Icon(weather.statusSymbol)"#, [macWeather("StatusSymbol")],
+                       keywords: ["StatusSymbol", "MacWeather", "status icon", "状态图标"], mac: true, rank: 15)),
+            w("updated", "Updated at", "更新时间", .date,
+              doc: doc("When the data was fetched", "数据获取时间", #"Text("Updated {weather.updated}")"#, [macWeather("UpdatedAt")],
+                       keywords: ["UpdatedAt", "MacWeather", "updated", "last update", "更新时间"], mac: true, rank: 20)),
+            w("forecastMade", "Forecast made at", "预报发布时间", .date,
+              doc: doc("When the forecast was made", "预报发布时间", #"Text("{weather.forecastMade}")"#, [macWeather("ForecastTime")],
+                       keywords: ["ForecastTime", "MacWeather", "issued", "forecast time", "发布时间"], mac: true, rank: 10)),
+            w("credit", "Data credit", "数据来源", .string, cadence: .once, needs: false,
+              doc: doc("The data credit; please show it", "数据来源署名（请显示）", "Text(weather.credit).font(.footnote)",
+                       [macWeather("Attribution")], keywords: ["Attribution", "MacWeather", "credit", "source", "来源"],
+                       mac: true, rank: 25)),
+            w("creditShort", "Short data credit", "简短的数据来源", .string, cadence: .once, needs: false,
+              doc: doc("A short data credit", "简短的数据来源署名", "Text(weather.creditShort).font(.footnote)",
+                       [macWeather("AttributionShort")], keywords: ["AttributionShort", "MacWeather", "short credit", "来源"],
+                       mac: true, rank: 25)),
+            w("creditLink", "Data source link", "数据来源链接", .string, cadence: .once, needs: false,
+              doc: doc("A link to the data's source", "数据来源的链接", "Text(weather.creditLink)", [macWeather("AttributionURL")],
+                       keywords: ["AttributionURL", "MacWeather", "credit link", "来源链接"], mac: true, rank: 10)),
+            w("licenseLink", "Data license link", "数据许可链接", .string, cadence: .once, needs: false,
+              doc: doc("A link to the data's license", "数据许可的链接", "Text(weather.licenseLink)", [macWeather("LicenseURL")],
+                       keywords: ["LicenseURL", "MacWeather", "license link", "许可链接"], mac: true, rank: 10)),
+            dataAction("refresh", "Retry the weather", "重新获取天气", command: "Refresh",
+                       doc: doc("Tries again after a network failure", "网络失败后重试", ".onClick { weather.refresh() }",
+                                [commandMeasure("MacWeather", "Refresh")],
+                                keywords: ["Refresh", "retry", "reload", "update", "刷新"], mac: true, rank: 25)),
+        ]
+    }
+
+    static let weatherNamespace = namespace("weather", "Weather", "天气", instanceOf: "Weather", permission: "location",
+                                            main: "now",
+        weatherFields(automatic: true) + [
+            dataFunction("at", "Weather for a place", "指定地点的天气", [sig(
+                pos("place", .string, role: .place, source: .literalOrOption, preview: #""Oslo""#,
+                    "A named place or \"latitude,longitude\"", "地名，或“纬度,经度”"))],
+                         r("Weather"), cadence: .service,
+                         lower: nativeKernel("weather", ["Location": argument()]),
+                         doc: doc("Weather for a named place", "指定地点的天气", #"Text("{weather.at(options.city).now.temperature}")"#,
+                                  [plugin("MacWeather", "Location").noted("Deskset")],
+                                  keywords: ["Location", "MacWeather", "city", "place", "other city", "指定地点"], mac: true, rank: 45)),
+        ], doc: doc("Forecasts from Deskset's weather service (MET Norway), for this Mac's location or a named place",
+                    "来自 Deskset 天气服务（挪威气象局）的预报：这台 Mac 所在地，或指定地点", #"Text("{weather.now.temperature}")"#,
+                    [plugin("MacWeather").noted("Deskset")], keywords: ["MacWeather", "weather", "forecast", "天气"], mac: true,
+                    rank: 70))
+
+    static func macSun(_ type: String) -> RainmeterMapping { plugin("MacSun", "Type", type).noted("Deskset") }
+
+    /// The members of a `Sun` record; `automatic`: the members of `sun` itself.
+    static func sunFields(automatic: Bool) -> [MemberSpec] {
+        func s(_ name: String, _ en: String, _ zh: String, _ type: DeskType, format: FormatDefault? = nil,
+               cadence: Cadence = .event, range: RangeSpec = .none, type rm: String, doc base: (String, String, String),
+               keywords: [String], rank: Int = 20) -> MemberSpec {
+            field(name, en, zh, type, range: range, format: format, cadence: automatic ? cadence : .ofRecord,
+                  permission: automatic ? "location" : nil,
+                  lower: automatic ? nativeKernel("sun", ["Location": .literal("auto")], field: name) : .recordField(name),
+                  doc: doc(base.0, base.1, base.2, [macSun(rm)], keywords: [rm, "MacSun"] + keywords, mac: true, rank: rank))
+        }
+        let time = FormatDefault.style(".time")
+        return [
+            s("sunrise", "Sunrise", "日出", .date, format: time, type: "Sunrise",
+              doc: ("Today's sunrise", "今天的日出时间", #"Text("{sun.sunrise}")"#), keywords: ["sunrise", "dawn", "日出"], rank: 50),
+            s("sunset", "Sunset", "日落", .date, format: time, type: "Sunset",
+              doc: ("Today's sunset", "今天的日落时间", #"Text("{sun.sunset}")"#), keywords: ["sunset", "dusk", "日落"], rank: 50),
+            s("solarNoon", "Solar noon", "正午", .date, format: time, type: "SolarNoon",
+              doc: ("Today's solar noon", "今天的正午", #"Text("{sun.solarNoon}")"#), keywords: ["solar noon", "noon", "正午"]),
+            s("dawn", "Dawn", "黎明", .date, format: time, type: "CivilDawn",
+              doc: ("Civil dawn: the sky starts to brighten", "民用晨光：天开始亮", #"Text("{sun.dawn}")"#),
+              keywords: ["civil dawn", "dawn", "黎明"]),
+            s("dusk", "Dusk", "黄昏", .date, format: time, type: "CivilDusk",
+              doc: ("Civil dusk: the sky is dark after it", "民用暮光：之后天就黑了", #"Text("{sun.dusk}")"#),
+              keywords: ["civil dusk", "dusk", "黄昏"]),
+            s("nauticalDawn", "Nautical dawn", "航海晨光", .date, format: time, type: "NauticalDawn",
+              doc: ("Nautical dawn", "航海晨光", #"Text("{sun.nauticalDawn}")"#), keywords: ["nautical dawn", "航海晨光"], rank: 10),
+            s("nauticalDusk", "Nautical dusk", "航海暮光", .date, format: time, type: "NauticalDusk",
+              doc: ("Nautical dusk", "航海暮光", #"Text("{sun.nauticalDusk}")"#), keywords: ["nautical dusk", "航海暮光"], rank: 10),
+            s("astronomicalDawn", "Astronomical dawn", "天文晨光", .date, format: time, type: "AstronomicalDawn",
+              doc: ("Astronomical dawn", "天文晨光", #"Text("{sun.astronomicalDawn}")"#), keywords: ["astronomical dawn", "天文晨光"],
+              rank: 10),
+            s("astronomicalDusk", "Astronomical dusk", "天文暮光", .date, format: time, type: "AstronomicalDusk",
+              doc: ("Astronomical dusk", "天文暮光", #"Text("{sun.astronomicalDusk}")"#), keywords: ["astronomical dusk", "天文暮光"],
+              rank: 10),
+            s("goldenHourMorningEnd", "Morning golden hour ends", "早上黄金时刻结束", .date, format: time,
+              type: "GoldenHourMorningEnd",
+              doc: ("When the morning golden hour ends", "早上黄金时刻结束的时间", #"Text("{sun.goldenHourMorningEnd}")"#),
+              keywords: ["golden hour", "黄金时刻"], rank: 15),
+            s("goldenHourEveningStart", "Evening golden hour starts", "傍晚黄金时刻开始", .date, format: time,
+              type: "GoldenHourEveningStart",
+              doc: ("When the evening golden hour starts", "傍晚黄金时刻开始的时间", #"Text("{sun.goldenHourEveningStart}")"#),
+              keywords: ["golden hour", "黄金时刻"], rank: 15),
+            s("dayLength", "Length of the day", "白昼长度", .duration, type: "DayLength",
+              doc: ("Length of daylight", "白昼长度", #"Text("{sun.dayLength, style: .short}")"#),
+              keywords: ["day length", "daylight", "白昼长度"], rank: 25),
+            s("daylightProgress", "How far the day has gone", "白天过去了多少", .plainNumber, cadence: .periodic(seconds: 60),
+              range: .fixed(0...1), type: "DaylightProgress",
+              doc: ("How far the day has gone: 0 before sunrise, 1 after sunset", "白天过去了多少：日出前是 0，日落后是 1",
+                    "Progress(sun.daylightProgress)"),
+              keywords: ["daylight progress", "day progress", "白天进度"], rank: 25),
+            s("elevation", "Sun height", "太阳高度角", .angle, cadence: .periodic(seconds: 60), type: "SunElevation",
+              doc: ("The sun's height above the horizon", "太阳高度角", #"Text("{sun.elevation}")"#),
+              keywords: ["elevation", "altitude", "高度角"], rank: 15),
+            s("azimuth", "Sun direction", "太阳方位角", .angle, cadence: .periodic(seconds: 60), type: "SunAzimuth",
+              doc: ("The sun's direction, clockwise from north", "太阳方位角（从北顺时针）", #"Text("{sun.azimuth}")"#),
+              keywords: ["azimuth", "bearing", "方位角"], rank: 10),
+            s("isUp", "Sun is up", "太阳是否升起", .bool, cadence: .periodic(seconds: 60), type: "IsDaylight",
+              doc: ("Whether the sun is up", "太阳是否在地平线以上", #"Icon("moon.fill").hidden(if: sun.isUp)"#),
+              keywords: ["daylight", "day", "night", "is day", "白天"], rank: 30),
+            s("state", "Midnight sun or polar night", "极昼或极夜", e("SunState"), type: "SunState",
+              doc: ("Normal, midnight sun or polar night", "正常、极昼或极夜", ".hidden(if: sun.state == .normal)"),
+              keywords: ["midnight sun", "polar night", "极昼", "极夜"], rank: 10),
+        ]
+    }
+
+    static let sunNamespace = namespace("sun", "Sun", "太阳", instanceOf: "Sun", permission: "location", main: "sunrise",
+        sunFields(automatic: true) + [
+            dataFunction("at", "Sun at a place", "指定地点的太阳", [sig(
+                pos("place", .string, role: .place, source: .literalOrOption, preview: #""Reykjavík""#,
+                    "A named place or \"latitude,longitude\"", "地名，或“纬度,经度”"))],
+                         r("Sun"), cadence: .event, lower: nativeKernel("sun", ["Location": argument()]),
+                         doc: doc("The sun at another place", "其他地点的太阳", #"Text("{sun.at("Tromsø").sunrise}")"#,
+                                  [plugin("MacSun", "Location").noted("Deskset")],
+                                  keywords: ["Location", "MacSun", "place", "other place", "指定地点"], mac: true, rank: 20)),
+            dataFunction("day", "Sun on another day", "其他日期的太阳", [sig(
+                pos("offset", .plainNumber, range: -1...30, whole: true, preview: "1", "Days from today: 1 is tomorrow",
+                    "距离今天几天：1 是明天"))],
+                         r("Sun"), cadence: .event, permission: "location",
+                         lower: nativeKernel("sun", ["Location": .literal("auto"), "Day": argument()]),
+                         doc: doc("Another day (1 = tomorrow)", "其他日期（1 是明天）", #"Text("{sun.day(1).sunrise}")"#,
+                                  [plugin("MacSun", "Day").noted("Deskset")],
+                                  keywords: ["Day", "MacSun", "tomorrow", "another day", "明天"], mac: true, rank: 20)),
+        ], doc: doc("Sunrise, sunset and the sun's position, worked out on this Mac", "在这台 Mac 上算出的日出、日落和太阳位置",
+                    #"Text("{sun.sunrise}")"#, [plugin("MacSun").noted("Deskset")],
+                    keywords: ["MacSun", "sun", "sunrise", "太阳"], mac: true, rank: 50))
+
+    static let moonNamespace = namespace("moon", "Moon", "月亮", main: "phaseName", [
+        field("phase", "Moon phase", "月相", .plainNumber, range: .fixed(0...1), cadence: .periodic(seconds: 3_600),
+              lower: nativeKernel("sun", field: "moonPhase"),
+              doc: doc("0 new moon, 0.5 full moon", "月相：0 新月，0.5 满月", "Progress(moon.phase)", [macSun("MoonPhase")],
+                       keywords: ["MoonPhase", "MacSun", "phase", "lunar phase", "月相"], mac: true, rank: 30)),
+        field("illumination", "Moon lit", "月亮被照亮的比例", .percent, range: .fixed(0...100), cadence: .periodic(seconds: 3_600),
+              lower: nativeKernel("sun", field: "moonIllumination"),
+              doc: doc("How much of the moon is lit", "月亮被照亮的比例", #"Text("{moon.illumination}%")"#,
+                       [macSun("MoonIllumination")], keywords: ["MoonIllumination", "MacSun", "illumination", "lit", "月亮亮度"],
+                       mac: true, rank: 20)),
+        field("phaseName", "Moon phase name", "月相名称", .string, cadence: .periodic(seconds: 3_600),
+              lower: nativeKernel("sun", field: "moonPhaseName"), preview: #""Waxing gibbous""#,
+              doc: doc("The phase's name", "月相名称", "Text(moon.phaseName)", [macSun("MoonPhaseName")],
+                       keywords: ["MoonPhaseName", "MacSun", "phase name", "月相名称"], mac: true, rank: 25)),
+        field("symbol", "Moon symbol", "月相图标", .symbolName, cadence: .periodic(seconds: 3_600),
+              lower: nativeKernel("sun", field: "moonSymbol"),
+              doc: doc("The phase's SF Symbol", "月相图标", "Icon(moon.symbol)", [macSun("MoonSymbol")],
+                       keywords: ["MoonSymbol", "MacSun", "moon icon", "月相图标"], mac: true, rank: 25)),
+    ], doc: doc("The moon's phase, worked out on this Mac", "在这台 Mac 上算出的月相", "Icon(moon.symbol)",
+                [plugin("MacSun").noted("Deskset")], keywords: ["MacSun", "moon", "lunar", "月亮"], mac: true, rank: 30))
+
+    static func sensor(_ name: String, _ en: String, _ zh: String, _ type: DeskType, key: String, range: RangeSpec = .none,
+                       base: Int? = nil, docText: (String, String), example: String, keywords: [String],
+                       rank: Int = 20) -> MemberSpec {
+        field(name, en, zh, type, range: range, base: base, cadence: .periodic(seconds: 2),
+              lower: pluginKernel("MacSensors", ["Sensor": key]),
+              doc: doc(docText.0, docText.1, example, [plugin("MacSensors", "Sensor", key)],
+                       keywords: ["MacSensors", key] + keywords, mac: true, rank: rank))
+    }
+
+    static let temperatureRange = RangeSpec.fixed(0...100)
+
+    static func key(_ pattern: String, _ type: DeskType, _ en: String, _ zh: String, base: Int? = nil) -> SensorKeySpec {
+        SensorKeySpec(pattern: pattern, type: type, displayBase: base, label: L(en, zh))
+    }
+
+    /// The sensor catalog (the engine's MacSensors keys, docs/compat/plugins.md "MacSensors"); a Mac reads the keys
+    /// its hardware has, and the others read missing.
+    static let sensorKeys: [SensorKeySpec] = [
+        key("cpu", .temperature, "CPU temperature (hottest sensor)", "CPU 温度（最热的传感器）"),
+        key("cpu.performance", .temperature, "Performance cores temperature", "性能核温度"),
+        key("cpu.efficiency", .temperature, "Efficiency cores temperature", "能效核温度"),
+        key("cpu.core.N", .temperature, "Temperature of core N", "第 N 个核心的温度"),
+        key("gpu", .temperature, "GPU temperature", "GPU 温度"),
+        key("soc", .temperature, "Chip or chipset temperature", "芯片温度"),
+        key("battery", .temperature, "Battery temperature", "电池温度"),
+        key("ssd", .temperature, "SSD temperature", "固态硬盘温度"),
+        key("fan.N", .rpm, "Speed of fan N", "第 N 个风扇的转速"),
+        key("fan.N.min", .rpm, "Lowest speed of fan N", "第 N 个风扇的最低转速"),
+        key("fan.N.max", .rpm, "Highest speed of fan N", "第 N 个风扇的最高转速"),
+        key("fan.N.target", .rpm, "Target speed of fan N", "第 N 个风扇的目标转速"),
+        key("power.system", .power, "Power: whole Mac", "整机功耗"),
+        key("power.adapter", .power, "Power from the adapter", "电源适配器功率"),
+        key("power.cpu", .power, "CPU power", "CPU 功耗"),
+        key("power.gpu", .power, "GPU power", "GPU 功耗"),
+        key("power.ane", .power, "Neural Engine power", "神经网络引擎功耗"),
+        key("power.dram", .power, "Memory power", "内存功耗"),
+        key("frequency.cpu", .frequency, "CPU clock (fastest cluster)", "CPU 频率（最快的核心簇）"),
+        key("frequency.cpu.performance", .frequency, "Performance cores clock", "性能核频率"),
+        key("frequency.cpu.efficiency", .frequency, "Efficiency cores clock", "能效核频率"),
+        key("frequency.cpu.N", .frequency, "Clock of core N", "第 N 个核心的频率"),
+        key("frequency.gpu", .frequency, "GPU clock", "GPU 频率"),
+        key("frequency.gpu.memory", .frequency, "GPU memory clock", "GPU 显存频率"),
+        key("voltage.cpu", .voltage, "CPU voltage", "CPU 电压"),
+        key("gpu.usage", .percent, "GPU usage", "GPU 占用率"),
+        key("gpu.usage.renderer", .percent, "GPU renderer usage", "GPU 渲染器占用率"),
+        key("gpu.usage.tiler", .percent, "GPU tiler usage", "GPU 分块器占用率"),
+        key("gpu.memory", .bytes, "Memory the GPU uses", "GPU 使用的内存", base: 1024),
+        key("gpu.fan", .percent, "A graphics card's own fan", "显卡自己的风扇"),
+        key("battery.health", .percent, "Battery health", "电池健康"),
+        key("battery.cycles", .plainNumber, "Battery cycle count", "电池循环次数"),
+        key("battery.voltage", .voltage, "Battery voltage", "电池电压"),
+        key("battery.current", .current, "Battery current (negative while discharging)", "电池电流（放电时为负）"),
+    ]
+
+    /// Other spellings skins use for sensor keys.
+    static let sensorKeyAliases: [String: String] = [
+        "battery.temperature": "battery", "cpu.temperature": "cpu", "cpu.package": "cpu", "cpu.max": "cpu",
+        "gpu.temperature": "gpu", "soc.temperature": "soc", "ssd.temperature": "ssd", "cpu.p": "cpu.performance",
+        "cpu.e": "cpu.efficiency", "fan": "fan.1", "power": "power.system", "frequency.cpu.p": "frequency.cpu.performance",
+        "frequency.cpu.e": "frequency.cpu.efficiency", "gpu.clock": "frequency.gpu", "cpu.clock": "frequency.cpu",
+    ]
+
+    static let sensorsNamespace = namespace("sensors", "Sensors", "传感器", main: "cpuTemperature", [
+        sensor("cpuTemperature", "CPU temperature", "CPU 温度", .temperature, key: "cpu", range: temperatureRange,
+               docText: ("Hottest CPU sensor", "CPU 温度（最热的传感器）"), example: #"Text("{sensors.cpuTemperature}")"#,
+               keywords: ["CoreTemp", "temp", "temperature", "cpu temp", "heat", "温度"], rank: 55),
+        sensor("cpuPerformanceTemperature", "Performance cores temperature", "性能核温度", .temperature, key: "cpu.performance",
+               range: temperatureRange, docText: ("The performance core cluster's temperature", "性能核的温度"),
+               example: #"Text("{sensors.cpuPerformanceTemperature}")"#, keywords: ["p-core", "performance cores", "性能核"]),
+        sensor("cpuEfficiencyTemperature", "Efficiency cores temperature", "能效核温度", .temperature, key: "cpu.efficiency",
+               range: temperatureRange, docText: ("The efficiency core cluster's temperature", "能效核的温度"),
+               example: #"Text("{sensors.cpuEfficiencyTemperature}")"#, keywords: ["e-core", "efficiency cores", "能效核"]),
+        sensor("gpuTemperature", "GPU temperature", "GPU 温度", .temperature, key: "gpu", range: temperatureRange,
+               docText: ("The GPU's temperature", "GPU 温度"), example: "Progress(sensors.gpuTemperature, total: 100°C)",
+               keywords: ["gpu temp", "graphics temperature", "显卡温度"], rank: 35),
+        sensor("socTemperature", "Chip temperature", "芯片温度", .temperature, key: "soc", range: temperatureRange,
+               docText: ("The rest of the chip", "芯片其余部分的温度"), example: #"Text("{sensors.socTemperature}")"#,
+               keywords: ["soc", "chipset", "芯片温度"]),
+        sensor("batteryTemperature", "Battery temperature", "电池温度", .temperature, key: "battery", range: temperatureRange,
+               docText: ("The battery's temperature", "电池温度"), example: #"Text("{sensors.batteryTemperature}")"#,
+               keywords: ["battery temp", "电池温度"]),
+        sensor("ssdTemperature", "SSD temperature", "固态硬盘温度", .temperature, key: "ssd", range: temperatureRange,
+               docText: ("The SSD's temperature", "固态硬盘温度"), example: #"Text("{sensors.ssdTemperature}")"#,
+               keywords: ["ssd temp", "disk temperature", "硬盘温度"]),
+        sensor("fanSpeed", "Fan speed", "风扇转速", .rpm, key: "fan.1", range: .observed,
+               docText: ("The first fan's speed", "第一个风扇的转速"), example: #"Text("{sensors.fanSpeed}")"#,
+               keywords: ["SpeedFan", "fan", "rpm", "fan speed", "风扇"], rank: 35),
+        dataFunction("fan", "One fan", "某个风扇", [sig(
+            pos("n", .plainNumber, range: 1...16, whole: true, preview: "1", "The fan's number, from 1", "风扇的编号，从 1 开始"))],
+                     r("Fan"), cadence: .periodic(seconds: 2),
+                     lower: .measure(type: "Plugin", options: ["Plugin": .literal("MacSensors"), "Sensor": .format("fan.{_}")],
+                                     field: nil),
+                     doc: doc("Fan n (from 1): speed, minimum, maximum, target", "第 n 个风扇", "Progress(sensors.fan(1).speed)",
+                              [plugin("MacSensors", "Sensor").noted("fan.n, fan.n.min, fan.n.max, fan.n.target")],
+                              keywords: ["MacSensors", "fan", "fans", "风扇"], mac: true, rank: 20)),
+        sensor("power", "Power drawn", "整机功耗", .power, key: "power.system", range: .observed,
+               docText: ("Power the whole Mac draws", "整台 Mac 的功耗"), example: #"Text("{sensors.power}")"#,
+               keywords: ["watts", "power", "consumption", "功耗"], rank: 30),
+        sensor("adapterPower", "Power from the adapter", "电源适配器功率", .power, key: "power.adapter", range: .observed,
+               docText: ("Power coming from the adapter", "电源适配器提供的功率"), example: #"Text("{sensors.adapterPower}")"#,
+               keywords: ["adapter", "charger", "适配器"]),
+        sensor("cpuPower", "CPU power", "CPU 功耗", .power, key: "power.cpu", range: .observed,
+               docText: ("Power the CPU draws", "CPU 的功耗"), example: #"Text("{sensors.cpuPower}")"#,
+               keywords: ["cpu watts", "cpu power", "CPU 功耗"]),
+        sensor("gpuPower", "GPU power", "GPU 功耗", .power, key: "power.gpu", range: .observed,
+               docText: ("Power the GPU draws", "GPU 的功耗"), example: #"Text("{sensors.gpuPower}")"#,
+               keywords: ["gpu watts", "gpu power", "GPU 功耗"]),
+        sensor("neuralEnginePower", "Neural Engine power", "神经网络引擎功耗", .power, key: "power.ane", range: .observed,
+               docText: ("Power the Neural Engine draws", "神经网络引擎的功耗"), example: #"Text("{sensors.neuralEnginePower}")"#,
+               keywords: ["ane", "neural engine", "神经网络引擎"], rank: 10),
+        sensor("memoryPower", "Memory power", "内存功耗", .power, key: "power.dram", range: .observed,
+               docText: ("Power the memory draws", "内存的功耗"), example: #"Text("{sensors.memoryPower}")"#,
+               keywords: ["dram", "memory power", "内存功耗"], rank: 10),
+        sensor("cpuClock", "CPU clock", "CPU 频率", .frequency, key: "frequency.cpu", range: .observed,
+               docText: ("The CPU's clock speed", "CPU 的时钟频率"), example: #"Text("{sensors.cpuClock}")"#,
+               keywords: ["clock", "frequency", "ghz", "speed", "频率"], rank: 25),
+        sensor("gpuClock", "GPU clock", "GPU 频率", .frequency, key: "frequency.gpu", range: .observed,
+               docText: ("The GPU's clock speed", "GPU 的时钟频率"), example: #"Text("{sensors.gpuClock}")"#,
+               keywords: ["gpu clock", "gpu frequency", "GPU 频率"]),
+        sensor("gpuUsage", "GPU usage", "GPU 占用率", .percent, key: "gpu.usage", range: .fixed(0...100),
+               docText: ("How busy the GPU is", "GPU 占用率"), example: "Progress(sensors.gpuUsage)",
+               keywords: ["MSIAfterburner", "gpu load", "graphics usage", "GPU 占用"], rank: 35),
+        sensor("gpuMemory", "GPU memory", "GPU 内存", .bytes, key: "gpu.memory", range: .observed, base: 1024,
+               docText: ("Memory the GPU uses", "GPU 使用的内存"), example: #"Text("{sensors.gpuMemory}")"#,
+               keywords: ["vram", "gpu memory", "显存"]),
+        sensor("cpuVoltage", "CPU voltage", "CPU 电压", .voltage, key: "voltage.cpu", range: .observed,
+               docText: ("The CPU's voltage", "CPU 电压"), example: #"Text("{sensors.cpuVoltage}")"#,
+               keywords: ["vid", "voltage", "电压"], rank: 10),
+        dataFunction("read", "Any sensor", "任意传感器", [sig(
+            pos("key", .string, source: .literalOrOption, preview: #""cpu.core.4""#,
+                "A sensor key: cpu.core.N, frequency.cpu.N, battery.voltage…", "传感器键名：cpu.core.N、frequency.cpu.N、battery.voltage…"))],
+                     .any, cadence: .periodic(seconds: 2),
+                     lower: .measure(type: "Plugin", options: ["Plugin": .literal("MacSensors"), "Sensor": argument()], field: nil),
+                     doc: doc("Any sensor by its key; a literal key is checked and typed by its kind", "按键名读任意传感器",
+                              #"Text("{sensors.read("cpu.core.4")}")"#, [plugin("MacSensors", "Sensor")],
+                              keywords: ["MacSensors", "Sensor", "sensor key", "any sensor", "传感器"], mac: true, rank: 20)),
+    ], doc: doc("Temperatures, fans, power and clocks; a sensor this Mac lacks reads missing", "温度、风扇、功耗和频率；这台 Mac 没有的传感器取不到值",
+                #"Text("{sensors.cpuTemperature}")"#, [plugin("MacSensors").noted("Deskset")],
+                keywords: ["MacSensors", "CoreTemp", "sensors", "hardware", "传感器"], mac: true, rank: 45))
+}

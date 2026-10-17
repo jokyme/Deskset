@@ -1,0 +1,7 @@
+// DK4001 typeMismatch
+//== expect: DK4001
+info { name: "T" }
+widget { Text("A").font(true) }
+//== negative
+info { name: "T" }
+widget { Text("A").font(13) }

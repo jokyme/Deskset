@@ -1,0 +1,7 @@
+// DK5025 rootTakesOverPointer
+//== expect: DK5025
+info { name: "T" }
+widget { Text("A").onRightClick { log("x") } }
+//== negative
+info { name: "T" }
+widget { Text("A").menu { Item("B").onClick { log("x") } } }

@@ -1,0 +1,7 @@
+// DK1017 tripleQuote
+//== expect: DK1017
+info { name: "T" }
+widget { Text("""long text""") }
+//== negative
+info { name: "T" }
+widget { Text("long text") }

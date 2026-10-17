@@ -1,0 +1,9 @@
+// DK4005 positionalAfterLabel
+//== expect: DK4005
+info { name: "T" }
+options { day = Picker(default: .sunday, "Day", [.sunday, .monday]) }
+widget { Text("{options.day}") }
+//== negative
+info { name: "T" }
+options { day = Picker("Day", [.sunday, .monday], default: .sunday) }
+widget { Text("{options.day}") }

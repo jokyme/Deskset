@@ -1,0 +1,9 @@
+// DK3021 unusedStyle
+//== expect: DK3021
+info { name: "T" }
+widget { Text("A") }
+style big { .bold() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(big) }
+style big { .bold() }

@@ -1,0 +1,12 @@
+// DK9301 rainmeterOption
+//== expect: DK9301
+info { name: "T" }
+widget {
+    Text("A")
+    FontColor=255,255,255
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A").color("#FFFFFF")
+}

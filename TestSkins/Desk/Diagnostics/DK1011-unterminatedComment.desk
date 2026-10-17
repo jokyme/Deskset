@@ -1,0 +1,9 @@
+// DK1011 unterminatedComment
+//== expect: DK1011
+info { name: "T" }
+widget { Text("A") }
+/* note
+//== negative
+info { name: "T" }
+widget { Text("A") }
+/* note */

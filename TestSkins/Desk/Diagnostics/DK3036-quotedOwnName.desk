@@ -1,0 +1,7 @@
+// DK3036 quotedOwnName
+//== expect: DK3036
+info { name: "T" }
+widget { Text("A").name("title") }
+//== negative
+info { name: "T" }
+widget { Text("A").name(title) }

@@ -1,0 +1,9 @@
+// DK8206 userOnlyOption
+//== expect: DK8206
+info { name: "T" }
+options { folder = FolderPicker("Folder") }
+widget { Text("A").onClick { options.folder = "/tmp" } }
+//== negative
+info { name: "T" }
+options { folder = FolderPicker("Folder") }
+widget { Text("{options.folder}") }

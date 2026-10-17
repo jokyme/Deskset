@@ -1,0 +1,8 @@
+// DK4031 unknownSymbol
+//== expect: DK4031
+//== context: symbols
+info { name: "T" }
+widget { Icon("wifi.slashh") }
+//== negative
+info { name: "T" }
+widget { Icon("wifi.slash") }

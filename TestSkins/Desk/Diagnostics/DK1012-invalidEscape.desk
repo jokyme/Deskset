@@ -1,0 +1,7 @@
+// DK1012 invalidEscape
+//== expect: DK1012
+info { name: "T" }
+widget { Text("a\qb") }
+//== negative
+info { name: "T" }
+widget { Text("a\\qb") }

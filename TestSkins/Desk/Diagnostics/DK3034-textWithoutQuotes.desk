@@ -1,0 +1,7 @@
+// DK3034 textWithoutQuotes
+//== expect: DK3034
+info { name: "T" }
+widget { Text(CPU) }
+//== negative
+info { name: "T" }
+widget { Text("CPU") }

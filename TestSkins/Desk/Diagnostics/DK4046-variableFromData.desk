@@ -1,0 +1,13 @@
+// DK4046 variableFromData
+//== expect: DK4046
+info { name: "T" }
+widget {
+    variable used = memory.used
+    Text("{used}")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed used = memory.used
+    Text("{used}")
+}

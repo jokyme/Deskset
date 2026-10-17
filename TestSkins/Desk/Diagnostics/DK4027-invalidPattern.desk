@@ -1,0 +1,9 @@
+// DK4027 invalidPattern
+//== expect: DK4027
+info { name: "T" }
+options { code = Input("Code") }
+widget { Text("A").hidden(if: options.code.matches("(abc")) }
+//== negative
+info { name: "T" }
+options { code = Input("Code") }
+widget { Text("A").hidden(if: options.code.matches("(abc)")) }

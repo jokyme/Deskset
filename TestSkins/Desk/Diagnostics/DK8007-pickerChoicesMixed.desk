@@ -1,0 +1,9 @@
+// DK8007 pickerChoicesMixed
+//== expect: DK8007
+info { name: "T" }
+options { day = Picker("A", [.sunday, "Mon"]) }
+widget { Text("{options.day}") }
+//== negative
+info { name: "T" }
+options { day = Picker("A", [.sunday, .monday]) }
+widget { Text("{options.day}") }

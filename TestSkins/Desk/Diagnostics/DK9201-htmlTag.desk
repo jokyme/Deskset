@@ -1,0 +1,12 @@
+// DK9201 htmlTag
+//== expect: DK9201
+info { name: "T" }
+widget {
+    <div>
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    Column { Text("A") }
+}

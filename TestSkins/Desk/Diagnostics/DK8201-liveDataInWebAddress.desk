@@ -1,0 +1,7 @@
+// DK8201 liveDataInWebAddress
+//== expect: DK8201
+info { name: "T", network: ["x.com"], permissions: [.music] }
+widget { Text("{web.json("https://x.com/?q={music.title}").a}") }
+//== negative
+info { name: "T", network: ["x.com"], permissions: [.music] }
+widget { Text("{music.title} {web.json("https://x.com/a").a}") }

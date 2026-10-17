@@ -1,0 +1,9 @@
+// DK3022 unusedOption
+//== expect: DK3022
+info { name: "T" }
+options { seconds = Toggle("Show seconds") }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+options { seconds = Toggle("Show seconds") }
+widget { Text("A").hidden(if: options.seconds) }

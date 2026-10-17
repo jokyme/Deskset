@@ -1,0 +1,7 @@
+// DK1015 emptyInterpolation
+//== expect: DK1015
+info { name: "T" }
+widget { Text("a {} b") }
+//== negative
+info { name: "T" }
+widget { Text("a {{}} b") }

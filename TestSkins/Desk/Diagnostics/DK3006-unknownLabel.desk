@@ -1,0 +1,7 @@
+// DK3006 unknownLabel
+//== expect: DK3006
+info { name: "T" }
+widget { Grid(colums: 7) { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Grid(columns: 7) { Text("A") } }

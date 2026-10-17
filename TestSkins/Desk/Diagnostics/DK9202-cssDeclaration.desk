@@ -1,0 +1,12 @@
+// DK9202 cssDeclaration
+//== expect: DK9202
+info { name: "T" }
+widget {
+    Text("A")
+    color: red;
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A").color(.red)
+}

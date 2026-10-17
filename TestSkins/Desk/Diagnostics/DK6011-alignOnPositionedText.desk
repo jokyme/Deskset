@@ -1,0 +1,7 @@
+// DK6011 alignOnPositionedText
+//== expect: DK6011
+info { name: "T" }
+widget { Freeform { Text("{cpu.usage}%").position(x: 160, y: 10).align(.right) } }
+//== negative
+info { name: "T" }
+widget { Freeform { Text("{cpu.usage}%").position(x: 160, y: 10, anchor: .topRight) } }

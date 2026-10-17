@@ -1,0 +1,17 @@
+// DK2033 mixedAndOr
+//== expect: DK2033
+info { name: "T" }
+widget {
+    variable a = true
+    variable b = true
+    variable c = true
+    if a or b and c { Text("A") }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable a = true
+    variable b = true
+    variable c = true
+    if a or (b and c) { Text("A") }
+}

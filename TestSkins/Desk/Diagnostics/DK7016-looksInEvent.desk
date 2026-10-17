@@ -1,0 +1,10 @@
+// DK7016 looksInEvent
+//== expect: DK7016
+info { name: "T" }
+widget { Text("A").onClick { .color(.red) } }
+//== negative
+info { name: "T" }
+widget {
+    variable alert = false
+    Text("A").color(.red, if: alert).onClick { alert = true }
+}

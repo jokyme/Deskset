@@ -1,0 +1,13 @@
+// DK8401 unknownLanguage
+//== expect: DK8401
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-CN-Hanz" { "CPU": "处理器" }
+}
+//== negative
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "CPU": "处理器" }
+}
