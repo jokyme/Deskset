@@ -37,6 +37,7 @@ enum VarByte {
     static let hash = UInt8(ascii: "#")
     static let dollar = UInt8(ascii: "$")
     static let ampersand = UInt8(ascii: "&")
+    static let percent = UInt8(ascii: "%")
     static let star = UInt8(ascii: "*")
     static let colon = UInt8(ascii: ":")
     static let open = UInt8(ascii: "[")
@@ -118,14 +119,19 @@ final class VarExpansion {
     private let variableLookup: (String) -> String?
     private let sectionLookup: ((String, SectionVariableParameter) -> String?)?
     private let eventLookup: ((String) -> String?)?
+    private let dollarLookup: ((String) -> String?)?
+    private let environmentLookup: ((String) -> String?)?
     /// false: only `#Var#` is resolved and every escape is kept verbatim (definitions / standard-only mode).
     private let fullSyntax: Bool
     /// Re-scan variable values for more `#Var#` (false when the lookup already returns final values).
     private let rescanValues: Bool
-    /// With `fullSyntax == false`: also resolve the nested variable form `[#Var]` (including `[#Color[#Index]]`),
-    /// keeping every other nesting form (`[&M]`, `[\x…]`, `[$…]`) and every escape as written. Used for `[Variables]`
-    /// definitions, where `[#Var]` must behave exactly like `#Var#` (see `VarDefinitionTable`).
+    /// With `fullSyntax == false`: also resolve the nested variable form `[#Var]` (including `[#Color[#Index]]`)
+    /// and `[%EnvVar]`, keeping every other nesting form (`[&M]`, `[\x…]`, `[$…]`) and every escape as written. Used
+    /// for `[Variables]` definitions, where `[#Var]` and `[%EnvVar]` behave like `#Var#` (see `VarDefinitionTable`).
     private let nestedVariables: Bool
+    /// With `fullSyntax`: also expand the unbracketed `%Name%` environment form (`SyntaxVersion=1`; see
+    /// `expandLegacyEnvironment`).
+    private let legacyEnvironment: Bool
     /// Optional budget shared with other runs (see `VarBudget`).
     private let budget: VarBudget?
 
@@ -143,16 +149,22 @@ final class VarExpansion {
     init(variableLookup: @escaping (String) -> String?,
          sectionLookup: ((String, SectionVariableParameter) -> String?)?,
          eventLookup: ((String) -> String?)?,
+         dollarLookup: ((String) -> String?)? = nil,
+         environmentLookup: ((String) -> String?)? = BuiltInVariables.environmentValue,
          fullSyntax: Bool,
          rescanValues: Bool,
          nestedVariables: Bool = false,
+         legacyEnvironment: Bool = false,
          budget: VarBudget? = nil) {
         self.variableLookup = variableLookup
         self.sectionLookup = fullSyntax ? sectionLookup : nil
         self.eventLookup = fullSyntax ? eventLookup : nil
+        self.dollarLookup = (fullSyntax || nestedVariables) ? dollarLookup : nil
+        self.environmentLookup = (fullSyntax || nestedVariables) ? environmentLookup : nil
         self.fullSyntax = fullSyntax
         self.rescanValues = rescanValues
         self.nestedVariables = nestedVariables
+        self.legacyEnvironment = fullSyntax && legacyEnvironment
         self.budget = budget
     }
 
@@ -165,10 +177,47 @@ final class VarExpansion {
         if fullSyntax {
             marked = expandNested(marked)
             marked = expandSections(marked)
+            if legacyEnvironment { marked = expandLegacyEnvironment(marked) }
         } else if nestedVariables {
             marked = expandNested(marked)
         }
         return changed ? marked.string : text
+    }
+
+    // MARK: Stage 4 — legacy %Name% environment variables (SyntaxVersion=1)
+
+    /// `%Name%` → the environment lookup's value, on live bytes only (measure values, built-in values and escapes
+    /// are frozen, so a measure showing `%PATH%` stays as it is). A name is 1–64 ASCII letters, digits, `_`, `(` or
+    /// `)`; anything else, an unknown name or a lone `%` stays as written, so `%1`, `50%`, `%H:%M` and URL escapes
+    /// such as `%20` survive. After an unknown name the closing `%` may open the next reference (`%x%PATH%`).
+    private func expandLegacyEnvironment(_ m: VarMarkedText) -> VarMarkedText {
+        guard let lookup = environmentLookup, scan(m.count) else { return m }
+        let n = m.count
+        guard (0..<n).contains(where: { m.isLive($0, VarByte.percent) }) else { return m }
+        func isNameByte(_ b: UInt8) -> Bool {
+            (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)
+                || b == UInt8(ascii: "_") || b == UInt8(ascii: "(") || b == UInt8(ascii: ")")
+        }
+        var out = VarMarkedText()
+        var i = 0
+        var run = 0
+        while i < n {
+            guard m.isLive(i, VarByte.percent) else { i += 1; continue }
+            var j = i + 1
+            while j < n, j - i <= 65, !m.frozen[j], isNameByte(m.bytes[j]) { j += 1 }
+            guard j < n, j > i + 1, j - i <= 65, m.isLive(j, VarByte.percent),
+                  substitutions < Self.maxSubstitutions, canLookUp else { i += 1; continue }
+            lookups += 1
+            let name = String(decoding: m.bytes[(i + 1)..<j], as: UTF8.self)
+            guard let value = lookup(name), record(value) else { i = j; continue }
+            out.append(m, run..<i)
+            out.appendFrozen(value.utf8)
+            i = j + 1
+            run = i
+        }
+        guard run > 0 else { return m }
+        out.append(m, run..<n)
+        return out
     }
 
     // MARK: Stage 1 — #Var#, #*Var*#, $Event$
@@ -289,7 +338,7 @@ final class VarExpansion {
     private func isNestedOpener(_ m: VarMarkedText, _ i: Int) -> Bool {
         guard i + 1 < m.count, m.isLive(i, VarByte.open), !m.frozen[i + 1] else { return false }
         switch m.bytes[i + 1] {
-        case VarByte.hash, VarByte.ampersand, VarByte.backslash, VarByte.dollar: return true
+        case VarByte.hash, VarByte.ampersand, VarByte.backslash, VarByte.dollar, VarByte.percent: return true
         default: return false
         }
     }
@@ -380,9 +429,23 @@ final class VarExpansion {
             return .literal(String(Character(scalar)).utf8)
 
         case VarByte.dollar:
-            guard !body.isEmpty, canLookUp, let value = lookupEvent(String(decoding: body, as: UTF8.self)) else {
+            guard eventLookup != nil || dollarLookup != nil else { return nil }
+            if Self.isEscape(body[...]) {
+                return fullSyntax ? escaped(prefix: prefix, body) : nil
+            }
+            guard !body.isEmpty, canLookUp, let value = lookupDollar(String(decoding: body, as: UTF8.self)) else {
                 return nil
             }
+            return .literal(value.utf8)
+
+        case VarByte.percent:
+            guard let lookup = environmentLookup else { return nil }
+            if Self.isEscape(body[...]) {
+                return fullSyntax ? escaped(prefix: prefix, body) : nil
+            }
+            guard !body.isEmpty, substitutions < Self.maxSubstitutions, canLookUp else { return nil }
+            lookups += 1
+            guard let value = lookup(String(decoding: body, as: UTF8.self)), record(value) else { return nil }
             return .literal(value.utf8)
 
         default:
@@ -390,7 +453,7 @@ final class VarExpansion {
         }
     }
 
-    /// `[#*Var*]` → `[#Var]`, `[&*Measure*]` → `[&Measure]` (frozen).
+    /// `[#*Var*]` → `[#Var]`, `[&*Measure*]` → `[&Measure]`, `[%*Env*]` → `[%Env]`, `[$*SkinW*]` → `[$SkinW]` (frozen).
     private func escaped(prefix: UInt8, _ body: [UInt8]) -> VarMarkedText {
         changed = true
         var m = VarMarkedText()
@@ -442,7 +505,7 @@ final class VarExpansion {
             return m
         }
         switch first {
-        case VarByte.hash, VarByte.ampersand, VarByte.backslash, VarByte.dollar, VarByte.bang:
+        case VarByte.hash, VarByte.ampersand, VarByte.backslash, VarByte.dollar, VarByte.percent, VarByte.bang:
             // Leftover nesting syntax that did not resolve, or a bang such as "[!Refresh]": never a section.
             return nil
         default:
@@ -496,6 +559,14 @@ final class VarExpansion {
         guard let lookup = eventLookup, substitutions < Self.maxSubstitutions else { return nil }
         lookups += 1
         guard let value = lookup(name), record(value) else { return nil }
+        return value
+    }
+
+    private func lookupDollar(_ name: String) -> String? {
+        guard substitutions < Self.maxSubstitutions else { return nil }
+        lookups += 1
+        let value = eventLookup?(name) ?? dollarLookup?(name)
+        guard let value, record(value) else { return nil }
         return value
     }
 
@@ -591,6 +662,8 @@ final class VarDefinitionTable {
     private var order: [String] = []
     private var raw: [String: String] = [:]
     private let builtins: [String: String]
+    private let dollarLookup: ((String) -> String?)?
+    private let environmentLookup: ((String) -> String?)?
     private let budget = VarBudget(bytes: VarDefinitionTable.maxTotalSubstitutedBytes)
     private var resolved: [String: String] = [:]
     private var inProgress: Set<String> = []
@@ -599,10 +672,15 @@ final class VarDefinitionTable {
     private var attemptAborted = false
     private var firstBlockedKey: String?
 
-    init(entries: [IniEntry], builtins: [String: String]) {
+    init(entries: [IniEntry],
+         builtins: [String: String],
+         dollarLookup: ((String) -> String?)? = nil,
+         environmentLookup: ((String) -> String?)? = BuiltInVariables.environmentValue) {
         var b: [String: String] = [:]
         for (k, v) in builtins { b[k.lowercased()] = v }
         self.builtins = b
+        self.dollarLookup = dollarLookup
+        self.environmentLookup = environmentLookup
         for e in entries {
             let key = e.key.trimmingCharacters(in: .whitespaces).lowercased()
             // @Include lines are directives, not variables (they may still be present in the entry list).
@@ -657,6 +735,7 @@ final class VarDefinitionTable {
         }
         inProgress.insert(key)
         let expansion = VarExpansion(variableLookup: { self.value(of: $0) }, sectionLookup: nil, eventLookup: nil,
+                                     dollarLookup: dollarLookup, environmentLookup: environmentLookup,
                                      fullSyntax: false, rescanValues: false, nestedVariables: true,
                                      budget: budget)
         let v = expansion.run(text)

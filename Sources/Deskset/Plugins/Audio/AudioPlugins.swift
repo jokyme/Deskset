@@ -7,16 +7,23 @@ import DesksetCore
 /// - `Plugin=Win7AudioPlugin` (also `Win7Audio`): volume, mute and output device of the Mac.
 /// - `Plugin=AppVolume` (third party): audio apps, per-app peak and mute.
 enum AudioPlugins {
-    /// `Plugin=` names → measure types (no `Measure=` types: none of these is a Rainmeter measure type). Listed in
-    /// `Skin.appProvidedMeasures` too (checked by the app self-test).
+    static let measureTypes: [(name: String, type: Measure.Type)] = [
+        ("AudioLevel", AudioLevelMeasure.self),
+        ("Audio", Win7AudioMeasure.self),
+    ]
+
     static let pluginTypes: [(name: String, type: Measure.Type)] = [
         ("AudioLevel", AudioLevelMeasure.self),
+        ("Audio", Win7AudioMeasure.self),
         ("Win7AudioPlugin", Win7AudioMeasure.self),
         ("Win7Audio", Win7AudioMeasure.self),
         ("AppVolume", AppVolumeMeasure.self),
     ]
 
+    static let measureNames = measureTypes.map { $0.name.lowercased() }
+
     static func register() {
+        for entry in measureTypes { MeasureRegistry.registerMeasure(entry.name, entry.type) }
         for entry in pluginTypes { MeasureRegistry.registerPlugin(entry.name, entry.type) }
     }
 

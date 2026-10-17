@@ -107,11 +107,11 @@ enum CodeEditorRoutingSelfTests {
             let hash = CodeEditorLaunch.command(family: forkyFamily, appURL: forky,
                                                 file: URL(fileURLWithPath: "/tmp/a#b?.ini"), line: 3)
             t.equal(hash, link("forky://file/tmp/a%23b%3F.ini:3", forky), "# and ? are encoded in the path")
-            // Antigravity IDE is a VS Code fork with its own scheme.
-            let agy = fakeApp(dir, "Antigravity IDE", product: ["urlProtocol": "antigravity-ide",
-                                                                "applicationName": "antigravity-ide"])
-            t.equal(command(CodeEditorCatalog.family(bundleID: "com.google.antigravity-ide", appURL: agy), agy),
-                    link("antigravity-ide://file\(spacePath):29", agy))
+            // Windsurf is a VS Code fork with its own scheme.
+            let windsurf = fakeApp(dir, "Windsurf", product: ["urlProtocol": "windsurf",
+                                                              "applicationName": "windsurf"])
+            t.equal(command(CodeEditorCatalog.family(bundleID: "com.exafunction.windsurf", appURL: windsurf), windsurf),
+                    link("windsurf://file\(spacePath):29", windsurf))
             // Listed without product.json: the catalog's scheme.
             let code = fakeApp(dir, "Visual Studio Code")
             t.equal(CodeEditorCatalog.family(bundleID: "com.microsoft.VSCode", appURL: code),
@@ -181,10 +181,10 @@ enum CodeEditorRoutingSelfTests {
             t.check(!EditorFamily.vsCode(urlProtocol: nil, applicationName: nil).jumpsToLine)
             t.equal(CodeEditorCatalog.family(bundleID: "com.example.unknown", appURL: dir), .plain)
             t.equal(CodeEditorCatalog.family(bundleID: nil, appURL: dir), .plain)
-            // The agent hub app is not an editor; the IDE is listed under its own identifier.
-            t.check(CodeEditorCatalog.isExcluded("com.google.antigravity"))
-            t.check(CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.google.antigravity-ide") })
-            t.check(!CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.google.antigravity") })
+            // Launcher apps are excluded from the editor catalog.
+            t.check(CodeEditorCatalog.isExcluded("com.jetbrains.toolbox"))
+            t.check(CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.exafunction.windsurf") })
+            t.check(!CodeEditorCatalog.entries.contains { $0.bundleIDs.contains("com.jetbrains.toolbox") })
         }
     }
 
@@ -195,8 +195,7 @@ enum CodeEditorRoutingSelfTests {
             let dir = t.temporaryDirectory("editorprefs")
             let d = EditorPreferences()
             t.equal(d.codeEditor, .builtIn, "the built-in editor is the default")
-            t.equal([d.liveReload, d.showIniNames], [true, false])
-            t.equal(d.openSkinsIn, .design)
+            t.equal(d.liveReload, true)
             t.equal(d.codeFontSize, 12)
 
             // Existing users (a state file from before Settings) get the built-in editor too.
@@ -216,13 +215,11 @@ enum CodeEditorRoutingSelfTests {
             defer { NotificationCenter.default.removeObserver(token) }
             state.updateEditor {
                 $0.codeEditor = .app(bundleID: "com.example.forky", lastKnownPath: "/Applications/Forky.app")
-                $0.openSkinsIn = .split
-                $0.showIniNames = true
                 $0.codeFontSize = 15
                 $0.liveReload = false
                 $0.otherApp = .init(bundleID: "com.example.other", path: "/Applications/Other.app")
             }
-            state.updateEditor { $0.showIniNames = true }
+            state.updateEditor { $0.liveReload = false }
             t.equal(posted, 1, "one notification per actual change")
             state.setSettingsPane("editor")
             state.saveNow()
@@ -242,10 +239,9 @@ enum CodeEditorRoutingSelfTests {
                 try? #"{"skins": {"X": {"file": "X.ini"}}, "editor": \#(editorJSON)}"#.write(to: f, atomically: true, encoding: .utf8)
                 return AppState(fileURL: f)
             }
-            let odd = decode(#"{"codeEditor": {"kind": "emacs"}, "codeFontSize": "big", "openSkinsIn": "SPLIT", "liveReload": false, "future": 1}"#)
+            let odd = decode(#"{"codeEditor": {"kind": "emacs"}, "codeFontSize": "big", "liveReload": false, "future": 1}"#)
             t.equal(odd.editor.codeEditor, .builtIn)
             t.equal(odd.editor.codeFontSize, 12)
-            t.equal(odd.editor.openSkinsIn, .split, "case-insensitive")
             t.equal(odd.editor.liveReload, false)
             t.equal(odd.skin("X")?.file, "X.ini", "the rest of the file still loads")
             t.equal(decode(#"{"codeEditor": "vscode"}"#).editor.codeEditor, .builtIn)
@@ -258,37 +254,6 @@ enum CodeEditorRoutingSelfTests {
             t.equal(broken.editor, EditorPreferences())
             t.check(!broken.data.hasEditorPreferences)
             t.equal(broken.skin("X")?.file, "X.ini")
-        }
-
-        t.suite("App: studio state in state.json (tips seen, editor locks, unlocked backgrounds)") {
-            let dir = t.temporaryDirectory("studioprefs")
-            let d = EditorPreferences()
-            t.equal(d.seenTips, [])
-            t.equal(d.editorLocks, [:])
-            t.equal(d.unlockedBackgrounds, [])
-            t.equal(d.showsContentOutside, true)
-
-            let url = dir.appendingPathComponent("state.json")
-            let state = AppState(fileURL: url)
-            state.updateEditor {
-                $0.seenTips = ["T1", "T3"]
-                $0.editorLocks = ["audio\\visualizer": ["meterbackground", "metertitle"]]
-                $0.unlockedBackgrounds = ["deskset\\system"]
-                $0.showsContentOutside = false
-            }
-            state.saveNow()
-            t.equal(AppState(fileURL: url).editor, state.editor, "round trip")
-
-            // Tolerant: a wrong type keeps that preference's default and loses nothing else.
-            let f = dir.appendingPathComponent("odd.json")
-            try #"{"editor": {"showIniNames": true, "seenTips": "T1", "editorLocks": {"a": 5}, "unlockedBackgrounds": ["b"], "showsContentOutside": "no"}}"#
-                .write(to: f, atomically: true, encoding: .utf8)
-            let odd = AppState(fileURL: f).editor
-            t.equal(odd.seenTips, [])
-            t.equal(odd.editorLocks, [:])
-            t.equal(odd.unlockedBackgrounds, ["b"])
-            t.equal(odd.showsContentOutside, true)
-            t.equal(odd.showIniNames, true)
         }
 
         t.suite("App: live reload moves from UserDefaults once") {
@@ -332,21 +297,21 @@ enum CodeEditorRoutingSelfTests {
             let locator = FakeLocator()
             let code = fakeApp(dir, "Visual Studio Code", product: ["urlProtocol": "vscode", "applicationName": "code"])
             let zed = fakeApp(dir, "Zed")
-            let hub = fakeApp(dir, "Antigravity")
-            let ide = fakeApp(dir, "Antigravity IDE", product: ["urlProtocol": "antigravity-ide"])
+            let hub = fakeApp(dir, "JetBrains Toolbox")
+            let ide = fakeApp(dir, "Cursor", product: ["urlProtocol": "cursor"])
             let claimer = fakeApp(dir, "Ini Pad")
             let own = fakeApp(dir, "Deskset Copy")
             let other = fakeApp(dir, "Other Editor")
-            locator.apps = ["com.microsoft.VSCode": code, "dev.zed.Zed": zed, "com.google.antigravity-ide": ide]
+            locator.apps = ["com.microsoft.VSCode": code, "dev.zed.Zed": zed, "com.todesktop.230313mzl4w4u92": ide]
             locator.claimers = [ide, code, hub, claimer, own]
-            locator.ids = [hub.path: "com.google.antigravity", claimer.path: "com.example.inipad",
+            locator.ids = [hub.path: "com.jetbrains.toolbox", claimer.path: "com.example.inipad",
                            own.path: "com.example.deskset", other.path: "com.example.other"]
             var prefs = EditorPreferences()
             prefs.otherApp = .init(bundleID: "com.example.other", path: other.path)
             let found = CodeEditorDetector.detect(preferences: prefs, locator: locator, ownBundleID: "com.example.deskset")
-            t.equal(found.map(\.name), ["Antigravity IDE", "Ini Pad", "Other Editor", "Visual Studio Code", "Zed"],
+            t.equal(found.map(\.name), ["Cursor", "Ini Pad", "Other Editor", "Visual Studio Code", "Zed"],
                     "catalog ∪ claimers ∪ Other…, sorted, without the hub app or Deskset, each once")
-            t.equal(found.first?.family, .vsCode(urlProtocol: "antigravity-ide", applicationName: "antigravity-ide"),
+            t.equal(found.first?.family, .vsCode(urlProtocol: "cursor", applicationName: "cursor"),
                     "a product.json without the CLI name keeps the catalog's")
             t.equal(found.first { $0.name == "Ini Pad" }?.family, .plain)
 
@@ -359,7 +324,7 @@ enum CodeEditorRoutingSelfTests {
             // A path now holding another app is not the stored one.
             t.equal(CodeEditorDetector.resolve(bundleID: "com.example.inipad", lastKnownPath: other.path, locator: locator), nil)
             locator.defaultApp = ide
-            t.equal(CodeEditorDetector.systemDefaultApp(locator: locator)?.name, "Antigravity IDE")
+            t.equal(CodeEditorDetector.systemDefaultApp(locator: locator)?.name, "Cursor")
 
             // What this Mac has (printed, not asserted).
             let real = CodeEditorDetector.detect(preferences: EditorPreferences(), locator: WorkspaceApplicationLocator())
@@ -430,11 +395,11 @@ enum CodeEditorRoutingSelfTests {
                     return t.check(false, "fixture header")
                 }
 
-                // Built-in: the editor opens on the skin and selects the section at the line.
+                // Built-in: the editor opens on the skin and reveals the section at the line.
                 app.state.updateEditor { $0.codeEditor = .builtIn }
                 CodeEditorRouter.open(file: ini, line: header + 3, app: app)
-                t.equal(app.inspector?.config, "Deskset\\System")
-                t.equal(app.inspector?.selectedSection, "MeterCPUValue")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\System")
+                t.equal(StudioWindowController.window(for: app)?.codeView.caretSection, "MeterCPUValue")
                 t.equal(opener.opened.count + opener.runs.count, 0, "no app launched")
 
                 // An included file of the edited skin: the style defined there.
@@ -442,8 +407,8 @@ enum CodeEditorRoutingSelfTests {
                 let styleLines = try TextDecoding.readFile(at: styles).components(separatedBy: "\n")
                 if let label = styleLines.firstIndex(where: { $0.hasPrefix("[StyleLabel]") }) {
                     CodeEditorRouter.open(file: styles, line: label + 2, app: app)
-                    t.equal(app.inspector?.config, "Deskset\\System", "the include stays in the open editor")
-                    t.equal(app.inspector?.selectedSection, "StyleLabel")
+                    t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\System", "the include stays in the open editor")
+                    t.equal(StudioWindowController.window(for: app)?.codeView.caretSection, "StyleLabel")
                 }
 
                 // A skin file of an unloaded config is loaded first.
@@ -451,9 +416,9 @@ enum CodeEditorRoutingSelfTests {
                 let clock = app.skinsDirectory.appendingPathComponent("Deskset/Clock/Clock.ini")
                 CodeEditorRouter.open(file: clock, app: app)
                 t.check(app.isLoadPending("Deskset\\Clock"), "loaded on the next run loop turn")
-                AppSelfTest.spin { app.inspector?.config == "Deskset\\Clock" }
+                AppSelfTest.spin { StudioWindowController.window(for: app)?.session?.config == "Deskset\\Clock" }
                 t.check(app.controller(for: "Deskset\\Clock") != nil, "loaded")
-                t.equal(app.inspector?.config, "Deskset\\Clock")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\Clock")
 
                 // External app: the line URL goes to that app; the editor window is not touched.
                 let forky = fakeApp(dir, "Forky", product: ["urlProtocol": "forky"])
@@ -464,7 +429,7 @@ enum CodeEditorRoutingSelfTests {
                     .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "") + ":7"
                 t.equal(opener.opened.last?.urls, [URL(string: expected)!])
                 t.equal(opener.opened.last?.app, forky)
-                t.equal(app.inspector?.config, "Deskset\\Clock")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\Clock")
                 // The skin menu offers the chosen app next to the Studio.
                 let clockMenu = app.controller(for: "Deskset\\Clock").map { app.skinMenu(for: $0, includeCustomItems: false) }
                 t.equal(clockMenu?.items.map(\.title).filter { $0.hasPrefix("Edit") }, ["Edit Skin…", "Edit in Forky"])
@@ -499,10 +464,10 @@ enum CodeEditorRoutingSelfTests {
                 let opened = opener.opened.count
                 CodeEditorRouter.open(file: ini, line: header + 2, app: app)
                 t.equal(opener.opened.count, opened, "nothing launched")
-                t.equal(app.inspector?.config, "Deskset\\System")
-                t.equal(app.inspector?.selectedSection, "MeterCPUValue")
-                t.check(app.inspector?.toastText.contains("Gone is no longer installed") == true,
-                        app.inspector?.toastText ?? "")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\System")
+                t.equal(StudioWindowController.window(for: app)?.codeView.caretSection, "MeterCPUValue")
+                t.check(StudioWindowController.window(for: app)?.preview.notice?.contains("Gone is no longer installed") == true,
+                        StudioWindowController.window(for: app)?.preview.notice ?? "")
 
                 // Files opened with Deskset: code files are routed; packages, ZIP archives (Deskset is an Open With
                 // choice for them) and folders go on to the skin installer.
@@ -514,7 +479,7 @@ enum CodeEditorRoutingSelfTests {
                                                              app: app)
                 t.equal(rest, [dir.appendingPathComponent("x.rmskin"), zip, dir], "the ZIP goes to the installer")
                 t.equal(opener.opened.count, openedBeforeZip, "not to Archive Utility or an editor")
-                t.equal(app.inspector?.config, "Deskset\\Clock")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\Clock")
                 t.check(!CodeEditorRouter.isEditableFile(URL(fileURLWithPath: "/a/skin.ZIP")))
                 t.check(!CodeEditorRouter.isEditableFile(URL(fileURLWithPath: "/a/skin.rmskin")))
                 t.check(CodeEditorRouter.isEditableFile(URL(fileURLWithPath: "/a/Settings.cfg")))
@@ -540,7 +505,7 @@ enum CodeEditorRoutingSelfTests {
                 t.equal(app.codeFileWindows.map { CodeEditorRouter.comparablePath($0.file) },
                         [cfg, json, bare].map(CodeEditorRouter.comparablePath), "a code window each")
                 t.equal(app.codeFileWindows.first?.codeView.text, "x=1")
-                t.equal(app.inspector?.config, "Deskset\\Clock", "the editor window is not touched")
+                t.equal(StudioWindowController.window(for: app)?.session?.config, "Deskset\\Clock", "the editor window is not touched")
                 // The same file again: its window, not a second one; at the line asked for.
                 try "a=1\nb=2\nc=3\n".write(to: json, atomically: true, encoding: .utf8)
                 CodeEditorRouter.open(file: json, line: 3, app: app)
@@ -650,14 +615,12 @@ enum CodeEditorRoutingSelfTests {
                                                     "-", "System default (Forky)", "Other…"])
                 t.equal(settings.editorPopUp.titleOfSelectedItem, SettingsWindowController.builtInTitle)
                 t.check(settings.editorPopUp.itemArray[2].image != nil, "editors have icons")
-                t.check(settings.modeControl.isEnabled)
                 t.check(settings.helperLabel.stringValue.contains("skin editor"), settings.helperLabel.stringValue)
 
                 settings.testChoose("Forky")
                 t.equal(app.state.editor.codeEditor, .app(bundleID: "com.example.forky", lastKnownPath: forky.path))
                 t.check(settings.helperLabel.stringValue.contains("Opens Forky at the selected line"),
                         settings.helperLabel.stringValue)
-                t.check(!settings.modeControl.isEnabled, "Open skins in: built-in only")
                 settings.testChoose("TextEdit")
                 t.check(settings.helperLabel.stringValue.contains("can’t jump to a line"), settings.helperLabel.stringValue)
                 settings.testChoose("System default (Forky)")
@@ -684,27 +647,13 @@ enum CodeEditorRoutingSelfTests {
                 app.state.updateEditor { $0.codeEditor = .builtIn }
 
                 // Other controls write the preferences, and follow changes made elsewhere.
-                settings.iniNamesBox.state = .on
-                _ = settings.iniNamesBox.target?.perform(settings.iniNamesBox.action, with: settings.iniNamesBox)
-                t.equal(app.state.editor.showIniNames, true)
                 settings.fontStepper.doubleValue = 16
                 _ = settings.fontStepper.target?.perform(settings.fontStepper.action, with: settings.fontStepper)
                 t.equal(app.state.editor.codeFontSize, 16)
                 t.equal(settings.fontField.integerValue, 16)
-                settings.modeControl.selectedSegment = 1
-                _ = settings.modeControl.target?.perform(settings.modeControl.action, with: settings.modeControl)
-                t.equal(app.state.editor.openSkinsIn, .split)
                 app.state.updateEditor { $0.liveReload = false }
                 t.equal(settings.liveReloadBox.state, .off, "follows changes made elsewhere")
 
-                // The editor's live reload is the same preference.
-                if let c = app.activate(config: "Deskset\\System", file: nil) {
-                    app.showInspector(for: c)
-                    t.equal(app.inspector?.liveReload, false)
-                    app.inspector?.liveReload = true
-                    t.equal(app.state.editor.liveReload, true)
-                    t.equal(settings.liveReloadBox.state, .on)
-                }
                 t.check(settings.snapshot() != nil, "renders off-screen")
                 settings.select(.general)
                 t.check(settings.snapshot() != nil)
@@ -715,20 +664,6 @@ enum CodeEditorRoutingSelfTests {
     // MARK: Other
 
     static func miscTests(_ t: AppTestRunner) {
-        t.suite("App: section at a line") {
-            let text = "; comment\r\n[Rainmeter]\r\nUpdate=1000\r\n\r\n[ MeterA ]\rX=[!Log x]\n[]\n  [MeterB]junk\nY=1"
-            let at = { InspectorWindowController.sectionName(atLine: $0, in: text) }
-            t.equal(at(1), nil, "above the first header")
-            t.equal(at(2), "Rainmeter")
-            t.equal(at(4), "Rainmeter")
-            t.equal(at(5), "MeterA", "trimmed")
-            t.equal(at(6), "MeterA", "values starting with [ are not headers")
-            t.equal(at(7), "MeterA", "an empty header names nothing")
-            t.equal(at(8), "MeterB", "text after ] is ignored")
-            t.equal(at(99), "MeterB")
-            t.equal(InspectorWindowController.sectionName(atLine: 1, in: "\u{FEFF}[Variables]\nA=1"), "Variables")
-        }
-
         t.suite("App: activation policy follows editor windows") {
             t.equal(AppActivation.policy(current: .accessory, anyOpen: true), .regular)
             t.equal(AppActivation.policy(current: .regular, anyOpen: false), .accessory)
@@ -755,3 +690,4 @@ enum CodeEditorRoutingSelfTests {
         }
     }
 }
+

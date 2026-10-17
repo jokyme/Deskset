@@ -33,6 +33,10 @@ enum SkinMessage {
     case exited
     /// The skin's window became key or stopped being key (`Skin.focusChanged`).
     case focus(Bool)
+    /// File drag-and-drop over the skin's window (`Skin.fileDragEvent`).
+    case fileDrag(Skin.FileDragPhase, files: [String], x: Double, y: Double)
+    /// Keyboard input for the focused `TextEditMeter` (`Skin.keyEvent`).
+    case key(TextEditMeter.KeyInput)
 
     // MARK: Actions
 
@@ -86,6 +90,8 @@ enum SkinMessage {
     case fontsChanged
     /// The appearance or a regional setting changed (`Skin.appearanceDidChange`).
     case appearanceChanged
+    /// Display metrics changed (`Skin.displayMetricsDidChange`).
+    case displayMetricsChanged
     /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction), then reports `.closed` with `ticket`
     /// (a reload the Studio asked for, which this close is part of). The window fades out when `fadeOut`.
     case close(fadeOut: Bool, ticket: SkinReloadTicket? = nil)

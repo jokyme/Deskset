@@ -81,9 +81,15 @@ open class SkinSection {
         "valueremainder": "valuereminder",
     ]
 
-    /// The value of `key` as the skin's files define it — the section's own value, else its MeterStyles' (the last
-    /// listed first) — ignoring what is set while the skin runs (`!SetOption`, the editor's live previews). nil when
-    /// no file sets it; `""` for an empty value.
+    /// Options that cannot be inherited from a `MeterStyle` or `@Inherit` parent section (manual: `@Inherit` →
+    /// `Meter`, `Measure`, and `@Inherit` / `MeterStyle` themselves).
+    static let nonInheritableOptions: Set<String> = [
+        "meter", "measure", "meterstyle", "@inherit",
+    ]
+
+    /// The value of `key` as the skin's files define it — the section's own value, else its MeterStyles' / `@Inherit`
+    /// parents' (the last listed first) — ignoring what is set while the skin runs (`!SetOption`, the editor's live
+    /// previews). nil when no file sets it; `""` for an empty value.
     public func fileOption(_ key: String) -> String? {
         let lower = key.lowercased()
         var foundEmpty = false
@@ -91,19 +97,23 @@ open class SkinSection {
             if !v.isEmpty { return v }
             foundEmpty = true
         }
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
+        if !SkinSection.nonInheritableOptions.contains(lower) {
+            for style in styles.reversed() {
+                if let v = skin.styleValues(named: style)?[lower] {
+                    if !v.isEmpty { return v }
+                    foundEmpty = true
+                }
             }
         }
         return foundEmpty ? "" : nil
     }
 
-    /// The value of `key` the section's MeterStyles give it (the last listed first) — what `fileOption(key)` becomes
-    /// when the section's own key is removed. nil when no style sets it; `""` for an empty value.
+    /// The value of `key` the section's MeterStyles / `@Inherit` parents give it (the last listed first) — what
+    /// `fileOption(key)` becomes when the section's own key is removed. nil when no style sets it; `""` for an empty
+    /// value.
     public func styleFileOption(_ key: String) -> String? {
         let lower = key.lowercased()
+        guard !SkinSection.nonInheritableOptions.contains(lower) else { return nil }
         var foundEmpty = false
         for style in styles.reversed() {
             if let v = skin.styleValues(named: style)?[lower] {
@@ -114,11 +124,12 @@ open class SkinSection {
         return foundEmpty ? "" : nil
     }
 
-    /// Where `fileOption(key)` is defined: the section itself or the MeterStyle it inherits it from (nil when no file
-    /// sets it). Unlike `optionOrigin`, never `.setOption`.
+    /// Where `fileOption(key)` is defined: the section itself or the MeterStyle / `@Inherit` parent it inherits it
+    /// from (nil when no file sets it). Unlike `optionOrigin`, never `.setOption`.
     public func fileOrigin(_ key: String) -> OptionOrigin? {
         let lower = key.lowercased()
         if ownValues[lower] != nil { return .own(skin.sources.location(section: name, key: lower)) }
+        guard !SkinSection.nonInheritableOptions.contains(lower) else { return nil }
         for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
             return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
         }
@@ -136,10 +147,12 @@ open class SkinSection {
             if !v.isEmpty { return v }
             foundEmpty = true
         }
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
+        if !SkinSection.nonInheritableOptions.contains(lower) {
+            for style in styles.reversed() {
+                if let v = skin.styleValues(named: style)?[lower] {
+                    if !v.isEmpty { return v }
+                    foundEmpty = true
+                }
             }
         }
         return foundEmpty ? "" : nil
@@ -210,8 +223,11 @@ open class SkinSection {
     /// update, so "invalid …" log lines wait for that read instead of reporting a mistake the skin does not have.
     func awaitsSectionVariables(_ key: String) -> Bool {
         if resolvesSectionVariables && skin.optionsLoaded { return false }
-        guard let raw = rawOption(key), raw.utf8.contains(UInt8(ascii: "[")) else { return false }
-        return skin.mentionsSectionVariable(skin.resolve(raw, in: self, sectionVariables: false))
+        guard let raw = rawOption(key) else { return false }
+        if raw.utf8.contains(UInt8(ascii: "[")) {
+            return skin.mentionsSectionVariable(skin.resolve(raw, in: self, sectionVariables: false))
+        }
+        return false
     }
 
     /// Action option (`LeftMouseUpAction`, `IfTrueAction`, …): only `#Var#` is replaced when the option is read;
@@ -228,12 +244,20 @@ open class SkinSection {
     /// Missing or empty → default; otherwise number/formula (unparseable → default).
     public func double(_ key: String, _ defaultValue: Double) -> Double {
         guard let s = option(key), !s.trimmingCharacters(in: .whitespaces).isEmpty else { return defaultValue }
-        return OptionValue.number(s) ?? defaultValue
+        return Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+            skin.formulaValue(of: $0, from: self)
+        }) {
+            OptionValue.number(s) ?? defaultValue
+        }
     }
 
     public func optionalDouble(_ key: String) -> Double? {
         guard let s = option(key), !s.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return OptionValue.number(s)
+        return Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+            skin.formulaValue(of: $0, from: self)
+        }) {
+            OptionValue.number(s)
+        }
     }
 
     public func int(_ key: String, _ defaultValue: Int) -> Int {
@@ -244,12 +268,20 @@ open class SkinSection {
 
     public func bool(_ key: String, _ defaultValue: Bool) -> Bool {
         guard let s = option(key), !s.trimmingCharacters(in: .whitespaces).isEmpty else { return defaultValue }
-        return OptionValue.bool(s) ?? defaultValue
+        return Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+            skin.formulaValue(of: $0, from: self)
+        }) {
+            OptionValue.bool(s) ?? defaultValue
+        }
     }
 
     public func color(_ key: String, _ defaultValue: RGBA) -> RGBA {
         guard let s = option(key), !s.trimmingCharacters(in: .whitespaces).isEmpty else { return defaultValue }
-        return OptionValue.color(s) ?? defaultValue
+        return Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+            skin.formulaValue(of: $0, from: self)
+        }) {
+            OptionValue.color(s) ?? defaultValue
+        }
     }
 
     /// Numbered option family: `Key`, `Key2`, `Key3`… stopping at the first gap (after `Key2`).
@@ -269,9 +301,68 @@ open class SkinSection {
 
     /// Reads options common to every section. Subclasses override, call super, then read their own.
     open func readOptions() {
+        if !(self is RainmeterSection) {
+            readInheritedStyles()
+        }
         dynamicVariables = bool("DynamicVariables", false)
         updateDivider = int("UpdateDivider", skin.settings.defaultUpdateDivider)
         groups = OptionValue.list(string("Group")).map { $0.lowercased() }
+    }
+
+    /// Reads `MeterStyle` (on meters) and `@Inherit` (on measures and meters) from the section itself or `!SetOption`,
+    /// never from parent sections.
+    private func readInheritedStyles() {
+        let styleSectionVariables = bool("DynamicVariables", false) || readingAfterLoad
+        var resolvedStyles: [String] = []
+        if self is Meter {
+            let meterStyleOption = overrides["meterstyle"] ?? own.value(forKey: "MeterStyle") ?? ""
+            if !meterStyleOption.isEmpty {
+                let text = skin.resolve(meterStyleOption, in: self, sectionVariables: styleSectionVariables)
+                let list = OptionValue.list(text)
+                resolvedStyles.append(contentsOf: list)
+                noteSectionVariables(raw: meterStyleOption, resolved: text,
+                                     sectionVariablesResolved: styleSectionVariables)
+                reportMissingStyles(list, rawOption: meterStyleOption, optionName: "MeterStyle",
+                                    sectionVariablesResolved: styleSectionVariables)
+            }
+        }
+        let inheritOption = overrides["@inherit"] ?? own.value(forKey: "@Inherit") ?? ""
+        if !inheritOption.isEmpty {
+            let text = skin.resolve(inheritOption, in: self, sectionVariables: styleSectionVariables)
+            let list = OptionValue.list(text)
+            resolvedStyles.append(contentsOf: list)
+            noteSectionVariables(raw: inheritOption, resolved: text,
+                                 sectionVariablesResolved: styleSectionVariables)
+            reportMissingStyles(list, rawOption: inheritOption, optionName: "@Inherit",
+                                sectionVariablesResolved: styleSectionVariables)
+        }
+        styles = resolvedStyles
+    }
+
+    /// Logs `MeterStyle` / `@Inherit` names that name no section — an authoring mistake that behaves the same in
+    /// Rainmeter, so a log line (once per name), not a compatibility issue.
+    ///
+    /// A name built from a section variable (`StyleGrabber[MeasureActive1]`, Enigma's Reader and Notes grabbers)
+    /// cannot be checked before section variables have real values: at the load-time read they are either not
+    /// resolved (the name still reads `StyleGrabber[MeasureActive1]`, e.g. when DynamicVariables=1 comes from a
+    /// style, which is not known yet) or resolved before any measure has updated. Such names are checked from the
+    /// first read after the skin loaded that resolves section variables (the first update); names written without
+    /// section variables are checked right away.
+    private func reportMissingStyles(_ list: [String], rawOption: String, optionName: String,
+                                     sectionVariablesResolved: Bool) {
+        var missing = list.filter { skin.styleSection(named: $0) == nil }
+        guard !missing.isEmpty else { return }
+        if !(sectionVariablesResolved && skin.optionsLoaded), rawOption.utf8.contains(UInt8(ascii: "[")) {
+            let written = OptionValue.list(skin.resolve(rawOption, in: self, sectionVariables: false))
+            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && skin.mentionsSectionVariable($0) }
+            if !pending.isEmpty {
+                let settled = Set(written.filter { !pending.contains($0) }.map { $0.lowercased() })
+                missing = missing.filter { settled.contains($0.lowercased()) }
+            }
+        }
+        for style in missing {
+            skin.logOnce("\(optionName) \"\(style)\" used by [\(name)] does not exist", level: .warning)
+        }
     }
 
     /// Reads the options when they changed (`!SetOption`, load) or on every update for dynamic sections.
@@ -291,7 +382,11 @@ open class SkinSection {
             needsOptionRead = false
             readingAfterLoad = skin.optionsLoaded
             defer { readingAfterLoad = false }
-            readOptions()
+            Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+                skin.formulaValue(of: $0, from: self)
+            }) {
+                readOptions()
+            }
         }
     }
 
@@ -305,7 +400,51 @@ open class SkinSection {
     }
 
     public func isInGroup(_ group: String) -> Bool {
-        groups.contains(group.trimmingCharacters(in: .whitespaces).lowercased())
+        Self.matchesGroupSelector(group, in: groups)
+    }
+
+    /// Extracts the group expression from a `Group=...` argument (case-insensitive prefix), or nil if `argument`
+    /// does not start with `Group=`.
+    public static func parseGroupSelector(_ argument: String) -> String? {
+        let trimmed = argument.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 6 else { return nil }
+        let prefix = trimmed.prefix(6)
+        guard prefix.lowercased() == "group=" else { return nil }
+        return String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Evaluates a group expression from a `*Group` bang or `Group=...` selector against this section's `groups`.
+    /// Supports `a|b` (OR), `a&b` (AND), or a single group name; mixing `|` and `&` matches nothing (Rainmeter 5.0).
+    public func matchesGroupSelector(_ selector: String) -> Bool {
+        Self.matchesGroupSelector(selector, in: groups)
+    }
+
+    /// Evaluates a group expression against a lowercased set of group names.
+    public static func matchesGroupSelector(_ selector: String, in groups: Set<String>) -> Bool {
+        let expr = parseGroupSelector(selector) ?? selector.trimmingCharacters(in: .whitespaces)
+        guard !expr.isEmpty else { return false }
+        let hasPipe = expr.utf8.contains(UInt8(ascii: "|"))
+        let hasAmp = expr.utf8.contains(UInt8(ascii: "&"))
+        if hasPipe && hasAmp { return false }
+        if hasPipe {
+            let parts = expr.split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                .filter { !$0.isEmpty }
+            guard !parts.isEmpty else { return false }
+            return parts.contains { groups.contains($0) }
+        }
+        if hasAmp {
+            let parts = expr.split(separator: "&", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty }) else { return false }
+            return parts.allSatisfy { groups.contains($0) }
+        }
+        return groups.contains(expr.lowercased())
+    }
+
+    /// Evaluates a group expression against a list of group names (case-insensitive).
+    public static func matchesGroupSelector(_ selector: String, in groups: [String]) -> Bool {
+        matchesGroupSelector(selector, in: Set(groups.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }))
     }
 
     // MARK: Mouse action states

@@ -136,6 +136,63 @@ func runTextTransformTests(_ t: TestRunner) {
 
     // MARK: PCRE → ICU
 
+    t.suite("TextTransform: PCRE LF newline convention") {
+        // The shared compiler selects LF for ., ^ and $, preserving CR and other Unicode line separators.
+        t.equal(PCRE.matches("^.$", in: "\r"), true)
+        t.equal(PCRE.matches("^$", in: "\r"), false)
+        t.equal(PCRE.matches("^.$", in: "\n"), false)
+        t.equal(PCRE.matches("^.$", in: "\u{2028}"), true)
+        t.equal(PCRE.captures("(.*)$", in: "x\r\n"), ["x\r", "x\r"])
+        t.equal(PCRE.matches("x$", in: "x\n"), true)
+        t.equal(PCRE.matches("x$", in: "x\r"), false)
+        // Inline modes still work; multiline anchors recognize LF, including the LF of an unchanged CRLF pair.
+        t.equal(PCRE.matches("(?m)^b$", in: "a\nb\nc"), true)
+        t.equal(PCRE.matches("(?m)^b$", in: "a\rb\rc"), false)
+        t.equal(PCRE.matches("(?m)^b$", in: "a\u{2028}b\u{2028}c"), false)
+        t.equal(PCRE.captures("(?m)^(.*)$", in: "x\r\ny"), ["x\r", "x\r"])
+        t.equal(PCRE.matches("(?s)^a.b$", in: "a\nb"), true)
+        t.equal(PCRE.matches("(?s)(?-s)^a.b$", in: "a\nb"), false)
+        // The line-separator option does not narrow whitespace or \R; \N already uses the LF convention.
+        t.equal(PCRE.matches(#"^\s+$"#, in: "\r\n\u{2028}"), true)
+        t.equal(PCRE.captures(#"(\R)"#, in: "\r\n"), ["\r\n", "\r\n"])
+        t.equal(PCRE.matches(#"^\R$"#, in: "\u{2028}"), true)
+        t.equal(PCRE.matches(#"^\N$"#, in: "\r"), true)
+        t.equal(PCRE.matches(#"^\N$"#, in: "\n"), false)
+        t.equal(PCRE.matches(#"^\N$"#, in: "\u{2028}"), true)
+        // Both cache variants keep LF semantics; the existing case flag remains part of the key.
+        let pattern = "^line.$"
+        let sensitive = PCRE.regex(pattern)
+        let insensitive = PCRE.regex(pattern, caseInsensitive: true)
+        t.check(sensitive != nil)
+        t.check(insensitive != nil)
+        t.equal(sensitive?.options.contains(.useUnixLineSeparators), true)
+        t.equal(insensitive?.options.contains(.useUnixLineSeparators), true)
+        t.check(sensitive === PCRE.regex(pattern))
+        t.check(insensitive === PCRE.regex(pattern, caseInsensitive: true))
+        t.check(sensitive !== insensitive)
+        t.equal(PCRE.matches(pattern, in: "LINE\r"), false)
+        t.equal(PCRE.matches(pattern, in: "LINE\r", caseInsensitive: true), true)
+    }
+
+    t.suite("TextTransform: HMNmeter service CRLF Substitute") {
+        // Original Skins/HMNmeter2/NetworkMeter/Config/Settings.ini [MeasureRunGetServiceState]:
+        // RegExpSubstitute=1, OutputType=ANSI. #CRLF# expands to LF; the process output stays CRLF.
+        let original = ##""State.*#CRLF#":"","#CRLF#":"","\s+$":"","No Instance\(s\) Available\.":"Not Installed""##
+        let rules = SubstituteRules(original.replacingOccurrences(of: "#CRLF#", with: "\n"), regex: true)
+        t.equal(rules.pairs, [pair("State.*\n", ""), pair("\n", ""), pair(#"\s+$"#, ""),
+                              pair(#"No Instance\(s\) Available\."#, "Not Installed")])
+        for state in ["Running", "Stopped"] {
+            let raw = "State\r\n\(state)\r\n"
+            t.equal(PCRE.replaceAll("State.*\n", in: raw, template: ""), "\(state)\r\n",
+                    "the first pair consumes CR in the header and leaves the result's original CRLF")
+            t.equal(rules.apply(to: raw), state, "the original ordered pairs remove LF and trim the remaining CR")
+            t.equal(rules.apply(to: "State\n\(state)\n"), state, "LF-only output still works")
+        }
+        t.equal(rules.apply(to: "No Instance(s) Available.\r\n"), "Not Installed")
+        t.equal(rules.apply(to: "State\r\n"), "")
+        t.equal(rules.apply(to: ""), "")
+    }
+
     t.suite("TextTransform: PCRE ungreedy (?U)") {
         t.equal(PCRE.toICU("(?siU)<title>(.*)</title>"), "(?si)<title>(.*?)</title>")
         t.equal(PCRE.toICU("(?U)a+b*c?d{1,3}e{2,}f{3}"), "a+?b*?c??d{1,3}?e{2,}?f{3}")
@@ -337,6 +394,9 @@ func runTextTransformTests(_ t: TestRunner) {
 
     t.suite("TextTransform: PCRE verbs, unsupported and invalid patterns") {
         t.equal(PCRE.toICU("(*UTF8)(*UCP)(*CRLF)(*LIMIT_MATCH=10)a"), "a")
+        // Explicit newline and BSR controls are still dropped, not honored by the LF compiler default.
+        t.equal(PCRE.matches("(*CR)^.$", in: "\r"), true)
+        t.equal(PCRE.matches(#"(*BSR_ANYCRLF)^\R$"#, in: "\u{2028}"), true)
         t.equal(PCRE.toICU("a(*FAIL)|b(*F)"), "a(?!)|b(?!)")
         t.equal(PCRE.toICU("a(*SKIP)(*F)|b"), "a(?!)|b")
         t.equal(PCRE.toICU("a(*PRUNE)(*COMMIT)(*THEN)(*MARK:x)(*:y)(*ACCEPT)b"), "ab")

@@ -1,5 +1,16 @@
 import Foundation
 
+/// A point in skin coordinates (origin top-left, y grows downward).
+public struct SkinPoint: Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double = 0, y: Double = 0) {
+        self.x = x
+        self.y = y
+    }
+}
+
 /// Rectangle in skin coordinates (origin top-left, y grows downward, 1 unit = 1 point).
 public struct SkinRect: Equatable, Sendable {
     public var x: Double
@@ -217,10 +228,16 @@ public struct ContextMenuItem: Equatable, Sendable {
 public struct SkinScreen: Equatable, Sendable {
     public var area: SkinRect
     public var workArea: SkinRect
+    /// Display scale factor (`[$DisplayDPIFactor]` / `[$DisplayNDPIFactor]` / `[$DisplayDeviceNDPIFactor]`).
+    public var dpiFactor: Double
+    /// Display device name (`[$DisplayDeviceNName]`); empty defaults to `\\.\DISPLAY<N>`.
+    public var name: String
 
-    public init(area: SkinRect, workArea: SkinRect) {
+    public init(area: SkinRect, workArea: SkinRect, dpiFactor: Double = 1.0, name: String = "") {
         self.area = area
         self.workArea = workArea
+        self.dpiFactor = dpiFactor
+        self.name = name
     }
 }
 
@@ -241,6 +258,10 @@ public struct SkinEnvironment: Equatable {
     /// Index into `screens` of the monitor the skin is on, for `#SCREENAREAX#`-style variables without `@N`
     /// (manual: the primary monitor unless the skin auto-selects its screen). 0 = primary.
     public var currentScreen: Int
+    /// Skin zoom factor (`[$SkinZoomFactor]` / `!SetZoomFactor`), default 1.0.
+    public var zoomFactor: Double
+    /// Whether the skin window is currently visible on screen (`[$SkinVisible]`, `Update=… | Invisible <ms>`).
+    public var visible: Bool
     /// The Mac's light / dark appearance and colors (`#MACAPPEARANCE#`… variables, Deskset extension).
     public var appearance: SkinAppearance
     /// The user's locale: `FormatLocale=Local`, the names of `%Z` and of SysInfo's time zone types, `locale-date` /
@@ -268,6 +289,8 @@ public struct SkinEnvironment: Equatable {
                 zPosition: Int = 0,
                 configEditor: String = "/System/Applications/TextEdit.app",
                 currentScreen: Int = 0,
+                zoomFactor: Double = 1.0,
+                visible: Bool = true,
                 appearance: SkinAppearance = .light,
                 locale: Locale = .autoupdatingCurrent,
                 preferredLanguages: [String]? = nil) {
@@ -278,6 +301,8 @@ public struct SkinEnvironment: Equatable {
         self.zPosition = zPosition
         self.configEditor = configEditor
         self.currentScreen = currentScreen
+        self.zoomFactor = zoomFactor
+        self.visible = visible
         self.appearance = appearance
         self.locale = locale
         preferredLanguagesSet = preferredLanguages

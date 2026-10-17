@@ -152,6 +152,9 @@ final class AudioLevelMeasure: Measure {
     var parentLookup: ((String) -> AudioLevelMeasure?)?
     /// The parent's analyzer is subscribed to `engine` (see `subscribeIfNeeded`).
     private(set) var subscribed = false
+    private(set) var isAudioPlaying = false
+    private var onAudioStartAction = ""
+    private var onAudioEndAction = ""
     private var loggedMessages: Set<String> = []
     /// The permission note this parent last added to its skin (taken back when it no longer applies).
     private var notedPermission: String?
@@ -175,7 +178,11 @@ final class AudioLevelMeasure: Measure {
 
     override func readMeasureOptions() {
         parentName = string("Parent").trimmingCharacters(in: .whitespaces)
-        if parentName.isEmpty && parentOptions == nil { configureParent() }
+        if parentName.isEmpty {
+            if parentOptions == nil { configureParent() }
+            onAudioStartAction = actionOption("OnAudioStartAction")
+            onAudioEndAction = actionOption("OnAudioEndAction")
+        }
         let options = AudioLevelChildOptions.read { self.option($0) }
         if let t = options.invalidType { logOnce("[\(name)] AudioLevel: unknown Type=\(t)", level: .warning) }
         if let c = options.invalidChannel { logOnce("[\(name)] AudioLevel: unknown Channel=\(c); using Sum", level: .warning) }
@@ -194,7 +201,9 @@ final class AudioLevelMeasure: Measure {
     /// `!DisableMeasure` on a parent releases its capture (the source stops 3 s after its last analyzer left, and with it
     /// the recording indicator); its children then read 0. `!EnableMeasure` subscribes it again at its next update.
     override func disabledStateChanged() {
-        guard disabled, subscribed, let analyzer else { return }
+        guard disabled else { return }
+        isAudioPlaying = false
+        guard subscribed, let analyzer else { return }
         subscribed = false
         engine.unsubscribe(analyzer)
     }
@@ -229,6 +238,15 @@ final class AudioLevelMeasure: Measure {
             if let old = notedPermission, old != status.permissionNote { skin.removeIssue(old) }
             if let note = status.permissionNote { skin.addIssue(note) }
             notedPermission = status.permissionNote
+        }
+        if parentName.isEmpty, let analyzer, !disabled, !paused {
+            let level = max(analyzer.rms(.sum), analyzer.peak(.sum))
+            let active = level > 1e-4
+            if active != isAudioPlaying {
+                isAudioPlaying = active
+                let action = active ? onAudioStartAction : onAudioEndAction
+                if !action.isEmpty { skin.execute(action, from: self) }
+            }
         }
         let result = evaluate()
         pluginString = result.text

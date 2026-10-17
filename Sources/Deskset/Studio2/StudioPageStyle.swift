@@ -11,11 +11,8 @@ enum StudioPageStyle {
 
     // MARK: Type
 
-    /// The title of a page or a popover: New York semibold, Songti SC bold in Chinese.
+    /// The title of a page or a popover: New York semibold.
     static func titleFont(_ size: CGFloat = 21) -> NSFont {
-        if StudioText.language == .chinese {
-            return NSFont(name: "STSongti-SC-Bold", size: size - 1) ?? .systemFont(ofSize: size - 1, weight: .semibold)
-        }
         let base = NSFont.systemFont(ofSize: size, weight: .semibold)
         return base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) } ?? base
     }

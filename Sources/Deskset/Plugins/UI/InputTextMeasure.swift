@@ -281,6 +281,7 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
         case .left: field.alignment = .left
         case .center: field.alignment = .center
         case .right: field.alignment = .right
+        case .justify: field.alignment = .justified
         }
         field.cell?.isScrollable = true
         field.cell?.wraps = false

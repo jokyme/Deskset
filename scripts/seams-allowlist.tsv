@@ -29,9 +29,6 @@ event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage
 
 effect.fileWrite	Sources/Deskset/App/AppIcon.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-effect.workspace	Sources/Deskset/App/CanvasOverlays.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/CanvasOverlays.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
 background.mainHop	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 background.process	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.workspace	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -50,11 +47,6 @@ random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, n
 random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input (the age of stale temporary settings folders)
 
-background.mainHop	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.fileWrite	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.sound	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-random.UUID	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
 effect.fileWrite	Sources/Deskset/App/DefaultSkins.swift	6	installing the default skins
 effect.iniWrite	Sources/Deskset/App/DefaultSkins.swift	1	installing the default skins
 
@@ -72,69 +64,6 @@ timer.Timer	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timin
 timer.executorTimer	Sources/Deskset/App/EditingSession.swift	1	the update timer, on the executor
 timer.runLoopAdd	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timing and debounces
 
-background.mainHop	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.sound	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-background.mainHop	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.pasteboard	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.sound	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.pointerState	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-effect.sound	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-mono.systemUptime	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.runLoopAdd	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-wall.Date()	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-effect.pasteboard	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.runLoopAdd	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-wall.Date()	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-zone.localizedText	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-effect.workspace	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.animation	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-wall.Date()	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-zone.localizedText	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-event.notification	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.runLoopAdd	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-effect.fileWrite	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.sound	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.runLoopAdd	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-event.notification	Sources/Deskset/App/EditorSidebar.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.pointerState	Sources/Deskset/App/EditorSidebar.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-timer.animation	Sources/Deskset/App/EditorViews.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.asyncAfter	Sources/Deskset/App/EditorViews.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-effect.pasteboard	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.workspace	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-background.mainHop	Sources/Deskset/App/InspectorInPlace.swift	1	Skin Studio UI: the inspector names what a step changed on the next turn; never runs inside a skin
-effect.fileWrite	Sources/Deskset/App/InspectorInPlace.swift	4	Skin Studio self-check tooling: with DESKSET_VERIFY_IN_PLACE_DIR set, a page followed in place that differs from the page built again is saved for a look; never runs inside a skin
-wall.Date()	Sources/Deskset/App/InspectorInPlace.swift	2	Skin Studio UI: the time format presets and a custom format show today's date, as the layer page's menu does (EditorLayerPages.swift)
-
-background.mainHop	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.sound	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-effect.workspace	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-event.notification	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-random.UUID	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.Timer	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-timer.runLoopAdd	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-random.hashSeed	Sources/Deskset/App/LayerThumbnails.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
 wall.Date()	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's clock; DesksetCore has no such defaults
 zone.inferredCurrent	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's time zone and locale; DesksetCore has no such defaults
 
@@ -149,8 +78,6 @@ zone.implicitFormatter	Sources/Deskset/App/ManageWindowController.swift	*	Skin S
 event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-event.notification	Sources/Deskset/App/ShapeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
 effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
@@ -161,8 +88,6 @@ mono.systemUptime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling
 mono.threadCPUTime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
 random.UUID	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
 timer.executorTimer	Sources/Deskset/App/SkinBenchmark.swift	1	--benchmark: the update timer, on the skin's executor as a skin window's
-
-event.pointerState	Sources/Deskset/App/SkinCanvasView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
@@ -201,8 +126,6 @@ effect.fileWrite	Sources/Deskset/Fonts.swift	8	app files (state, log, caches); n
 effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
-
-mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
 
 mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
 
@@ -334,7 +257,6 @@ mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots e
 background.executorAsync	Sources/Deskset/SkinDrawing.swift	1	the frame producer joins the run loop of the executor its skin runs on (skin threading: frames are drawn at the end of the executor's turn)
 event.runLoopObserver	Sources/Deskset/SkinDrawing.swift	1	frames are drawn once per turn of the skin executor's run loop, before Core Animation commits (skin threading §7.3); a frame, not a skin input
 mono.systemUptime	Sources/Deskset/SkinDrawing.swift	6	frame pacing and FrameTimingLog: when a frame was asked for and how long drawing took; a frame, not a skin input
-random.hashSeed	Sources/Deskset/SkinDrawing.swift	1	in-process cache key
 timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be seen lets go of its kept pictures after a while (on the skin's executor); memory, not a skin input
 
 background.executorAsync	Sources/Deskset/SkinRuntime.swift	3	the runtime's messages and its skin's release go to the skin's executor (skin threading §15: the executor seam itself)
@@ -357,17 +279,6 @@ timer.dispatchSource	Sources/Deskset/SkinWorkWatchdog.swift	1	one shared busy-sk
 effect.workspace	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 event.notification	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-background.mainHop	Sources/Deskset/Studio2/StudioAddView.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-effect.sound	Sources/Deskset/Studio2/StudioAddView.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.sound	Sources/Deskset/Studio2/StudioAddWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-mono.systemUptime	Sources/Deskset/Studio2/StudioAddWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-wall.Date()	Sources/Deskset/Studio2/StudioAddWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-zone.implicitFormatter	Sources/Deskset/Studio2/StudioAddWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-timer.Timer	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-timer.runLoopAdd	Sources/Deskset/Studio2/StudioCanvasOverlay.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 event.notification	Sources/Deskset/Studio2/StudioCodeDecorations.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
 background.mainHop	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
@@ -377,66 +288,22 @@ timer.Timer	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 zone.localizedText	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-effect.sound	Sources/Deskset/Studio2/StudioColorPopover.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.sound	Sources/Deskset/Studio2/StudioCompatCapsule.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-timer.Timer	Sources/Deskset/Studio2/StudioGeometry.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-timer.runLoopAdd	Sources/Deskset/Studio2/StudioGeometry.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.sound	Sources/Deskset/Studio2/StudioLayerEditing.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 timer.Timer	Sources/Deskset/Studio2/StudioLogWindow.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioLogWindow.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 zone.implicitFormatter	Sources/Deskset/Studio2/StudioLogWindow.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-random.hashSeed	Sources/Deskset/Studio2/StudioLookThumbnails.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 event.notification	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.Timer	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.sound	Sources/Deskset/Studio2/StudioPartPage.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.sound	Sources/Deskset/Studio2/StudioPartPageEvents.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-wall.Date()	Sources/Deskset/Studio2/StudioPreview.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-zone.implicitFormatter	Sources/Deskset/Studio2/StudioPreview.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-zone.inferredCurrent	Sources/Deskset/Studio2/StudioPreview.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
 timer.animation	Sources/Deskset/Studio2/StudioPreviewBar.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
 timer.Timer	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-effect.sound	Sources/Deskset/Studio2/StudioRevert.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-random.hashSeed	Sources/Deskset/Studio2/StudioRevert.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.fileWrite	Sources/Deskset/Studio2/StudioScreens.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-zone.Calendar.current	Sources/Deskset/Studio2/StudioScreens.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-event.eventMonitor	Sources/Deskset/Studio2/StudioShowOnDesktop.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-mono.systemUptime	Sources/Deskset/Studio2/StudioShowOnDesktop.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-event.notification	Sources/Deskset/Studio2/StudioSidebarWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-timer.Timer	Sources/Deskset/Studio2/StudioSidebarWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-timer.runLoopAdd	Sources/Deskset/Studio2/StudioSidebarWiring.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-effect.fileWrite	Sources/Deskset/Studio2/StudioSnapshot.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-random.UUID	Sources/Deskset/Studio2/StudioSnapshot.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-wait.runLoop	Sources/Deskset/Studio2/StudioSnapshot.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-wall.Date()	Sources/Deskset/Studio2/StudioSnapshot.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-zone.Locale.current	Sources/Deskset/Studio2/StudioText.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 random.UUID	Sources/Deskset/Studio2/StudioToolbar.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-effect.sound	Sources/Deskset/Studio2/StudioWidgetPage.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
-background.mainHop	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 effect.sound	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-event.KVO	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-event.eventMonitor	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 event.notification	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.Timer	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioWindowController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
@@ -516,13 +383,22 @@ background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.
 
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
+random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/SVGMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
 random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	cancelling every run, and collecting option names into a dictionary: the order reaches no skin state
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
-background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	concurrent file I/O and serial icon queues; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	concurrent file I/O queue; results come back through Skin.hop (fake completions)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
+background.queue	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	serial queue per installed icon renderer; captured requests retain their lane, replacement services remain independent
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
 zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
 
@@ -551,6 +427,8 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a d
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
+
 random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
 
 background.dispatch	Sources/DesksetCore/Engine/SideEffects.swift	2	the live side effects: a helper program started off the skin's thread, and RunCommand's output read on its own queue (a recording starts nothing)
@@ -559,7 +437,7 @@ background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects
 background.global	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: plugin helper programs start off the skin's thread (PluginProcess.launcher)
 background.process	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and plugin helper programs (a recording starts none)
 background.queue	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand's pipe queue
-effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
+effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	9	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
 effect.iniWrite	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: !WriteKeyValue (a recording writes its copy, through here)
 effect.signal	Sources/DesksetCore/Engine/SideEffects.swift	2	SideEffects live implementation: RunCommand Close, Kill, Timeout and unload (a recording records the signal)
 timer.asyncAfter	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand drains the pipes on its own queue
@@ -592,12 +470,13 @@ random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live()
 random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
 
 background.dispatch	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	2	the skin thread executor itself: work and cancellations go to its own thread
-background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
-timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 background.thread	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: the engine thread (8 MB stack, a run loop of its own)
 timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 wait.runLoop	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its thread runs its run loop
+
+background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
+timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 
@@ -651,3 +530,5 @@ effect.fileWrite	Sources/DesksetCore/Weather/WeatherService.swift	5	weather serv
 
 background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.no requests: faked through WeatherEnvironment
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
+
+mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input

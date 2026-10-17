@@ -84,8 +84,34 @@ public enum Formula {
         }.get()
     }
 
+    /// Scoped identifier lookup for parenthesized formulas in option values (`OptionValue.number`, `color`,
+    /// `position`, `numbers`, etc.). In Rainmeter 5.0, measure names and `$Skin...` / `$Display...` variables
+    /// can be used without brackets in formulas throughout skins.
+    private final class LookupBox {
+        var lookup: ((String) -> Double?)?
+    }
+
+    private static let lookupKey = "DesksetCore.Formula.LookupBox"
+
+    private static var currentLookupBox: LookupBox {
+        let dict = Thread.current.threadDictionary
+        if let box = dict[lookupKey] as? LookupBox { return box }
+        let box = LookupBox()
+        dict[lookupKey] = box
+        return box
+    }
+
+    public static func withLookup<R>(_ lookup: @escaping (String) -> Double?, _ body: () throws -> R) rethrows -> R {
+        let box = currentLookupBox
+        let saved = box.lookup
+        box.lookup = lookup
+        defer { box.lookup = saved }
+        return try body()
+    }
+
     /// Reads a numeric option value: a plain number (`10`, `-3.5`, …) or a formula wrapped in parentheses
-    /// (`(#A# * 2)` after variable substitution). Returns nil when the value is neither (callers then use the default).
+    /// (`(#A# * 2)` after variable substitution, or `(MeasureName * 2)` / `($SkinW / 2)` in Rainmeter 5.0).
+    /// Returns nil when the value is neither (callers then use the default).
     ///
     /// Rules (manual: "Number options require either a number or a formula"; "formulas must be entirely
     /// enclosed in (parentheses)"). Where the manual is silent:
@@ -96,28 +122,44 @@ public enum Formula {
     /// - Otherwise the value is read strtod-style: optional sign, then the longest numeric literal prefix;
     ///   trailing text is ignored (`12px` → 12, `12 ;comment` → 12). No digits → nil. `.5`, `1e3`, `0x1F`
     ///   are accepted; `inf`/`nan` are not.
-    /// - Formulas here have no names to look up (outside Calc/IfCondition, measures must be written as
-    ///   `[Measure]` section variables, which are substituted beforehand), so a leftover name → nil.
+    /// - Identifiers in parenthesized formulas are resolved through `currentLookupBox.lookup` when active
+    ///   (e.g. measure names and `$Skin...` / `$Display...` variables inside a skin); otherwise a leftover
+    ///   name → nil.
     /// - The result is always finite (NaN/±∞ → nil for plain numbers, → 0 for formulas, see `evaluate`) and
     ///   never -0.
     public static func number(_ optionValue: String) -> Double? {
         number(trimmed: OptionText.trim(optionValue))
     }
 
+    /// Reads a numeric option value with an explicit identifier `lookup` for parenthesized formulas.
+    public static func number(_ optionValue: String, lookup: (String) -> Double?) -> Double? {
+        let trimmed = OptionText.trim(optionValue)
+        guard let first = trimmed.utf8.first else { return nil }
+        if first == 0x28 { // "("
+            return formulaNumber(trimmed, lookup: lookup)
+        }
+        guard let r = NumericLiteral.signedPrefix(trimmed.utf8), r.value.isFinite else { return nil }
+        return r.value == 0 ? 0 : r.value
+    }
+
     /// `number` for an already-trimmed value.
     static func number(trimmed: Substring) -> Double? {
         guard let first = trimmed.utf8.first else { return nil }
         if first == 0x28 { // "("
-            return numberCache.value(for: String(trimmed)) { formulaNumber(trimmed) }
+            if let lookup = currentLookupBox.lookup {
+                return formulaNumber(trimmed, lookup: lookup)
+            }
+            return numberCache.value(for: String(trimmed)) { formulaNumber(trimmed, lookup: { _ in nil }) }
         }
         guard let r = NumericLiteral.signedPrefix(trimmed.utf8), r.value.isFinite else { return nil }
         return r.value == 0 ? 0 : r.value // "-0" → +0, like formula results (see FormulaMath.finite)
     }
 
-    private static func formulaNumber(_ t: Substring) -> Double? {
-        if let v = try? CompiledFormula(String(t)).evaluate() { return v }
+    private static func formulaNumber(_ t: Substring, lookup: (String) -> Double?) -> Double? {
+        if let compiled = try? compile(String(t)), let v = try? compiled.evaluate(lookup) { return v }
         guard let end = OptionText.matchingParenEnd(t, open: t.startIndex), end < t.endIndex else { return nil }
-        return try? CompiledFormula(String(t[t.startIndex..<end])).evaluate()
+        guard let compiled = try? compile(String(t[t.startIndex..<end])) else { return nil }
+        return try? compiled.evaluate(lookup)
     }
 
     private static let compiledCache = BoundedCache<Result<CompiledFormula, FormulaError>>(limit: 1024)

@@ -10,11 +10,13 @@ import UniformTypeIdentifiers
 /// stops being key and when it closes — without a canvas. A change made on disk meanwhile is picked up when the window
 /// becomes key (a clean buffer) or asked about before it is written over (see `CodeEditorView.onDiskConflict`).
 final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
+    enum CloseChoice { case save, discard, cancel }
+
     let file: URL
     let codeView: CodeEditorView
     unowned let app: AppController
     /// Asked when the window closes with edits that could not be saved (self-tests answer it; nil: an alert).
-    var closeChoice: (() -> InspectorWindowController.CloseChoice)?
+    var closeChoice: (() -> CloseChoice)?
 
     init(file: URL, app: AppController) throws {
         self.file = file.standardizedFileURL
@@ -79,7 +81,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         return windowShouldClose(window)
     }
 
-    private func askAboutUncommittedCode() -> InspectorWindowController.CloseChoice {
+    private func askAboutUncommittedCode() -> CloseChoice {
         if let closeChoice { return closeChoice() }
         guard app.presentsWindows, let window else { return .cancel }
         if window.isMiniaturized { window.deminiaturize(nil) }

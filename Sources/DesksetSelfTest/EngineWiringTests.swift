@@ -422,10 +422,10 @@ func runEngineWiringTests(_ t: TestRunner) {
         [Vendor]
         Measure=Plugin
         Plugin=SomeVendor.dll
-        [AudioTypo]
-        Measure=AudioLevel
-        [InputTypo]
-        Measure=InputText
+        [GlassTypo]
+        Measure=FrostedGlass
+        [AppVolTypo]
+        Measure=AppVolume
         """)
         // DesksetSelfTest does not link the app: its plugins are not registered here (they are in the app).
         let appNames = ["Plugins\\NowPlaying.dll", "AudioLevel", "Win7AudioPlugin.dll", "AppVolume",
@@ -439,16 +439,15 @@ func runEngineWiringTests(_ t: TestRunner) {
             t.check(skin.issues.contains("Measure=MediaKey is provided by the Deskset app and is not available here"))
         }
         t.equal(skin.issues.filter { $0.contains("Windows") }, ["Plugin \"SomeVendor.dll\" is a Windows plugin and is not supported"])
-        // A plugin name used as a measure type is not a Rainmeter measure type, and the app registers these names only
-        // as plugins: the app reaches this fallback too, so no "provided by the Deskset app" note there — the same
-        // invalid-type log line in every context.
-        t.equal(skin.issues.filter { $0.contains("AudioLevel") || $0.contains("InputText") }
+        // A third-party plugin name used as a measure type is not a Rainmeter measure type, and the app registers these
+        // names only as plugins: the app reaches this fallback too, so no "provided by the Deskset app" note there.
+        t.equal(skin.issues.filter { $0.contains("FrostedGlass") || $0.contains("AppVolume") }
                     .filter { !$0.hasPrefix("Plugin ") }, [], "\(skin.issues)")
-        t.check(host.logs.contains { $0.contains("[AudioTypo] Measure=AudioLevel is not a valid measure type") },
+        t.check(host.logs.contains { $0.contains("[GlassTypo] Measure=FrostedGlass is not a valid measure type") },
                 "\(host.logs)")
-        t.check(host.logs.contains { $0.contains("[InputTypo] Measure=InputText is not a valid measure type") })
-        for name in ["mediakey", "wifistatus", "nowplaying", "audiolevel", "win7audio", "win7audioplugin", "appvolume",
-                     "inputtext", "frostedglass"] {
+        t.check(host.logs.contains { $0.contains("[AppVolTypo] Measure=AppVolume is not a valid measure type") })
+        for name in ["mediakey", "wifistatus", "nowplaying", "audiolevel", "audio", "win7audio", "win7audioplugin",
+                     "appvolume", "inputtext", "frostedglass"] {
             t.check(Skin.appProvidedMeasures.contains(name), name)
         }
         // None of them is a core plugin (those are registered in every context).

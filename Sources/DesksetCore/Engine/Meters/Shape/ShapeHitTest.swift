@@ -27,7 +27,7 @@ enum ShapeHitTester {
     }
 
     /// Flattened geometry for point queries.
-    indirect enum FlatRegion {
+    indirect enum FlatRegion: Sendable {
         case polygons([[ShapePoint]], ShapeFillRule, outline: [(ShapePoint, ShapePoint)])
         /// `edges`: every operand edge, collected once here rather than on every mouse move.
         case combined(FlatRegion, [(ShapeCombineMode, FlatRegion)], edges: [(ShapePoint, ShapePoint)])

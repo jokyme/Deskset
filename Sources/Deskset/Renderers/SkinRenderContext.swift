@@ -1,16 +1,10 @@
 import CoreGraphics
 import DesksetCore
+import DesksetDraw
 
-/// What measuring and drawing one skin keep from frame to frame (docs/skin-threading.md §4.3, §5.4):
-/// - its text layouts, used both by `textSize` while the skin lays out its meters and by the String meter's drawing,
-///   so the measured size is exactly what gets drawn;
-/// - its Rotator images with the image options applied;
-/// - the Histogram's scratch space and cropped images.
-///
-/// One context per skin rather than caches shared by the whole app, so that skins updating and drawing on threads of
-/// their own never share one. Like everything reachable from the skin, a context is touched only by the skin's owner,
-/// its executor (`Skin.renderContext` checks that in debug builds), and what it keeps goes with the skin: a refreshed
-/// skin starts with an empty context, and an unloaded skin's layouts and images are released with it.
+/// Measuring and drawing one skin share its text, Rotator, Shape and Histogram caches. Only the skin's owner uses
+/// this context; refreshing or unloading the skin releases it. The library context owns the caches without engine
+/// objects, so retained drawing values can be replayed after the skin is released or with an independent context.
 final class SkinRenderContext {
     /// The context of `skin`, made on first use. Only the skin's owner may call this.
     static func of(_ skin: Skin) -> SkinRenderContext {
@@ -20,16 +14,25 @@ final class SkinRenderContext {
         return context
     }
 
-    /// The skin's text layouts.
-    let text = TextLayoutCache()
-    /// The skin's Rotator images with the general image options applied.
-    let rotatorImages = RotatorImageCache()
-    /// Scratch buffers for the Histogram's column rectangles (primary only, secondary only, overlap), reused from one
-    /// Histogram and one frame to the next.
-    var histogramParts: [[CGRect]] = [[], [], []]
-    /// Histogram images cropped by ImageCrop, by path: reused while the decoded image and the crop rectangle stay the
-    /// same.
-    var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] = [:]
-    /// Bound on `histogramCrops`: a skin whose Histogram image keeps changing does not pile up crops.
-    static let maxHistogramCrops = 64
+    let sceneProjector = SceneProjector()
+    let drawing: DesksetDraw.DrawContext
+
+    init() {
+        drawing = DesksetDraw.DrawContext(fonts: AppFontResolver())
+    }
+
+    var text: TextLayoutCache { drawing.text }
+    var rotatorImages: RotatorImageCache { drawing.rotatorImages }
+    var shapes: ShapeCG.Cache { drawing.shapes }
+    static let maxShapeSources = DesksetDraw.DrawContext.maxShapeSources
+
+    var histogramParts: [[CGRect]] {
+        get { drawing.histogram.parts }
+        set { drawing.histogram.parts = newValue }
+    }
+    var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] {
+        get { drawing.histogram.crops }
+        set { drawing.histogram.crops = newValue }
+    }
+    static let maxHistogramCrops = DesksetDraw.HistogramCache.maxCrops
 }

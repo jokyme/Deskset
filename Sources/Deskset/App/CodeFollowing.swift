@@ -58,18 +58,3 @@ struct SourceTextEdits {
     }
 }
 
-extension InspectorWindowController {
-    /// The code pane follows a step by its edits (`SourceTextEdits`) instead of reading the files again: when it shows
-    /// the files the skin reads now, in the same order (none added or dropped: an @Include changed), and every file the
-    /// step changed is followed (`CodeEditorView.follow`: no typing of its own, the same encoding, the text the step
-    /// started from). False when the pane must read the files again (`syncCodePane`'s full way).
-    func followCodeEdits(_ edits: SourceTextEdits, in skin: Skin) -> Bool {
-        guard let codeView = loadedCodeView, let current = codeView.currentFile else { return false }
-        var listed: [URL] = []
-        for url in skin.sourceFiles.map(\.standardizedFileURL) where !listed.contains(url) { listed.append(url) }
-        guard codeView.files == listed, listed.contains(current), codeView.follow(edits) else { return false }
-        keepCodeClearOfRuler()
-        codeStale = false
-        return true
-    }
-}

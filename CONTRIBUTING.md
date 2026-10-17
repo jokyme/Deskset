@@ -67,6 +67,21 @@ bash scripts/build-app.sh            # build/Deskset.app
   to `scripts/seams-allowlist.tsv` with a note saying why. The list only shrinks: the check also fails when an
   allowance is higher than the sources need, so lower it (`--update` does) when you remove a direct call.
 - `Deskset --render Skin.ini --out skin.png` draws a skin without a window, which is handy for checking a change by eye.
+- The debug suite `Runtime: legacy renderer` compares both renderers with recorded effects and fixed inputs.
+  `DESKSET_LEGACY_RENDER_EXTRA` adds colon-separated skin files or folders. For bundled skins, pass their root config
+  folders (for example `DefaultSkins/Stationery`); `DefaultSkins/FirstRun.ini` is a layout, not a skin. Uncovered inputs
+  fail verification. To supply offline WebParser responses, set `DESKSET_LEGACY_RENDER_WEB_FIXTURES` to a JSON file:
+
+  ```json
+  {
+    "webParserPage": { "https://example.invalid/feed.xml": "feed.xml" },
+    "webParserDownload": { "https://example.invalid/image.png": "image.png" }
+  }
+  ```
+
+  Request URLs match exactly, including the query. Files must be nonempty regular files inside the manifest's folder;
+  page and download limits are 16 MiB and 64 MiB. Unlisted requests still fail and never reach the network. Use payloads
+  that exercise the skin's parsed values and images; equal empty or error pictures do not establish content coverage.
 - Skins update and draw on the main thread, so anything that keeps it busy makes animated skins skip frames. Build
   windows in steps (`MainThreadSteps`, as the skin editor does) rather than all at once. To find stalls,
   `defaults write app.deskset.Deskset MainThreadStallLog -int 50` logs every main-thread step of 50 ms or more to

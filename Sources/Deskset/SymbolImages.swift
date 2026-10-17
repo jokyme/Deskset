@@ -1,5 +1,13 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
+
+/// The app's symbol rasterizer preserves AppKit's rendering and the image cache's sRGB bitmap format.
+struct AppSymbolRasterizer: SymbolRasterizing {
+    func render(_ symbol: MacSymbol) -> RasterizedSymbol? {
+        SymbolImages.render(symbol).map { RasterizedSymbol(image: $0.image, pointSize: $0.pointSize) }
+    }
+}
 
 /// SF Symbols as images (`ImageName=sf:cpu.fill`, Deskset extension; the engine side is `MacSymbol`).
 ///
@@ -133,31 +141,11 @@ enum SymbolImages {
     /// symbol.
     static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
                             in ctx: CGContext) -> String {
-        guard let symbol = MacSymbol(path: path) else { return path }
-        let t = ctx.userSpaceToDeviceSpaceTransform
-        let device = Double(max(hypot(t.a, t.b), hypot(t.c, t.d)))
-        var density = device.isFinite && device > 0 ? device : 1
-        guard let natural = Images.size(atPath: symbol.measuringPath), natural.width > 0, natural.height > 0
-        else { return symbol.withDensity(density).path }
-        if let drawn, drawn.width > 0, drawn.height > 0, drawn.width.isFinite, drawn.height.isFinite {
-            let shown = options.displaySize(imageWidth: natural.width, imageHeight: natural.height)
-            if shown.width > 0, shown.height > 0 {
-                let sx = Double(drawn.width) / shown.width, sy = Double(drawn.height) / shown.height
-                density *= fit ? min(sx, sy) : max(sx, sy)
-            }
-        }
-        // Within the bitmap budget.
-        let budget = (Double(Images.maxDerivedPixels) / (natural.width * natural.height)).squareRoot()
-        density = min((density * 8).rounded(.up) / 8, budget)
-        return symbol.withDensity(density).path
+        DesksetDraw.SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, in: ctx)
     }
-}
 
-extension PreparedImage {
-    /// `path` prepared with `options` for drawing into `ctx` over `drawn` points (see `SymbolImages.drawingPath`); a
-    /// file is prepared as by `init(path:options:)`.
-    init?(path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false, in ctx: CGContext) {
-        self.init(path: SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, in: ctx),
-                  options: options)
+    static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
+                            target: DrawTarget) -> String {
+        DesksetDraw.SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, target: target)
     }
 }

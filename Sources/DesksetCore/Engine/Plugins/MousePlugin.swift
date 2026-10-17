@@ -51,10 +51,16 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
         var requireDragging = false
         /// Seconds between two move / drag actions (0: every move).
         var moveInterval = MouseMeasure.defaultUpdateRate / 1000
+        var captureOverlayColor = RGBA.clear
+        var captureOverlayCursorName = "ARROW"
     }
     var settings = Settings()
     /// Between `Start` and `Stop` (RequireDragging=1).
     public private(set) var isStarted = false
+    /// Between `!Mouse:StartCapture` and `!Mouse:StopCapture` (or the next captured button-up).
+    public private(set) var isCapturing = false
+    public var captureOverlayColor: RGBA { settings.captureOverlayColor }
+    public var captureOverlayCursorName: String { settings.captureOverlayCursorName }
     private(set) var closed = false
 
     private struct Move {
@@ -106,6 +112,9 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
         let rate = double("UpdateRate", MouseMeasure.defaultUpdateRate)
         s.moveInterval = (rate.isFinite ? min(max(rate, 0), MouseMeasure.maxUpdateRate)
             : MouseMeasure.defaultUpdateRate) / 1000
+        s.captureOverlayColor = color("CaptureOverlayColor", .clear)
+        let rawCursor = string("CaptureOverlayCursorName", "ARROW").trimmingCharacters(in: .whitespaces).uppercased()
+        s.captureOverlayCursorName = rawCursor.isEmpty ? "ARROW" : rawCursor
         settings = s
     }
 
@@ -122,6 +131,19 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
 
     public override func execute(command: String) {
         let verb = command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if verb == "startcapture" {
+            if needsOptionRead { readOptionsIfNeeded() }
+            guard !closed && !disabled && !paused else { return }
+            for m in skin.measures.compactMap({ $0 as? MouseMeasure }) where m !== self && m.isCapturing {
+                m.stopCapture()
+            }
+            isCapturing = true
+            return
+        }
+        if verb == "stopcapture" {
+            stopCapture()
+            return
+        }
         guard Self.hasStartStop, verb == "start" || verb == "stop" else {
             super.execute(command: command)
             return
@@ -135,8 +157,13 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
         if !isStarted { dropPendingMove() }
     }
 
+    public func stopCapture() {
+        isCapturing = false
+    }
+
     public func skinWillClose() {
         closed = true
+        isCapturing = false
         dropPendingMove()
     }
 
@@ -144,11 +171,12 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
 
     /// Whether the actions run now.
     var isActive: Bool {
-        !closed && !disabled && !paused && (!settings.requireDragging || isStarted)
+        !closed && !disabled && !paused && (!settings.requireDragging || isStarted || isCapturing)
     }
 
     func pointerInput(_ input: PointerInput, x: Double, y: Double) {
         guard !closed else { return }
+        if disabled || paused { isCapturing = false }
         // Enabled or changed since its options were last read (`!EnableMeasure` without `!UpdateMeasure`).
         if needsOptionRead { readOptionsIfNeeded() }
         handle(input, x: x, y: y)
@@ -161,11 +189,20 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
             move(Move(x: x, y: y, dragging: dragging))
         case .down(let button, let doubleClick):
             flushPendingMove()
+            if isCapturing { return }
             if doubleClick { run(settings.eventActions[button.doubleClickKind], x: x, y: y) }
             run(settings.eventActions[button.downKind], x: x, y: y)
         case .up(let button):
             flushPendingMove()
-            run(settings.eventActions[button.upKind], x: x, y: y)
+            let wasCapturing = isCapturing
+            if wasCapturing { isCapturing = false }
+            if wasCapturing, !closed && !disabled && !paused {
+                if let action = settings.eventActions[button.upKind], !action.isEmpty {
+                    skin.executePointerAction(action, from: self, x: x, y: y, relativeToSkin: settings.relativeToSkin)
+                }
+            } else {
+                run(settings.eventActions[button.upKind], x: x, y: y)
+            }
         case .scroll(let kind):
             flushPendingMove()
             run(settings.eventActions[kind], x: x, y: y)

@@ -1,6 +1,21 @@
 import AppKit
 import CoreText
 import DesksetCore
+import DesksetDraw
+
+/// The drawing module's font service, backed by the app's existing registration and resolution.
+struct AppFontResolver: FontResolving {
+    var generation: Int { Fonts.generation }
+    func registerFolder(_ folder: String) { Fonts.registerFolder(folder) }
+    func resolve(_ request: FontRequest) -> ResolvedFont { Fonts.resolve(request) }
+}
+
+extension TextLayoutCache {
+    /// Existing app callers use the same font service as a skin's render context.
+    convenience init() {
+        self.init(fonts: AppFontResolver())
+    }
+}
 
 /// Fonts: Rainmeter sizes are points at 96 DPI; Windows font names are mapped to Mac equivalents.
 ///
@@ -33,46 +48,10 @@ enum Fonts {
     /// Rainmeter FontSize → macOS point size.
     static let sizeScale = 96.0 / 72.0
 
-    /// A font request. `size` is in skin points (pixels), i.e. already multiplied by `sizeScale`.
-    struct Request: Hashable {
-        var face: String
-        var size: CGFloat
-        /// Explicit `FontWeight` / inline `Weight`.
-        var weight: Int?
-        /// `StringStyle=Bold` (700 unless an explicit weight is given).
-        var bold = false
-        var italic = false
-        var oblique = false
-        /// Inline `Stretch` 1…9 (5 = normal).
-        var stretch: Int?
-        /// Inline `Typography` features (OpenType tag, value).
-        var features: [Feature] = []
-    }
-
-    struct Feature: Hashable {
-        var tag: String
-        var value: Int
-    }
-
-    struct Resolved {
-        let font: CTFont
-        /// Draw with an additional stroke to simulate bold (the family has no heavy enough member).
-        let syntheticBold: Bool
-        /// Characters to replace before shaping (Marlett, which has no Mac equivalent).
-        let characterMap: [UInt16: UInt16]?
-        /// Horizontal shear for simulated italic / oblique (0 = upright). Applied by the renderer through the text
-        /// matrix, because CTRunDraw ignores a font's own matrix.
-        let slant: CGFloat
-        /// Line metrics (pixels) of the Windows font this one stands in for, so that line heights — and every
-        /// layout stacked with `Y=0R` — match the original skin. Nil when the font is used as is.
-        let lineMetrics: LineMetrics?
-    }
-
-    struct LineMetrics: Hashable {
-        var ascent: CGFloat
-        var descent: CGFloat
-        var leading: CGFloat
-    }
+    typealias Request = FontRequest
+    typealias Feature = FontFeature
+    typealias Resolved = ResolvedFont
+    typealias LineMetrics = FontLineMetrics
 
     /// Shear of simulated italic / oblique text (about 11°).
     static let simulatedSlant: CGFloat = 0.2
@@ -474,8 +453,7 @@ enum Fonts {
     }
 
     static func request(for style: TextStyle) -> Request {
-        Request(face: style.fontFace, size: CGFloat(max(TextStyle.pixelSize(points: style.fontSize), 0.01)),
-                weight: style.fontWeight, bold: style.bold, italic: style.italic)
+        Request(style: style)
     }
 
     /// The font for `request`, cached until the fonts change. Any thread.

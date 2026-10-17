@@ -63,11 +63,13 @@ final class EnvironmentStore {
     /// `zPosition`; with `autoSelectScreen` the monitor variables without `@N` refer to the window's screen instead of
     /// the primary one ("the WindowX/WindowY @N settings are dynamically set based on the position of the window").
     /// Any thread.
-    func environment(windowFrame: CGRect?, zPosition: Int = 0, autoSelectScreen: Bool = false) -> SkinEnvironment {
+    func environment(windowFrame: CGRect?, zPosition: Int = 0, autoSelectScreen: Bool = false,
+                     visible: Bool = true, zoomFactor: Double = 1.0) -> SkinEnvironment {
         let screens = currentScreens
         var env = EnvironmentStore.environment(windowFrame: windowFrame, screens: screens, settingsPath: settingsPath,
                                                programPath: programPath, configEditor: configEditor.value(),
-                                               appearance: MacAppearance.current.value())
+                                               appearance: MacAppearance.current.value(),
+                                               visible: visible, zoomFactor: zoomFactor)
         env.zPosition = zPosition
         if autoSelectScreen, let frame = windowFrame, frame.width > 1 || frame.height > 1,
            let index = WindowGeometry.screenIndex(for: frame, screens: screens), index < env.screens.count {
@@ -78,15 +80,19 @@ final class EnvironmentStore {
 
     /// Screens and window frame in skin coordinates (top-left origin at the primary screen's top-left corner).
     static func environment(windowFrame: CGRect?, screens: [WindowGeometry.Screen], settingsPath: String,
-                            programPath: String, configEditor: String, appearance: SkinAppearance) -> SkinEnvironment {
+                            programPath: String, configEditor: String, appearance: SkinAppearance,
+                            visible: Bool = true, zoomFactor: Double = 1.0) -> SkinEnvironment {
         let ph = Double(WindowGeometry.primaryHeight(screens))
         func topLeft(_ r: CGRect) -> SkinRect {
             SkinRect(x: Double(r.minX), y: ph - Double(r.maxY), width: Double(r.width), height: Double(r.height))
         }
-        let list = screens.map { SkinScreen(area: topLeft($0.frame), workArea: topLeft($0.visibleFrame)) }
+        let list = screens.map {
+            SkinScreen(area: topLeft($0.frame), workArea: topLeft($0.visibleFrame),
+                       dpiFactor: $0.dpiFactor, name: $0.name)
+        }
         return SkinEnvironment(windowFrame: windowFrame.map(topLeft) ?? SkinRect(),
                                screens: list.isEmpty ? SkinEnvironment().screens : list,
                                settingsPath: settingsPath, programPath: programPath, configEditor: configEditor,
-                               appearance: appearance)
+                               zoomFactor: zoomFactor, visible: visible, appearance: appearance)
     }
 }

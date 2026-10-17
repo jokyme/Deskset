@@ -1058,14 +1058,14 @@ extension AppSelfTest {
             AudioPlugins.register()
             MediaUIPlugins.register()
             let audio = AudioPlugins.pluginTypes.map { MeasureRegistry.normalizedPluginName($0.name) }
-            let registered = Set(audio + MediaUIPlugins.pluginNames + MediaUIPlugins.measureNames)
+            let registered = Set(audio + AudioPlugins.measureNames + MediaUIPlugins.pluginNames + MediaUIPlugins.measureNames)
             t.equal(registered.sorted(), Skin.appProvidedMeasures.sorted(),
                     "the core's list of app plugins (its fallback note) and the app's registrations agree")
             // Every table entry is what the registry holds.
             for entry in AudioPlugins.pluginTypes + MediaUIPlugins.pluginTypes + MediaUIPlugins.measureTypes {
                 t.check(MeasureRegistry.plugin(named: entry.name) == entry.type, "plugin \(entry.name)")
             }
-            for entry in MediaUIPlugins.measureTypes {
+            for entry in AudioPlugins.measureTypes + MediaUIPlugins.measureTypes {
                 t.check(MeasureRegistry.measure(named: entry.name) == entry.type, "measure \(entry.name)")
             }
             // Nothing else in the app registers a type (types from DesksetCore are the core's own plugins).
@@ -1074,13 +1074,13 @@ extension AppSelfTest {
             let appMeasures = MeasureRegistry.registeredMeasures.filter { fromApp($0.value) }.keys
             t.equal(Set(appPlugins).union(appMeasures).sorted(), Skin.appProvidedMeasures.sorted())
             // Only documented measure types are registered as `Measure=` (the rest are plugins only).
-            for name in MediaUIPlugins.measureNames {
+            for name in AudioPlugins.measureNames + MediaUIPlugins.measureNames {
                 t.check(Skin.documentedMeasureTypes.contains(name), "Measure=\(name) is a documented type")
             }
             for name in appMeasures {
                 t.check(Skin.documentedMeasureTypes.contains(name), "registered Measure=\(name)")
             }
-            t.equal(Set(appMeasures).sorted(), MediaUIPlugins.measureNames.sorted())
+            t.equal(Set(appMeasures).sorted(), Set(AudioPlugins.measureNames + MediaUIPlugins.measureNames).sorted())
         }
     }
 }

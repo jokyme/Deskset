@@ -383,16 +383,21 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 
 ### Variables (details)
 - Windows (Rainmeter): `#Var#`, nested `[#Var]`, escapes `#*Var*#` / `[*Name*]`, character variables `[\x263A]` /
-  `[\9731]` for "x0–xFFFE / 0–65536"; `[M:]` gives "up to ten decimal places" (/manual/variables/).
+  `[\9731]` for "x0–xFFFE / 0–65536"; `[M:]` gives "up to ten decimal places" (/manual/variables/); environment
+  variables `[%Name]` (5.0+) and legacy `%Name%` (`SyntaxVersion=1`).
 - Mac (Deskset): the same, plus: character variables accept any Unicode code point up to U+10FFFF (emoji) and an
   upper-case `X`; a variable's value is scanned again where it is used, so `!SetVariable V "[MeasureCPU]"` behaves as
   text substitution; `#Var#` is resolved before section variables (manual: normal variables take priority);
   `[M:%]` is clamped to 0–100, `[M:/N]` accepts any finite non-zero divisor, and numbers are rounded half away from
-  zero (`[M:0]` of 2.5 = 3) with trailing zeros removed unless a decimal count is given; Windows environment
-  variables (`%APPDATA%`) are not expanded.
-- Why: judgment calls where the manual is silent; macOS draws every Unicode plane.
+  zero (`[M:0]` of 2.5 = 3) with trailing zeros removed unless a decimal count is given; `[%Name]` and
+  (`SyntaxVersion=1`) `%Name%` expand both macOS process environment variables and 20 common Windows environment
+  variable names (`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`, `PROGRAMFILES`, `TEMP`, `PUBLIC`,
+  `WINDIR`, `SYSTEMDRIVE`, `USERNAME`, `COMPUTERNAME`, `NUMBER_OF_PROCESSORS`, `OS`, `PROCESSOR_ARCHITECTURE`, etc.)
+  to macOS equivalents.
+- Why: judgment calls where the manual is silent; macOS draws every Unicode plane; Windows skins reference Windows
+  environment variables in file paths.
 - Skin impact: none for valid skins.
-- Status: identical (+ leniencies)
+- Status: identical (+ leniencies / emulated Windows env vars)
 
 ### Light and dark mode variables (`#MACAPPEARANCE#`, `#MACDARKMODE#`, `#MACACCENTCOLOR#`…)
 - Windows (Rainmeter): no such built-in variables.
@@ -491,10 +496,20 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   it fails; an empty pattern only replaces an empty value. Regular expressions are PCRE patterns translated to ICU:
   `(?U)`, lookarounds and named groups work; `(?|…)` renumbers groups, `\K` is dropped, conditionals become plain
   alternatives, backtracking verbs are dropped, recursion is not supported; `\w`, `\d` and `(?i)` are
-  Unicode-aware; `.` and `$` also treat `\r` and U+2028 as line ends; each regex operation stops after 1 second of
+  Unicode-aware. Shared regex compilation uses LF line separators for `.`, `^` and `$`, including multiline
+  anchors under `(?m)`; `(?s)` still lets dot match LF. CR and U+2028 remain ordinary input to these constructs:
+  strings are not normalized. `\s` and `\R` keep ICU semantics; `\N` is translated to `[^\n]`. Explicit
+  `(*CR)`, `(*LF)`, `(*CRLF)`, `(*ANYCRLF)`, `(*ANY)`, `(*BSR_ANYCRLF)` and `(*BSR_UNICODE)` controls are still
+  stripped, so their requested conventions are not supported. Each regex operation stops after 1 second of
   CPU time (at most 10 seconds of real time on a busy Mac).
-- Why: ICU instead of PCRE; judgment calls where the manual is silent.
-- Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; exotic PCRE features may not match.
+- Why: ICU instead of PCRE; judgment calls where the manual is silent. Deskset selects LF using
+  [ICU's Unix line mode](https://unicode-org.github.io/icu-docs/apidoc/released/icu4c/uregex_8h.html).
+  [PCRE's default build convention is LF](https://www.pcre.org/original/doc/html/pcrebuild.html), but build and
+  compile options or [pattern controls](https://www.pcre.org/original/doc/html/pcrepattern.html) can override it;
+  the newline configuration of Rainmeter's binary has not been verified.
+- Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; patterns that depend on CR / Unicode line
+  boundaries or explicit newline / BSR controls can differ. In HMNmeter's service output, `State.*#CRLF#` now
+  consumes the CR before LF; the skin's following LF-removal and whitespace-trim pairs yield `Running` / `Stopped`.
 - Status: identical (common cases) / partial (exotic PCRE)
 
 ### Running Windows programs
@@ -987,6 +1002,31 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   "VRAM Speed" is 0 on Apple silicon and total VRAM reads 0 (Registry, §4). The FrostedGlass blur is media-ui.md's.
 - Lua-driven layouts (Enigma's Taskbar skin widths, calendars, notes, readers) run their scripts now (lua.md); their
   first update sees provisional meter geometry (§1).
+
+### Rainmeter 5.0 engine additions
+- Windows (Rainmeter 5.0): `[Rainmeter] SyntaxVersion` (`1` default, `2` disables legacy `%Name%` environment
+  expansion) / `AppVersion`, `Update=<visible> | Invisible <invisible>` (`Invisible 0` pauses regular updates while
+  hidden), `DefaultZoomFactor`, `OnDisplayMetricsChange`, `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`,
+  `[%EnvVar]` and (`SyntaxVersion=1`) `%EnvVar%`, `[$Skin…]`, `[$Display…]` / `[$DisplayDevice…@N]`, unbracketed
+  measure names and `$Skin…`/`$Display…` variables in formulas, `Group=a|b` / `Group=a&b`, 2-argument
+  `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor` /
+  `!SetZoomFactorGroup`, colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`, `!ActionTimer:Execute/Stop`,
+  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults/UpdateData/ResetData`,
+  `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
+  `!WindowMessage:Send`), `Measure=DragDrop` (`Action=Path|Move|Copy|Shortcut|Delete`, `Path`, `Silent`,
+  `ReplaceIfExists`, `ProcessAllFiles` / `$FileNr$`, `Parent`, `Bounds`, `OnDropAction` / `OnEnterAction` /
+  `OnLeaveAction`), `NumberConversionFormat=Locale` (`String` / `Registry` / `WebParser`), `TimeStampFormat` ISO 8601
+  tokens (`%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z`) and week/ordinal dates, Calc `UseRandomSeed`, Loop `ResetValue`,
+  WebParser `JsonPointer` and `KeepOldData`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
+  `[Meter:Attribute(selector, attr)]`), `Meter=TextEdit` (`[$Input]`, `[$Input:MatchN]`, `!TextEdit:*`),
+  `StringAlign=Justify…`, and Shape `LineJoin`.
+- Mac (Deskset): all of the above are implemented and tested in `Sources/DesksetSelfTest/Rainmeter5SelfTests.swift`,
+  `Sources/DesksetSelfTest/EngineTests.swift`, and `Sources/Deskset/App/SkinWindowModelSelfTests.swift`. Not yet
+  implemented from 5.0: `!SetZoomFactor Default`, zoom context menu / edge-drag zoom / `DefaultZoom` /
+  `ForceDefaultZoom` config keys, target-first `!Skin:` bang argument order (`!Skin:Hide "Config"`), `!SendKey` media
+  keys (`MediaPlayPause` etc.), `CTRL-ALT` multi-skin selection, and Windows-specific UI dialogs (5-tab Debug dialog,
+  Safe Start, Skin Packager).
+- Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
 ---
 

@@ -12,10 +12,15 @@ enum WindowGeometry {
     struct Screen: Equatable {
         var frame: CGRect
         var visibleFrame: CGRect
+        var dpiFactor: Double = 1.0
+        var name: String = ""
     }
 
     static func currentScreens() -> [Screen] {
-        NSScreen.screens.map { Screen(frame: $0.frame, visibleFrame: $0.visibleFrame) }
+        NSScreen.screens.map {
+            Screen(frame: $0.frame, visibleFrame: $0.visibleFrame,
+                   dpiFactor: Double($0.backingScaleFactor), name: $0.localizedName)
+        }
     }
 
     /// Height of the primary screen (the one with the menu bar, `NSScreen.screens[0]`, origin 0,0). Skin positions

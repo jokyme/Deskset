@@ -538,15 +538,17 @@ public final class StringMeasure: Measure {
     override var allowsInvert: Bool { false }
     /// `String`, read with the other options (so section variables in it follow the rules of every option).
     private var stringOption = ""
+    private var localeConversion = false
 
     public override func readMeasureOptions() {
         stringOption = string("String")
+        localeConversion = usesLocaleNumberConversion
     }
 
     public override func computeValue() -> Double {
         let s = stringOption
         rawString = s
-        return Double(s.trimmingCharacters(in: .whitespaces)) ?? 0
+        return Measure.parseNumber(s, locale: localeConversion ? skin.locale : nil)
     }
 }
 

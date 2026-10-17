@@ -30,6 +30,8 @@ struct SkinState: Codable, Equatable {
     /// `AutoSelectScreen`: the monitor of the skin's built-in variables (`#SCREENAREAX#`, `#WORKAREAX#`…) follows
     /// the window instead of being the primary one.
     var autoSelectScreen: Bool = false
+    /// `ZoomFactor`: per-skin zoom multiplier (`0.25…10.0`, default `1.0`).
+    var zoomFactor: Double = 1.0
     /// Keys this version does not know (written by a newer one), kept as they were and written back, so that going
     /// back to an older version and forward again loses nothing.
     var unknownKeys: [String: JSONValue] = [:]
@@ -40,7 +42,7 @@ struct SkinState: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case file, active, x, y, alwaysOnTop, draggable, clickThrough, keepOnScreen, snapEdges, alphaValue,
-             savePosition, loadOrder, fadeDuration, onHover, startHidden, autoSelectScreen
+             savePosition, loadOrder, fadeDuration, onHover, startHidden, autoSelectScreen, zoomFactor
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -74,6 +76,8 @@ struct SkinState: Codable, Equatable {
         onHover = min(max(value(.onHover, d.onHover), 0), 3)
         startHidden = value(.startHidden, d.startHidden)
         autoSelectScreen = value(.autoSelectScreen, d.autoSelectScreen)
+        let rawZoom = value(.zoomFactor, d.zoomFactor)
+        zoomFactor = rawZoom.isFinite ? min(max(rawZoom, 0.25), 10.0) : 1.0
     }
 
     /// The keys this version knows, then the ones it kept (`unknownKeys`).
@@ -95,6 +99,7 @@ struct SkinState: Codable, Equatable {
         try c.encode(onHover, forKey: .onHover)
         try c.encode(startHidden, forKey: .startHidden)
         try c.encode(autoSelectScreen, forKey: .autoSelectScreen)
+        if zoomFactor != 1.0 { try c.encode(zoomFactor, forKey: .zoomFactor) }
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: SkinState.knownKeys)
     }
@@ -199,6 +204,7 @@ final class AppState {
         s.alphaValue = min(max(s.alphaValue, 0), 255)
         s.fadeDuration = min(max(s.fadeDuration, 0), SkinState.maxFadeDuration)
         s.onHover = min(max(s.onHover, 0), 3)
+        s.zoomFactor = s.zoomFactor.isFinite ? min(max(s.zoomFactor, 0.25), 10.0) : 1.0
         guard data.skins[key] != s else { return }
         data.skins[key] = s
         scheduleSave()

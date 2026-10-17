@@ -2,7 +2,7 @@ import Foundation
 
 // Units, conversions and small derived quantities of the weather plugins (docs/compat/weather.md).
 
-public enum TemperatureUnit: String, CaseIterable, Equatable {
+public enum TemperatureUnit: String, CaseIterable, Equatable, Sendable {
     case celsius = "C", fahrenheit = "F"
 
     public var symbol: String { self == .celsius ? "°C" : "°F" }

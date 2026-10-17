@@ -27,6 +27,8 @@ import Foundation
 public final class LineMeter: Meter {
     public static let maxLineCount = 64
     public static let defaultLineColor = RGBA.white
+    /// Separates captured history revisions from those of another graph instance.
+    let drawIdentity = UUID()
 
     public struct Line {
         public internal(set) var color: RGBA
@@ -38,6 +40,8 @@ public final class LineMeter: Meter {
 
     public private(set) var lines: [Line] = []
     public private(set) var lineWidth = 1.0
+    public private(set) var lineJoin = ShapeLineJoin.miter
+    public private(set) var miterLimit = 10.0
     public private(set) var horizontalLines = false
     public private(set) var horizontalLineColor = RGBA.black
     public private(set) var autoScale = false
@@ -66,6 +70,20 @@ public final class LineMeter: Meter {
         }
         lines = newLines
         lineWidth = double("LineWidth", 1).clamped(0, 1000)
+        let joinParts = string("LineJoin", "Miter").split(separator: ",", maxSplits: 1).map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        switch joinParts.first?.lowercased() ?? "miter" {
+        case "bevel": lineJoin = .bevel
+        case "round": lineJoin = .round
+        case "miterorbevel": lineJoin = .miterOrBevel
+        default: lineJoin = .miter
+        }
+        if joinParts.count == 2, let ml = Double(joinParts[1]), ml.isFinite {
+            miterLimit = ml.clamped(1, 1000)
+        } else {
+            miterLimit = double("MiterLimit", 10).clamped(1, 1000)
+        }
         horizontalLines = bool("HorizontalLines", false)
         horizontalLineColor = color("HorizontalLineColor", .black)
         autoScale = bool("AutoScale", false)

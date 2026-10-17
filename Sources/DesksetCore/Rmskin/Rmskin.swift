@@ -129,8 +129,12 @@ public struct RmskinManifest: Equatable {
         return true
     }
 
-    static func versionComponents(_ version: String) -> [Int] {
-        version.trimmingCharacters(in: .whitespaces)
+    public static func versionComponents(_ version: String) -> [Int] {
+        let trimmed = version.trimmingCharacters(in: .whitespaces)
+        if !trimmed.contains("."), let packed = Int(trimmed), packed >= 1_000_000 {
+            return [packed / 1_000_000, (packed / 1_000) % 1_000, packed % 1_000, 0]
+        }
+        return trimmed
             .split(separator: ".", omittingEmptySubsequences: false)
             .prefix(16)
             .map { part in

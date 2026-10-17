@@ -137,10 +137,12 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
         }) {
             report(message, level: .error)
         }
-        if case .failure(let message) = invoke("properties", flush: false, {
-            state.callInternal("properties", [.text(name)])
-        }) {
-            report(message, level: .error)
+        if skin.settings.syntaxVersion < 2 {
+            if case .failure(let message) = invoke("properties", flush: false, {
+                state.callInternal("properties", [.text(name)])
+            }) {
+                report(message, level: .error)
+            }
         }
         if initializeNow { runInitialize() }
     }
@@ -213,7 +215,9 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             report(message, level: .error)
             failed = true
         }
-        if !failed && values.allSatisfy({ $0 == .none }) { values = deprecatedValues(lua) }
+        if !failed && values.allSatisfy({ $0 == .none }), skin.settings.syntaxVersion < 2 {
+            values = deprecatedValues(lua)
+        }
         let result = failed ? (number: 0.0, text: "") : ScriptMeasure.interpret(values)
         rawString = result.text
         lastNumber = result.number.isFinite ? result.number : 0
@@ -497,6 +501,17 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             default: return true
             }
         }
+
+        func valueString(_ i: Int) throws -> String {
+            switch self[i] {
+            case .string(let s, _): return s
+            case .number(let n): return LuaState.format(n)
+            case .boolean(let b): return b ? "1" : "0"
+            case .none: return ""
+            default:
+                throw LuaHostError("bad argument #\(i + 1 - hidden) to '\(function)' (string expected, got \(self[i].typeName))")
+            }
+        }
     }
 
     private func host(_ raw: [LuaValue]) throws -> [LuaValue] {
@@ -635,6 +650,100 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
         case .temporaryName:
             if let path = temporaryFileName() { return [.text(path)] }
             return [.none, .text("unable to generate a unique filename")]
+        case .setOption:
+            let kind = Int((try? args("SetOption").number(0)) ?? 0)
+            if kind == 0 {
+                let a = args("SetOption", hidden: 1)
+                let target = try a.string(1)
+                let key = try a.string(2)
+                let val = try a.valueString(3)
+                skin.setOption(named: target, key: key, value: val, fallbackSection: self)
+            } else {
+                let a = args("SetOption", hidden: 2)
+                let s = try self.section(kind: Double(kind), name: try a.string(1))
+                let key = try a.string(2)
+                let val = try a.valueString(3)
+                skin.setOption(s, key: key, value: val)
+            }
+            return []
+        case .setOptionGroup:
+            let a = args("SetOptionGroup")
+            let group = try a.string(0)
+            let key = try a.string(1)
+            let val = try a.valueString(2)
+            skin.setOptionGroup(group, key: key, value: val)
+            return []
+        case .setVariable:
+            let a = args("SetVariable")
+            let key = try a.string(0)
+            let val = try a.valueString(1)
+            skin.setVariable(key, val)
+            return []
+        case .readTextFile:
+            let a = args("ReadTextFile")
+            return readTextFile(atPath: try a.string(0))
+        case .writeTextFile:
+            let a = args("WriteTextFile")
+            let path = try a.string(0)
+            let text = try a.string(1)
+            let enc = a[2] == .none ? nil : try a.string(2)
+            return writeTextFile(atPath: path, text: text, encodingName: enc)
+        case .unicodeCase:
+            let isUpper = args("ucupper").bool(1)
+            let fnName = isUpper ? "ucupper" : "uclower"
+            let s = try args(fnName).string(0)
+            return [.text(isUpper ? s.uppercased() : s.lowercased())]
+        }
+    }
+
+    private func readTextFile(atPath rawPath: String) -> [LuaValue] {
+        let path = sandboxed(fixPath(rawPath), .read)
+        guard IncludePaths.isRegularFile(path) else {
+            return [.none, .text("cannot open \(path): No such file or directory")]
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
+        guard size <= LuaSupport.maxScriptFileSize, let data = FileManager.default.contents(atPath: path) else {
+            return [.none, .text("cannot read \(path)")]
+        }
+        var text = TextDecoding.decode(data)
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        text = text.replacingOccurrences(of: "\r\n", with: "\n")
+        return [.text(text)]
+    }
+
+    private func writeTextFile(atPath rawPath: String, text: String, encodingName: String?) -> [LuaValue] {
+        let path = fixPath(rawPath)
+        let encoding: TextFileEncoding
+        switch (encodingName ?? "UTF-8").trimmingCharacters(in: .whitespaces).lowercased() {
+        case "", "utf-8", "utf8":
+            encoding = .utf8(bom: false)
+        case "utf-8-bom", "utf8bom":
+            encoding = .utf8(bom: true)
+        case "utf-16", "utf16", "utf-16le", "utf16le":
+            encoding = .utf16LittleEndian(bom: true)
+        case "utf-16be", "utf16be":
+            encoding = .utf16BigEndian(bom: true)
+        case "ansi":
+            encoding = .windowsCodePage(TextDecoding.ansiCodePage)
+        default:
+            return [.boolean(false), .text("unsupported encoding: \(encodingName ?? "")")]
+        }
+        let crlfText = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+        let data: Data
+        if let encoded = TextDecoding.encode(crlfText, as: encoding) {
+            data = encoded
+        } else if case .windowsCodePage = encoding {
+            data = crlfText.data(using: .windowsCP1252, allowLossyConversion: true) ?? Data(crlfText.utf8)
+        } else {
+            data = Data(crlfText.utf8)
+        }
+        let effects = skin.sideEffects
+        let dest = effects.destination(forWriting: URL(fileURLWithPath: path))
+        do {
+            try effects.writeFile(data, to: dest, makingFolder: false)
+            return [.boolean(true)]
+        } catch {
+            return [.boolean(false), .text(error.localizedDescription)]
         }
     }
 

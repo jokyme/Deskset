@@ -4,18 +4,13 @@ import DesksetCore
 /// What the window keeps about its code pane.
 final class StudioCodeState {
     enum Mode: Equatable {
-        case hidden
-        /// Next to the canvas (a column of its own in a wide window, in the inspector's place in a narrower one).
+        /// Next to the canvas.
         case alongside
         /// The code alone (⌃⌘3), for long writing.
         case only
     }
 
-    var mode = Mode.hidden
-    /// The inspector gave its place to the code (a window narrower than `wideWindow`, or Code Only).
-    var replacedInspector = false
-    /// The pane is being rearranged by the window itself (its own collapses are not the user's).
-    var changingPanes = false
+    var mode = Mode.alongside
     /// The diagnostics shown: of the text typed when it is newer than the widget, else of the widget.
     var diagnostics: [IniDiagnostic] = []
     /// The diagnostics of the widget's instance they were worked out for (the hold asks for them too), as of its text
@@ -35,17 +30,13 @@ final class StudioCodeState {
     var saveError: String?
     /// Where each part was the last time it could draw (the canvas's ghosts of parts that can't).
     var lastGoodFrames: [String: SkinRect] = [:]
-    var selectingFromCode = false
     /// The file menu is open (headless: the snapshot draws it).
     var fileMenuShown = false
     var observers: [NSObjectProtocol] = []
     var logWindow: StudioLogWindowController?
 
-    /// From this window width on the code is a column between the canvas and the inspector; narrower, it takes the
-    /// inspector's place.
-    static let wideWindow: CGFloat = 1500
-    static let narrowCodeWidth: CGFloat = 590
-    static let wideCodeWidth: CGFloat = 480
+    /// The code column's share of the window when shown alongside the preview.
+    static let codeShare: CGFloat = 0.62
 
     /// The editor "Open in …" names (Settings ▸ Editor, else the Mac's app for the file). Snapshots set a fixed one.
     static var editorName: (URL, AppController) -> String? = { url, app in
@@ -91,7 +82,7 @@ extension StudioWindowController {
         }
         cv.onCaretSection = { [weak self] url, section in self?.codeCaretRested(section, file: url) }
         cv.onFileChange = { [weak self] _ in
-            self?.tintSelectionInCode()
+            self?.codeView.tintSection(lines: nil)
             self?.showDiagnostics()
         }
         cv.onFontSizeChange = { [weak self] size in
@@ -106,7 +97,6 @@ extension StudioWindowController {
         header.warningsChip.action = { [weak self] in self?.revealNext(.warning) }
         header.logChip.action = { [weak self] in self?.showLog(allWidgets: false) }
         header.moreButton.action = { [weak self] in self?.showMoreMenu() }
-        header.inspectorButton.action = { [weak self] in self?.backToInspector() }
         codeState.observers.append(NotificationCenter.default.addObserver(
             forName: NSText.didChangeNotification, object: cv.textView, queue: .main) { [weak self] _ in
                 self?.codeTyped()
@@ -118,8 +108,8 @@ extension StudioWindowController {
             })
     }
 
-    /// The window shows a session: the code commits through it, visual steps commit typed code first, and the desktop
-    /// copy keeps its version while the widget has a problem that stops a part from drawing.
+    /// The window shows a session: the code commits through it, and the desktop copy keeps its version while the widget
+    /// has a problem that stops a part from drawing.
     func codeAttached(_ session: EditingSession) {
         codeState.lastGoodFrames = [:]
         codeState.checked = []
@@ -144,8 +134,6 @@ extension StudioWindowController {
         if codeController.isViewLoaded, codeView.hasUncommittedChanges { codeView.commitNow(explicit: true) }
         session.holdsDesktop = nil
         session.willApply = nil
-        // Still held: the desktop keeps its last working version (the files have the problem), and nothing waits
-        // for a reload that no one will release.
         session.endHold()
         codeState.othersWaiting = []
         codeState.desktopProblems = nil
@@ -153,44 +141,18 @@ extension StudioWindowController {
 
     // MARK: Panes
 
-    var isCodeShown: Bool { codeState.mode != .hidden }
+    var isCodeShown: Bool { !codeItem.isCollapsed }
 
-    /// Shows the code next to the canvas (`alongside`), alone (`only`) or not at all. Opening the code closes the
-    /// sidebar (never more than three columns); in a window narrower than 1500 points the code takes the inspector's
-    /// place, and its header's "Inspector" brings it back.
+    /// Shows the code next to the canvas (`alongside`) or alone (`only`).
     func setCodeMode(_ mode: StudioCodeState.Mode) {
         guard let window else { return }
-        codeState.changingPanes = true
-        defer { codeState.changingPanes = false }
-        if mode == .hidden, isCodeShown { codeView.commitNow() }
         codeState.mode = mode
-        switch mode {
-        case .hidden:
-            codeItem.isCollapsed = true
-            canvasItem.isCollapsed = false
-            if codeState.replacedInspector { inspectorItem.isCollapsed = false }
-            codeState.replacedInspector = false
-        case .alongside, .only:
-            setSidebarOpen(false)
-            canvasItem.isCollapsed = mode == .only
-            codeItem.isCollapsed = false
-            let wide = window.frame.width >= StudioCodeState.wideWindow
-            if mode == .only || !wide {
-                if !inspectorItem.isCollapsed {
-                    inspectorItem.isCollapsed = true
-                    codeState.replacedInspector = true
-                }
-            } else if codeState.replacedInspector {
-                inspectorItem.isCollapsed = false
-                codeState.replacedInspector = false
-            }
-            window.contentView?.layoutSubtreeIfNeeded()
-            placeCode()
-            syncCode(reveal: true)
-        }
-        canvasController.besideCode = mode != .hidden
-        // The hint about Rainmeter names speaks of the sidebar, which the code closed.
-        if mode != .hidden { setHint(nil) }
+        canvasItem.isCollapsed = mode == .only
+        codeItem.isCollapsed = false
+        window.contentView?.layoutSubtreeIfNeeded()
+        placeCode()
+        syncCode()
+        canvasController.besideCode = true
         window.contentView?.layoutSubtreeIfNeeded()
         codeController.layOut()
         canvasController.view.needsLayout = true
@@ -198,51 +160,34 @@ extension StudioWindowController {
         updateCodeHeader()
     }
 
-    /// The code column's width: 590 points where it took the inspector's place, 480 as a column of its own.
+    /// The left code column's width (wider than the right preview column).
     func placeCode() {
-        guard !codeItem.isCollapsed, let index = splitController.splitViewItems.firstIndex(of: codeItem), index > 0
-        else { return }
+        guard !codeItem.isCollapsed else { return }
         let split = splitController.splitView
         split.layoutSubtreeIfNeeded()
         let divider = split.dividerThickness
-        let right = inspectorItem.isCollapsed ? split.bounds.width
-            : split.bounds.width - inspectorController.view.frame.width - divider
-        let left = sidebarItem.isCollapsed ? 0 : sidebarController.view.frame.width + divider
-        let wanted = codeState.replacedInspector ? StudioCodeState.narrowCodeWidth : StudioCodeState.wideCodeWidth
-        let width = canvasItem.isCollapsed ? right - left : min(wanted, max(300, right - left - 360 - divider))
-        split.setPosition(right - width - divider, ofDividerAt: index - 1)
+        let total = split.bounds.width
+        let width: CGFloat
+        if canvasItem.isCollapsed {
+            width = total
+        } else {
+            let wanted = (total * StudioCodeState.codeShare).rounded()
+            width = min(max(420, wanted), max(420, total - 360 - divider))
+        }
+        split.setPosition(width, ofDividerAt: 0)
         split.layoutSubtreeIfNeeded()
     }
 
-    /// The window grew past 1500 points or shrank below: the inspector gets its own column back, or gives it up.
     func codeWindowResized() {
-        guard isCodeShown, codeState.mode == .alongside, let window else { return }
-        let wide = window.frame.width >= StudioCodeState.wideWindow
-        if wide, codeState.replacedInspector {
-            setCodeMode(.alongside)
-        } else if !wide, !inspectorItem.isCollapsed {
-            setCodeMode(.alongside)
-        }
-    }
-
-    /// The inspector came back while the code had its place (its toolbar button): the code gives it up.
-    func inspectorVisibilityChanged() {
-        guard !codeState.changingPanes, isCodeShown, !inspectorItem.isCollapsed, codeState.replacedInspector else { return }
-        codeState.replacedInspector = false
-        setCodeMode(.hidden)
-    }
-
-    /// The header's "Inspector": the code goes, the inspector comes back.
-    func backToInspector() {
-        setCodeMode(.hidden)
-        setInspectorShown(true)
+        guard isCodeShown, codeState.mode == .alongside else { return }
+        placeCode()
     }
 
     // MARK: Keeping the code up to date
 
     /// Brings the code up to date with the widget: its files (the main one, then the included ones), clean buffers
-    /// re-read keeping caret and scroll, the selection revealed or tinted, the diagnostics.
-    func syncCode(reveal: Bool) {
+    /// re-read keeping caret and scroll, the diagnostics.
+    func syncCode() {
         guard isCodeShown, let skin else { return }
         let files = skin.sourceFiles
         let keys = Set(files.map { SourceFileID($0) })
@@ -257,7 +202,6 @@ extension StudioWindowController {
         codeView.reloadFromDisk(keepCaret: true)
         codeView.scrollView.tile()
         keepCodeClearOfLineNumbers()
-        if reveal { revealSelectionInCode() } else { tintSelectionInCode() }
         refreshDiagnostics()
     }
 
@@ -273,47 +217,13 @@ extension StudioWindowController {
 
     /// The session changed the widget: the code follows (not while its own commit is being made: that one is known).
     func codeSessionChanged() {
-        if isCodeShown, !codeState.committing { syncCode(reveal: false) } else { refreshDiagnostics() }
+        if isCodeShown, !codeState.committing { syncCode() } else { refreshDiagnostics() }
     }
 
-    /// The selection's block, scrolled to and tinted (another file when it is written there).
-    func revealSelectionInCode() {
-        guard isCodeShown, let skin else { return }
-        let names = canvasController.canvas.selectedNames
-        guard names.count == 1, let file = skin.sources.location(section: names[0])?.file else {
-            codeView.tintSection(lines: nil)
-            return
-        }
-        codeView.revealSection(names[0], in: file, tint: true)
-        showDiagnostics()
-    }
-
-    /// The selection's block tinted where the code is now.
-    func tintSelectionInCode() {
-        guard isCodeShown else { return }
-        let names = canvasController.canvas.selectedNames
-        let lines = names.count == 1 ? codeView.lineRange(ofSection: names[0]) : nil
-        codeView.tintSection(lines: lines)
-        codeController.decorations.overlay.needsDisplay = true
-    }
-
-    /// The canvas's selection changed: its block in the code (unless the caret chose it).
-    func codeSelectionChanged() {
-        guard isCodeShown, !codeState.selectingFromCode else { return }
-        revealSelectionInCode()
-        updateCodeHeader()
-    }
-
-    /// The caret came to rest in a section: its block is tinted, and a part's is selected on the canvas.
+    /// The caret came to rest in a section: its block is tinted.
     func codeCaretRested(_ section: String?, file: URL) {
         let lines = section.flatMap { codeView.lineRange(ofSection: $0) }
         codeView.tintSection(lines: lines)
-        if let section, let skin, let m = skin.meter(named: section),
-           canvasController.canvas.selectedNames != [m.name] {
-            codeState.selectingFromCode = true
-            select(part: m.name)
-            codeState.selectingFromCode = false
-        }
         codeController.decorations.overlay.needsDisplay = true
         updateCodeHeader()
     }
@@ -362,7 +272,7 @@ extension StudioWindowController {
         }
     }
 
-    /// Commits typed code before a visual step writes, so the step starts from what the user sees.
+    /// Commits typed code before another action runs.
     func flushCode() {
         guard !codeState.committing, codeController.isViewLoaded, codeView.hasUncommittedChanges else { return }
         codeView.commitNow()
@@ -446,10 +356,7 @@ extension StudioWindowController {
     func showDiagnostics() {
         let all = codeState.diagnostics
         let skin = self.skin
-        let title: (Meter) -> String = { [weak self] m in
-            guard let self, let skin else { return m.name }
-            return self.partPage.partTitle(m, skin: skin)
-        }
+        let title: (Meter) -> String = { m in m.name }
         if codeController.isViewLoaded, let file = codeView.currentFile {
             let id = SourceFileID(file)
             codeController.decorations.show(all.filter { SourceFileID($0.file) == id }.map {
@@ -536,7 +443,7 @@ extension StudioWindowController {
         codeController.header.show(file: codeView.currentFile?.lastPathComponent ?? "", section: section,
                                    problems: all.filter { $0.severity == .problem }.count,
                                    warnings: all.filter { $0.severity == .warning }.count,
-                                   log: logCount, showsInspector: codeState.replacedInspector)
+                                   log: logCount)
     }
 
     func updateCodeStatus() {
@@ -588,7 +495,7 @@ extension StudioWindowController {
         for f in codeFiles() {
             let item = ClosureMenuItem(f.title) { [weak self] in
                 self?.codeView.show(file: f.url)
-                self?.tintSelectionInCode()
+                self?.codeView.tintSection(lines: nil)
                 self?.showDiagnostics()
             }
             item.state = f.current ? .on : .off
@@ -663,4 +570,19 @@ extension StudioWindowController {
             CodeEditorRouter.open(file: file, line: line, in: CodeEditorApp(url: url, bundleID: nil))
         }
     }
+}
+
+final class ClosureMenuItem: NSMenuItem {
+    private let runAction: () -> Void
+
+    init(_ title: String, key: String = "", enabled: Bool = true, run: @escaping () -> Void) {
+        self.runAction = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: key)
+        target = self
+        isEnabled = enabled
+    }
+
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc func fire() { runAction() }
 }

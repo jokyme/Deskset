@@ -58,17 +58,17 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 
 | 领域 | 总体 | 可用的部分 | 不可用（或差异最大）的部分 |
 | --- | --- | --- | --- |
-| 皮肤文件、变量、公式、bang | 完全一致 | INI 规则、`@Include`、`#Var#` / 节变量、公式、`!SetOption` 及其他皮肤 bang | 冷门的 PCRE 正则特性；普通选项中的 Windows 环境变量（`%APPDATA%`） |
-| 布局与文字 | 模拟实现 | `r`/`R` 定位、StringAlign、窗口尺寸、内联选项、`@Resources\Fonts` 中的字体 | 微软字体会被替换；文字宽度可能相差一两个像素 |
-| Meter（String、Image、Bar、Bitmap、Button、Line、Histogram、Roundline、Rotator、Shape） | 模拟实现 | 手册中的所有 meter 类型与选项 | Histogram 的 `PrimaryImageRotate` / ColorMatrix 选项 |
-| 系统 measure（CPU、内存、网络、磁盘、时间、开机时长、SysInfo、Process、电池） | 模拟实现 | 全部可用，映射到 macOS 数据 | 所有盘符都指启动磁盘；Windows 网卡名会回退到当前活动接口 |
+| 皮肤文件、变量、公式、bang | 完全一致 | INI 规则、`@Include`、`@Inherit`（5.0）、`SyntaxVersion`（5.0）、`#Var#` / 节变量、`%Env%` / `[%Env]` / `[$Skin…]` / `[$Display…]`（5.0）、公式（含 5.0 无外层括号公式）、`Group=a\|b` / `a&b`、`!SetOption`（2 参数和 3 参数）、`!CommandMeasureGroup`、`:` 命名空间 bang 及其他皮肤 bang | 冷门的 PCRE 正则特性；目标写在最前面的 `!Skin:` bang；`!SendKey` 媒体键 |
+| 布局与文字 | 模拟实现 | `r`/`R` 定位、StringAlign（含 5.0 `Justify…`）、窗口尺寸、内联选项、`@Resources\Fonts` 中的字体 | 微软字体会被替换；文字宽度可能相差一两个像素 |
+| Meter（String、Image、Bar、Bitmap、Button、Line、Histogram、Roundline、Rotator、Shape、SVG、TextEdit） | 模拟实现 | 手册中的所有 meter 类型与选项（包括 5.0 的 `Meter=SVG`、`Meter=TextEdit`、Shape `LineJoin`、两端对齐文字） | Histogram 的 `PrimaryImageRotate` / ColorMatrix 选项 |
+| 系统 measure（CPU、内存、网络、磁盘、时间、开机时长、SysInfo、Process、电池、DragDrop） | 模拟实现 | 全部可用，映射到 macOS 数据（包括 5.0 的 `Measure=DragDrop`、`NumberConversionFormat=Locale` 和新的 `TimeStampFormat` 格式码） | 所有盘符都指启动磁盘；Windows 网卡名会回退到当前活动接口 |
 | 注册表 | 模拟实现（固定集合） | Windows 版本、CPU / GPU 名称、核心数、用户文件夹、壁纸 | 其他所有注册表值均为 `0` / 空 |
-| Lua（`Measure=Script`、内联 Lua） | 完全一致 | Lua 5.1 以及完整的 SKIN / SELF / Measure / Meter API | `os.execute` 只能打开文件和网址；移除了少数不安全的函数 |
+| Lua（`Measure=Script`、内联 Lua） | 完全一致 | Lua 5.1 以及完整的 SKIN / SELF / Measure / Meter API，加上 5.0 的 Unicode `string.uc*` 函数与 `SKIN:SetOption` / `SetOptionGroup` / `SetVariable` / `ReadTextFile` / `WriteTextFile` | `os.execute` 只能打开文件和网址；移除了少数不安全的函数 |
 | Rainmeter 自带插件 | 模拟实现 | 除两个以外全部实现（其中 6 个部分支持）：ActionTimer、AudioLevel、NowPlaying、InputText、RunCommand、UsageMonitor、CoreTemp 和 SpeedFan（真实的温度、风扇、频率和功耗）…… | WindowMessage 和 VirtualDesktops 在 macOS 上没有对应物 |
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局（layout）会安装但暂不能应用 |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、所有位置类 bang | 窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup、Aero 模糊和保存的锚点；暂不能加载布局 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、`!SetZoomFactor`（5.0，部分）、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | 缩放菜单、拖动缩放、`DefaultZoom` 和多选皮肤尚未实现；窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup、Aero 模糊和保存的锚点；暂不能加载布局 |
 
 ---
 
@@ -135,33 +135,34 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 | 插件 / measure | 状态 | 说明 |
 | --- | --- | --- |
-| ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop；在主运行循环上无漂移计时 |
+| ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop（含 `!ActionTimer:Execute/Stop`）；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
 | AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；需要权限；`Type=MacPermission` 表示缺少哪个权限 |
 | CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
+| DragDrop（5.0 measure / 插件） | 完全一致 | 向皮肤或 `TargetMeter` 拖入文件 / 文件夹（`Type=FileCount\|FileList\|FilePath\|FileFolder\|FileName\|FileExt`、`SubFolders`、`Limit`、`Separator`、`Format`、`MatchPattern`、`OnEnterAction` / `OnLeaveAction` / `OnDropAction`） |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
 | FolderInfo | 模拟实现 | 后台扫描；使用 Mac 的隐藏 / 系统文件规则 |
 | InputText | 模拟实现 | 非激活面板中的原生文本框；在 Stay Topmost 皮肤上也能用 |
 | iTunes（已弃用的 `iTunesPlugin`） | 完全一致 | 读取并控制 Music.app（或 Spotify） |
 | MediaKey | 模拟实现 | 有辅助功能权限时发送真实媒体键；否则改为播放器命令和直接修改音量；`Stop` 发给播放器 |
-| NowPlaying | 模拟实现 | 所有 `PlayerName` 都对应 Music.app 和 Spotify；“谁在播放就显示谁”规则 |
+| NowPlaying | 模拟实现 | 所有 `PlayerName`（包括 5.0 的 `PlayerName=Windows`）都对应 Music.app 和 Spotify；“谁在播放就显示谁”规则；`!NowPlaying:…` bang |
 | PerfMon（已弃用） | 部分支持 | 常用计数器映射到 Darwin 数据；其余为 0 |
 | Ping（`PingPlugin`） | 完全一致 | 在后台线程上发送无需特权的 ICMP echo |
 | PowerPlugin | 模拟实现 | 电池状态；没有电池的 Mac 上 `Percent` 为 100、`ACLine` 为 1；Apple 芯片上 `Hz` / `MHz` 为当前 CPU 频率 |
 | Process | 模拟实现 | Mac 进程名（ProcessName 中的 `.exe` 会被去掉） |
 | QuotePlugin | 完全一致 | 随机取文件中的一行或文件夹中的一个文件；Windows 路径映射到 Mac 文件夹 |
-| RecycleManager | 部分支持 | 废纸篓：`Count` 可用；`Size` 需要完全磁盘访问权限；清空通过访达完成 |
+| RecycleManager | 部分支持 | 废纸篓：`Count` 可用；`Size` 需要完全磁盘访问权限；旧的 `Drives=` 被忽略；支持 `!RecycleManager:…` bang；清空通过访达完成 |
 | Registry（measure） | 模拟实现 | 一组固定的机器信息用 macOS 数据回答；其余为 0 / 空 |
 | ResMon | 部分支持 | `Handle` = 打开的文件描述符数；GDI / USER / Window 为 0 |
-| RunCommand | 部分支持 | 通过 `/bin/sh` 运行；Windows 专属命令行在启动前就以错误 103 失败 |
-| Script（Lua） | 完全一致 | Lua 5.1.5，完整 SKIN API；见 [§8](#8-lua-脚本) |
+| RunCommand | 部分支持 | 通过 `/bin/sh` 运行（含 `!RunCommand:Run/Close/Kill`）；Windows 专属命令行在启动前就以错误 103 失败 |
+| Script（Lua） | 完全一致 | Lua 5.1.5，完整 SKIN API 及 5.0 Unicode `string.uc*` 函数；见 [§8](#8-lua-脚本) |
 | SpeedFan | 模拟实现 | 按固定顺序读取 Mac 的温度、风扇和电压（0 CPU、1 GPU、2 芯片、3 电池、4 SSD……） |
 | SysInfo | 模拟实现 | 系统、用户、屏幕、网卡都有 Mac 的对应值；少数 Windows 专属类型为 0 / 空 |
 | UsageMonitor | 部分支持 | 进程的 CPU、内存、IO，各核心负载，内存、分页、网络、磁盘，CPU 温度，整个 GPU 的使用率；按进程的 GPU 和冷门计数器为 0 |
 | VirtualDesktops（旧版 Rainmeter；当前手册中没有） | 不支持 | 只报告一个桌面；命令被忽略（macOS 的“空间”没有公开 API） |
-| WebParser | 完全一致 | PCRE 正则转换为 ICU；见 [§11](#11-webparser-与皮肤安装器) |
+| WebParser | 完全一致 | PCRE 正则转换为 ICU；支持 5.0 的 `JsonPointer` 和 `!WebParser:Refetch` / `:ClearResults`；见 [§11](#11-webparser-与皮肤安装器) |
 | WiFiStatus | 模拟实现 | CoreWLAN；SSID / LIST 需要定位服务；RXRate 等于 TXRate |
-| Win7AudioPlugin | 模拟实现 | 默认输出设备的音量、静音、切换设备；无需权限 |
+| Win7AudioPlugin | 模拟实现 | 默认输出设备的音量、静音、切换设备（含 `!Audio:…` bang）；无需权限 |
 | WindowMessage | 不支持 | macOS 没有窗口消息；数值为 0，命令被忽略 |
 
 ### 常用第三方插件
@@ -347,13 +348,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 ### 6.3 皮肤文件、变量、公式与选项
 
-#### 皮肤文件（`.ini` / `.inc`、`@Include`）
+#### 皮肤文件（`.ini` / `.inc`、`@Include`、`@Inherit`、`SyntaxVersion`）
 - **Windows：** 节名和键名不区分大小写，`;` 开头为注释行，值两侧的引号会被忽略，重复的节被忽略，`@Include` 相当于把
-  文件粘贴进来，相对路径从皮肤文件夹算起。
+  文件粘贴进来，`@Inherit=Sec1 | Sec2`（5.0）从当前皮肤中的其他节继承键值，`[Rainmeter] SyntaxVersion` / `AppVersion`
+  （5.0）启用 5.0 语法规则，相对路径从皮肤文件夹算起。
 - **Mac：** 相同。取舍判断：去掉包住整个值的一对相同引号（`"` 或 `'`）；同一文件同一节中重复的键以第一个为准；
   位于任何节之前的 `@Include` 会被忽略并给出警告；找不到的包含文件还会在包含它的文件旁边查找，并且不区分大小写；支持 `\`
   路径；编码支持 UTF-8 / UTF-16 / UTF-32（可检测时带或不带 BOM），否则按 Mac 语言对应的 ANSI 代码页（见下一条）；
-  缺少右方括号的 `[Name` 行也算节标题；包含限制为 30 层、500 个文件、每个文件 32 MB。`!WriteKeyValue`
+  缺少右方括号的 `[Name` 行也算节标题；包含限制为 30 层、500 个文件、每个文件 32 MB；`@Inherit` 按从左到右顺序合并父节，
+  不覆盖当前节中已定义的键。`!WriteKeyValue`
   会给首尾有空格的值加引号，把换行变成空格；并且按手册只写入 `#SKINSPATH#` 或 `#SETTINGSPATH#` 下的文件。
 - **原因：** 手册没有描述这些边界情况；后备查找只在文件原本会缺失时才生效。
 - **对皮肤的影响：** 对有效的皮肤没有影响。
@@ -388,16 +391,31 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   取它的第一个值（Simple Clean 的问候语会显示用户名），需要变化的值仍然需要 `DynamicVariables=1`，与 Rainmeter 相同。
 - **状态：** 模拟实现
 
-#### 变量（细节）
+#### 变量（细节、环境变量、`[$Skin…]`、`[$Display…]`）
 - **Windows：** `#Var#`、`[#Var]`、转义 `#*Var*#` / `[*Name*]`、x0–xFFFE 范围内的字符变量 `[\x263A]`、最多十位小数
-  的 `[M:]`。
+  的 `[M:]`；Windows 环境变量写作 `%Name%`。Rainmeter 5.0 新增 `[%Name]`（可嵌套、可转义），`SyntaxVersion=2` 的皮肤中
+  `%Name%` 保持原样、只能用 `[%Name]`；新增 `[$Skin…]`（皮肤的位置和尺寸，包括物理像素值、缩放后的尺寸、DPI 系数、缩放系数、
+  Z 位置和可见性）以及 `[$Display…]` / `[$DisplayDevice…]`（显示器的位置、尺寸、工作区、物理坐标、虚拟屏幕范围、DPI 系数、
+  名称、编号和数量；省略编号时指皮肤所在的显示器）。
 - **Mac：** 相同，另外：字符变量接受任意 Unicode 码位（包括 emoji）和大写 `X`；变量的值在使用处会再次扫描（因此
   `!SetVariable V "[MeasureCPU]"` 相当于文本替换）；`#Var#` 先于节变量解析；`[M:%]` 限制在 0–100；`[M:/N]` 接受任意
-  非零除数；数字四舍五入时 0.5 远离零；`:EscapeRegExp` 和 `:EncodeURL` 严格使用手册规定的字符集。普通选项中的 Windows
-  环境变量（`%APPDATA%`）**不会**展开（插件和 Lua 会映射常见的几个，见 [§9](#9-内置插件核心) 和 [§8](#8-lua-脚本)）。
-- **原因：** 手册未作规定时的取舍判断；macOS 能绘制所有 Unicode 平面。
-- **对皮肤的影响：** 对有效的皮肤没有影响。
-- **状态：** 完全一致（外加宽松处理）
+  非零除数；数字四舍五入时 0.5 远离零；`:EscapeRegExp` 和 `:EncodeURL` 严格使用手册规定的字符集。
+  - 环境变量：`[%Name]` 总是展开；`%Name%` 在默认的 `SyntaxVersion=1` 皮肤的选项和 bang 中展开，`SyntaxVersion=2` 时保持原样。
+    只展开 Deskset 认识的名称，`%1`、`50%`、`%20` 之类的文字不受影响；measure / meter 的值和内置变量的值不会被当作环境变量
+    再次展开。名称不区分大小写，映射为：`USERPROFILE` / `HOMEPATH` / `HOME` → 个人文件夹，`APPDATA` / `LOCALAPPDATA` → `~/Library/Application Support`，
+  `PROGRAMDATA` / `ALLUSERSPROFILE` → `/Library/Application Support`，`PROGRAMFILES` / `PROGRAMFILES(X86)` /
+  `PROGRAMW6432` → `/Applications`，`TEMP` / `TMP` → 临时文件夹，`PUBLIC` → `/Users/Shared`，`WINDIR` / `SYSTEMROOT` →
+  `/System`，`HOMEDRIVE` / `SYSTEMDRIVE` → 空（所以 `%HOMEDRIVE%%HOMEPATH%` 是个人文件夹），`USERNAME` → 用户名，
+  `COMPUTERNAME` / `USERDOMAIN` → 本机名称（去掉 `.local`），`NUMBER_OF_PROCESSORS` → 可用的处理器核心数，
+  `OS` → `Windows_NT`，`PROCESSOR_ARCHITECTURE` → `ARM64`（Apple 芯片）或 `AMD64`（Intel）；其他名称读取 Deskset 进程的
+  环境变量（先精确匹配，再不区分大小写），找不到时保持原样。`OS` 和 `PROCESSOR_ARCHITECTURE` 按 Windows 的写法回答是取舍判断：
+    皮肤会把它们与 Windows 的值比较。
+  - `[$Skin…]` / `[$Display…]`：皮肤坐标以点为单位，所以 `[$SkinX/Y/W/H]` 与 Windows 100 % 缩放时相同；物理像素值
+    （`[$SkinPhysicalX/Y/W/H]`、`[$DisplayPhysical…]`）乘以屏幕的 backing scale（Retina 为 2）和皮肤的缩放系数；
+    `[$SkinDpiFactor]` / `[$DisplayDpiFactor]` 在 Retina 屏幕上为 `2`。
+- **原因：** 手册未作规定时的取舍判断；macOS 能绘制所有 Unicode 平面；Mac 没有 Windows 的环境变量。
+- **对皮肤的影响：** 对有效的皮肤没有影响；依赖其他 Windows 专属环境变量的路径通常不存在。
+- **状态：** 完全一致（外加宽松处理；环境变量：模拟实现）
 
 #### 浅色 / 深色模式变量（`#MACAPPEARANCE#`、`#MACDARKMODE#`、`#MACACCENTCOLOR#`……）
 - **Windows：** 没有这些变量。
@@ -429,11 +447,11 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 #### 公式
 - **Windows：** 使用“公式”页列出的运算符和函数；优先级未写明；`.5` 必须写成 `0.5`；`&&` / `||` 两侧“必须”加括号；`?:`
-  最多嵌套 30 层。
+  最多嵌套 30 层；Rainmeter 5.0 起，整个皮肤的公式中都可以不加方括号直接使用 measure 名称和 `$Skin…` / `$Display…` 变量。
 - **Mac：** 采用类似 C 的优先级（从低到高：`?:`、`||`、`&&`、`= <>`、`< > <= >=`、`|`、`^`、`&`、`+ -`、`* / %`、一元
   `- + ~`、`**`）。除以零或对零取模以及非有限结果都得 0；`%` 是 C 的 `fmod`；`Round(x)` 0.5 远离零；`Min` / `Max` 可接受
-  两个以上参数。宽松处理：`.5`、`5.`、`1e3`、所有公式中的小写 `0b` / `0o` / `0x` 前缀、不加括号的 `&&` / `||`、`==`、
-  没有嵌套限制；普通数值选项取开头的数字（`12px` → 12）。
+  两个以上参数；公式中不加方括号的 measure 名称和 `$Skin…` / `$Display…` 变量按 5.0 手册支持（与 `SyntaxVersion` 无关）。宽松处理：`.5`、`5.`、`1e3`、
+  所有公式中的小写 `0b` / `0o` / `0x` 前缀、不加括号的 `&&` / `||`、`==`、没有嵌套限制；普通数值选项取开头的数字（`12px` → 12）。
 - **原因：** 公式绝不能导致崩溃或返回 NaN；手册未作规定时的取舍判断。
 - **对皮肤的影响：** 对有效的公式没有影响；一些 Rainmeter 会拒绝的公式在 Mac 上可以运行。
 - **状态：** 完全一致（外加宽松处理）
@@ -464,9 +482,10 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **状态：** 模拟实现
 
 #### 时间与开机时长格式
-- **Windows：** 带 `#` 标志的 strftime 格式码；数值 = 自 1601 年起的秒数；Uptime 用 `%1`…`%4` 加 printf 格式；
-  FormatLocale 使用 Windows 的区域数据。
-- **Mac：** 格式码相同。取舍判断：`%r` 为大写的 “10:55:03 PM”；`%Z` 为英文时区名；未知格式码原样输出；Format 为空时
+- **Windows：** 带 `#` 标志的 strftime 格式码；数值 = 自 1601 年起的秒数；Rainmeter 5.0 的 `TimeStampFormat` 还支持序数日期、周数日期、ISO 周日期和 `%F`、`%g`、`%G`、`%u`、`%V`、`%z`、`%Z`（时区偏移换算到 UTC）；Uptime 用
+  `%1`…`%4` 加 printf 格式；FormatLocale 使用 Windows 的区域数据。
+- **Mac：** 格式码相同，包括 5.0 新增的 `TimeStampFormat` 格式码。取舍判断：`%r` 为大写的 “10:55:03 PM”；
+  `%Z` 为英文时区名；未知格式码原样输出；Format 为空时
   等同 `%H:%M:%S`；设置了 Format 时，数值取文字开头的数字；TimeZone 接受小数小时，且不作用于 TimeStamp 的值（数字形式的
   也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1；Uptime 的数值保留秒的小数部分。区域格式（`%c`、`%x`）来自
   macOS（ICU）数据。
@@ -478,10 +497,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **状态：** 模拟实现
 
 #### 动作、bang、Substitute 与正则表达式
-- **Windows：** `[!Bang arg "arg"]`、魔术引号 `"""…"""`、旧式 `!Rainmeter…` 名称；Substitute 和 RegExpSubstitute 使用
-  PCRE。
-- **Mac：** 语法相同；bang 名称不区分大小写；引号内的方括号不会结束 bang；方括号 bang 之间的文字被忽略；`!Execute` 嵌套
-  最多 8 层。普通替换区分大小写；接受 `'a':'b'`（手册说这种写法会失败）。正则表达式是转换为 ICU 的 PCRE：`(?U)`、环视
+- **Windows：** `[!Bang arg "arg"]`、魔术引号 `"""…"""`、旧式 `!Rainmeter…` 名称；Rainmeter 5.0 新增 `Group=a|b`（或）和
+  `Group=a&b`（与）组选择器、双参数 `[!SetOption Option Value]`（作用于当前节）、`!CommandMeasureGroup`、`!SetUpdate`、
+  `!ForceEnableVisibleMode`、`!SetZoomFactor`，以及冒号命名空间 bang（`!Skin:…`、`!TextEdit:…`、
+  `!Loop:Reset`、`!ActionTimer:Execute/Stop`、`!RunCommand:Run/Close/Kill`、
+  `!WebParser:Refetch/ClearResults`、`!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`、`!Audio:…`、
+  `!NowPlaying:…`、`!Mouse:StartCapture/StopCapture`、`!WindowMessage:Send`）；Substitute 和 RegExpSubstitute 使用 PCRE。
+- **Mac：** 语法相同，支持上述 5.0 bang 与组选择器（`!Skin:` bang 的目标仍需写在最后，见“Rainmeter 5.0 中尚未实现的部分”）；bang 名称不区分大小写；引号内的方括号不会结束 bang；方括号 bang 之间的
+  文字被忽略；`!Execute` 嵌套最多 8 层。普通替换区分大小写；接受 `'a':'b'`（手册说这种写法会失败）。正则表达式是转换为 ICU
+  的 PCRE：`(?U)`、环视
   和命名分组可用；`(?|…)` 会重新编号分组，`\K` 被去掉，条件分支变为普通的多选分支，不支持递归；`\w`、`\d` 和 `(?i)`
   支持 Unicode；`.` 和 `$` 也把 `\r` 当作行尾；每次正则操作最多占用 1 秒 CPU 时间（系统繁忙时最多 10 秒）。
 - **原因：** macOS 自带的是 ICU，而不是 PCRE。
@@ -496,8 +520,10 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 皮肤自带的小工具（语音、设置程序）不起作用；同一动作里的其他部分照常执行。
 - **状态：** 不支持
 
-#### 更新间隔与 Counter
-- **Windows：** `Update` 最小 16 ms，-1 表示只更新一次；Calc 的 `Counter` 只有在皮肤卸载后才重置。
+#### 更新间隔、`Invisible` 更新速率与 Counter
+- **Windows：** `Update` 最小 16 ms，-1 表示只更新一次；Rainmeter 5.0 支持 `Update=<visible> | Invisible <invisible>`
+  （隐藏时使用单独的更新间隔，`Invisible 0` 表示隐藏时暂停常规更新，刷新或 `!Update` 仍会更新）、`!SetUpdate` 和 `!ForceEnableVisibleMode`；Calc 的 `Counter`
+  只有在皮肤卸载后才重置。
 - **Mac：** 相同。
 - **原因：** 按手册。
 - **对皮肤的影响：** 无。
@@ -601,6 +627,18 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **原因：** Windows DLL 无法在 macOS 上运行。
 - **对皮肤的影响：** 皮肤中相应的部分保持空白；皮肤绝不会崩溃。
 - **状态：** 不支持（后备处理）
+
+#### Rainmeter 5.0 新增的 measure 选项（`DragDrop`、`NumberConversionFormat`）
+- **Windows：** Rainmeter 5.0 内置 `Measure=DragDrop`（原 Drag&Drop 插件；`Action=Path|Move|Copy|Shortcut|Delete`、`Path`、
+  `Silent`、`ReplaceIfExists`、`ProcessAllFiles` 与 `$FileNr$`、子 measure 的 `Parent` 和 `Bounds`、`OnDropAction` /
+  `OnEnterAction` / `OnLeaveAction`；`FancyRenderer` 已移除），以及 String、Registry、WebParser 的
+  `NumberConversionFormat=Locale`（按 Windows 区域格式读取数字，例如把 `1.234,56` 读作 1234.56）。
+- **Mac：** 都支持（`Plugin=Drag&Drop` / `Plugin=DragDrop` 也可以），文件从访达拖到皮肤上即可。`Shortcut` 创建符号链接而不是
+  `.lnk`，`Delete` 把项目移到废纸篓；`FancyRenderer` 被忽略并记录一行日志。`NumberConversionFormat=Locale` 使用 macOS
+  “语言与地区”中的数字格式。
+- **原因：** Mac 没有 `.lnk` 快捷方式和 Windows 的区域设置。
+- **对皮肤的影响：** 无，除了快捷方式是符号链接。
+- **状态：** 模拟实现
 
 #### 其他 measure 细节（取舍判断）
 - **Windows：** 手册没有规定这些细节。
@@ -708,14 +746,27 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 新图表从一条平线开始，而不是从一侧逐渐长出来。
 - **状态：** 模拟实现
 
-#### Shape
-- **Windows：** Direct2D 几何图形。
-- **Mac：** 使用 CoreGraphics。W / H 取描边后的外框并取整到整像素（与手册截图一致）；超过斜接限制的斜接转角改为斜切；
+#### Shape（含 Rainmeter 5.0 `LineJoin`）与两端对齐文字（`StringAlign=Justify…`）
+- **Windows：** Direct2D 几何图形；Rainmeter 5.0 新增 Shape 修改器 `LineJoin Miter|Bevel|Round|MiterOrBevel[,miterLimit]`
+  以及 String meter 的 `StringAlign=Justify`（及 `JustifyTop` / `JustifyCenter` / `JustifyBottom`）。
+- **Mac：** 使用 CoreGraphics，支持 `LineJoin` 与 `StringAlign=Justify…`（对换行的非末行文字做两端对齐）。W / H 取描边后的外框
+  并取整到整像素（与手册截图一致）；超过斜接限制的斜接转角改为斜切；
   虚线在每个图形中重新开始；形状始终抗锯齿；缺失的必需参数按 0 处理（FluentDash11 写的是 `Rectangle ,,100,50,8`）；
   `StrokeType` 和 Combine 的 `Consume` 标志作为扩展被接受；组合形状的外框取上界。渐变几何、Arc 的扫掠方向和变换锚点
   遵循手册默认值，手册未作规定时采用类似 CSS / SVG 的选择。
 - **原因：** 用 CoreGraphics 代替 Direct2D。
 - **对皮肤的影响：** 非常尖锐的斜接转角和组合形状可能相差一个像素。
+- **状态：** 模拟实现
+
+#### SVG 与 TextEdit meter（Rainmeter 5.0）
+- **Windows：** Rainmeter 5.0 新增 `Meter=SVG`（`SVGImage` 指定 `.svg` 文件或内联 SVG 代码，`Attribute` / `Attribute2`…… 按 ID、
+  根元素 `svg` 或 `*` 修改元素属性）和 `Meter=TextEdit`（可编辑的文本框：单行 / 多行、选择、复制粘贴、撤销、滚动、占位文字、
+  密码掩码、输入过滤、只读；动作中可用 `[$Input]` 和 `[$Input:MatchN]`；`!TextEdit:Focus`、`:Dismiss`、`:Submit`、`:Select`、
+  `:SelectAll`、`:SetText`、`:Clear`、`:Reset`、`:ScrollByLine`、`:ResetScroll`）。
+- **Mac：** 两者均支持。`Meter=SVG` 解析常用的 SVG 元素、渐变和样式规则并用 CoreGraphics 光栅化，支持通用图像选项；
+  `Meter=TextEdit` 直接在皮肤中绘制和编辑，使用 macOS 的 ⌘ 快捷键（⌘A、⌘C、⌘X、⌘V）。
+- **原因：** SVG 与文字用 CoreGraphics / CoreText 绘制；Mac 用 ⌘ 代替 Ctrl。
+- **对皮肤的影响：** 一般皮肤无影响；少见的 SVG 滤镜、`<text>` / `<foreignObject>` 元素不会绘制。
 - **状态：** 模拟实现
 
 #### 鼠标点击区域
@@ -914,15 +965,21 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 新加载的皮肤位于所有窗口之后；可以在皮肤菜单 → 位置中修改。
 - **状态：** 模拟实现（取舍判断）
 
-#### `[Rainmeter]` 中的 `Default…` 选项
+#### `[Rainmeter]` 中的 `Default…` 选项与皮肤缩放
 - **Windows：** `DefaultWindowX/Y`、`DefaultAnchorX/Y`、`DefaultSavePosition`、`DefaultAlwaysOnTop`、`DefaultDraggable`、
   `DefaultSnapEdges`、`DefaultStartHidden`、`DefaultAlphaValue`、`DefaultOnHover`、`DefaultFadeDuration`、
-  `DefaultClickThrough`、`DefaultKeepOnScreen`、`DefaultAutoSelectScreen` 在第一次加载时为配置提供初始设置。
-- **Mac：** 相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、公式、
-  `@N`）。锚点只在摆放皮肤时应用一次（见下面的“位置”）。
-- **原因：** —
-- **对皮肤的影响：** 无。
-- **状态：** 完全一致
+  `DefaultClickThrough`、`DefaultKeepOnScreen`、`DefaultAutoSelectScreen` 在第一次加载时为配置提供初始设置。Rainmeter 5.0
+  的皮肤缩放范围是 10 %–500 %，保存在 Rainmeter.ini 中皮肤的 `Zoom` 设置里，可通过皮肤右键菜单“设置 → 缩放”、拖动选中皮肤的
+  边缘或 `!SetZoomFactor 系数|Default [配置|*]` 修改；全局默认值是 Rainmeter.ini `[Rainmeter]` 中的 `DefaultZoom` /
+  `ForceDefaultZoom`（管理窗口 → 设置）。
+- **Mac：** `Default…` 选项相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、
+  公式、`@N`）。锚点只在摆放皮肤时应用一次（见下面的“位置”）。缩放：`!SetZoomFactor 系数` 可用，缩放系数保存在 state.json
+  中，`[$SkinZoomFactor]` 等变量随之变化；但范围限制为 0.25–10（不是 0.1–5），`Default` 参数、右键菜单的缩放子菜单、拖动边缘
+  缩放以及 `DefaultZoom` / `ForceDefaultZoom` 尚未实现。Deskset 另外接受皮肤 `[Rainmeter]` 中的 `DefaultZoomFactor` 作为初始
+  缩放（手册中没有这个选项）和 `!SetZoomFactorGroup 系数 组`（Deskset 扩展）。
+- **原因：** 尚未完成 5.0 的缩放界面和全局设置。
+- **对皮肤的影响：** 用 bang 缩放的皮肤可用；`[!SetZoomFactor Default]` 不起作用；用户只能通过 bang 改变缩放。
+- **状态：** 部分支持
 
 #### 拖动、`DragMargins` 与 Ctrl 覆盖
 - **Windows：** Draggable（默认 1）；设置了 LeftMouseDownAction 就不能拖动；DragMargins 限制可以开始拖动的区域；按住 Ctrl
@@ -967,10 +1024,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 预计无。
 - **状态：** 模拟实现
 
-#### StartHidden
-- **Windows：** 皮肤启动时隐藏；`!Show` 显示它。
-- **Mac：** 相同（也可来自 `DefaultStartHidden`）；隐藏的皮肤继续更新并执行其动作。管理窗口会标出它处于隐藏状态，并可以把它
-  显示出来（[§7.3](#73-菜单与管理窗口)）。
+#### StartHidden 与 `Invisible` 更新速率
+- **Windows：** 皮肤启动时隐藏；`!Show` 显示它；设置 `Update=<visible> | Invisible <invisible>`（5.0）后，隐藏的皮肤以
+  `<invisible>` ms 间隔更新（`Invisible 0` 时隐藏期间暂停常规更新），除非启用了 `!ForceEnableVisibleMode 1`。
+- **Mac：** 相同（也可来自 `DefaultStartHidden`）。管理窗口会标出它处于隐藏状态，并可以把它显示出来
+  （[§7.3](#73-菜单与管理窗口)）。
 - **原因：** —
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
@@ -987,13 +1045,27 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   底部的皮肤改变尺寸时（DynamicWindowSize）会向右、向下扩展，而不是围绕锚点变化。
 - **状态：** 模拟实现 / 部分支持（保存的锚点）
 
-#### 显示器变化
-- **Windows：** 除 KeepOnScreen 和显示器变量外没有描述。
-- **Mac：** 连接、断开或重新排列显示器时，有保存位置的皮肤会按保存的位置重新放置（显示器回来时皮肤也会回到它上面），并保持在
-  屏幕内。皮肤不会被刷新；设置了 DynamicVariables=1 的节中显示器变量会随之变化。
-- **原因：** 取舍判断；刷新所有皮肤会重置它们的状态。
-- **对皮肤的影响：** 没有 DynamicVariables、根据 `#SCREENAREAWIDTH#` 计算布局的皮肤，在刷新之前保持原来的布局。
+#### 显示器变化（`OnDisplayMetricsChange`）
+- **Windows：** `[Rainmeter] OnDisplayMetricsChange` 是一个动作；Rainmeter 5.0 起，任何显示器的布局、分辨率或缩放改变时都会执行。
+- **Mac：** 连接、断开或重新排列显示器，或者改变分辨率时，有保存位置的皮肤会按保存的位置重新放置（显示器回来时皮肤也会回到它
+  上面），然后执行 `OnDisplayMetricsChange`。
+- **原因：** 遵循 5.0 手册并保留已保存的显示器位置。
+- **对皮肤的影响：** 未在该动作中刷新、也未开启 DynamicVariables、根据 `#SCREENAREAWIDTH#` 计算布局的皮肤，在刷新之前保持原来的
+  布局（与 Windows 相同）。
 - **状态：** 模拟实现
+
+#### Rainmeter 5.0 中尚未实现的部分
+- **Windows：** Rainmeter 5.0 还新增了：按住 Ctrl-Alt 点选多个皮肤一起移动、缩放和设置；新的“调试”窗口（日志、皮肤监视表达式、
+  插件、显示器、网络标签页，修改文件后自动刷新）；按住 Shift 时右键菜单的“退出”变为“重新启动”、“刷新皮肤”变为“聚焦皮肤”；
+  `!SendKey` 发送媒体键和音量键（`MediaNextTrack`、`MediaPrevTrack`、`MediaStop`、`MediaPlayPause`、`VolumeMute`、
+  `VolumeDown`、`VolumeUp`）；`!Skin:` 形式的 bang 可以把目标写在最前面（`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`、
+  `"Group=名称"`）；`Rainmeter.exe [!Launch][!Bang]`；崩溃转储与“安全启动”；皮肤打包器的新功能。
+- **Mac：** 这些都还没有实现。`!Skin:Load` / `Unload` / `Toggle` / `Edit` 等作为旧 bang 的别名可用，但参数仍按旧写法的顺序读取
+  （目标在最后）；`!SendKey` 不执行（可以改用 MediaKey measure）；`!Debug` 打开管理窗口；皮肤打包由 Deskset 的安装器和
+  Skin Studio 承担。
+- **原因：** 尚未完成；“调试”窗口、安全启动和打包器属于 Windows 版的界面。
+- **对皮肤的影响：** 把目标写在最前面的 `!Skin:` bang 和 `!SendKey` 媒体键在 Mac 上不起作用。
+- **状态：** 不支持
 
 #### 睡眠、显示器睡眠、其他用户会话
 - **Windows：** OnWakeAction 在“Windows 从睡眠或休眠状态恢复时”执行。
@@ -1378,27 +1450,39 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 - **对皮肤的影响：** 刷新后皮肤从保存的 AlphaValue 重新开始。
 - **状态：** 模拟实现
 
-#### `SKIN:ReplaceVariables()` 与 `SKIN:ParseFormula()`
-- **Windows：** ReplaceVariables 也会替换节变量；ParseFormula 需要带括号的公式，否则返回 nil。
-- **Mac：** 相同；ParseFormula 还会先替换变量，并接受 measure 名称；无效输入返回 nil。
-- **原因：** 宽松处理。
+#### `SKIN:ReplaceVariables()`、`SKIN:ParseFormula()` 与 Rainmeter 5.0 `SKIN` 方法
+- **Windows：** ReplaceVariables 也会替换节变量；ParseFormula 需要带括号的公式，否则返回 nil；Rainmeter 5.0 新增
+  `SKIN:SetOption(Section, Option, Value)`、`SKIN:SetOptionGroup(Group, Option, Value)`、`SKIN:SetVariable(Name, Value)`、
+  `SKIN:ReadTextFile(Path)` 和 `SKIN:WriteTextFile(Path, Content)`。
+- **Mac：** 相同；ParseFormula 还会先替换变量，并接受 measure 名称；无效输入返回 nil。`SKIN:ReadTextFile` 解码 UTF-8 / UTF-16 /
+  ANSI 文本文件，`SKIN:WriteTextFile` 在 `#SKINSPATH#` 或 `#SETTINGSPATH#` 范围内写入 UTF-8 文本文件。
+- **原因：** 宽松处理与 5.0 手册。
+- **对皮肤的影响：** 无。
+- **状态：** 完全一致
+
+#### Rainmeter 5.0 的 Unicode 字符串函数（`string.uc*`）
+- **Windows：** Rainmeter 5.0 为 Lua 新增按字符（码位）处理的 `string.ucfind`、`ucmatch`、`ucgmatch`、`ucgsub`、`uclen`、`ucsub`、
+  `uclower`、`ucupper`、`ucreverse`、`ucbyte`、`ucchar`；带 UTF-8 BOM 的脚本也作为 Unicode 脚本读取。
+- **Mac：** 全部支持，既可写成 `string.ucfind(s, …)`，也可写成 `s:ucfind(…)`。
+- **原因：** 按 Rainmeter 5.0 手册。
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
 
 #### Measure 对象（`SKIN:GetMeasure`、`SELF`）
 - **Windows：** GetValue、GetStringValue、GetRelativeValue、GetValueRange、GetMinValue、GetMaxValue、GetOption、
-  GetNumberOption、GetName、Disable、Enable。
-- **Mac：** 全部可用；GetStringValue 是经过 Substitute 之后的值；GetOption 能看到 `!SetOption` 设置的值；Disable / Enable
-  立即生效；用 `.` 而不是 `:` 调用方法会给出清楚的错误信息。
+  GetNumberOption、GetName、Disable、Enable 以及 `SetOption(Option, Value)`（5.0）。
+- **Mac：** 全部可用；GetStringValue 是经过 Substitute 之后的值；GetOption 能看到 `!SetOption` 设置的值；Disable / Enable 与
+  `SetOption` 立即生效；用 `.` 而不是 `:` 调用方法会给出清楚的错误信息。
 - **原因：** 手册（对 nil 默认值的取舍判断）。
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
 
 #### Meter 对象（`SKIN:GetMeter`）
-- **Windows：** GetOption、GetName、GetX(Absolute)、GetY(Absolute)、GetW、GetH、SetX…SetH、Hide、Show。
+- **Windows：** GetOption、GetName、GetX(Absolute)、GetY(Absolute)、GetW、GetH、SetX…SetH、Hide、Show 以及
+  `SetOption(Option, Value)`（5.0）。
 - **Mac：** 全部可用。GetX() / GetY() 返回相对于 meter 所在容器的位置（普通 meter 即皮肤），GetX(true) 返回在皮肤中的
-  位置；GetW / GetH 包含 Padding，隐藏的 meter 为 0；SetX…SetH 立即生效。在第一次更新结束之前（主代码块、Initialize、
-  第一次 Update），第一次 Get / Set 调用会根据 meter 的选项计算临时布局（见
+  位置；GetW / GetH 包含 Padding，隐藏的 meter 为 0；SetX…SetH 与 `SetOption` 立即生效。在第一次更新结束之前（主代码块、
+  Initialize、第一次 Update），第一次 Get / Set 调用会根据 meter 的选项计算临时布局（见
   [第一次更新之前的 meter 几何信息](#第一次更新之前的-meter-几何信息)）。
 - **原因：** 手册没有定义 `r` / `R` meter 的非绝对位置（取舍判断）。
 - **对皮肤的影响：** 期望 GetX() 返回 `r` 偏移量的脚本得到的是位置；绑定 measure 的 String meter 只有在第一次更新之后才有
@@ -1528,7 +1612,8 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
 - **Windows：** Path / PathName / Folder / StartInFolder / OutputFile / IconPath 使用 Windows 路径。
 - **Mac：** `\` 变为 `/`；`%USERPROFILE%`、`%HOMEDRIVE%%HOMEPATH%` → 个人文件夹；`%APPDATA%` / `%LOCALAPPDATA%` →
   `~/Library/Application Support`；`%TEMP%` → 临时文件夹；`%PUBLIC%` → `/Users/Shared`；`%PROGRAMFILES%` →
-  `/Applications`；`%PROGRAMDATA%` → `/Library/Application Support`；`%WINDIR%` → `/System`；`C:\Users\<任意用户>\X` →
+  `/Applications`；`%PROGRAMDATA%` → `/Library/Application Support`；`%WINDIR%` → `/System`（完整映射见“变量”一条；`SyntaxVersion=2` 的皮肤中
+  不带方括号的 `%Name%` 不展开）；`C:\Users\<任意用户>\X` →
   `~/X`（Videos → Movies，My Pictures → Pictures……）；其他带盘符的路径 → `/` 下的同名路径；相对路径从皮肤文件夹算起。
 - **原因：** Mac 没有盘符，个人文件夹的结构也不同（取舍判断）。
 - **对皮肤的影响：** `%USERPROFILE%\Pictures` 的相册、文稿中的便笺等可以使用；指向其他盘的路径通常不存在。
@@ -1768,11 +1853,12 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **状态：** 部分支持
 
 #### RecycleManager
-- **Windows：** 回收站的 `Count` / `Size`；OpenBin、EmptyBin、EmptyBinSilent。
+- **Windows：** 回收站的 `Count` / `Size`；OpenBin、EmptyBin、EmptyBinSilent（`!CommandMeasure`，Rainmeter 5.0 起也可用
+  `!RecycleManager:OpenBin` / `:EmptyBin` / `:EmptyBinSilent`）。
 - **Mac：** 废纸篓（`~/.Trash` 加上其他内置卷的废纸篓）。Count 不需要权限；Size 需要完全磁盘访问权限（否则为 0，兼容性提示
   和日志会说明在哪里授权；能读取大小后提示消失）。OpenBin 在访达中打开废纸篓；EmptyBin 通过访达自己的确认对话框清空，
-  EmptyBinSilent 不确认直接清空（需要访达的自动化权限）。旧的 `Drives=` 选项被忽略。
-- **原因：** macOS 保护废纸篓的内容；废纸篓归访达管理。
+  EmptyBinSilent 不确认直接清空（需要访达的自动化权限）。旧皮肤中的 `Drives=` 选项被忽略：所有卷的废纸篓都计入。
+- **原因：** macOS 保护废纸篓的内容；废纸篓归访达管理；Mac 的废纸篓不按盘符划分。
 - **对皮肤的影响：** 项目数可用；显示大小的皮肤在授予完全磁盘访问权限前显示 0。
 - **状态：** 部分支持
 
@@ -2330,15 +2416,18 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 
 ### 11.1 WebParser
 
-WebParser 遵循手册；正则表达式是转换为 ICU 的 PCRE（见[动作、bang、Substitute 与正则表达式](#动作bangsubstitute-与正则表达式)）。
+WebParser 遵循手册，包括 Rainmeter 5.0 的 `JsonPointer`（父子 measure 上的 RFC 6901 JSON Pointer 提取；`JsonPointer=1` 只解析
+JSON 不取值）、`!WebParser:Refetch` / `!WebParser:ClearResults` bang 以及 `CodePage=0` 时本地 `file://` 文件的编码检测；正则表达式是转换为 ICU 的 PCRE（见[动作、bang、Substitute 与正则表达式](#动作bangsubstitute-与正则表达式)）。
 以下说明来自 WebParser 实现及其审查时的记录，并已对照当前代码核实。
 
 #### 父子 measure 的数值（取舍判断）
-- **Windows：** 手册没有说明 `StringIndex=0`、空 RegExp 或子 measure 匹配失败时的结果，也没有说明字符串如何变成数字。
-- **Mac：** StringIndex 0（默认）是整个匹配；没有 RegExp 时整段文字就是值；数值取字符串开头的数字（“23.5°C” → 23.5）。
-  RegExp 匹配失败的子 measure 保留旧值，与父 measure 一样；StringIndex 指向不存在的捕获组时，该子 measure 及其下级全部为空
-  （即前瞻技巧中的“空值”）。整棵树的数值都在任何动作执行之前设置好。
-- **原因：** 手册没有规定。
+- **Windows：** 手册没有说明 `StringIndex=0`、空 RegExp 或子 measure 匹配失败时的结果，也没有说明字符串如何变成数字；
+  Rainmeter 5.0 新增 `JsonPointer`。
+- **Mac：** StringIndex 0（默认）是整个匹配；既没有 RegExp 也没有 `JsonPointer` 时整段文字就是值；`JsonPointer` 可在 `RegExp`
+  之前或代替 `RegExp` 从父 measure 的 JSON 文本中提取标量或紧凑 JSON 子树；数值取字符串开头的数字（“23.5°C” → 23.5）。
+  RegExp 匹配失败的子 measure 保留旧值，与父 measure 一样；StringIndex 指向不存在的捕获组时，
+  该子 measure 及其下级全部为空（即前瞻技巧中的“空值”）。整棵树的数值都在任何动作执行之前设置好。
+- **原因：** 手册未规定旧版边界情况；5.0 选项按 5.0 手册实现。
 - **对皮肤的影响：** 对在 Windows 上正常的皮肤没有影响。
 - **状态：** 完全一致（取舍判断）
 

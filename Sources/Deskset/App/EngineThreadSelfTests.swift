@@ -802,11 +802,27 @@ enum EngineThreadSelfTests {
             let folder = app.skinsDirectory.appendingPathComponent("Studio/EngineSeeded")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = folder.appendingPathComponent("EngineSeeded.ini")
-            try (StudioSessionSelfTests.seeded + "\n[Metadata]\nName=Before\n").write(to: url, atomically: true,
-                                                                                    encoding: .utf8)
+            let seeded = """
+            [Rainmeter]
+            Update=50
+            OnCloseAction=[!WriteKeyValue Variables Seed (#CURRENTSECTION#) "#CURRENTPATH#EngineSeeded.ini"]
+
+            [Variables]
+            Seed=0
+
+            [MeterTitle]
+            Meter=String
+            FontSize=14
+            Text=Hello
+
+            [Metadata]
+            Name=Before
+            """
+            try (seeded + "\n").write(to: url, atomically: true, encoding: .utf8)
             try write(app, ["Plain": plain])
             app.rescanLibrary()
             let config = "Studio\\EngineSeeded"
+            func readFile(_ u: URL) -> String { (try? String(contentsOf: u, encoding: .utf8)) ?? "" }
             var tracked: [() -> Skin?] = []
             autoreleasepool {
                 guard let first = app.activate(config: "Engine\\Plain", file: nil), let engine = app.engineThread else {
@@ -824,53 +840,50 @@ enum EngineThreadSelfTests {
                 tracked.append(track(c))
                 t.check(c.isStarting, "the skin waits to load")
                 t.check(CodeEditorRouter.openBuiltIn(file: url, line: 3, app: app), "the built-in editor takes the file")
-                t.check(app.inspector == nil, "the Studio waits for the skin to start")
+                t.check(StudioWindowController.window(for: app) == nil, "the Studio waits for the skin to start")
                 gate.open()
-                t.check(AppSelfTest.spin(timeout: 60) { app.inspector?.controller === c }, "then it opens on it")
-                guard let editor = app.inspector, let session = editor.session else {
-                    return t.check(false, "the editor and its session")
+                t.check(AppSelfTest.spin(timeout: 60) { StudioWindowController.window(for: app)?.link?.config == config },
+                        "then it opens on it")
+                guard let studio = StudioWindowController.window(for: app), let session = studio.session else {
+                    return t.check(false, "the studio and its session")
                 }
                 t.check(c.runtime.executor === engine, "the desktop copy stays on the engine thread")
-                t.check(editor.skin?.executor === MainSkinExecutor.shared, "the Studio's own instance runs on main")
+                t.check(studio.skin?.executor === MainSkinExecutor.shared, "the Studio's own instance runs on main")
 
                 // A step the desktop copy must load again for (a `[Rainmeter]` option) reloads it with a ticket; what it
                 // writes as it reloads is its own.
-                editor.select(section: "MeterTitle")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
-                               .init(section: "Rainmeter", key: "ContextTitle", value: "Engine", own: true)],
-                              name: "Change Font Size")
-                t.check(StudioSessionSelfTests.read(url).contains("FontSize=20\n"), "written")
+                _ = try? session.apply("Change Font Size", [
+                    .setValue(file: url, section: "MeterTitle", key: "FontSize", value: "20", afterIncludes: false),
+                    .setValue(file: url, section: "Rainmeter", key: "ContextTitle", value: "Engine", afterIncludes: false),
+                ])
+                t.check(readFile(url).contains("FontSize=20\n"), "written")
                 t.check(AppSelfTest.spin(timeout: 60) {
                     guard !session.isAwaitingOwnReload, let now = app.controller(for: config) else { return false }
                     return now !== c && now.isStarted
                 }, "the reload ends once the old copy closed and the new one started")
                 if let now = app.controller(for: config) { tracked.append(track(now)) }
                 t.check(app.controller(for: config)?.runtime.executor === engine, "the new copy on the engine thread")
-                t.check(!StudioSessionSelfTests.read(url).contains("Seed=0\n"), "the old copy wrote as it closed")
-                t.equal(session.buffers.buffer(url)?.text, StudioSessionSelfTests.read(url),
+                t.check(!readFile(url).contains("Seed=0\n"), "the old copy wrote as it closed")
+                t.equal(session.buffers.buffer(url)?.text, readFile(url),
                         "the memory took the widget's own write")
-                let toast = editor.toastText
-                t.equal(StudioSessionSelfTests.reloads(app, config, during: 1.5), 0, "no reload follows")
-                t.equal(editor.toastText, toast, "the step's toast stays")
-                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
 
                 // A value step reaches the copy on the engine thread as a patch: a message the thread runs (as a piece
                 // of the skin's work: its snapshot follows), the same copy, the answer back on the main thread.
                 let copy = app.controller(for: config)
                 let patched = session.desktopPatchCounts.applied
                 t.equal(copy?.runtime.snapshot.metadata["Name"], "Before")
-                editor.select(section: "MeterTitle")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "24", own: true),
-                               .init(section: "Metadata", key: "Name", value: "After", own: true)],
-                              name: "Change Font Size")
+                _ = try? session.apply("Change Font Size", [
+                    .setValue(file: url, section: "MeterTitle", key: "FontSize", value: "24", afterIncludes: false),
+                    .setValue(file: url, section: "Metadata", key: "Name", value: "After", afterIncludes: false),
+                ])
                 t.check(AppSelfTest.spin(timeout: 60) { session.desktopPatchCounts.applied > patched }, "patched")
                 t.equal(session.desktopPatchCounts.refused, 0, "not refused")
                 t.check(app.controller(for: config) === copy, "the same copy")
                 t.equal(copy?.runtime.exclusive(timeout: 30) { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "24",
                         "in effect on the engine thread")
                 t.equal(copy?.runtime.snapshot.metadata["Name"], "After", "the snapshot was built again after the patch")
-                editor.window?.close()
-                app.inspector?.window?.close()
+                studio.window?.close()
+                StudioWindowController.window(for: app)?.window?.close()
                 app.deactivate(config: config)
                 app.deactivate(config: "Engine\\Plain")
             }

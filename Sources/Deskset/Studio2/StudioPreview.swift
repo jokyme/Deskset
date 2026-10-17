@@ -14,78 +14,11 @@ struct StudioPreviewState: Equatable {
         case standard, clear, tinted
     }
 
-    /// The time the widget's Time measures show.
-    enum Time: Equatable {
-        case live
-        case frozen(Date)
-    }
-
     var appearance = Appearance.followMac
     var glass = Glass.standard
     var backdrop = StudioBackdropKind.desktop
     /// Whether the other widgets on the desktop are drawn around this one (nil: at 100 % when it is on the desktop).
     var showsNeighbours: Bool?
-    var data = MeasureValueOverride.Data.live
-    var time = Time.live
-    /// The canvas takes the pointer: the widget reacts to hovers and clicks (outward actions are only offered).
-    var interacting = false
-
-    /// Whether sample data or a frozen time is shown.
-    var hasPreset: Bool { data != .live || time != .live }
-
-    /// The instant "Frozen at 10:09" shows: today at 10:09 (the hour the design's clocks show).
-    static func tenPastTen(on day: Date = Date(), calendar: Calendar = .current) -> Date {
-        calendar.date(bySettingHour: 10, minute: 9, second: 0, of: day) ?? day
-    }
-
-    /// "10:09".
-    static func timeText(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "H:mm"
-        return f.string(from: date)
-    }
-
-    /// A share as the menu and the bar write it: "100 %".
-    static func percentText(_ share: Double) -> String {
-        "\(Int((share * 100).rounded())) %"
-    }
-
-    /// What the data item of the bar says: "Live", or the presets in use ("100 % · 10:09").
-    var dataLabel: String {
-        var parts: [String] = []
-        switch data {
-        case .live: break
-        case .paused: parts.append(StudioText[.dataPaused])
-        case .level(let share): parts.append(Self.percentText(share))
-        case .longText: parts.append(StudioText[.dataLongText])
-        case .noData: parts.append(StudioText[.dataNone])
-        }
-        if case .frozen(let date) = time { parts.append(Self.timeText(date)) }
-        return parts.isEmpty ? StudioText[.live] : parts.joined(separator: " · ")
-    }
-
-    /// The capsule over the canvas while a preset is in use ("Previewing sample data 100 % · your desktop doesn't
-    /// change"); nil without one.
-    var previewingSentence: String? {
-        let what: String
-        switch data {
-        case .level(let share): what = StudioText.format(.previewingData, Self.percentText(share))
-        case .paused: what = StudioText[.previewingPaused]
-        case .longText: what = StudioText[.previewingLongText]
-        case .noData: what = StudioText[.previewingNoData]
-        case .live:
-            guard case .frozen(let date) = time else { return nil }
-            what = StudioText.format(.previewingTime, Self.timeText(date))
-        }
-        return StudioText.format(.previewing, what)
-    }
-
-    /// The sample data the Studio's instance takes (`Skin.measureValues`).
-    func apply(to override: MeasureValueOverride) {
-        override.data = data
-        if case .frozen(let date) = time { override.frozenTime = date } else { override.frozenTime = nil }
-    }
 
     /// The glass regions as the preview shows them.
     func previewed(_ regions: [GlassRegion], dark: Bool) -> [GlassRegion] {
@@ -141,9 +74,7 @@ enum StudioSizeName {
     /// The canvas caption: "Preview 165% · Medium on your desktop", or where it is at Actual Size.
     static func caption(zoom: CGFloat, file: String, onDesktop: Bool, actualSize: Bool) -> String {
         if actualSize && onDesktop { return StudioText[.captionActualSize] }
-        var size = name(forFile: file)
-        // Chinese: "桌面上是中号", "桌面上是 100%" (a space before digits).
-        if StudioText.language == .chinese, size.first?.isNumber == true { size = " " + size }
+        let size = name(forFile: file)
         return onDesktop ? StudioText.format(.captionOnDesktop, zoomText(zoom), size)
                          : StudioText.format(.captionNotOnDesktop, zoomText(zoom), size)
     }

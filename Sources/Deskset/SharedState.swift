@@ -1,4 +1,5 @@
 import DesksetCore
+import DesksetDraw
 import Foundation
 
 // State that shared services keep for every skin, which skins are to read from threads of their own
@@ -7,25 +8,7 @@ import Foundation
 /// A value behind a lock of its own: a cache group of a shared service, which skins on different threads read and
 /// fill at the same time. Keep the closures short (look up, store); slow work (a system call that can take a while,
 /// an IPC round trip) is better done between two accesses, so the other threads never wait for it.
-final class Guarded<Value> {
-    private let lock = NSLock()
-    private var value: Value
-
-    init(_ value: Value) {
-        self.value = value
-    }
-
-    func access<Result>(_ body: (inout Value) throws -> Result) rethrows -> Result {
-        lock.lock()
-        defer { lock.unlock() }
-        return try body(&value)
-    }
-
-    /// A copy of the value.
-    var current: Value {
-        access { $0 }
-    }
-}
+typealias Guarded<Value> = DesksetDraw.Guarded<Value>
 
 /// A value that only the main thread can work out, because it comes from AppKit (the app's appearance, a screen's
 /// desktop picture, a permission), but that skins read from their own threads.

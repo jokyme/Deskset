@@ -11,8 +11,8 @@ import Foundation
 // Virtual time (`VirtualTimeExecutor`): no real background thread when there is a fake. A fake's completion is an
 // ordinary piece of work in the executor's queue, due at the next `runUntilIdle()` unless the fake gives a delay; a
 // fixture fake does the work itself (it only reads the Mac's files) when that piece of work runs, a scripted fake turns
-// a given value into the result. Work without a fake runs for real, as in live mode, and is reported: the skin that
-// started it cannot be verified.
+// a given value into the result. Work without a fake is reported: the skin that requested it cannot be verified. It
+// runs for real by default, as in live mode; verification can block it with `allowsUnfakedWork = false`.
 
 // MARK: - Kinds
 
@@ -202,7 +202,7 @@ public struct BackgroundWorkReport: Equatable, Sendable, CustomStringConvertible
     public let config: String
     /// The first request's subject.
     public let subject: String
-    /// A fake answered (false: the real work ran, so the skin cannot be verified).
+    /// A fake answered (false: the work ran for real or was blocked, so the skin cannot be verified).
     public let faked: Bool
     public let reason: String
 
@@ -228,7 +228,7 @@ public struct BackgroundJob<T> {
     /// The file or folder the work reads, when it reads one: a fixture fake does the work itself only when that lies
     /// in the skin's own tree (its root config folder, with `@Resources`) or in a folder the host allowed
     /// (`VirtualBackgroundWork.allowFixtureReads`); anywhere else it is the user's live data (a Downloads folder a
-    /// launcher lists), which differs from run to run, so the work runs for real and is reported.
+    /// launcher lists), which differs from run to run, so the work is reported as unfaked.
     public var reads: String?
 
     /// Work that reports back through a callback of its own (a transfer, a process, a service).
@@ -259,6 +259,8 @@ extension Skin {
     /// then; otherwise `dropped` gets the result there instead (for what must not be left behind, such as a temporary
     /// file; it must not touch the skin). Call on the skin's own thread. Neither closure may hold the skin or its
     /// sections strongly: capture them weakly, as for `SkinHop`.
+    /// In virtual time with `allowsUnfakedWork = false`, a request without a usable fake is reported but not started;
+    /// neither callback runs, because no result was produced.
     public func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
                                    orElse dropped: ((T) -> Void)? = nil) {
         let hop = self.hop()
@@ -310,6 +312,7 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
     weak var executor: VirtualTimeExecutor?
     private let condition = NSCondition()
     private var fakes = VirtualBackgroundWork.defaultFakes
+    private var unfakedWorkAllowed = true
     /// Folders a fixture may read besides the skin's own tree (`allowFixtureReads`), as `placeKey` gives them.
     private var fixtureRoots: [String] = []
     private var running = 0
@@ -319,14 +322,30 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
 
     init() {}
 
-    /// The fake for `kind` (nil: the real work runs).
+    /// Whether a request without a usable fake may start real work (default true). Set false before a verification
+    /// run to report such requests without starting them. Neither completion nor dropped is called: there is no
+    /// typed result to deliver. Work already started and the host's declared fake services are unaffected.
+    public var allowsUnfakedWork: Bool {
+        get {
+            condition.lock()
+            defer { condition.unlock() }
+            return unfakedWorkAllowed
+        }
+        set {
+            condition.lock()
+            unfakedWorkAllowed = newValue
+            condition.unlock()
+        }
+    }
+
+    /// The fake for `kind` (nil: unfaked work, subject to `allowsUnfakedWork`).
     public func fake(for kind: BackgroundWorkKind) -> BackgroundFake? {
         condition.lock()
         defer { condition.unlock() }
         return fakes[kind]
     }
 
-    /// Fakes `kind` from now on (nil: the real work runs).
+    /// Fakes `kind` from now on (nil: unfaked work, subject to `allowsUnfakedWork`).
     public func setFake(_ fake: BackgroundFake?, for kind: BackgroundWorkKind) {
         condition.lock()
         fakes[kind] = fake
@@ -368,7 +387,7 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         return reportList
     }
 
-    /// The work that ran for real: the skins that started it cannot be verified.
+    /// Requests without a usable fake, whether run for real or blocked: their skins cannot be verified.
     public var unverifiable: [BackgroundWorkReport] { reports.filter { !$0.faked } }
 
     /// Real work started and not yet handed back to the executor.
@@ -452,6 +471,10 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
             } else {
                 deliver()
             }
+            return
+        }
+        guard allowsUnfakedWork else {
+            report(request, faked: false, reason + "; blocked: the job was not started and no completion is delivered")
             return
         }
         report(request, faked: false, reason + "; the real work ran")

@@ -193,46 +193,6 @@ enum GlassSelfTests {
             withExtendedLifetime(app) {}
         }
 
-        t.suite("App: MacGlass: layer tiles follow glass changes") {
-            let ini = "[Rainmeter]\nUpdate=-1\n[Card]\nMeter=Image\nW=100\nH=60\nMacGlass=Regular\nMacGlassCornerRadius=8\n"
-            let (skin, host) = try MediaUITests.bareSkin(t, ini)
-            skin.update()
-            guard let card = skin.meter(named: "Card") else { return t.check(false, "the layer") }
-            // The layer list's tile follows the glass: !SetOption turns it Clear, tints it, then turns it off.
-            let thumbnails = LayerThumbnails()
-            func tile() -> NSImage? {
-                thumbnails.beginPass()
-                return thumbnails.thumbnail(key: "Card", meters: [card], in: skin, panel: .black, dark: true)
-            }
-            let regular = tile()
-            let drawn = thumbnails.renderCount
-            _ = tile()
-            t.equal(thumbnails.renderCount, drawn, "nothing changed: the cached tile")
-            skin.execute("[!SetOption Card MacGlass Clear][!UpdateMeter Card][!Redraw]", from: nil)
-            let clear = tile()
-            t.equal(thumbnails.renderCount, drawn + 1, "the glass changed: drawn again")
-            t.check(clear !== regular)
-            skin.execute("[!SetOption Card MacGlassTint 255,0,0][!UpdateMeter Card][!Redraw]", from: nil)
-            _ = tile()
-            t.equal(thumbnails.renderCount, drawn + 2, "the tint changed")
-            skin.execute("[!SetOption Card MacGlass None][!UpdateMeter Card][!Redraw]", from: nil)
-            _ = tile()
-            t.equal(thumbnails.renderCount, drawn + 3, "the glass is gone")
-            // The whole widget's tile too, although there is no further update (Update=-1).
-            func widget() -> NSImage? {
-                thumbnails.beginPass()
-                return thumbnails.widgetThumbnail(of: skin, panel: .black, dark: true)
-            }
-            _ = widget()
-            let widgetDrawn = thumbnails.renderCount
-            _ = widget()
-            t.equal(thumbnails.renderCount, widgetDrawn, "the widget: nothing changed")
-            skin.execute("[!SetOption Rainmeter MacGlass Clear][!Redraw]", from: nil)
-            _ = widget()
-            t.equal(thumbnails.renderCount, widgetDrawn + 1, "the skin's glass changed: the widget is drawn again")
-            withExtendedLifetime(host) {}
-        }
-
         t.suite("App: MacGlass: pictures of several layers keep the glass behind them") {
             let ini = "[Rainmeter]\nUpdate=-1\n[Label]\nMeter=Image\nW=100\nH=60\nSolidColor=0,0,0,255\n"
                 + "[Card]\nMeter=Image\nW=100\nH=60\nMacGlass=Regular\nMacGlassCornerRadius=8\n"

@@ -58,7 +58,15 @@ extension LegacySkinRenderer {
         let offset = aliased && transform.isIdentity ? aliasedStrokeOffset(lineWidth: meter.lineWidth, ctx) : .zero
 
         ctx.setLineWidth(meter.lineWidth)
-        ctx.setLineJoin(.round)
+        switch meter.lineJoin {
+        case .miter, .miterOrBevel:
+            ctx.setLineJoin(.miter)
+            ctx.setMiterLimit(CGFloat(meter.miterLimit))
+        case .bevel:
+            ctx.setLineJoin(.bevel)
+        case .round:
+            ctx.setLineJoin(.round)
+        }
         ctx.setLineCap(count == 1 ? .round : .butt)
         let geometry = meter.geometry
         for (index, line) in meter.lines.enumerated() where line.measure != nil && line.color.a > 0 {

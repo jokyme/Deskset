@@ -8,7 +8,7 @@ import Foundation
 //   https://docs.rainmeter.net/manual/skins/rainmeter-section/ (AccurateText)
 // Places where the manual is silent are marked "Judgment:".
 
-public enum HorizontalTextAlign: Hashable, Sendable { case left, center, right }
+public enum HorizontalTextAlign: Hashable, Sendable { case left, center, right, justify }
 public enum VerticalTextAlign: Hashable, Sendable { case top, center, bottom }
 public enum StringEffect: Hashable, Sendable { case none, shadow, border }
 

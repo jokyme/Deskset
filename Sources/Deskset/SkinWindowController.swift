@@ -106,10 +106,13 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     var state: SkinState { app.state.skin(config) ?? SkinState(file: file) }
 
-    /// The skin defines OnFocusAction or OnUnfocusAction (from the snapshot).
+    /// The skin defines OnFocusAction or OnUnfocusAction, or has a TextEditMeter (from the snapshot).
     var wantsFocus: Bool {
         SnapshotAudit.check("wantsFocus", runtime, snapshot: runtime.snapshot.wantsFocus,
-                            live: { !$0.settings.onFocusAction.isEmpty || !$0.settings.onUnfocusAction.isEmpty })
+                            live: {
+                                !$0.settings.onFocusAction.isEmpty || !$0.settings.onUnfocusAction.isEmpty
+                                    || $0.meters.contains { $0 is TextEditMeter }
+                            })
     }
 
     /// Whether the skin can currently be seen (loaded, not hidden by a bang).
@@ -706,6 +709,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             window.setFrame(constrained(window.frame), display: false)
         }
         publishFacts()
+        runtime.send(.displayMetricsChanged)
     }
 
     /// After a drag or !Move.
@@ -925,6 +929,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             app.state.update(config) { $0.fadeDuration = milliseconds }
             applyWindowSettings()
             app.windowChangesNeed(settingsChanged: true)
+        case .zoomFactor(let factor):
+            app.state.update(config) { $0.zoomFactor = factor }
+            applyWindowSettings()
+            app.windowChangesNeed(settingsChanged: true)
         case .hidden(let hidden, let fade):
             setHidden(hidden, fade: fade)
         }
@@ -1059,7 +1067,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     var environment: SkinEnvironment {
         let s = state
         return EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
-                                                   autoSelectScreen: s.autoSelectScreen)
+                                                   autoSelectScreen: s.autoSelectScreen, visible: !isHiddenByBang,
+                                                   zoomFactor: s.zoomFactor)
     }
 
     /// While a move of the skin's waits for a drag to end, the model and the window differ on purpose.

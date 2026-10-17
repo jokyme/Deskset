@@ -8,9 +8,6 @@ import Foundation
 /// Background file scans, listing reads and the Trash. Concurrent, so one huge scan does not hold up the others.
 enum PluginIO {
     static let queue = DispatchQueue(label: "Deskset.PluginIO", qos: .utility, attributes: .concurrent)
-    /// Icons may wait inside the system's icon service. Start one job at a time here, so queued icons do not occupy
-    /// the shared dispatch workers while waiting to render; file reads and the Trash stay on the concurrent queue.
-    static let iconQueue = DispatchQueue(label: "Deskset.FileViewIcons", qos: .utility)
     /// Bound on the number of files a scan visits (a whole disk would otherwise take minutes).
     static let maxEntries = 2_000_000
 }
@@ -342,3 +339,211 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         return r
     }
 }
+
+// MARK: - DragDrop
+
+/// `Measure=DragDrop` (and `Plugin=Drag&Drop` / `Plugin=DragDrop`): reacts to files and folders dragged and dropped
+/// onto the skin (`https://docs-v5.rainmeter.net/manual/measures/dragdrop/`).
+public final class DragDropMeasure: Measure, PluginLifecycle {
+    public enum DropAction: String {
+        case path = "path"
+        case move = "move"
+        case copy = "copy"
+        case shortcut = "shortcut"
+        case delete = "delete"
+    }
+
+    private var dropAction: DropAction = .path
+    private var targetPath = ""
+    private var silent = false
+    private var replaceIfExists = false
+    private var processAllFiles = false
+    private(set) var parentName: String?
+    private var boundsSpec = ""
+    private var onDropAction = ""
+    private var onEnterAction = ""
+    private var onLeaveAction = ""
+    private var onOverAction = ""
+    private var lastDroppedPath = ""
+    private var isHovering = false
+    private var closed = false
+
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        super.init(name: name, section: section, skin: skin, type: type)
+        rawString = ""
+    }
+
+    public func skinWillClose() { closed = true }
+
+    public override func readMeasureOptions() {
+        if option("FancyRenderer") != nil {
+            skin.logOnce("[\(name)] FancyRenderer is deprecated and ignored in Rainmeter 5.0", level: .warning)
+        }
+        let rawParent = string("Parent").trimmingCharacters(in: .whitespaces)
+        if !rawParent.isEmpty {
+            let stripped: String
+            if rawParent.hasPrefix("["), rawParent.hasSuffix("]"), rawParent.count > 2 {
+                stripped = String(rawParent.dropFirst().dropLast())
+            } else {
+                stripped = rawParent
+            }
+            parentName = stripped.isEmpty ? nil : stripped
+        } else {
+            parentName = nil
+        }
+        let parent = parentName.flatMap { skin.measure(named: $0) as? DragDropMeasure }
+        let rawAction = string("Action", parent?.dropAction.rawValue ?? "Path")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        dropAction = DropAction(rawValue: rawAction) ?? .path
+        let rawPath = string("Path").trimmingCharacters(in: .whitespaces)
+        if !rawPath.isEmpty {
+            targetPath = PluginPaths.resolve(rawPath, skin: skin)
+        } else {
+            targetPath = parent?.targetPath ?? ""
+        }
+        silent = bool("Silent", parent?.silent ?? false)
+        replaceIfExists = bool("ReplaceIfExists", parent?.replaceIfExists ?? false)
+        processAllFiles = bool("ProcessAllFiles", parent?.processAllFiles ?? false)
+        boundsSpec = string("Bounds").trimmingCharacters(in: .whitespaces)
+        onDropAction = actionOption("OnDropAction")
+        onEnterAction = actionOption("OnEnterAction")
+        onLeaveAction = actionOption("OnLeaveAction")
+        onOverAction = actionOption("OnOverAction")
+    }
+
+    public override func computeValue() -> Double {
+        rawString = lastDroppedPath
+        return 0
+    }
+
+    private var isActive: Bool {
+        guard !closed && !disabled && !paused else { return false }
+        if let parentName, let parent = skin.measure(named: parentName) as? DragDropMeasure {
+            return !parent.disabled && !parent.paused
+        }
+        return true
+    }
+
+    /// True when skin-local point `(x, y)` lies inside this measure's `Bounds` (or anywhere on the skin when `Bounds`
+    /// is empty).
+    public func contains(x: Double, y: Double) -> Bool {
+        if boundsSpec.isEmpty { return true }
+        let parts = boundsSpec.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.count == 4,
+           let bx = Double(parts[0]), let by = Double(parts[1]),
+           let bw = Double(parts[2]), let bh = Double(parts[3]) {
+            return x >= bx && x <= bx + bw && y >= by && y <= by + bh
+        }
+        if let meter = skin.meter(named: boundsSpec) {
+            guard !meter.hidden else { return false }
+            let r = meter.frame
+            return x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
+        }
+        return false
+    }
+
+    public func handleDragEnter(files: [String], x: Double, y: Double) {
+        if needsOptionRead { readOptionsIfNeeded() }
+        guard isActive else { return }
+        if contains(x: x, y: y) {
+            if !isHovering {
+                isHovering = true
+                runDragAction(onEnterAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+            }
+            runDragAction(onOverAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+        }
+    }
+
+    public func handleDragMove(files: [String], x: Double, y: Double) {
+        if needsOptionRead { readOptionsIfNeeded() }
+        guard isActive else { return }
+        if contains(x: x, y: y) {
+            if !isHovering {
+                isHovering = true
+                runDragAction(onEnterAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+            }
+            runDragAction(onOverAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+        } else if isHovering {
+            isHovering = false
+            runDragAction(onLeaveAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+        }
+    }
+
+    public func handleDragLeave(files: [String], x: Double, y: Double) {
+        if needsOptionRead { readOptionsIfNeeded() }
+        guard isHovering else { return }
+        isHovering = false
+        guard isActive else { return }
+        runDragAction(onLeaveAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+    }
+
+    @discardableResult
+    public func handleDrop(files: [String], x: Double, y: Double) -> Bool {
+        if needsOptionRead { readOptionsIfNeeded() }
+        isHovering = false
+        guard isActive, !files.isEmpty, contains(x: x, y: y) else { return false }
+        let list = processAllFiles ? files : [files[0]]
+        for (idx, file) in list.enumerated() {
+            performFileOperation(on: file)
+            lastDroppedPath = file
+            rawString = file
+            if let parentName, let parent = skin.measure(named: parentName) as? DragDropMeasure {
+                parent.lastDroppedPath = file
+                parent.rawString = file
+            }
+            runDragAction(onDropAction, file: file, fileNr: idx + 1, x: x, y: y)
+        }
+        return true
+    }
+
+    private func performFileOperation(on file: String) {
+        switch dropAction {
+        case .path:
+            break
+        case .copy, .move, .shortcut:
+            guard !targetPath.isEmpty else { return }
+            let srcURL = URL(fileURLWithPath: file)
+            let folderURL = URL(fileURLWithPath: targetPath, isDirectory: true)
+            let dstURL = folderURL.appendingPathComponent(srcURL.lastPathComponent)
+            let action = dropAction
+            let replace = replaceIfExists
+            let effect: SideEffect = (action == .move)
+                ? .renameFile(from: srcURL.path, to: dstURL.path)
+                : .writeFile(path: dstURL.path)
+            skin.sideEffects.perform(effect) {
+                LiveSideEffects.performDragDropWrite(from: srcURL, to: dstURL, folder: folderURL,
+                                                     mode: action, replaceIfExists: replace)
+            }
+        case .delete:
+            let srcURL = URL(fileURLWithPath: file)
+            skin.sideEffects.perform(.removeFile(path: srcURL.path)) {
+                LiveSideEffects.performDragDropTrash(at: srcURL)
+            }
+        }
+    }
+
+    private func runDragAction(_ action: String, file: String, fileNr: Int, x: Double, y: Double) {
+        guard !action.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let trimmedFile = file.hasSuffix("/") && file.count > 1 ? String(file.dropLast()) : file
+        let ns = trimmedFile as NSString
+        let fullName = ns.lastPathComponent
+        let ext = ns.pathExtension
+        let baseName = ext.isEmpty ? fullName : (fullName as NSString).deletingPathExtension
+        let directory = ns.deletingLastPathComponent
+        let replacements: [(String, String)] = [
+            ("$Name$", baseName),
+            ("$Directory$", directory),
+            ("$Type$", ext),
+            ("$File$", file),
+            ("$FileNr$", "\(fileNr)"),
+            ("$MouseX$", "\(Int(x.rounded()))"),
+            ("$MouseY$", "\(Int(y.rounded()))"),
+        ]
+        var expanded = action
+        for (token, value) in replacements {
+            expanded = expanded.replacingOccurrences(of: token, with: value, options: .caseInsensitive)
+        }
+        skin.execute(expanded, from: self)
+    }
+}
+

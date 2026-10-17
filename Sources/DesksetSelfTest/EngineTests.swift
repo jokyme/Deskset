@@ -4023,8 +4023,12 @@ private func runEngineCompatTests(_ t: TestRunner) {
         t.check(skin.measure(named: "NotAPlugin") is UnsupportedMeasure, "Plugin=Calc is not the Calc measure")
         t.check(!skin.issues.contains { $0.contains("SysInfo") || $0.contains("Process") || $0.contains("WebParser") },
                 "\(skin.issues)")
-        t.equal(Skin.formerPluginMeasures, ["sysinfo", "process", "webparser", "recyclemanager", "mediakey",
-                                            "nowplaying", "wifistatus"])
+        for expected in ["sysinfo", "process", "webparser", "recyclemanager", "mediakey", "nowplaying", "wifistatus",
+                         "actiontimer", "audio", "audiolevel", "dragdrop", "fileview", "folderinfo", "inputtext",
+                         "itunes", "mouse", "perfmon", "ping", "power", "quote", "resmon", "runcommand", "speedfan",
+                         "usagemonitor", "windowmessage"] {
+            t.check(Skin.formerPluginMeasures.contains(expected), expected)
+        }
     }
 
     t.suite("Engine compat: compatibility notes list only Mac differences") {
@@ -4456,5 +4460,463 @@ private func runEngineCompatTests(_ t: TestRunner) {
         t.check(host.redraws > redraws)
         skin.close()
         skin.fontsDidChange()
+    }
+
+    t.suite("Engine: Rainmeter 5.0 — %Name% environment variables follow SyntaxVersion") {
+        let v1 = try makeSkin(t, """
+        [Rainmeter]
+        [Variables]
+        Folder=%APPDATA%\\Deskset
+        [MeasureLiteral]
+        Measure=String
+        String=xPATHx
+        Substitute="x":"%"
+        [MeterEnv]
+        Meter=String
+        Text=%USERNAME%|#Folder#|%username%|%NoSuchVariable42%|50%|%1|%20|%x%USERNAME%|[%USERNAME]
+        [MeterMeasure]
+        Meter=String
+        DynamicVariables=1
+        Text=[MeasureLiteral]
+        [MeterMachine]
+        Meter=String
+        Text=%OS%,%PROCESSOR_ARCHITECTURE%,%NUMBER_OF_PROCESSORS%
+        """).0
+        v1.update()
+        let user = NSUserName()
+        let appData = NSHomeDirectory() + "/Library/Application Support"
+        t.equal(text(v1, "MeterEnv"),
+                "\(user)|\(appData)\\Deskset|\(user)|%NoSuchVariable42%|50%|%1|%20|%x\(user)|\(user)",
+                "SyntaxVersion=1 expands known %Name% (any case); unknown names, %1, 50% and %20 stay")
+        t.equal(text(v1, "MeterMeasure"), "%PATH%", "a measure's value is never read as an environment reference")
+        #if arch(arm64)
+        let arch = "ARM64"
+        #else
+        let arch = "AMD64"
+        #endif
+        t.equal(text(v1, "MeterMachine"),
+                "Windows_NT,\(arch),\(ProcessInfo.processInfo.activeProcessorCount)")
+        t.check(!(BuiltInVariables.environmentValue("COMPUTERNAME") ?? "").hasSuffix(".local"))
+        t.equal(PluginPaths.environmentValue("NUMBER_OF_PROCESSORS"),
+                BuiltInVariables.environmentValue("NUMBER_OF_PROCESSORS"), "plugin paths share the mapping")
+
+        let v2 = try makeSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=2
+        [MeterEnv]
+        Meter=String
+        Text=%USERNAME%|[%USERNAME]
+        """).0
+        v2.update()
+        t.equal(text(v2, "MeterEnv"), "%USERNAME%|\(user)", "SyntaxVersion=2 leaves %Name% as written")
+    }
+
+    t.suite("Engine: Rainmeter 5.0 Phase 1 — SyntaxVersion, @Inherit, [%Env], [$Skin/$Display], formulas & bangs") {
+        // 1. Packed RMSKIN version comparison
+        t.equal(RmskinManifest.versionComponents("5000000"), [5, 0, 0, 0])
+        t.equal(RmskinManifest.versionComponents("5001002"), [5, 1, 2, 0])
+        t.equal(RmskinManifest.versionComponents("5.0.0.4000"), [5, 0, 0, 4000])
+
+        // 2. Unsupported SyntaxVersion fails cleanly
+        let (badSkin, _) = try makeSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=99
+        [MeterA]
+        Meter=String
+        Text=ShouldNotLoad
+        """)
+        t.equal(badSkin.isSupportedSyntaxVersion, false)
+        t.equal(badSkin.meters.count, 0)
+        t.equal(badSkin.measures.count, 0)
+
+        // 3. SyntaxVersion=2, @Inherit on measures & meters, [%Env], [$Skin...] & [$Display...], unbracketed formulas
+        final class EnvHost: FakeHost {
+            var env = SkinEnvironment()
+            override func environment(for skin: Skin) -> SkinEnvironment { env }
+        }
+        let host = EnvHost()
+        host.env.windowFrame = SkinRect(x: 100, y: 200, width: 300, height: 150)
+        host.env.screens = [
+            SkinScreen(area: SkinRect(x: 0, y: 0, width: 1920, height: 1080),
+                       workArea: SkinRect(x: 0, y: 25, width: 1920, height: 1055),
+                       dpiFactor: 2.0,
+                       name: "Built-in Retina Display")
+        ]
+        host.env.zoomFactor = 1.5
+        host.env.visible = true
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=2
+        Update=500 | Invisible (30 * 1000)
+        AppVersion=5000000
+        Group=Alpha | Beta
+        OnDisplayMetricsChange=[!SetVariable MetricsChanged 1]
+
+        [Variables]
+        MetricsChanged=0
+        UserFromEnv=[%USERNAME]
+        EscapedEnv=[%*USERNAME*]
+        ScreenWFromVar=[$Display1W]
+
+        [BaseMeasureStyle]
+        MinValue=0
+        MaxValue=200
+
+        [MeasureVal]
+        Measure=Calc
+        @Inherit=BaseMeasureStyle
+        Formula=40
+
+        [MeasureLoop]
+        Measure=Loop
+        StartValue=1
+        EndValue=10
+        Increment=1
+
+        [BaseMeterStyle]
+        W=(MeasureVal + 10)
+        H=20
+        Group=GroupA | GroupB
+
+        [MeterOne]
+        Meter=String
+        @Inherit=BaseMeterStyle
+        DynamicVariables=1
+        X=($Display1W / 10)
+        Y=($SkinY / 10)
+        Text=[$SkinX],[$SkinPhysicalX],[$SkinZoomedW],[$SkinPhysicalW],[$SkinDpiFactor:1],[$Display1Name],[$DisplayDevice1Name],[*$SkinX*],[$*SkinX*],#EscapedEnv#
+        LeftMouseUpAction=[!SetOption Text "ClickedSelf"]
+
+        [MeterTwo]
+        Meter=String
+        Group=GroupB | GroupC
+        Text=Two
+        """, host: host)
+        t.equal(skin.isSupportedSyntaxVersion, true)
+        t.equal(skin.settings.syntaxVersion, 2)
+        t.equal(skin.settings.accurateText, true, "SyntaxVersion=2 defaults AccurateText to true")
+        t.equal(skin.settings.update, 500)
+        t.equal(skin.settings.invisibleUpdate, 30_000)
+        t.equal(skin.settings.appVersion, "5000000")
+        t.equal(skin.effectiveUpdate, 500)
+
+        skin.update()
+        t.equal(skin.variable("UserFromEnv"), NSUserName())
+        t.equal(skin.variable("EscapedEnv"), "[%*USERNAME*]", "definition keeps escape for the place of use")
+        t.equal(skin.variable("ScreenWFromVar"), "1920")
+        t.close(skin.measure(named: "MeasureVal")?.maxValue ?? 0, 200, "Measure inherited MaxValue via @Inherit")
+        let m1 = skin.meter(named: "MeterOne")!
+        t.close(m1.frame.width, 50, "W=(MeasureVal + 10) evaluated unbracketed measure in Meter option")
+        t.close(m1.frame.x, 192, "X=($Display1W / 10) evaluated $Display1W in formula")
+        t.close(m1.frame.y, 20, "Y=($SkinY / 10) evaluated $SkinY in formula")
+        t.equal(text(skin, "MeterOne"),
+                "100,200,450,900,2.0,Built-in Retina Display,\\\\.\\DISPLAY1,[$SkinX],[$SkinX],[%USERNAME]")
+
+        // 4. Invisible update, !SetUpdate, !ForceEnableVisibleMode
+        host.env.visible = false
+        skin.hostFactsChanged()
+        t.equal(skin.effectiveUpdate, 30_000, "uses Invisible update interval when hidden")
+        skin.execute("[!SetUpdate 250]", from: nil)
+        t.equal(skin.settings.update, 250)
+        t.equal(skin.settings.invisibleUpdate, 30_000, "!SetUpdate does not overwrite Invisible interval")
+        skin.execute("[!ForceEnableVisibleMode 1]", from: nil)
+        t.equal(skin.forceEnableVisibleMode, true)
+        t.equal(skin.effectiveUpdate, 250, "ForceEnableVisibleMode forces visible update interval while hidden")
+        skin.execute("[!ForceEnableVisibleMode -1]", from: nil)
+        t.equal(skin.forceEnableVisibleMode, false)
+
+        // 5. 2-argument !SetOption from section context
+        skin.execute(m1.mouseActions[.leftUp] ?? "", from: m1)
+        skin.update()
+        t.equal(text(skin, "MeterOne"), "ClickedSelf")
+
+        // 6. Group selectors (OR | and AND &) in bangs and skin groups
+        t.check(skin.isInSkinGroup("Alpha | Gamma"))
+        t.check(skin.isInSkinGroup("Alpha & Beta"))
+        t.check(!skin.isInSkinGroup("Alpha & Gamma"))
+        t.check(!skin.isInSkinGroup("Alpha | Beta & Gamma"), "mixing | and & is invalid")
+
+        skin.execute("[!HideMeter \"Group=GroupA & GroupB\"]", from: nil)
+        t.equal(skin.meter(named: "MeterOne")?.hidden, true)
+        t.equal(skin.meter(named: "MeterTwo")?.hidden, false)
+
+        skin.execute("[!ShowMeterGroup \"GroupA | GroupC\"]", from: nil)
+        t.equal(skin.meter(named: "MeterOne")?.hidden, false)
+        t.equal(skin.meter(named: "MeterTwo")?.hidden, false)
+
+        // 7. Colon-namespaced bangs (!Loop:Reset, !Skin:SetZoomFactor)
+        skin.update()
+        t.close(skin.measure(named: "MeasureLoop")?.value ?? 0, 3)
+        skin.execute("[!Loop:Reset MeasureLoop]", from: nil)
+        skin.update()
+        t.close(skin.measure(named: "MeasureLoop")?.value ?? 0, 1)
+
+        skin.execute("[!Skin:SetZoomFactor 2.0]", from: nil)
+        t.close(skin.effectiveZoomFactor, 2.0)
+
+        // 8. OnDisplayMetricsChange
+        skin.displayMetricsDidChange()
+        skin.update()
+        t.equal(skin.variable("MetricsChanged"), "1")
+    }
+
+    t.suite("Engine: Rainmeter 5.0 Phase 2 — Meters and Measures") {
+        // 1. NumberConversionFormat=Locale on StringMeasure
+        let (numSkin, _, _) = try makeEngineSkin(t, """
+        [MDefault]
+        Measure=String
+        String=123,5
+        NumberConversionFormat=Default
+
+        [MLocale]
+        Measure=String
+        String=123,5
+        NumberConversionFormat=Locale
+        """)
+        numSkin.update()
+        t.close(numSkin.measure(named: "MDefault")?.value ?? -1, 0.0, "Default rejects comma decimal separator")
+        t.close(numSkin.measure(named: "MLocale")?.value ?? 0, 123.5, "Locale parses comma decimal separator")
+
+        // 2. WebParser JsonPointer (JsonPointer=1 and RFC 6901 /path/to/item)
+        let jsonBody = #"{"user":{"name":"Ada","scores":[10,25,40]},"escaped~1key/sub":"ok"}"#
+        let rootNode = WebParserNode(
+            options: WebParserOptions(name: "Root", jsonPointer: "1"),
+            children: [
+                WebParserNode(options: WebParserOptions(name: "C1", parentName: "Root", jsonPointer: "/user/name"), children: []),
+                WebParserNode(options: WebParserOptions(name: "C2", parentName: "Root", jsonPointer: "/user/scores/1"), children: []),
+                WebParserNode(options: WebParserOptions(name: "C3", parentName: "Root", jsonPointer: "/escaped~01key~1sub"), children: []),
+            ]
+        )
+        let pRoot = WebParserProcessor.process(rootNode, text: jsonBody)
+        t.equal(pRoot.value, "")
+        t.equal(pRoot.children[0].value, "Ada")
+        t.equal(pRoot.children[1].value, "25")
+        t.equal(pRoot.children[2].value, "ok")
+
+        let subNode = WebParserNode(
+            options: WebParserOptions(name: "Scores", jsonPointer: "/user/scores"),
+            children: [
+                WebParserNode(options: WebParserOptions(name: "S0", parentName: "Scores", jsonPointer: "/0"), children: []),
+                WebParserNode(options: WebParserOptions(name: "S2", parentName: "Scores", jsonPointer: "/2"), children: []),
+            ]
+        )
+        let pSub = WebParserProcessor.process(subNode, text: jsonBody)
+        t.equal(pSub.children[0].value, "10")
+        t.equal(pSub.children[1].value, "40")
+
+        // 3. FileView ExcludeExtensions and IndexUp N / IndexDown N
+        let (fvSkin, _, fvRoot) = try makeEngineSkin(t, """
+        [FV]
+        Measure=FileView
+        Path=#CURRENTPATH#files
+        Count=1
+        ExcludeExtensions=tmp;bak
+        ShowDotDot=0
+
+        [FVChild]
+        Measure=FileView
+        Path=[FV]
+        Type=FileName
+        Index=1
+        """, files: [
+            "Root/Sub/files/a.txt": "1",
+            "Root/Sub/files/b.tmp": "2",
+            "Root/Sub/files/c.md": "3",
+            "Root/Sub/files/d. png": "4",
+            "Root/Sub/files/e.bak": "5",
+        ])
+        _ = fvRoot
+        fvSkin.update()
+        let fv = fvSkin.measure(named: "FV") as? FileViewMeasure
+        t.check(spinUntil { !(fv?.isReading ?? false) })
+        fvSkin.update()
+        t.equal(fvSkin.measure(named: "FVChild")?.stringValue, "a.txt")
+        fvSkin.execute("[!CommandMeasure FV \"IndexDown 2\"]", from: nil)
+        fvSkin.update()
+        t.equal(fvSkin.measure(named: "FVChild")?.stringValue, "d. png")
+        fvSkin.execute("[!CommandMeasure FV \"IndexUp 2\"]", from: nil)
+        fvSkin.update()
+        t.equal(fvSkin.measure(named: "FVChild")?.stringValue, "a.txt")
+
+        // 4. UsageMonitor Index=Count|Sum|Average & PerfMon Process V2
+        let (umSkin, _, _) = try makeEngineSkin(t, """
+        [UMCount]
+        Measure=UsageMonitor
+        Category=Process V2
+        Counter=Working Set
+        Index=Count
+
+        [UMSum]
+        Measure=UsageMonitor
+        Category=Process V2
+        Counter=Working Set
+        Index=Sum
+
+        [UMAvg]
+        Measure=UsageMonitor
+        Category=Process V2
+        Counter=Working Set
+        Index=Average
+        """)
+        let sampleValues = [
+            PerfValue(name: "A", value: 10),
+            PerfValue(name: "B", value: 30),
+            PerfValue(name: "_Total", value: 40),
+        ]
+        let wsSpec = PerfCounters.spec(category: "Process V2", counter: "Working Set")
+        t.check(wsSpec != nil, "Category=Process V2 resolves to Process counter spec")
+        if let wsSpec {
+            let countM = umSkin.measure(named: "UMCount") as! UsageMonitorMeasure
+            let sumM = umSkin.measure(named: "UMSum") as! UsageMonitorMeasure
+            let avgM = umSkin.measure(named: "UMAvg") as! UsageMonitorMeasure
+            t.close(countM.select(sampleValues, spec: wsSpec).0, 2)
+            t.equal(countM.select(sampleValues, spec: wsSpec).1, "Count")
+            t.close(sumM.select(sampleValues, spec: wsSpec).0, 40)
+            t.equal(sumM.select(sampleValues, spec: wsSpec).1, "Total")
+            t.close(avgM.select(sampleValues, spec: wsSpec).0, 20)
+            t.equal(avgM.select(sampleValues, spec: wsSpec).1, "Average")
+        }
+
+        // 5. DragDrop measure (Measure=DragDrop & Plugin=Drag&Drop)
+        let (ddSkin, _, ddRoot) = try makeEngineSkin(t, """
+        [DD]
+        Measure=DragDrop
+        Bounds=DropZone
+        Action=Path
+        OnDropAction=[!SetVariable Dropped "$Name$:$Type$:$File$"]
+
+        [DropZone]
+        Meter=Image
+        W=100
+        H=100
+        """, files: [
+            "Root/Sub/note.txt": "hello",
+        ])
+        ddSkin.update()
+        let dd = ddSkin.measure(named: "DD") as? DragDropMeasure
+        t.check(dd != nil)
+        let txtPath = ddRoot.appendingPathComponent("Root/Sub/note.txt").path
+        t.equal(dd?.contains(x: 150, y: 150), false, "outside DropZone bounds")
+        t.equal(dd?.contains(x: 10, y: 10), true, "inside DropZone bounds")
+        t.equal(dd?.handleDrop(files: [txtPath], x: 10, y: 10), true)
+        ddSkin.update()
+        t.equal(dd?.stringValue, txtPath)
+        t.equal(ddSkin.variable("Dropped"), "note:txt:\(txtPath)")
+
+        // 6. Mouse measure StartCapture / StopCapture
+        let (mouseSkin, _, _) = try makeEngineSkin(t, """
+        [M]
+        Measure=Mouse
+        CaptureOverlayColor=10,20,30,40
+        CaptureOverlayCursorName=CROSS
+        """)
+        mouseSkin.update()
+        let mouseM = mouseSkin.measure(named: "M") as? MouseMeasure
+        t.equal(mouseM?.isCapturing, false)
+        t.equal(mouseM?.captureOverlayColor, RGBA(r: 10, g: 20, b: 30, a: 40))
+        t.equal(mouseM?.captureOverlayCursorName, "CROSS")
+        mouseSkin.execute("[!Mouse:StartCapture M]", from: nil)
+        t.equal(mouseM?.isCapturing, true)
+        mouseSkin.execute("[!Mouse:StopCapture M]", from: nil)
+        t.equal(mouseM?.isCapturing, false)
+
+        // 7. StringAlign=Justify, LineMeter LineJoin & MiterLimit, SVGMeter & TextEditMeter
+        let (meterSkin, _, _) = try makeEngineSkin(t, """
+        [MeterJustify]
+        Meter=String
+        StringAlign=JustifyCenter
+        W=200
+        H=60
+        ClipString=2
+        Text= Rainmeter five justify alignment test
+
+        [MeasureLine]
+        Measure=Calc
+        Formula=50
+
+        [MeterLine]
+        Meter=Line
+        MeasureName=MeasureLine
+        W=100
+        H=50
+        LineWidth=4
+        LineJoin=MiterOrBevel
+        MiterLimit=6
+
+        [MeterSVG]
+        Meter=SVG
+        W=200
+        SVGImage=<svg width="100" height="50" viewBox="0 0 100 50"><rect id="box" x="0" y="0" width="100" height="50" fill="#ff0000"/></svg>
+        Attribute=#box | fill | 0,255,0,255
+
+        [MeterInput]
+        Meter=TextEdit
+        W=160
+        H=24
+        InitialText=Hello 123
+        PlaceholderText=Enter text...
+        InputRegExp=^([A-Za-z]+) ([0-9]+)$
+        OnFocusAction=[!SetVariable FocusVal "[$Input]"]
+        OnSubmitAction=[!SetVariable SubmitWord "[$Input:Match1]"][!SetVariable SubmitNum "[$Input:Match2]"]
+        OnDismissAction=[!SetVariable DismissVal "[$Input]"]
+        """)
+        meterSkin.update()
+
+        let justifyMeter = meterSkin.meter(named: "MeterJustify") as? StringMeter
+        t.equal(justifyMeter?.style.horizontalAlign, .justify)
+        t.equal(justifyMeter?.style.verticalAlign, .center)
+
+        let lineMeter = meterSkin.meter(named: "MeterLine") as? LineMeter
+        t.equal(lineMeter?.lineJoin, .miterOrBevel)
+        t.close(lineMeter?.miterLimit ?? 0, 6)
+
+        let svgMeter = meterSkin.meter(named: "MeterSVG") as? SVGMeter
+        t.check(svgMeter != nil)
+        t.close(svgMeter?.frame.width ?? 0, 200)
+        t.close(svgMeter?.frame.height ?? 0, 100, "SVGMeter preserves 2:1 aspect ratio when only W is specified")
+        t.equal(svgMeter?.shapes.count, 1)
+        t.equal(meterSkin.resolve("[MeterSVG:Attribute(#box, fill)]", in: nil, sectionVariables: true), "0,255,0,255")
+
+        let inputMeter = meterSkin.meter(named: "MeterInput") as? TextEditMeter
+        t.check(inputMeter != nil)
+        t.equal(inputMeter?.inputText, "Hello 123")
+        t.equal(inputMeter?.text, "Hello 123")
+        // InitialText cannot be changed via !SetOption
+        meterSkin.execute("[!SetOption MeterInput InitialText Changed]", from: nil)
+        meterSkin.update()
+        meterSkin.execute("[!TextEdit:Reset MeterInput]", from: nil)
+        t.equal(inputMeter?.inputText, "Hello 123", "InitialText ignores !SetOption overrides")
+
+        meterSkin.execute("[!TextEdit:Focus MeterInput]", from: nil)
+        t.equal(inputMeter?.isFocused, true)
+        t.equal(meterSkin.variable("FocusVal"), "Hello 123")
+
+        meterSkin.execute("[!TextEdit:SetText MeterInput \"World 456\"]", from: nil)
+        t.equal(inputMeter?.inputText, "World 456")
+
+        meterSkin.execute("[!TextEdit:SelectAll MeterInput]", from: nil)
+        t.equal(inputMeter?.selectionRange, 0..<9)
+        meterSkin.execute("[!TextEdit:Select MeterInput 2 4]", from: nil)
+        t.equal(inputMeter?.selectionRange, 2..<6)
+
+        meterSkin.execute("[!TextEdit:Submit MeterInput]", from: nil)
+        t.equal(inputMeter?.isFocused, false)
+        t.equal(meterSkin.variable("SubmitWord"), "World")
+        t.equal(meterSkin.variable("SubmitNum"), "456")
+
+        meterSkin.execute("[!TextEdit:Clear MeterInput]", from: nil)
+        t.equal(inputMeter?.inputText, "")
+        t.equal(inputMeter?.isShowingPlaceholder, true)
+        t.equal(inputMeter?.text, "Enter text...")
+
+        // SceneProjector lowers both SVGMeter and TextEditMeter
+        final class TestSceneEnv: SceneEnvironment {
+            var stamp = EnvironmentStamp(scale: 1, fontGeneration: 1,
+                                         appearance: AppearanceStamp(value: .light, name: "light"), imageGeneration: 0)
+            func imageStamp(_ path: String) -> ImageStamp? { nil }
+        }
+        let scene = SceneProjector().project(meterSkin, environment: TestSceneEnv())
+        t.check(scene.elements.contains { $0.id.name == "metersvg" })
+        t.check(scene.elements.contains { $0.id.name == "meterinput" })
     }
 }

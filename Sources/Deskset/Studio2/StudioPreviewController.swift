@@ -3,7 +3,7 @@ import DesksetCore
 
 /// The Studio window's preview: what the preview bar, the zoom capsule and the capsules over the canvas show and do —
 /// the backdrop (with the desktop picture read safely), the other widgets around this one, the Mac's look and the glass
-/// the canvas shows, sample data and a frozen time in the Studio's instance, Interact, Actual Size and Show on Desktop.
+/// the canvas shows, and Actual Size.
 /// None of it changes the widget: the desktop copy keeps its live data, and nothing is written.
 final class StudioPreviewController {
     private weak var windowController: StudioWindowController?
@@ -11,9 +11,6 @@ final class StudioPreviewController {
     let preferences: StudioPreferences
     let wallpapers = WallpaperSource()
     let menus = StudioPreviewMenus()
-    let desktopView = StudioDesktopView()
-    /// The sample data the Studio's instance takes (the session holds it while the window shows the widget).
-    let sample = MeasureValueOverride()
     /// Whether windows go on screen (not headless).
     let presentsWindows: Bool
     private(set) var state = StudioPreviewState()
@@ -22,10 +19,6 @@ final class StudioPreviewController {
     private(set) var isActualSize = false
     private(set) var previewPopover: NSPopover?
     private(set) var previewPopoverContent: StudioPreviewPopoverController?
-    private var timePopover: NSPopover?
-    /// What Interact held back last, while its capsule shows.
-    private(set) var heldAction: StudioHeldAction?
-    private var heldActionTimer: Timer?
     private var neighbourTimer: Timer?
     /// The Mac's own look (followed by "Follow Mac"; the self-tests set it).
     var macIsDark: () -> Bool = {
@@ -39,15 +32,14 @@ final class StudioPreviewController {
         self.presentsWindows = presentsWindows
         preferences = StudioPreferences(defaults: presentsWindows ? .standard : nil)
         state.backdrop = preferences.backdrop
-        if state.backdrop == .solid && !reduceTransparency() { state.backdrop = .desktop }
+        if !StudioBackdropKind.offered(reduceTransparency: reduceTransparency()).contains(state.backdrop) {
+            state.backdrop = .desktop
+        }
         canvas.backdropView.usesStandInDesktop = !presentsWindows
-        desktopView.presentsWindows = presentsWindows
-        desktopView.onChange = { [weak self] in self?.refreshBars() }
         wire()
     }
 
     deinit {
-        heldActionTimer?.invalidate()
         neighbourTimer?.invalidate()
     }
 
@@ -61,87 +53,40 @@ final class StudioPreviewController {
         let bar = canvas.previewBar
         bar.appearanceItem.action = { [weak self] in self?.showPreviewPopover() }
         bar.backdropItem.action = { [weak self] in self?.showBackdropMenu() }
-        bar.dataItem.action = { [weak self] in self?.showDataMenu() }
-        bar.interactItem.action = { [weak self] in self?.setInteracting(!(self?.state.interacting ?? false)) }
-        bar.backToLiveItem.action = { [weak self] in self?.backToLive() }
         let zoom = canvas.zoomCapsule
         zoom.zoomOutItem.action = { [weak self] in self?.zoomOut() }
         zoom.zoomInItem.action = { [weak self] in self?.zoomIn() }
         zoom.percentItem.action = { [weak self] in self?.zoomToFit() }
         zoom.actualSizeItem.action = { [weak self] in self?.actualSize() }
-        zoom.desktopItem.action = { [weak self] in self?.desktopView.toggle() }
         canvas.caption = { [weak self] zoom in self?.caption(zoom: zoom) ?? "" }
         canvas.glassRegions = { [weak self] regions, dark in self?.state.previewed(regions, dark: dark) ?? regions }
         canvas.widgetFrame = { [weak self] in self?.link?.desktopFrame }
         canvas.onZoomChange = { [weak self] in self?.zoomChanged() }
-        canvas.interactionView.onEscape = { [weak self] in self?.setInteracting(false) }
         menus.onBackdrop = { [weak self] kind in self?.setBackdrop(kind) }
         menus.onNeighbours = { [weak self] on in self?.setShowsNeighbours(on) }
-        menus.onData = { [weak self] data in self?.setData(data) }
-        menus.onTime = { [weak self] time in self?.setTime(time) }
-        menus.onPickTime = { [weak self] in self?.showTimePicker() }
-        menus.onBackToLive = { [weak self] in self?.backToLive() }
-        desktopView.widgetWindow = { [weak self] in self?.link?.desktopWindow }
-        if let container = canvas.view as? StudioCanvasContainer {
-            container.onKeyEquivalent = { [weak self] event in self?.keyEquivalent(event) ?? false }
-        }
     }
 
-    /// The window shows a widget: its session takes the sample data, its instance's held-back actions come here.
+    /// The window shows a widget.
     func attach() {
-        guard let session else { return }
-        session.measureValues = sample
-        session.host.policy.onRecord = { [weak self] recorded in self?.held(recorded) }
-        desktopView.studioWindow = windowController?.window
+        guard session != nil else { return }
         applyAppearance(reload: false)
         refreshBackdrop()
         refreshAll()
     }
 
-    /// The window lets go of the widget: the preview ends (the next widget starts live).
+    /// The window lets go of the widget: the preview ends.
     func detach() {
-        desktopView.back(reactivate: false)
-        setInteracting(false)
         previewPopover?.close()
-        timePopover?.close()
         neighbourTimer?.invalidate()
         neighbourTimer = nil
-        session?.host.policy.onRecord = nil
         session?.host.appearance = nil
-        session?.host.takesPointer = false
-        session?.measureValues = nil
-        session?.studioClock = nil
-        state.data = .live
-        state.time = .live
-        state.interacting = false
         state.showsNeighbours = nil
-        state.apply(to: sample)
     }
 
     // MARK: State
 
     /// Applies what changed from `old` to the canvas and the Studio's instance.
     private func stateChanged(from old: StudioPreviewState) {
-        if old.time != state.time, let session {
-            // Frozen time is the instance's own clock (its wall clock stands still; its timers go on): every reader of
-            // the time — clocks, the sun, the weather's hours, scripts — sees it. The instance loads again to take it.
-            switch state.time {
-            case .live: session.studioClock = nil
-            case .frozen(let date):
-                var clock = SkinClock.live
-                clock.now = { date }
-                session.studioClock = clock
-            }
-            state.apply(to: sample)
-            session.reloadStudioSkin()
-        }
-        if old.data != state.data || old.time != state.time {
-            state.apply(to: sample)
-            if let skin = session?.studioSkin {
-                skin.update()
-                canvasController.canvas.needsDisplay = true
-            }
-        }
         if old.appearance != state.appearance { applyAppearance(reload: true) }
         if old.backdrop != state.backdrop {
             preferences.backdrop = state.backdrop
@@ -160,29 +105,8 @@ final class StudioPreviewController {
 
     func setBackdrop(_ kind: StudioBackdropKind) { change { $0.backdrop = kind } }
     func setShowsNeighbours(_ on: Bool) { change { $0.showsNeighbours = on } }
-    func setData(_ data: MeasureValueOverride.Data) { change { $0.data = data } }
-    func setTime(_ time: StudioPreviewState.Time) { change { $0.time = time } }
     func setAppearance(_ appearance: StudioPreviewState.Appearance) { change { $0.appearance = appearance } }
     func setGlass(_ glass: StudioPreviewState.Glass) { change { $0.glass = glass } }
-
-    /// Back to Live: every data and time preset off at once.
-    func backToLive() {
-        change {
-            $0.data = .live
-            $0.time = .live
-        }
-    }
-
-    /// Interact on or off: the Studio's instance takes the pointer (its host says so to the engine).
-    func setInteracting(_ on: Bool) {
-        change { $0.interacting = on }
-        session?.host.takesPointer = state.interacting
-        canvasController.interactionView.isActive = state.interacting
-        if state.interacting, presentsWindows {
-            canvasController.view.window?.makeFirstResponder(canvasController.interactionView)
-        }
-        if !state.interacting { clearHeldAction() }
-    }
 
     /// The canvas's look and the look the Studio's instance sees (its `#MACDARKMODE#`…, loaded again to take it).
     private func applyAppearance(reload: Bool) {
@@ -298,18 +222,6 @@ final class StudioPreviewController {
         refreshBars()
     }
 
-    /// Zoom to Selection (⇧⌘9): the selected parts fill the canvas (at most 800%), centered.
-    func zoomToSelection() {
-        let canvas = canvasController.canvas
-        guard let skin = session?.studioSkin else { return }
-        let frames = canvas.selectedNames.compactMap { skin.meter(named: $0)?.frame }.map(canvas.viewRect)
-        guard var r = frames.first else { return zoomToFit() }
-        for f in frames.dropFirst() { r = r.union(f) }
-        isActualSize = false
-        canvasController.zoom(to: r)
-        refreshAll()
-    }
-
     /// Actual Size (⌘0): 100 %, the backdrop lined up with where the widget really is, the other widgets around it.
     func actualSize() {
         canvasController.setZoom(1)
@@ -341,57 +253,16 @@ final class StudioPreviewController {
     func refreshBars() {
         let canvas = canvasController
         canvas.previewBar.show(state, macIsDark: macIsDark(), fidelity: fidelity)
-        canvas.zoomCapsule.show(zoom: canvas.canvas.zoom, showingDesktop: desktopView.isShowing,
-                                canShowDesktop: link?.isOnDesktop ?? false)
-        if let heldAction {
-            canvas.statusCapsule.show(heldAction.sentence, symbol: "hand.point.up.left", action: heldAction.button) {
-                [weak self] in self?.performHeldAction()
-            }
-            canvas.statusCapsule.toolTip = heldAction.recorded.text
-            canvas.statusCapsule.isHidden = false
-        } else if let notice {
+        canvas.zoomCapsule.show(zoom: canvas.canvas.zoom)
+        if let notice {
             canvas.statusCapsule.toolTip = nil
             canvas.statusCapsule.show(notice, symbol: "exclamationmark.triangle")
-            canvas.statusCapsule.isHidden = false
-        } else if let sentence = state.previewingSentence {
-            canvas.statusCapsule.toolTip = nil
-            canvas.statusCapsule.show(sentence)
             canvas.statusCapsule.isHidden = false
         } else {
             canvas.statusCapsule.isHidden = true
         }
         canvas.view.needsLayout = true
         canvas.placeCaption()
-    }
-
-    // MARK: Interact's held-back actions
-
-    /// The Studio's instance held an action back: while it interacts, the capsule offers it.
-    private func held(_ recorded: StudioActionPolicy.Recorded) {
-        guard state.interacting else { return }
-        heldAction = StudioHeldAction(recorded)
-        heldActionTimer?.invalidate()
-        if presentsWindows {
-            let timer = Timer(timeInterval: 6, repeats: false) { [weak self] _ in self?.clearHeldAction() }
-            RunLoop.main.add(timer, forMode: .common)
-            heldActionTimer = timer
-        }
-        refreshBars()
-    }
-
-    func clearHeldAction() {
-        heldActionTimer?.invalidate()
-        heldActionTimer = nil
-        guard heldAction != nil else { return }
-        heldAction = nil
-        refreshBars()
-    }
-
-    /// "Open": the widget on the desktop does it for real.
-    func performHeldAction() {
-        guard let action = heldAction else { return }
-        link?.perform(action.recorded)
-        clearHeldAction()
     }
 
     // MARK: Popovers and menus
@@ -427,45 +298,9 @@ final class StudioPreviewController {
         popUp(menu, from: canvasController.previewBar.backdropItem)
     }
 
-    func showDataMenu() {
-        popUp(menus.dataMenu(state), from: canvasController.previewBar.dataItem)
-    }
-
     private func popUp(_ menu: NSMenu, from item: NSView) {
         guard presentsWindows, item.window?.isVisible == true else { return }
         // Above the bar (the item is flipped: up is negative).
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -(menu.size.height + 6)), in: item)
-    }
-
-    func showTimePicker() {
-        var initial = StudioPreviewState.tenPastTen()
-        if case .frozen(let date) = state.time { initial = date }
-        let content = StudioTimePickerController(date: initial)
-        content.onPick = { [weak self] date in self?.setTime(.frozen(date)) }
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = content
-        timePopover = popover
-        guard presentsWindows, windowController?.window?.isVisible == true else { return }
-        let item = canvasController.previewBar.dataItem
-        popover.show(relativeTo: item.bounds, of: item, preferredEdge: .minY)
-    }
-
-    // MARK: Keys
-
-    /// ⇧⌘D: Show on Desktop (a hold peeks); ⌥⌘P: Interact.
-    func keyEquivalent(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return false }
-        if StudioDesktopView.isShortcut(event) {
-            if !event.isARepeat { desktopView.toggle(fromKey: true) }
-            return true
-        }
-        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        if flags == [.command, .option],
-           event.charactersIgnoringModifiers?.lowercased() == "p" || event.keyCode == 35 {
-            setInteracting(!state.interacting)
-            return true
-        }
-        return false
     }
 }

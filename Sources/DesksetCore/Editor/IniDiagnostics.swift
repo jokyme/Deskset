@@ -281,9 +281,15 @@ private struct Checker {
     }
 
     func styleNames(of meter: IniSection) -> [String] {
-        guard let raw = meter.value(forKey: "MeterStyle") else { return [] }
-        return resolve(raw, in: meter.name).split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        var names: [String] = []
+        for optionKey in ["MeterStyle", "@Inherit"] {
+            guard let raw = meter.value(forKey: optionKey) else { continue }
+            names += resolve(raw, in: meter.name)
+                .split(separator: "|")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        return names
     }
 
     // MARK: Keys, colors and formulas of meters
@@ -293,7 +299,7 @@ private struct Checker {
             guard let first = users.first else { continue }
             let o = first.taken
             let key = o.key.lowercased()
-            if ["meter", "meterstyle"].contains(key) { continue }
+            if ["meter", "meterstyle", "@inherit"].contains(key) { continue }
             let meters = users.map(\.meter)
             let types = users.map(\.type)
             // A key none of the types using it takes, close to one they all could mean.
@@ -373,15 +379,16 @@ private struct Checker {
         for o in options {
             let key = o.key.lowercased()
             let isMeasure = Self.isNumbered(key, "measurename"), isImage = Self.imageKeys(type).contains(key)
-            guard isMeasure || isImage || key == "meterstyle" else { continue }
+            guard isMeasure || isImage || key == "meterstyle" || key == "@inherit" else { continue }
             let value = resolve(o.value, in: meter.name).trimmingCharacters(in: .whitespaces)
             if isMeasure {
                 if !value.isEmpty, !value.contains("["), !value.contains("#"), measures[value.lowercased()] == nil {
                     add(owner: o.owner, key: o.key, part: .value, kind: .missingMeasure(name: value), meters: [meter.name])
                 }
             }
-            if key == "meterstyle" {
-                for name in styleNames(of: meter) where !name.contains("#") && !name.contains("[")
+            if key == "meterstyle" || key == "@inherit" {
+                let names = value.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                for name in names where !name.contains("#") && !name.contains("[")
                     && document.section(named: name) == nil {
                     add(owner: o.owner, key: o.key, part: .word(name), kind: .missingStyle(name: name),
                         meters: [meter.name])
@@ -441,7 +448,7 @@ private struct Checker {
             var seen: Set<String> = []
             for e in section.entries where seen.insert(e.key.lowercased()).inserted {
                 let key = e.key.lowercased()
-                if key == "measure" { continue }
+                if key == "measure" || key == "@inherit" { continue }
                 if !index.takes(e.key) {
                     if let suggestion = index.closest(to: e.key) {
                         add(owner: section.name, key: e.key, part: .key,
@@ -503,7 +510,7 @@ private struct Checker {
 
     /// The bang as the file spells it (`!SetOpton`), found by its canonical name.
     static func writtenBang(_ canonical: String, in value: String) -> String? {
-        guard let re = try? NSRegularExpression(pattern: #"![A-Za-z0-9_]+"#) else { return nil }
+        guard let re = try? NSRegularExpression(pattern: #"![A-Za-z0-9_:]+"#) else { return nil }
         let ns = value as NSString
         for m in re.matches(in: value, range: NSRange(location: 0, length: ns.length)) {
             let word = ns.substring(with: m.range)

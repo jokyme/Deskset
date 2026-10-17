@@ -382,21 +382,22 @@ func runActionTests(_ t: TestRunner) {
 
         // Every bang from the manual's list is present exactly once.
         let documented = """
-            SetClip SetWallpaper About Manage TrayMenu Log ResetStats LoadLayout RefreshApp Quit Play PlayLoop PlayStop
+            SetClip SetWallpaper SendKey Launch About Manage Debug TrayMenu Log ResetStats LoadLayout RefreshApp
+            Restart Quit Play PlayLoop PlayStop
             SetOption SetVariable WriteKeyValue SetOptionGroup SetVariableGroup Show Hide Toggle ShowFade HideFade
             ToggleFade FadeDuration ShowBlur HideBlur ToggleBlur AddBlur RemoveBlur Move SetWindowPosition SetAnchor
-            ActivateConfig DeactivateConfig ToggleConfig Update Redraw Refresh Delay SkinMenu SkinCustomMenu
-            SetTransparency ZPos Draggable KeepOnScreen ClickThrough SnapEdges AutoSelectScreen EditSkin ShowGroup
-            HideGroup ToggleGroup ShowFadeGroup HideFadeGroup ToggleFadeGroup FadeDurationGroup DeactivateConfigGroup
-            UpdateGroup RedrawGroup RefreshGroup SetTransparencyGroup DraggableGroup ZPosGroup KeepOnScreenGroup
-            ClickThroughGroup SnapEdgesGroup AutoSelectScreenGroup ShowMeter HideMeter ToggleMeter UpdateMeter
-            MoveMeter ShowMeterGroup HideMeterGroup ToggleMeterGroup UpdateMeterGroup EnableMeasure DisableMeasure
-            ToggleMeasure PauseMeasure UnpauseMeasure TogglePauseMeasure UpdateMeasure CommandMeasure
-            EnableMeasureGroup DisableMeasureGroup ToggleMeasureGroup PauseMeasureGroup UnpauseMeasureGroup
-            TogglePauseMeasureGroup UpdateMeasureGroup DisableMouseAction ClearMouseAction EnableMouseAction
-            ToggleMouseAction DisableMouseActionGroup ClearMouseActionGroup EnableMouseActionGroup
-            ToggleMouseActionGroup DisableMouseActionSkinGroup ClearMouseActionSkinGroup EnableMouseActionSkinGroup
-            ToggleMouseActionSkinGroup Execute PluginBang
+            SetZoomFactor ActivateConfig DeactivateConfig ToggleConfig Update SetUpdate ForceEnableVisibleMode Redraw
+            Refresh Delay SkinMenu SkinCustomMenu SetTransparency ZPos Draggable KeepOnScreen ClickThrough SnapEdges
+            AutoSelectScreen EditSkin ShowGroup HideGroup ToggleGroup ShowFadeGroup HideFadeGroup ToggleFadeGroup
+            FadeDurationGroup SetZoomFactorGroup DeactivateConfigGroup UpdateGroup RedrawGroup RefreshGroup
+            SetTransparencyGroup DraggableGroup ZPosGroup KeepOnScreenGroup ClickThroughGroup SnapEdgesGroup
+            AutoSelectScreenGroup ShowMeter HideMeter ToggleMeter UpdateMeter MoveMeter ShowMeterGroup HideMeterGroup
+            ToggleMeterGroup UpdateMeterGroup EnableMeasure DisableMeasure ToggleMeasure PauseMeasure UnpauseMeasure
+            TogglePauseMeasure UpdateMeasure CommandMeasure EnableMeasureGroup DisableMeasureGroup ToggleMeasureGroup
+            PauseMeasureGroup UnpauseMeasureGroup TogglePauseMeasureGroup CommandMeasureGroup UpdateMeasureGroup
+            DisableMouseAction ClearMouseAction EnableMouseAction ToggleMouseAction DisableMouseActionGroup
+            ClearMouseActionGroup EnableMouseActionGroup ToggleMouseActionGroup DisableMouseActionSkinGroup
+            ClearMouseActionSkinGroup EnableMouseActionSkinGroup ToggleMouseActionSkinGroup Execute PluginBang
             """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map { $0.lowercased() }
         t.equal(Set(BangCatalog.all.map(\.name)), Set(documented))
         t.equal(BangCatalog.all.count, documented.count, "no duplicates")
@@ -406,6 +407,17 @@ func runActionTests(_ t: TestRunner) {
             t.check(definition.parameters[firstOptional...].allSatisfy(\.isOptional), definition.name)
             t.equal(BangCatalog.definition(for: definition.displayName), definition)
         }
+
+        // Rainmeter 5.0 colon-namespaced bangs
+        t.check(BangCatalog.isKnown("!Skin:Refresh"))
+        t.check(BangCatalog.isKnown("!Skin:SetZoomFactor"))
+        t.check(BangCatalog.isKnown("!Loop:Reset"))
+        t.check(BangCatalog.isKnown("!WebParser:Refetch"))
+        t.check(BangCatalog.isKnown("!Audio:SetVolume"))
+        t.check(BangCatalog.isKnown("!NowPlaying:PlayPause"))
+        t.equal(ActionParser.parse("[!Loop:Reset MeasureLoop][!Skin:Update]"),
+                [.bang(Bang(name: "loop:reset", args: ["MeasureLoop"])),
+                 .bang(Bang(name: "skin:update", args: []))])
 
         // Config parameter
         let setOption = BangCatalog.definition(for: "setoption")

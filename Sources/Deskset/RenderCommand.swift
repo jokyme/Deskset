@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 /// Options of `Deskset --render`, parsed leniently: bad numbers fall back to defaults (with a warning), values are
 /// clamped to sane ranges.
@@ -674,10 +675,14 @@ enum RenderCommand {
                 LegacySkinRenderer.draw(skin, in: cg,
                                         glass: .placeholder(dark: o.background.map(LegacyGlassPlaceholder.isDark)))
             } else {
-                SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+                let target = DrawTarget.prepareOwnedBitmap(cg,
+                                                           glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+                SkinRenderer.draw(skin, in: cg, target: target)
             }
             #else
-            SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+            let target = DrawTarget.prepareOwnedBitmap(cg,
+                                                       glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+            SkinRenderer.draw(skin, in: cg, target: target)
             #endif
             NSGraphicsContext.restoreGraphicsState()
         }

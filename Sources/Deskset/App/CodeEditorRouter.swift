@@ -155,27 +155,8 @@ enum CodeEditorRouter {
             }
         }
         func showStarted(_ c: SkinWindowController) {
-            // The new Studio (its switch on): it opens on the widget at once, the code beside the canvas at the line.
-            if StudioSwitch.isOn(for: app) {
-                app.showInspector(for: c)
-                StudioWindowController.window(for: app)?.reveal(file: file, line: line, notice: notice)
-                return
-            }
-            if let inspector = app.inspector, inspector.controller === c {
-                // Already editing this skin (the editor is open: it forgets its skin when it closes): no re-attach (it
-                // would rebuild the layers and the inspector), but the window comes in front of the other apps'
-                // windows, out of the Dock if need be (the request may come from a menu of the menu bar icon or a
-                // click on a skin, which do not activate the app).
-                app.bringToFront(inspector)
-            } else {
-                app.showInspector(for: c)
-            }
-            // A new editor window is built in steps: the line is revealed once it is.
-            guard let inspector = app.inspector else { return }
-            inspector.afterOpening { [weak inspector] in
-                inspector?.revealInCode(file: file, line: line)
-                if let notice { inspector?.toast.show(notice, error: true) }
-            }
+            app.showInspector(for: c)
+            StudioWindowController.window(for: app)?.reveal(file: file, line: line, notice: notice)
         }
         if let c = owningController(of: file, in: app) {
             show(c)
@@ -200,7 +181,7 @@ enum CodeEditorRouter {
         func owns(_ c: SkinWindowController) -> Bool {
             !c.isStopped && c.runtime.snapshot.sourceFiles.contains { comparablePath($0) == key }
         }
-        if let edited = app.inspector?.controller ?? StudioWindowController.window(for: app)?.link?.controller,
+        if let edited = StudioWindowController.window(for: app)?.link?.controller,
            owns(edited) { return edited }
         let running = app.sortedControllers
         if let main = running.first(where: { !$0.isStopped && comparablePath($0.fileURL) == key }) { return main }

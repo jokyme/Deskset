@@ -5,8 +5,6 @@ import DesksetCore
 /// the preview bar and the zoom capsule at the bottom) and passes keys it knows to the window.
 final class StudioCanvasContainer: NSView {
     var onLayout: (() -> Void)?
-    /// ⇧⌘D, ⌥⌘P: the Studio's keys without menu items of their own yet.
-    var onKeyEquivalent: ((NSEvent) -> Bool)?
     /// Keys the canvas passes up (⇧Return: one level up).
     var onKeyDown: ((NSEvent) -> Bool)?
 
@@ -17,11 +15,6 @@ final class StudioCanvasContainer: NSView {
         onLayout?()
     }
 
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if onKeyEquivalent?(event) == true { return true }
-        return super.performKeyEquivalent(with: event)
-    }
-
     override func keyDown(with event: NSEvent) {
         if onKeyDown?(event) == true { return }
         super.keyDown(with: event)
@@ -30,9 +23,8 @@ final class StudioCanvasContainer: NSView {
 
 /// The canvas pane: the widget where it will be seen, over planes back to front — the backdrop (your desktop picture
 /// by default), the other widgets on the desktop, the widget's glass — with the widget itself (the Studio's own
-/// instance, drawn by the real renderer on `SkinCanvasView`) in a magnifying scroll view over them, a transparent layer
-/// that takes the pointer while the Studio interacts, and the floating controls. It reaches under the toolbar, as the
-/// window's content does.
+/// instance, drawn by the real renderer on `SkinCanvasView`) in a magnifying scroll view over them, and the floating
+/// controls. It reaches under the toolbar, as the window's content does.
 final class StudioCanvasViewController: NSViewController {
     /// Stand-ins for glass (no window server to draw it: snapshots, self-tests).
     let standIns: Bool
@@ -41,9 +33,6 @@ final class StudioCanvasViewController: NSViewController {
     let glassPlane: StudioGlassPlane
     let scrollView = OverlayScrollView()
     let canvas = SkinCanvasView()
-    /// What pointed-at things draw, a wider scope's reach, the distances with ⌥ held.
-    let overlay = StudioCanvasOverlay()
-    let interactionView = StudioInteractionView()
     /// The code's problems on the parts: amber frames, red ghosts.
     let problemMarks = StudioProblemMarks()
     /// "The bars can’t draw · your desktop keeps the last working version", while red problems are open.
@@ -52,18 +41,14 @@ final class StudioCanvasViewController: NSViewController {
     let statusCapsule: StudioStatusCapsule
     let previewBar: StudioPreviewBar
     let zoomCapsule: StudioZoomCapsule
-    /// "Rainmeter skin · compatibility mode" (and the offer to switch), over a Rainmeter skin.
+    /// "Rainmeter skin · compatibility mode", over a Rainmeter skin.
     let compatCapsule: StudioCompatCapsule
-    /// A hint over the canvas's corner while the sidebar is closed ("Rainmeter names on · ⌥⌘R to hide").
-    let hintPill = StudioHintPill()
-    /// Whether the compatibility capsule shows, and its offer.
-    var compatState: () -> (shown: Bool, offer: Bool) = { (false, false) }
+    /// Whether the compatibility capsule shows.
+    var compatState: () -> Bool = { false }
     /// The skin the canvas draws (the session's instance).
     var skinProvider: () -> Skin? = { nil } {
         didSet {
             canvas.skinProvider = skinProvider
-            interactionView.skinProvider = skinProvider
-            overlay.skinProvider = skinProvider
             problemMarks.skinProvider = skinProvider
         }
     }
@@ -77,10 +62,9 @@ final class StudioCanvasViewController: NSViewController {
     var onZoomChange: (() -> Void)?
     /// Until the user zooms, the canvas fits the widget whenever it or the pane changes size.
     var autoFit = true
-    /// The zoom the canvas keeps when set (a screen of `--snapshot-ui studio2`); nil: fit.
+    /// The zoom the canvas keeps when set; nil: fit.
     var fixedZoom: CGFloat?
-    /// The code is open beside the canvas: the preview bar keeps only icons (and "Interact"), the zoom capsule leaves
-    /// Actual Size out.
+    /// The code is open beside the canvas: the preview bar keeps only icons, the zoom capsule leaves Actual Size out.
     var besideCode = false {
         didSet {
             guard besideCode != oldValue, isViewLoaded else { return }
@@ -142,36 +126,27 @@ final class StudioCanvasViewController: NSViewController {
         scrollView.contentInsets = NSEdgeInsets(top: Self.toolbarHeight, left: 0, bottom: Self.previewBarRoom, right: 0)
         canvas.paintsSurface = false
         canvas.glassDrawing = SkinRenderer.GlassDrawing.none
-        // Parts are selected and dragged; the first click passes over parts that draw nothing.
-        canvas.isEditable = true
-        canvas.hitFilter = { StudioHitRule.pick($0) }
-        overlay.canvas = canvas
-        overlay.skinProvider = skinProvider
-        overlay.animates = !standIns
+        canvas.isEditable = false
         canvas.skinProvider = skinProvider
         canvas.postsFrameChangedNotifications = true
         canvas.onUserZoom = { [weak self] in self?.autoFit = false }
         canvas.onZoom = { [weak self] _ in self?.geometryChanged() }
         canvas.onLayoutChange = { [weak self] in self?.geometryChanged() }
         canvas.setAccessibilityLabel(StudioText[.canvas])
-        interactionView.canvas = canvas
-        interactionView.skinProvider = skinProvider
-        interactionView.onEvent = { [weak self] in self?.canvas.needsDisplay = true }
         problemMarks.canvas = canvas
         problemMarks.skinProvider = skinProvider
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, problemMarks, interactionView]
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, problemMarks]
             as [NSView] {
             plane.autoresizingMask = [.width, .height]
             container.addSubview(plane)
         }
-        for floating in [captionTag, problemCapsule, statusCapsule, compatCapsule, hintPill, previewBar, zoomCapsule]
+        for floating in [captionTag, problemCapsule, statusCapsule, compatCapsule, previewBar, zoomCapsule]
             as [NSView] {
             container.addSubview(floating)
         }
         statusCapsule.isHidden = true
         problemCapsule.isHidden = true
         compatCapsule.isHidden = true
-        hintPill.isHidden = true
         container.widthAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
         view = container
         observers.append(NotificationCenter.default.addObserver(
@@ -186,7 +161,7 @@ final class StudioCanvasViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, problemMarks, interactionView]
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, problemMarks]
             as [NSView] {
             plane.frame = view.bounds
         }
@@ -281,7 +256,7 @@ final class StudioCanvasViewController: NSViewController {
         guard card.height > 0 else { return }
         // Where the top would be with the widget centred, and how far above that it should go.
         let centredTop = card.minY - Self.toolbarHeight + clip.verticalBias * zoom
-        let room = compatState().shown ? Self.topRoomUnderCapsule : Self.topRoom
+        let room = compatState() ? Self.topRoomUnderCapsule : Self.topRoom
         let bias = max(0, centredTop - room) / zoom
         guard abs(bias - clip.verticalBias) > 0.25 else { return }
         clip.verticalBias = bias
@@ -300,7 +275,6 @@ final class StudioCanvasViewController: NSViewController {
         glassPlane.zoom = m.zoom
         updateGlass()
         placeCaption()
-        overlay.needsDisplay = true
         problemMarks.needsDisplay = true
         if abs(m.zoom - lastZoom) > 0.0001 {
             lastZoom = m.zoom
@@ -334,7 +308,7 @@ final class StudioCanvasViewController: NSViewController {
     }
 
     /// The preview bar and the zoom capsule at the bottom, the status capsule at the top. On a narrow canvas the zoom
-    /// capsule's words shorten first ("1:1", "Desktop"), then the backdrop's go; the bar sits in the middle when there
+    /// capsule's words shorten first ("1:1"), then the backdrop's go; the bar sits in the middle when there
     /// is room, else in the room left of the zoom capsule.
     func layoutFloating() {
         let w = view.bounds.width, h = view.bounds.height
@@ -372,10 +346,6 @@ final class StudioCanvasViewController: NSViewController {
         let status = statusCapsule.fittingWidth
         statusCapsule.frame = NSRect(x: ((w - status) / 2).rounded(), y: statusY - StudioStatusCapsule.height / 2,
                                      width: status, height: StudioStatusCapsule.height)
-        if !hintPill.isHidden {
-            let size = hintPill.fittingSize(width: w - 32)
-            hintPill.frame = NSRect(x: 16, y: Self.toolbarHeight + 12, width: size.width, height: size.height)
-        }
         placeCaption()
     }
 
@@ -387,20 +357,10 @@ final class StudioCanvasViewController: NSViewController {
         updateCompatCapsule()
     }
 
-    /// Shows or hides the compatibility capsule and its offer, as the window says.
+    /// Shows or hides the compatibility capsule, as the window says.
     func updateCompatCapsule() {
         _ = view
-        let state = compatState()
-        compatCapsule.isHidden = !state.shown || !problemCapsule.isHidden
-        compatCapsule.showsOffer = state.offer
-        layoutFloating()
-    }
-
-    /// The hint over the canvas's corner (nil: none).
-    func setHint(_ text: String?) {
-        _ = view
-        hintPill.text = text ?? ""
-        hintPill.isHidden = text == nil
+        compatCapsule.isHidden = !compatState() || !problemCapsule.isHidden
         layoutFloating()
     }
 
@@ -417,7 +377,6 @@ final class StudioCanvasViewController: NSViewController {
             self.canvas.updateSize()
             if self.canvas.frame.size != before { self.fitIfAutomatic() }
             self.canvas.needsDisplay = true
-            if self.overlay.showsDistances { self.overlay.needsDisplay = true }
             self.updateGlass()
         }
         timer.tolerance = interval * 0.1
@@ -428,5 +387,20 @@ final class StudioCanvasViewController: NSViewController {
     func stopRedrawing() {
         redrawTimer?.invalidate()
         redrawTimer = nil
+    }
+}
+
+/// A scroll view whose scrollers always float over its content (overlay), whatever the Mac's setting.
+final class OverlayScrollView: NSScrollView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        super.scrollerStyle = .overlay
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var scrollerStyle: NSScroller.Style {
+        get { super.scrollerStyle }
+        set { super.scrollerStyle = .overlay }
     }
 }

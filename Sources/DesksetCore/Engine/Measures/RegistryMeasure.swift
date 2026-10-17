@@ -31,6 +31,7 @@ public final class RegistryMeasure: Measure {
     private var valueName = ""
     private var outputType = "value"
     private var delimiter = "\r\n"
+    private var localeConversion = false
     /// The looked-up result for the current options. The machine facts do not change while the skin runs; a `live`
     /// value (the wallpaper) is looked up again at every update.
     private var cached: (options: [String], result: Value?, live: Bool)?
@@ -47,6 +48,7 @@ public final class RegistryMeasure: Measure {
         valueName = string("RegValue").trimmingCharacters(in: .whitespaces)
         outputType = string("OutputType", "Value").trimmingCharacters(in: .whitespaces).lowercased()
         delimiter = option("OutputDelimiter") ?? "\r\n"
+        localeConversion = usesLocaleNumberConversion
         // Looked up when the options are read, so the compatibility note is there as soon as the skin is loaded.
         _ = currentResult()
     }
@@ -69,7 +71,7 @@ public final class RegistryMeasure: Measure {
         switch currentResult() {
         case .string(let s)?:
             rawString = s
-            return Double(s.trimmingCharacters(in: .whitespaces)) ?? 0
+            return Measure.parseNumber(s, locale: localeConversion ? skin.locale : nil)
         case .number(let n)?:
             rawString = nil
             return n.isFinite ? n : 0

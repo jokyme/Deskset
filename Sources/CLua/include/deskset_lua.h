@@ -110,6 +110,9 @@ typedef struct deskset_lua_time_source {
     /* The local time zone at `time` (seconds since 1970): returns its offset in seconds east of UTC, sets *is_dst,
        and writes its abbreviation (at most `size` bytes with the NUL) to `name`. */
     long (*zone)(void *context, double time, int *is_dst, char *name, size_t size);
+    /* Optional offset for an explicit os.time table's isdst hint (0: standard, 1: daylight). Uses the zone's
+       actual daylight adjustment, including when the given instant is in its standard-time season. */
+    long (*offset_for_isdst)(void *context, double time, int is_dst);
     /* os.clock: seconds. */
     double (*monotonic)(void *context);
     /* math.random: a number in [0, 1). Set together with `reseed`. */

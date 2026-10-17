@@ -14,7 +14,7 @@
 //     swift scripts/check-seams.swift --update         rewrite the allow list with today's counts (keeps the notes)
 //     swift scripts/check-seams.swift --kinds          the kinds this script knows, with their patterns
 //
-// Scanned: Sources/DesksetCore and Sources/Deskset (Swift; self-test files — names ending in Tests.swift,
+// Scanned: Sources/DesksetCore, Sources/DesksetDraw and Sources/Deskset (Swift; self-test files — names ending in Tests.swift,
 // SelfTest.swift or SelfTests.swift — are skipped), and from Sources/CLua Deskset's own shims and the two Lua libraries
 // behind os.time, os.date, os.clock and math.random (loslib.c, lmathlib.c). Comments and string contents are ignored
 // (a string's interpolations are code); string contents are searched only for names passed as strings (sysctl and
@@ -262,7 +262,7 @@ func isSelfTest(_ path: String) -> Bool {
 
 func sourceFiles() -> [String] {
     var files: [String] = []
-    for folder in ["Sources/DesksetCore", "Sources/Deskset", "Sources/CLua"] {
+    for folder in ["Sources/DesksetCore", "Sources/DesksetDraw", "Sources/Deskset", "Sources/CLua"] {
         guard let walker = FileManager.default.enumerator(atPath: root.appendingPathComponent(folder).path) else { continue }
         for case let relative as String in walker {
             let path = folder + "/" + relative

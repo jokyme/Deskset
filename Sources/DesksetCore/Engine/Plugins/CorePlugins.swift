@@ -17,6 +17,8 @@ public enum CorePlugins {
         ("ActionTimer", ActionTimerMeasure.self),
         ("CoreTemp", CoreTempMeasure.self),
         ("AdvancedCPU", AdvancedCPUMeasure.self),
+        ("PowerPlugin", PowerPluginMeasure.self),
+        ("Power", PowerPluginMeasure.self),
         ("PingPlugin", PingMeasure.self),
         ("Ping", PingMeasure.self),
         ("RunCommand", RunCommandMeasure.self),
@@ -24,6 +26,8 @@ public enum CorePlugins {
         ("Quote", QuoteMeasure.self),
         ("FileView", FileViewMeasure.self),
         ("FolderInfo", FolderInfoMeasure.self),
+        ("Drag&Drop", DragDropMeasure.self),
+        ("DragDrop", DragDropMeasure.self),
         ("RecycleManager", RecycleManagerMeasure.self),
         ("UsageMonitor", UsageMonitorMeasure.self),
         ("PerfMon", PerfMonMeasure.self),
@@ -42,9 +46,25 @@ public enum CorePlugins {
         ("MacSun", MacSunMeasure.self),
     ]
 
-    /// `Measure=` types provided here (RecycleManager "was previously a plugin measure").
+    /// `Measure=` types provided here (Rainmeter 5.0 promoted bundled plugins and Mouse/DragDrop to built-in measures).
     public static let measureTypes: [(name: String, type: Measure.Type)] = [
         ("RecycleManager", RecycleManagerMeasure.self),
+        ("ActionTimer", ActionTimerMeasure.self),
+        ("AdvancedCPU", AdvancedCPUMeasure.self),
+        ("CoreTemp", CoreTempMeasure.self),
+        ("DragDrop", DragDropMeasure.self),
+        ("FileView", FileViewMeasure.self),
+        ("FolderInfo", FolderInfoMeasure.self),
+        ("Mouse", MouseMeasure.self),
+        ("PerfMon", PerfMonMeasure.self),
+        ("Ping", PingMeasure.self),
+        ("Power", PowerPluginMeasure.self),
+        ("Quote", QuoteMeasure.self),
+        ("ResMon", ResMonMeasure.self),
+        ("RunCommand", RunCommandMeasure.self),
+        ("SpeedFan", SpeedFanMeasure.self),
+        ("UsageMonitor", UsageMonitorMeasure.self),
+        ("WindowMessage", WindowMessageMeasure.self),
     ]
 
     /// Registers every core plugin with `MeasureRegistry`. Safe to call more than once.
@@ -78,13 +98,14 @@ public protocol PluginLifecycle: AnyObject {
 /// - `~` is the home folder; a relative path is relative to the skin's folder.
 enum PluginPaths {
     static func resolve(_ raw: String, skin: Skin) -> String {
-        resolve(raw, relativeTo: skin.directory.path)
+        resolve(raw, relativeTo: skin.directory.path, expandPercentEnvironment: skin.settings.syntaxVersion < 2)
     }
 
-    static func resolve(_ raw: String, relativeTo base: String) -> String {
+    static func resolve(_ raw: String, relativeTo base: String, expandPercentEnvironment: Bool = true) -> String {
         var p = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while p.count >= 2, p.hasPrefix("\""), p.hasSuffix("\"") { p = String(p.dropFirst().dropLast()) }
-        p = expandEnvironment(p).replacingOccurrences(of: "\\", with: "/")
+        if expandPercentEnvironment { p = expandEnvironment(p) }
+        p = p.replacingOccurrences(of: "\\", with: "/")
         if p.isEmpty { return base }
         let home = NSHomeDirectory()
         if p == "~" || p.hasPrefix("~/") { return standardize(home + p.dropFirst()) }
@@ -154,24 +175,9 @@ enum PluginPaths {
         return out + rest
     }
 
+    /// The same mapping as `[%Name]` (`BuiltInVariables.environmentValue`).
     static func environmentValue(_ name: String) -> String? {
-        guard !name.isEmpty, name.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_()".unicodeScalars.contains($0) })
-        else { return nil }
-        let home = NSHomeDirectory()
-        switch name.uppercased() {
-        case "USERPROFILE", "HOMEPATH", "HOME": return home
-        case "HOMEDRIVE", "SYSTEMDRIVE": return ""
-        case "APPDATA", "LOCALAPPDATA": return home + "/Library/Application Support"
-        case "TEMP", "TMP":
-            let t = NSTemporaryDirectory()
-            return t.hasSuffix("/") ? String(t.dropLast()) : t
-        case "PUBLIC": return "/Users/Shared"
-        case "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432": return "/Applications"
-        case "PROGRAMDATA", "ALLUSERSPROFILE": return "/Library/Application Support"
-        case "WINDIR", "SYSTEMROOT": return "/System"
-        case "USERNAME": return NSUserName()
-        default: return ProcessInfo.processInfo.environment[name]
-        }
+        BuiltInVariables.environmentValue(name)
     }
 
     private static func standardize<S: StringProtocol>(_ p: S) -> String {

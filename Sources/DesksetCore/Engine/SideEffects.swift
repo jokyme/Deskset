@@ -197,6 +197,26 @@ public final class LiveSideEffects: SideEffects {
         }
         try data.write(to: url, options: .atomic)
     }
+
+    static func performDragDropWrite(from srcURL: URL, to dstURL: URL, folder folderURL: URL,
+                                     mode: DragDropMeasure.DropAction, replaceIfExists: Bool) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        if fm.fileExists(atPath: dstURL.path) {
+            guard replaceIfExists else { return }
+            try? fm.removeItem(at: dstURL)
+        }
+        switch mode {
+        case .copy: try? fm.copyItem(at: srcURL, to: dstURL)
+        case .move: try? fm.moveItem(at: srcURL, to: dstURL)
+        case .shortcut: try? fm.createSymbolicLink(at: dstURL, withDestinationURL: srcURL)
+        default: break
+        }
+    }
+
+    static func performDragDropTrash(at srcURL: URL) {
+        try? FileManager.default.trashItem(at: srcURL, resultingItemURL: nil)
+    }
 }
 
 // MARK: - Reading back

@@ -85,8 +85,8 @@ public enum LiveOptions {
     static let meterGeneral: Set<String> = {
         var keys: Set<String> = [
             "x", "y", "w", "h", "hidden", "solidcolor", "solidcolor2", "gradientangle", "beveltype", "bevelcolor",
-            "bevelcolor2", "padding", "antialias", "meterstyle", "group", "tooltiptext", "tooltiptitle", "tooltipicon",
-            "tooltiptype", "tooltipwidth", "tooltiphidden", "mouseactioncursor", "mouseactioncursorname",
+            "bevelcolor2", "padding", "antialias", "meterstyle", "@inherit", "group", "tooltiptext", "tooltiptitle",
+            "tooltipicon", "tooltiptype", "tooltipwidth", "tooltiphidden", "mouseactioncursor", "mouseactioncursorname",
             "transformationmatrix", "onupdateaction", "macglass", "macglasscornerradius", "macglasstint",
         ]
         for kind in MouseEventKind.allCases { keys.insert(kind.rawValue.lowercased()) }
@@ -150,7 +150,7 @@ public enum LiveOptions {
 
     /// Options every measure type of `measureKeys` takes live: they only change how the string is written, or the
     /// measure's groups. (MinValue and MaxValue are live only where the range does not follow the values seen.)
-    static let measureGeneral: Set<String> = ["substitute", "regexpsubstitute", "group"]
+    static let measureGeneral: Set<String> = ["substitute", "regexpsubstitute", "group", "@inherit"]
 
     /// The measure types whose options hold no state, and their live keys.
     static let measureKeys: [String: Set<String>] = [

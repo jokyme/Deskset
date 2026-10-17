@@ -84,19 +84,3 @@ extension EditingSession {
         }
     }
 }
-
-extension InspectorWindowController {
-    /// Typing in the code pane paused (`CodeEditorView.onTypedText`): the canvas, the layers and the inspector show the
-    /// typed code (`EditingSession.showTypedCode`), which is written when the pane commits it — or, when showing it
-    /// takes loading the widget again, the capsule over the canvas says it shows once saved.
-    func showTypedCode(_ text: String?, in url: URL) {
-        guard let session, !committingCode else { return }
-        session.showTypedCode(text, in: CodeDocument.writeTarget(for: url))
-        updateSilentData()
-    }
-
-    /// Why the canvas does not show the code typed so far (nil: it does): see `StudioSources.waiting`.
-    var typedCodeWaits: String? { session?.studioSources.waiting }
-
-    static let typedCodeWaitsText = "The canvas shows this code once it's saved."
-}

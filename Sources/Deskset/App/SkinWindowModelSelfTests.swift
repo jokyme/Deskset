@@ -10,6 +10,7 @@ import DesksetCore
 enum SkinWindowModelSelfTests {
     static func run(_ t: AppTestRunner) {
         fractionalSizeTests(t)
+        rainmeter50HostTests(t)
 
         t.suite("App: window model: a skin on a thread reads its clamped place right after !Move, before its window moved") {
             guard let app = try AppSelfTest.makeApp(t) else { return }
@@ -442,6 +443,111 @@ enum SkinWindowModelSelfTests {
                 }
                 EngineThreadSelfTests.finish(t, app, tracked)
             }
+        }
+    }
+
+    static func rainmeter50HostTests(_ t: AppTestRunner) {
+        t.suite("App: window model: Rainmeter 5.0 zoom factor, invisible update, display metrics, TextEdit and DragDrop") {
+            guard let app = try AppSelfTest.makeApp(t) else { return }
+            EnvironmentStore.shared.publish()
+            try write(app, [
+                "Host50": """
+                [Rainmeter]
+                Update=40 | Invisible 250
+                DefaultZoomFactor=1.5
+                Group=ZoomGroup
+                OnDisplayMetricsChange=[!SetVariable MetricsChanged "1"]
+
+                [Variables]
+                SeenZoom=
+                SeenVis=
+                MetricsChanged=0
+                Submitted=
+                DroppedFile=
+
+                [Drop]
+                Measure=DragDrop
+                X=0
+                Y=0
+                W=100
+                H=60
+                OnDropAction=[!SetVariable DroppedFile "[Drop]"]
+                DynamicVariables=1
+
+                [InputBox]
+                Meter=TextEdit
+                X=0
+                Y=0
+                W=100
+                H=30
+                Text=init
+                OnSubmitAction=[!SetVariable Submitted "[$Input]"]
+                """,
+                "Peer50": """
+                [Rainmeter]
+                Update=-1
+                Group=ZoomGroup
+                [Label]
+                Meter=String
+                Text=peer
+                """
+            ])
+            guard let c = app.activate(config: "Model\\Host50", file: nil),
+                  let peer = app.activate(config: "Model\\Peer50", file: nil) else {
+                return t.check(false, "Host50 and Peer50 load")
+            }
+            defer {
+                app.deactivate(config: "Model\\Host50")
+                app.deactivate(config: "Model\\Peer50")
+            }
+
+            // 1. DefaultZoomFactor seeded into state and exposed via [$SkinZoomFactor]
+            t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, 1.5, "DefaultZoomFactor seeded")
+            c.runtime.send(.execute("[!SetVariable SeenZoom \"[$SkinZoomFactor]\"][!SetVariable SeenVis \"[$SkinVisible]\"]",
+                                    section: nil))
+            t.equal(c.skin.variable("SeenZoom"), "1.5", "[$SkinZoomFactor] reads seeded zoom factor")
+            t.equal(c.skin.variable("SeenVis"), "1", "[$SkinVisible] is 1 when shown")
+
+            // 2. !SetZoomFactor and !SetZoomFactorGroup update model, state, and [$SkinZoomFactor]
+            c.runtime.send(.execute("[!SetZoomFactor 2.25][!SetVariable SeenZoom \"[$SkinZoomFactor]\"]", section: nil))
+            t.equal(c.skin.variable("SeenZoom"), "2.25", "[$SkinZoomFactor] updated at once after !SetZoomFactor")
+            t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, 2.25, "state updated after !SetZoomFactor")
+
+            c.runtime.send(.execute("[!SetZoomFactorGroup 1.75 ZoomGroup]", section: nil))
+            t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, 1.75, "group zoom updates Host50")
+            t.close(app.state.skin("Model\\Peer50")?.zoomFactor ?? 0, 1.75, "group zoom updates Peer50")
+
+            // 3. Invisible update mode when hidden, plus !ForceEnableVisibleMode and !SetUpdate
+            t.equal(c.skin.effectiveUpdate, 40, "visible update rate is 40ms")
+            c.runtime.send(.execute("[!Hide][!SetVariable SeenVis \"[$SkinVisible]\"]", section: nil))
+            t.equal(c.skin.variable("SeenVis"), "0", "[$SkinVisible] is 0 after !Hide")
+            t.equal(c.skin.effectiveUpdate, 250, "invisible update rate is 250ms when hidden")
+            c.runtime.send(.execute("[!ForceEnableVisibleMode 1]", section: nil))
+            t.equal(c.skin.effectiveUpdate, 40, "!ForceEnableVisibleMode restores visible update rate while hidden")
+            c.runtime.send(.execute("[!ForceEnableVisibleMode 0][!Show]", section: nil))
+            t.equal(c.skin.effectiveUpdate, 40, "visible again after !Show")
+            c.runtime.send(.execute("[!SetUpdate 80]", section: nil))
+            t.equal(c.skin.effectiveUpdate, 80, "!SetUpdate overrides visible update rate")
+
+            // 4. OnDisplayMetricsChange when screensChanged() runs
+            c.screensChanged()
+            c.runtime.send(.update(hops: 0))
+            t.equal(c.skin.variable("MetricsChanged"), "1", "OnDisplayMetricsChange ran on next update after screensChanged")
+
+            // 5. TextEditMeter wantsFocus and keyboard routing via SkinView.deliverKey
+            t.check(c.wantsFocus, "skin with TextEditMeter wants focus")
+            t.check(c.view.acceptsFirstResponder, "SkinView accepts first responder when skin has TextEditMeter")
+            _ = SkinView.deliver(c, .leftDown, x: 10, y: 10)
+            c.runtime.send(.mouse(.leftUp, x: 10, y: 10))
+            SkinView.deliverKey(c, .selectAll)
+            SkinView.deliverKey(c, .insert("hello 5.0"))
+            SkinView.deliverKey(c, .enter)
+            t.equal(c.skin.variable("Submitted"), "hello 5.0", "TextEditMeter submitted typed text via SkinView.deliverKey")
+
+            // 6. DragDropMeasure file drag-and-drop routing via SkinView.deliverFileDrag
+            SkinView.deliverFileDrag(c, .entered, files: ["/tmp/demo.txt"], x: 20, y: 20)
+            SkinView.deliverFileDrag(c, .dropped, files: ["/tmp/demo.txt"], x: 20, y: 20)
+            t.equal(c.skin.variable("DroppedFile"), "/tmp/demo.txt", "DragDropMeasure received dropped file from SkinView")
         }
     }
 

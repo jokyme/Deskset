@@ -6,9 +6,13 @@ import DesksetCore
 final class SkinPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-    /// A key skin window swallows typing quietly, whether or not its view is the first responder (skins have no text
-    /// input; unhandled keys would beep).
-    override func keyDown(with event: NSEvent) {}
+    /// A key skin window routes typing to its `SkinView` (for `TextEdit` meters) and otherwise swallows it quietly so
+    /// unhandled keys do not beep.
+    override func keyDown(with event: NSEvent) {
+        if let skinView = contentView?.subviews.first(where: { $0 is SkinView }) as? SkinView {
+            skinView.keyDown(with: event)
+        }
+    }
 }
 
 /// Shows the skin and turns mouse events into skin actions / window dragging. Its frames are the contents of a layer of
@@ -58,6 +62,16 @@ final class SkinView: NSView, NSViewToolTipOwner {
     private(set) var toolTipRects: [CGRect] = []
     /// Cursor shown over the skin (nil: the arrow).
     private(set) var cursorName: String?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
@@ -234,7 +248,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     @discardableResult
     static func deliver(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
-        let predicted = runtime.snapshot.hitMap.handles(kind, x: x, y: y)
+        let predicted = runtime.snapshot.hitMap.handles(kind, x: x, y: y, images: runtime)
         guard let live = runtime.send(.mouse(kind, x: x, y: y)) else { return predicted }
         SnapshotAudit.compare("handles(\(kind.rawValue)) at (\(x), \(y))", runtime, snapshot: predicted, live: live)
         return live
@@ -244,7 +258,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func hasAction(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
         return SnapshotAudit.check("hasAction(\(kind.rawValue)) at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.hasAction(kind, x: x, y: y),
+                                   snapshot: runtime.snapshot.hitMap.hasAction(kind, x: x, y: y, images: runtime),
                                    live: { $0.hasAction(kind, x: x, y: y) })
     }
 
@@ -253,7 +267,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func isOnButton(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
         let runtime = c.runtime
         return SnapshotAudit.check("isOnButton at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.isOnButton(x: x, y: y),
+                                   snapshot: runtime.snapshot.hitMap.isOnButton(x: x, y: y, images: runtime),
                                    live: { $0.isOnButton(x: x, y: y) })
     }
 
@@ -433,8 +447,99 @@ final class SkinView: NSView, NSViewToolTipOwner {
         }
     }
 
-    /// A focused skin swallows typing quietly (skins have no text input; unhandled keys would beep).
-    override func keyDown(with event: NSEvent) {}
+    /// Routes typing to an active `TextEdit` meter (`Skin.keyEvent`); otherwise swallows keys quietly so unhandled
+    /// keys do not beep.
+    override func keyDown(with event: NSEvent) {
+        guard let c = controller, !c.isStopped, let input = SkinView.keyInput(for: event) else { return }
+        SkinView.deliverKey(c, input)
+    }
+
+    static func deliverKey(_ c: SkinWindowController, _ input: TextEditMeter.KeyInput) {
+        guard !c.isStopped else { return }
+        c.runtime.send(.key(input))
+    }
+
+    static func keyInput(for event: NSEvent) -> TextEditMeter.KeyInput? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "a" {
+            return .selectAll
+        }
+        switch event.keyCode {
+        case 36, 76: return .enter
+        case 53: return .escape
+        case 51: return .backspace
+        case 117: return .deleteForward
+        default: break
+        }
+        if let raw = event.charactersIgnoringModifiers {
+            switch raw {
+            case "\r", "\n", "\u{03}": return .enter
+            case "\u{1B}": return .escape
+            case "\u{7F}", "\u{08}": return .backspace
+            case "\u{F728}": return .deleteForward
+            default: break
+            }
+        }
+        guard !flags.contains(.command), !flags.contains(.control), let chars = event.characters, !chars.isEmpty else {
+            return nil
+        }
+        let printable = String(chars.unicodeScalars.filter {
+            $0.value >= 0x20 && $0.value != 0x7F && !(0xF700...0xF8FF).contains($0.value)
+        })
+        return printable.isEmpty ? nil : .insert(printable)
+    }
+
+    // MARK: File drag-and-drop (Measure=DragDrop)
+
+    private static func draggedFiles(_ sender: NSDraggingInfo) -> [String] {
+        guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                               options: [.urlReadingFileURLsOnly: true]) as? [URL]
+        else { return [] }
+        return urls.map(\.path)
+    }
+
+    private func dragPoint(_ sender: NSDraggingInfo) -> (Double, Double) {
+        let p = convert(sender.draggingLocation, from: nil)
+        return (Double(p.x), Double(p.y))
+    }
+
+    static func deliverFileDrag(_ c: SkinWindowController, _ phase: Skin.FileDragPhase, files: [String], x: Double, y: Double) {
+        guard !c.isStopped else { return }
+        c.runtime.send(.fileDrag(phase, files: files, x: x, y: y))
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let c = controller, !c.isStopped else { return [] }
+        let files = SkinView.draggedFiles(sender)
+        guard !files.isEmpty else { return [] }
+        let (x, y) = dragPoint(sender)
+        SkinView.deliverFileDrag(c, .entered, files: files, x: x, y: y)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let c = controller, !c.isStopped else { return [] }
+        let files = SkinView.draggedFiles(sender)
+        guard !files.isEmpty else { return [] }
+        let (x, y) = dragPoint(sender)
+        SkinView.deliverFileDrag(c, .moved, files: files, x: x, y: y)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        guard let c = controller, !c.isStopped else { return }
+        let (x, y) = sender.map(dragPoint) ?? (0, 0)
+        SkinView.deliverFileDrag(c, .exited, files: [], x: x, y: y)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let c = controller, !c.isStopped else { return false }
+        let files = SkinView.draggedFiles(sender)
+        guard !files.isEmpty else { return false }
+        let (x, y) = dragPoint(sender)
+        SkinView.deliverFileDrag(c, .dropped, files: files, x: x, y: y)
+        return true
+    }
 
     // MARK: Hover, cursor
 
@@ -502,7 +607,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func cursorName(_ c: SkinWindowController, x: Double, y: Double) -> String? {
         let runtime = c.runtime
         return SnapshotAudit.check("cursor at (\(x), \(y))", runtime,
-                                   snapshot: runtime.snapshot.hitMap.pointerCursorName(at: x, y),
+                                   snapshot: runtime.snapshot.hitMap.pointerCursorName(at: x, y, images: runtime),
                                    live: { $0.pointerCursorName(x: x, y: y) })
     }
 
@@ -545,7 +650,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard let c = controller, !c.isStopped else { return nil }
         let runtime = c.runtime
         let info = SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
-                                       snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y),
+                                       snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y, images: runtime),
                                        live: { $0.toolTipInfo(at: x, y) })
         guard let info else { return nil }
         return info.title.isEmpty ? info.text : "\(info.title)\n\(info.text)"

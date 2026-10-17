@@ -200,7 +200,57 @@ public enum BuiltInVariables {
         return (base, n)
     }
 
+    /// Windows and POSIX environment variable lookup for `[%VariableName]` and `%VariableName%`.
+    /// Maps standard Windows environment variable names (`APPDATA`, `USERPROFILE`, `USERNAME`, `TEMP`, `TMP`,
+    /// `PROGRAMFILES`, `SYSTEMDRIVE`, `WINDIR`, etc.) to their macOS equivalents, then falls back to the
+    /// process environment (exact case first, then case-insensitive).
+    public static func environmentValue(_ name: String) -> String? {
+        guard !name.isEmpty,
+              name.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_()".unicodeScalars.contains($0) })
+        else { return nil }
+        let home = NSHomeDirectory()
+        switch name.uppercased() {
+        case "USERPROFILE", "HOMEPATH", "HOME": return home
+        case "HOMEDRIVE", "SYSTEMDRIVE": return ""
+        case "APPDATA", "LOCALAPPDATA": return home + "/Library/Application Support"
+        case "TEMP", "TMP":
+            let t = NSTemporaryDirectory()
+            return t.hasSuffix("/") ? String(t.dropLast()) : t
+        case "PUBLIC": return "/Users/Shared"
+        case "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432": return "/Applications"
+        case "PROGRAMDATA", "ALLUSERSPROFILE": return "/Library/Application Support"
+        case "WINDIR", "SYSTEMROOT": return "/System"
+        case "USERNAME": return NSUserName()
+        case "COMPUTERNAME", "USERDOMAIN": return localComputerName
+        case "NUMBER_OF_PROCESSORS": return String(ProcessInfo.processInfo.activeProcessorCount)
+        // Judgment call: skins compare these with Windows' values, so they answer as Windows would on this CPU.
+        case "OS": return "Windows_NT"
+        case "PROCESSOR_ARCHITECTURE":
+            #if arch(arm64)
+            return "ARM64"
+            #else
+            return "AMD64"
+            #endif
+        default:
+            guard name.count >= 2 else { return nil }
+            let env = ProcessInfo.processInfo.environment
+            if let exact = env[name] { return exact }
+            if let upper = env[name.uppercased()] { return upper }
+            if let lower = env[name.lowercased()] { return lower }
+            return env.keys.sorted().first { $0.caseInsensitiveCompare(name) == .orderedSame }.flatMap { env[$0] }
+        }
+    }
+
     // MARK: Internal
+
+    /// The Mac's local host name without `.local` (Windows' `%COMPUTERNAME%` is the short NetBIOS name). Read once
+    /// with `gethostname`, which never waits for the network (`ProcessInfo.hostName` can).
+    private static let localComputerName: String = {
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard gethostname(&buffer, buffer.count - 1) == 0 else { return "" }
+        let host = String(cString: buffer)
+        return host.hasSuffix(".local") ? String(host.dropLast(6)) : host
+    }()
 
     private static let keys: Set<String> = Set((names + macAppearanceNames).map { $0.lowercased() })
     private static let macAppearanceKeys: Set<String> = Set(macAppearanceNames.map { $0.lowercased() })
