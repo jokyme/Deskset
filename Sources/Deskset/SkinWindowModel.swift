@@ -39,6 +39,7 @@ struct SkinWindowSettings: Equatable {
     var savePosition: Bool
     var fadeDuration: Int
     var autoSelectScreen: Bool
+    var zoomFactor: Double
 
     /// The settings of a config nobody changed.
     init() {
@@ -57,6 +58,7 @@ struct SkinWindowSettings: Equatable {
         state.savePosition = savePosition
         state.fadeDuration = fadeDuration
         state.autoSelectScreen = autoSelectScreen
+        state.zoomFactor = zoomFactor
         return SkinWindowSettings(state.seeded(with: defaults), hidden: hidden, fadedAlpha: fadedAlpha)
     }
 
@@ -72,6 +74,7 @@ struct SkinWindowSettings: Equatable {
         savePosition = state.savePosition
         fadeDuration = state.fadeDuration
         autoSelectScreen = state.autoSelectScreen
+        zoomFactor = state.zoomFactor
     }
 }
 
@@ -154,6 +157,7 @@ extension SkinState {
         if let v = int("AlphaValue", 0...255) { s.alphaValue = v }
         if let v = int("OnHover", 0...3) { s.onHover = v }
         if let v = int("FadeDuration", 0...Double(SkinState.maxFadeDuration)) { s.fadeDuration = v }
+        if let v = number("ZoomFactor") { s.zoomFactor = min(max(v, 0.25), 10.0) }
         return s
     }
 }
@@ -197,6 +201,8 @@ enum SkinWindowOperation: Equatable {
     case fadeDuration(Int)
     /// !Show, !Hide, !Toggle (`fade`: their Fade forms).
     case hidden(Bool, fade: Bool)
+    /// !SetZoomFactor, !SetZoomFactorGroup.
+    case zoomFactor(Double)
 }
 
 /// One of a skin's own window changes, for the main thread (`SkinRequest.window`).
@@ -309,6 +315,11 @@ struct SkinWindowModel {
             let ms = v.isFinite ? Int(min(max(v, 0), Double(SkinState.maxFadeDuration))) : 250
             settings.fadeDuration = ms
             return .fadeDuration(ms)
+        case "setzoomfactor":
+            guard let v = OptionValue.number(arg(0)), v.isFinite else { return nil }
+            let clamped = min(max(v, 0.25), 10.0)
+            settings.zoomFactor = clamped
+            return .zoomFactor(clamped)
         default:
             return nil
         }
@@ -364,12 +375,12 @@ enum SkinWindowBangs {
             // !SetWindowPosition WindowX WindowY [AnchorX AnchorY] [Config]
             return configTarget(a.count >= 5 ? 4 : (a.count == 3 ? 2 : nil))
         case "zpos", "settransparency", "draggable", "clickthrough", "keeponscreen", "snapedges", "autoselectscreen",
-             "fadeduration":
+             "fadeduration", "setzoomfactor":
             return configTarget(1)
         case "show", "hide", "toggle", "showfade", "hidefade", "togglefade":
             return configTarget(0)
         case "zposgroup", "settransparencygroup", "draggablegroup", "clickthroughgroup", "keeponscreengroup",
-             "snapedgesgroup", "autoselectscreengroup", "fadedurationgroup":
+             "snapedgesgroup", "autoselectscreengroup", "fadedurationgroup", "setzoomfactorgroup":
             return groupTarget(1)
         case "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup", "togglefadegroup":
             return groupTarget(0)

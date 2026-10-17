@@ -238,9 +238,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.inputMirror = mirror
             return true
         case .windowFacts(let facts):
+            let wasHidden = model.settings.hidden
             model.take(facts)
             frames.take(model.facts)
             skin.hostFactsChanged()
+            if model.settings.hidden != wasHidden, skin.settings.invisibleUpdate != nil {
+                startTimer()
+            }
             return true
         case .patch(let sources, let done):
             // Answered whatever happens: the Studio waits for it to move the window or load the widget again.
@@ -275,6 +279,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.mouseExited()
         case .focus(let focused):
             skin.focusChanged(focused)
+        case .fileDrag(let phase, let files, let x, let y):
+            return skin.fileDragEvent(phase, files: files, x: x, y: y)
+        case .key(let input):
+            return skin.keyEvent(input)
         case .bang(let bang, _, let hops):
             withHops(hops) {
                 // A window bang goes to the window model (the skin's actions never see it, as before); any other bang
@@ -317,6 +325,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.fontsDidChange()
         case .appearanceChanged:
             skin.appearanceDidChange()
+        case .displayMetricsChanged:
+            skin.displayMetricsDidChange()
         case .close(_, let ticket):
             close(ticket: ticket)
         case .firstFrame:
@@ -520,10 +530,18 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
     private func ownWindowBang(_ bang: Bang) {
         guard !isClosed, let change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        if case .zoomFactor(let factor) = change.operation {
+            skin.applyHostZoomFactor(factor)
+        }
+        skin.invalidateEnvironment()
         // Shown: a window that has not drawn yet (StartHidden) has its first frame before the main thread orders it
         // in, as at the start, wherever the skin runs.
-        if case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
+        if !Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
         request(.window(change))
+        if Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
+        if case .hidden = change.operation, skin.settings.invisibleUpdate != nil {
+            startTimer()
+        }
     }
 
     /// Runs `body` as one batch of window changes on the main thread (`SkinRuntimeWindow.batchingWindowChanges`).
@@ -589,7 +607,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     private func startTimer() {
         timer?.cancel()
         timer = nil
-        guard !isClosed, !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
+        guard !isClosed, !updatesPaused, let interval = SkinRuntime.updateInterval(skin.effectiveUpdate) else { return }
         let update = { [weak self] in
             guard let self, !self.isClosed else { return }
             self.skin.update()
@@ -615,7 +633,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     private func resume(updateNow: Bool) {
         guard updatesPaused, !isClosed else { return }
         updatesPaused = false
-        if updateNow && SkinRuntime.updateInterval(skin.settings.update) != nil { skin.update() }
+        if updateNow && SkinRuntime.updateInterval(skin.effectiveUpdate) != nil { skin.update() }
         startTimer()
     }
 
@@ -626,7 +644,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         guard !isClosed else { return }
         if updatesPaused {
             resume(updateNow: true)
-        } else if SkinRuntime.updateInterval(skin.settings.update) != nil {
+        } else if SkinRuntime.updateInterval(skin.effectiveUpdate) != nil {
             skin.update()
         }
     }
@@ -767,6 +785,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
         HostCallAudit.note(self, "handle \(bang.name)")
         guard !isClosed else { return true }
+        if bang.name == "setupdate" || bang.name == "forceenablevisiblemode" {
+            startTimer()
+            return true
+        }
         guard let kind = HostBangs.kind(of: bang.name) else { return false }
         switch kind {
         case .window:
@@ -896,7 +918,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         HostCallAudit.note(self, "environment")
         let settings = model.settings
         let env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
-                                                      autoSelectScreen: settings.autoSelectScreen)
+                                                      autoSelectScreen: settings.autoSelectScreen,
+                                                      visible: !settings.hidden, zoomFactor: settings.zoomFactor)
         #if DEBUG
         if SnapshotAudit.isActive(self), let live = window?.liveEnvironment(for: skin) {
             SnapshotAudit.compare("environment", self, snapshot: env, live: live, sides: SkinRuntime.auditSides)

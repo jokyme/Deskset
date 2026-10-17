@@ -29,7 +29,7 @@ enum HostBangs {
              "draggablegroup", "clickthrough", "clickthroughgroup", "keeponscreen", "keeponscreengroup", "snapedges",
              "snapedgesgroup", "autoselectscreen", "autoselectscreengroup", "show", "hide", "toggle", "showfade",
              "hidefade", "togglefade", "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup",
-             "togglefadegroup", "fadeduration", "fadedurationgroup":
+             "togglefadegroup", "fadeduration", "fadedurationgroup", "setzoomfactor", "setzoomfactorgroup":
             return .window
         case "skinmenu", "skincustommenu", "traymenu", "manage", "about", "editskin":
             return .ui

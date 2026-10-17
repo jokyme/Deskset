@@ -665,7 +665,7 @@ public final class Skin {
             .filter { !$0.isEmpty }
         for name in ["WindowX", "WindowY", "AnchorX", "AnchorY", "SavePosition", "AlwaysOnTop", "Draggable",
                      "SnapEdges", "StartHidden", "AlphaValue", "OnHover", "FadeDuration", "ClickThrough",
-                     "KeepOnScreen", "AutoSelectScreen"] {
+                     "KeepOnScreen", "AutoSelectScreen", "ZoomFactor"] {
             if let v = s.option("Default" + name)?.trimmingCharacters(in: .whitespaces), !v.isEmpty {
                 st.windowDefaults[name] = v
             }
@@ -1270,6 +1270,68 @@ public final class Skin {
         }
     }
 
+    /// Updates the skin's zoom factor from the host's window model (`!SetZoomFactor`, `!SetZoomFactorGroup`).
+    public func applyHostZoomFactor(_ factor: Double) {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed, factor.isFinite else { return }
+        zoomFactorOverride = factor.clamped(0.25, 10.0)
+        environmentValid = false
+        needsDisplay()
+    }
+
+    public enum FileDragPhase: Equatable, Sendable {
+        case entered
+        case moved
+        case exited
+        case dropped
+    }
+
+    /// Forwards file drag-and-drop events from the skin window to `DragDropMeasure` instances.
+    @discardableResult
+    public func fileDragEvent(_ phase: FileDragPhase, files: [String], x: Double, y: Double) -> Bool {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed else { return false }
+        var handled = false
+        for case let measure as DragDropMeasure in measures {
+            switch phase {
+            case .entered:
+                measure.handleDragEnter(files: files, x: x, y: y)
+                if measure.contains(x: x, y: y) { handled = true }
+            case .moved:
+                measure.handleDragMove(files: files, x: x, y: y)
+                if measure.contains(x: x, y: y) { handled = true }
+            case .exited:
+                measure.handleDragLeave(files: files, x: x, y: y)
+                handled = true
+            case .dropped:
+                if measure.handleDrop(files: files, x: x, y: y) { handled = true }
+            }
+        }
+        return handled
+    }
+
+    /// Forwards keyboard input from the skin window to the focused `TextEditMeter` (if any).
+    @discardableResult
+    public func keyEvent(_ key: TextEditMeter.KeyInput) -> Bool {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed else { return false }
+        for case let meter as TextEditMeter in meters where meter.isFocused {
+            if meter.handleKeyInput(key) {
+                layout()
+                updateSize(force: true)
+                needsDisplay()
+                return true
+            }
+        }
+        return false
+    }
+
     /// What `MacOnAppearanceChangeAction` does when a skin does not set it: the skin loads again with the new values.
     public static let defaultAppearanceChangeAction = "[!Refresh]"
 
@@ -1757,6 +1819,12 @@ public final class Skin {
         if workDepth == 0 { environmentValid = false }
     }
 
+    /// Marks cached host environment stale immediately (used when the skin's own bang alters window state).
+    public func invalidateEnvironment() {
+        assertOwned()
+        environmentValid = false
+    }
+
     /// Host facts, fetched at most once per update / top-level action.
     func currentEnvironment() -> SkinEnvironment {
         if !environmentValid {
@@ -2042,11 +2110,7 @@ public final class Skin {
     func perform(_ bang: Bang, from section: SkinSection?, literalArguments: Set<Int>) {
         if bang.name.hasPrefix("skin:"), BangCatalog.isKnown(bang.name) {
             let unwrapped = Bang(name: String(bang.name.dropFirst(5)), args: bang.args)
-            if Skin.localBangs.contains(unwrapped.name) {
-                performLocally(unwrapped, from: section, literal: literalArguments)
-            } else if unwrapped.name != "delay" {
-                forwardToHost(unwrapped)
-            }
+            perform(unwrapped, from: section, literalArguments: literalArguments)
             return
         }
         if bang.name.hasPrefix("textedit:"), performTextEditBang(bang, from: section, literal: literalArguments) {
@@ -2384,6 +2448,7 @@ public final class Skin {
         case "setzoomfactor":
             if let f = OptionValue.number(valueArg(0, evaluatedValue)), f.isFinite {
                 zoomFactorOverride = f.clamped(0.25, 10.0)
+                environmentValid = false
                 _ = host?.skin(self, handle: Bang(name: "setzoomfactor",
                                                   args: [NumberFormatting.plain(effectiveZoomFactor, maxDecimals: 10)]))
                 needsDisplay()
@@ -2393,6 +2458,7 @@ public final class Skin {
                 let clamped = f.clamped(0.25, 10.0)
                 if isInSkinGroup(arg(1)) {
                     zoomFactorOverride = clamped
+                    environmentValid = false
                     needsDisplay()
                 }
                 _ = host?.skin(self, handle: Bang(name: "setzoomfactorgroup",
@@ -2486,7 +2552,9 @@ public final class Skin {
     }
 
     private func forwardToHost(_ bang: Bang) {
-        if host?.skin(self, handle: bang) != true {
+        if host?.skin(self, handle: bang) == true {
+            environmentValid = false
+        } else {
             // Once per bang name: an unsupported bang in OnUpdateAction would otherwise log on every update.
             if BangCatalog.isKnown(bang.name) {
                 addIssue("Bang !\(bang.name) is not supported")

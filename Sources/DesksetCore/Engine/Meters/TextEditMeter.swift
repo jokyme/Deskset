@@ -442,13 +442,95 @@ public final class TextEditMeter: Meter {
         noteDrawChange()
     }
 
+    public enum KeyInput: Equatable, Sendable {
+        case insert(String)
+        case backspace
+        case deleteForward
+        case enter
+        case escape
+        case selectAll
+    }
+
+    @discardableResult
+    public func handleKeyInput(_ key: KeyInput) -> Bool {
+        guard isFocused else { return false }
+        switch key {
+        case .escape:
+            dismiss()
+            return true
+        case .enter:
+            if submitOnEnter {
+                submit()
+            } else if multiline && !readOnly {
+                insertCharacters("\n")
+            }
+            return true
+        case .selectAll:
+            selectAll()
+            return true
+        case .backspace:
+            guard !readOnly else { return true }
+            if !selectionRange.isEmpty {
+                replaceSelection(with: "")
+            } else if !inputText.isEmpty {
+                inputText.removeLast()
+                clampSelection()
+                composeDisplayedText()
+                noteDrawChange()
+            }
+            return true
+        case .deleteForward:
+            guard !readOnly else { return true }
+            if !selectionRange.isEmpty {
+                replaceSelection(with: "")
+            }
+            return true
+        case .insert(let chars):
+            guard !readOnly, !chars.isEmpty else { return true }
+            insertCharacters(chars)
+            return true
+        }
+    }
+
+    private func insertCharacters(_ chars: String) {
+        if !selectionRange.isEmpty {
+            replaceSelection(with: chars)
+        } else {
+            let candidate = normalizedInput(inputText + chars, checkFilter: true)
+            if candidate != inputText {
+                inputText = candidate
+                clampSelection()
+                composeDisplayedText()
+                noteDrawChange()
+            }
+        }
+    }
+
+    private func replaceSelection(with replacement: String) {
+        clampSelection()
+        let chars = Array(inputText)
+        let prefix = String(chars[0..<selectionRange.lowerBound])
+        let suffix = String(chars[selectionRange.upperBound..<chars.count])
+        let candidate = normalizedInput(prefix + replacement + suffix, checkFilter: !replacement.isEmpty)
+        inputText = candidate
+        selectionRange = 0..<0
+        composeDisplayedText()
+        noteDrawChange()
+    }
+
     public override func handleMouse(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
-        if kind == .leftUp {
+        switch kind {
+        case .leftDown:
+            guard hitTest(x: x, y: y) else { return false }
+            return effectiveMouseAction(kind) == nil
+        case .leftUp:
+            guard hitTest(x: x, y: y) else { return false }
             focus()
             // Allow any LeftMouseUpAction defined on the meter to run as well if present.
             return effectiveMouseAction(.leftUp) == nil
+        default:
+            return false
         }
-        return false
     }
 
     // MARK: - Layout & Lowering

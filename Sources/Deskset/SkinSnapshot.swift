@@ -84,6 +84,7 @@ struct SkinSnapshot {
         size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
         glass = skin.glassRegions
         wantsFocus = !skin.settings.onFocusAction.isEmpty || !skin.settings.onUnfocusAction.isEmpty
+            || skin.meters.contains { $0 is TextEditMeter }
         issues = skin.issues
         metadata = skin.metadata
         usesWeather = MacWeatherMeasure.showsWeather(in: skin)
