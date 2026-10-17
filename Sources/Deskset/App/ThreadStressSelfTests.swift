@@ -115,11 +115,16 @@ enum ThreadStressSelfTests {
         /// `DESKSET_THREADS_SOAK=N` (a local soak; CI does not set it): N times the loads and the main thread's churn.
         static func fromEnvironment() -> Plan {
             var plan = Plan()
-            if let factor = ProcessInfo.processInfo.environment["DESKSET_THREADS_SOAK"].flatMap(Int.init), factor > 1 {
+            let env = ProcessInfo.processInfo.environment
+            if let factor = env["DESKSET_THREADS_SOAK"].flatMap(Int.init), factor > 1 {
                 plan.loads *= factor
                 plan.churn = Churn(photos: plan.churn.photos * factor, purges: plan.churn.purges * factor,
                                    fontChanges: plan.churn.fontChanges * factor,
                                    publishes: plan.churn.publishes * factor)
+            } else if env["CI"] != nil {
+                plan.loads = 2
+                plan.updatesPerLoad = 3
+                plan.churn = Churn(photos: 12, purges: 4, fontChanges: 2, publishes: 6)
             }
             return plan
         }

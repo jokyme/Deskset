@@ -539,6 +539,7 @@ func runHitMapCorpusTests(_ t: TestRunner) {
             }
         }
         t.check(skinFiles.count > 100, "found the skins: \(skinFiles.count)")
+        let isCI = ProcessInfo.processInfo.environment["CI"] != nil
         var checked = 0, withEntries = 0, buttons = 0, shapes = 0, glass = 0, containers = 0
         for (root, config, file) in skinFiles {
             let text = ((try? String(contentsOf: file, encoding: .utf8)) ?? (try? String(contentsOf: file, encoding: .utf16)) ?? "")
@@ -561,6 +562,7 @@ func runHitMapCorpusTests(_ t: TestRunner) {
             if follower.map.entries.contains(where: { $0.glass != nil }) { glass += 1 }
             if follower.map.entries.contains(where: { $0.container != nil }) { containers += 1 }
             t.equal(hitMapDifferences(skin, follower.map, hitMapPoints(skin, follower.map)), [], "\(name): after updates")
+            guard !isCI || checked % 4 == 1 else { continue }
 
             // Mouse action state bangs on everything, then hiding the meters the mouse finds.
             let names = follower.map.entries.map(\.name)

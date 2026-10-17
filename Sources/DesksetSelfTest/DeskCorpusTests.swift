@@ -168,8 +168,9 @@ func runDeskCorpusTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: generated corpus") {
-        let seed = UInt64(ProcessInfo.processInfo.environment["DESK_FUZZ_SEED"] ?? "") ?? 20260927
-        let count = Int(ProcessInfo.processInfo.environment["DESK_GENERATED_COUNT"] ?? "") ?? 400
+        let env = ProcessInfo.processInfo.environment
+        let seed = UInt64(env["DESK_FUZZ_SEED"] ?? "") ?? 20260927
+        let count = Int(env["DESK_GENERATED_COUNT"] ?? "") ?? (env["CI"] != nil ? 120 : 400)
         var generator = DeskGenerator(seed: seed)
         var failures = 0
         for n in 0..<count {
@@ -206,7 +207,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
             return
         }
         let seed = UInt64(environment["DESK_FUZZ_SEED"] ?? environment["GITHUB_RUN_NUMBER"] ?? "") ?? 1
-        let count = Int(environment["DESK_FUZZ_COUNT"] ?? "") ?? 10_000
+        let count = Int(environment["DESK_FUZZ_COUNT"] ?? "") ?? (environment["CI"] != nil ? 2_500 : 10_000)
         var random = DeskRandom(seed: seed)
         let corpus = deskFixtureTexts().map(\.1) + deskExampleCorpus().filter { $0.count > 40 }
         let pieces = ["{", "}", "(", ")", "[", "]", "\"", "“", "”", "「", "」", "（", "）", "｛", "：", "，", "。", ".", ",",

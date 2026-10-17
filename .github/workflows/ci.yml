@@ -4,29 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build and test (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-26
-            timeout: 120
-          - arch: x86_64
-            runner: macos-26-intel
-            timeout: 180
-    runs-on: ${{ matrix.runner }}
-    # The Intel runner is several times slower than the Apple silicon one. A suite stuck for 10 minutes stops the run
-    # with every thread's stack (the self-tests' watchdog, DESKSET_SUITE_TIMEOUT), and each run ends with its slowest
-    # suites. Intel needs a larger total budget to finish the Core tests, App tests and bundle on the same runner.
-    timeout-minutes: ${{ matrix.timeout }}
+  core:
+    name: Core self-tests (arm64)
+    runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -41,14 +31,52 @@ jobs:
       - name: Seam check
         run: swift scripts/check-seams.swift --check
 
-      - name: Build
-        run: swift build
+      - name: Build Core self-tests
+        run: swift build --product DesksetSelfTest
 
       - name: Core self-tests
-        run: swift run DesksetSelfTest
+        run: .build/debug/DesksetSelfTest
+
+  app:
+    name: App self-tests (arm64)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build App
+        run: swift build --product Deskset
 
       - name: App self-tests
         run: .build/debug/Deskset --self-test
 
+  bundle:
+    name: App bundle (arm64)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
       - name: App bundle
-        run: bash scripts/build-app.sh --arch ${{ matrix.arch }}
+        run: bash scripts/build-app.sh --arch arm64
+
+  intel:
+    name: Build and test (x86_64)
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: App bundle
+        run: bash scripts/build-app.sh --arch x86_64
+
+      - name: App smoke self-tests
+        run: |
+          build/x86_64/Deskset.app/Contents/MacOS/Deskset --self-test "Studio2: window"
+

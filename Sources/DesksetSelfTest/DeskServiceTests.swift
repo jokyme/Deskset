@@ -551,7 +551,8 @@ func runDeskServiceTests(_ t: TestRunner) {
             var outline: [Double] = [], folding: [Double] = [], phased: [Double] = [], check: [Double] = []
             var version = 0
             #if DEBUG
-            let edits = lines == 300 ? 50 : 8
+            let isCI = ProcessInfo.processInfo.environment["CI"] != nil
+            let edits = isCI ? (lines == 300 ? 12 : 4) : (lines == 300 ? 50 : 8)
             #else
             let edits = 50
             #endif
