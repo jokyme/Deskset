@@ -57,7 +57,15 @@ package enum LineRenderer {
             ? aliasedStrokeOffset(lineWidth: drawing.lineWidth, target: DrawTarget.capture(ctx)) : .zero
 
         ctx.setLineWidth(drawing.lineWidth)
-        ctx.setLineJoin(.round)
+        switch drawing.lineJoin {
+        case .miter, .miterOrBevel:
+            ctx.setLineJoin(.miter)
+            ctx.setMiterLimit(CGFloat(drawing.miterLimit))
+        case .bevel:
+            ctx.setLineJoin(.bevel)
+        case .round:
+            ctx.setLineJoin(.round)
+        }
         ctx.setLineCap(count == 1 ? .round : .butt)
         let geometry = drawing.geometry
         for (index, line) in drawing.lines.enumerated() where line.isBound && line.color.a > 0 {

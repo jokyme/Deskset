@@ -742,29 +742,37 @@ public final class Skin {
     /// Keep in step with the app's registrations (the app self-test compares this list with them).
     public static let appProvidedMeasures: Set<String> = [
         "nowplaying", "wifistatus", "mediakey", "itunesplugin", "itunes", "webnowplaying", "inputtext",
-        "frostedglass", "chameleon", "isfullscreen", "getactivetitle", "syscolor", "audiolevel", "win7audioplugin",
-        "win7audio", "appvolume",
+        "frostedglass", "chameleon", "isfullscreen", "getactivetitle", "syscolor", "audiolevel", "audio",
+        "win7audioplugin", "win7audio", "appvolume",
     ]
 
     /// Measures whose manual page says they were "previously a plugin measure" and that "still [work] with those
-    /// forms" — `Measure=Plugin` with `Plugin=Name`, `Name.dll` or `Plugins\Name.dll` is the same as `Measure=Name`
-    /// (SysInfo, Process, WebParser, RecycleManager, MediaKey, NowPlaying, WiFiStatus).
+    /// forms" — `Measure=Plugin` with `Plugin=Name`, `Name.dll` or `Plugins\Name.dll` is the same as `Measure=Name`.
     static let formerPluginMeasures: Set<String> = [
         "sysinfo", "process", "webparser", "recyclemanager", "mediakey", "nowplaying", "wifistatus",
+        "actiontimer", "advancedcpu", "audio", "win7audio", "win7audioplugin", "audiolevel", "coretemp",
+        "dragdrop", "drag&drop", "fileview", "folderinfo", "inputtext", "itunes", "itunesplugin",
+        "mouse", "perfmon", "perfmonplugin", "ping", "pingplugin", "power", "powerplugin", "quote",
+        "quoteplugin", "resmon", "runcommand", "speedfan", "speedfanplugin", "usagemonitor",
+        "windowmessage", "windowmessageplugin",
     ]
 
     /// Every `Measure=` type the manual documents (/manual/measures/), including the Memory / Net variants. A type
     /// outside this list is a mistake in the skin (Rainmeter cannot load it either): logged, not listed as a
     /// compatibility issue.
     public static let documentedMeasureTypes: Set<String> = [
-        "calc", "cpu", "freediskspace", "loop", "mediakey", "memory", "physicalmemory", "swapmemory", "netin",
-        "netout", "nettotal", "nowplaying", "plugin", "process", "recyclemanager", "registry", "script", "string",
-        "sysinfo", "time", "uptime", "webparser", "wifistatus",
+        "actiontimer", "advancedcpu", "audio", "audiolevel", "calc", "coretemp", "cpu", "dragdrop",
+        "fileview", "folderinfo", "freediskspace", "inputtext", "itunes", "loop", "mediakey", "memory",
+        "mouse", "netin", "netout", "nettotal", "nowplaying", "perfmon", "physicalmemory", "ping",
+        "plugin", "power", "process", "quote", "recyclemanager", "registry", "resmon", "runcommand",
+        "script", "speedfan", "string", "swapmemory", "sysinfo", "time", "uptime", "usagemonitor",
+        "webparser", "wifistatus", "windowmessage",
     ]
 
     /// Every `Meter=` type the manual documents (/manual/meters/).
     static let documentedMeterTypes: Set<String> = [
         "string", "image", "bar", "line", "histogram", "roundline", "rotator", "shape", "button", "bitmap",
+        "svg", "textedit",
     ]
 
     private func makeMeasure(_ section: IniSection, type rawType: String) -> Measure {
@@ -785,7 +793,7 @@ public final class Skin {
         }
         // Built-in measure classes: every `Measure=` type, but for `Measure=Plugin` only the former plugins and
         // the plugins the engine implements itself (so `Plugin=Calc` is not a Calc measure).
-        let builtIn = !isPlugin || isFormerPlugin || effectiveType == "powerplugin" ? effectiveType : ""
+        let builtIn = !isPlugin || isFormerPlugin || effectiveType == "powerplugin" || effectiveType == "power" ? effectiveType : ""
         let cls: Measure.Type
         var invalidType = false
         switch builtIn {
@@ -802,7 +810,7 @@ public final class Skin {
         case "process": cls = ProcessMeasure.self
         case "sysinfo": cls = SysInfoMeasure.self
         case "webparser": cls = WebParserMeasure.self
-        case "powerplugin": cls = PowerPluginMeasure.self
+        case "power", "powerplugin": cls = PowerPluginMeasure.self
         case "registry": cls = RegistryMeasure.self
         case "script":
             cls = UnsupportedMeasure.self
@@ -866,6 +874,8 @@ public final class Skin {
         case "shape": cls = ShapeMeter.self
         case "button": cls = ButtonMeter.self
         case "bitmap": cls = BitmapMeter.self
+        case "svg": cls = SVGMeter.self
+        case "textedit": cls = TextEditMeter.self
         default:
             cls = UnsupportedMeter.self
             if Skin.documentedMeterTypes.contains(type) {
@@ -1218,6 +1228,11 @@ public final class Skin {
         assertOwned()
         beginWork()
         defer { endWork() }
+        if !focused {
+            for case let m as TextEditMeter in meters where m.isFocused {
+                m.dismiss()
+            }
+        }
         let action = focused ? settings.onFocusAction : settings.onUnfocusAction
         if !action.isEmpty { execute(action, from: rainmeterSection) }
     }
@@ -1423,9 +1438,21 @@ public final class Skin {
             dollarLookup: { [unowned self] name in self.skinOrDisplayVariable(name) })
     }
 
-    /// Resolves `[$Skin…]`, `[$Display…]`, and `[$DisplayDevice…]` (with optional `:numberFormat` parameter).
+    /// Resolves `[$Skin…]`, `[$Display…]`, `[$DisplayDevice…]` (with optional `:numberFormat` parameter),
+    /// and `[$Input]` / `[$Input:MatchN]` while a `TextEditMeter` action is running.
     private func skinOrDisplayVariable(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        if let ctx = textEditInputContext {
+            let key = (trimmed.hasPrefix("$") ? String(trimmed.dropFirst()) : trimmed).lowercased()
+            if key == "input" {
+                return ctx.input
+            }
+            if key.hasPrefix("input:match"),
+               let idx = Int(key.dropFirst("input:match".count).trimmingCharacters(in: .whitespaces)),
+               idx >= 0 {
+                return idx < ctx.matches.count ? ctx.matches[idx] : ""
+            }
+        }
         let namePart: String
         let paramPart: String?
         if let colon = trimmed.firstIndex(of: ":") {
@@ -1587,6 +1614,23 @@ public final class Skin {
         var percentForms = true
     }
     private var mouseContext: MouseContext?
+
+    /// `[$Input]` and `[$Input:MatchN]` while a `TextEditMeter` action (`OnFocusAction`, `OnSubmitAction`,
+    /// `OnDismissAction`) runs.
+    private struct TextEditInputContext {
+        var input: String
+        var matches: [String]
+    }
+    private var textEditInputContext: TextEditInputContext?
+
+    func executeWithTextEditInput(from meter: TextEditMeter, action: String) {
+        let input = meter.actionInputValue
+        let matches = meter.actionInputMatches(for: input)
+        let saved = textEditInputContext
+        textEditInputContext = TextEditInputContext(input: input, matches: matches)
+        defer { textEditInputContext = saved }
+        execute(action, from: meter)
+    }
 
     private static func mouseVariable(_ name: String, _ c: MouseContext) -> String? {
         func percent(_ v: Double, _ size: Double) -> String? {
@@ -1755,14 +1799,26 @@ public final class Skin {
             ensureMeterGeometry()
             layoutIfPending()
             let f = meter.frame
-            switch word.lowercased() {
+            let lowerWord = word.lowercased()
+            switch lowerWord {
             case "x": return formatInt(f.x)
             case "y": return formatInt(f.y)
             case "w": return formatInt(f.width)
             case "h": return formatInt(f.height)
             case "xw": return formatInt(f.maxX)
             case "yh": return formatInt(f.maxY)
-            default: return nil
+            default:
+                if let svg = meter as? SVGMeter,
+                   lowerWord.hasPrefix("attribute("), word.hasSuffix(")") {
+                    let inner = word.dropFirst("attribute(".count).dropLast()
+                    let parts = inner.split(separator: ",", maxSplits: 1).map {
+                        $0.trimmingCharacters(in: .whitespaces)
+                    }
+                    if parts.count == 2 {
+                        return svg.attributeValue(selector: parts[0], attribute: parts[1])
+                    }
+                }
+                return nil
             }
         }
         return nil
@@ -1909,8 +1965,9 @@ public final class Skin {
                     }
                     lastDelayID &+= 1
                     let id = lastDelayID
-                    // `$MouseX$`… in the delayed part still refer to the event that started the action.
+                    // `$MouseX$` and `[$Input]` in the delayed part still refer to the event that started the action.
                     let mouse = mouseContext
+                    let textEditInput = textEditInputContext
                     // Weak: a delay of up to a day must not keep a skin alive that is dropped without being closed.
                     pendingDelays[id] = executor.async(after: delay) { [weak self] in
                         guard let self else { return }
@@ -1920,9 +1977,12 @@ public final class Skin {
                         guard !self.closed, self.generation == scheduled else { return }
                         self.environmentValid = false
                         let saved = self.mouseContext
+                        let savedTextEdit = self.textEditInputContext
                         self.mouseContext = mouse
+                        self.textEditInputContext = textEditInput
                         self.run(rest[...], from: section)
                         self.mouseContext = saved
+                        self.textEditInputContext = savedTextEdit
                     }
                     return
                 }
@@ -1987,6 +2047,9 @@ public final class Skin {
             } else if unwrapped.name != "delay" {
                 forwardToHost(unwrapped)
             }
+            return
+        }
+        if bang.name.hasPrefix("textedit:"), performTextEditBang(bang, from: section, literal: literalArguments) {
             return
         }
         if let translated = Skin.translateNamespacedMeasureBang(bang) {
@@ -2074,8 +2137,8 @@ public final class Skin {
         case ("nowplaying", "setshuffle"): command = withExtra("SetShuffle")
         case ("nowplaying", "setrepeat"): command = withExtra("SetRepeat")
         case ("nowplaying", "setvolume"): command = withExtra("SetVolume")
-        case ("mouse", "startcapture"): command = "Start"
-        case ("mouse", "stopcapture"): command = "Stop"
+        case ("mouse", "startcapture"): command = "StartCapture"
+        case ("mouse", "stopcapture"): command = "StopCapture"
         case ("windowmessage", "send"): command = withExtra("SendMessage")
         case ("textedit", "start"): command = "ExecuteBatch 1"
         case ("textedit", "exit"): command = "Stop"
@@ -2083,6 +2146,160 @@ public final class Skin {
         default: return nil
         }
         return (target, command, configTarget)
+    }
+
+    /// Executes `!TextEdit:` meter bangs (`Focus`, `Dismiss`, `Submit`, `Clear`, `Reset`, `SetText`, `ScrollByLine`,
+    /// `ResetScroll`, `SelectAll`, `Select`). Returns true when the subcommand is a `TextEdit` meter bang.
+    private func performTextEditBang(_ bang: Bang, from section: SkinSection?, literal: Set<Int>) -> Bool {
+        let sub = String(bang.name.dropFirst("textedit:".count)).lowercased()
+        let validSubs: Set<String> = [
+            "focus", "dismiss", "submit", "clear", "reset", "settext",
+            "scrollbyline", "resetscroll", "selectall", "select",
+        ]
+        guard validSubs.contains(sub) else { return false }
+        let a = bang.args
+        func evalArg(_ i: Int) -> String {
+            guard i < a.count else { return "" }
+            return literal.contains(i) ? a[i] : evaluatedValue(a[i])
+        }
+        func isMeterTarget(_ s: String) -> Bool {
+            let t = s.trimmingCharacters(in: .whitespaces)
+            return t == "*" || Skin.groupTarget(in: t) != nil || meter(named: t) is TextEditMeter
+        }
+        func resolveTargets(_ rawName: String) -> [TextEditMeter] {
+            let trimmed = rawName.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                if let current = section as? TextEditMeter { return [current] }
+                let all = meters.compactMap { $0 as? TextEditMeter }
+                if sub == "dismiss" { return all.filter(\.isFocused) }
+                return all.count == 1 ? all : []
+            }
+            return meters(matching: trimmed).compactMap { $0 as? TextEditMeter }
+        }
+
+        var meterName = ""
+        var configTarget: String?
+        switch sub {
+        case "focus", "dismiss", "submit", "clear", "reset", "resetscroll", "selectall":
+            if a.count >= 1 { meterName = a[0] }
+            if a.count >= 2 { configTarget = a[1].trimmingCharacters(in: .whitespaces) }
+            if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
+                let forwarded = Bang(name: bang.name, args: [meterName])
+                if cfg == "*" {
+                    _ = performTextEditBang(forwarded, from: section, literal: literal)
+                    host?.skin(self, forward: forwarded, toConfig: "*")
+                } else {
+                    host?.skin(self, forward: forwarded, toConfig: cfg)
+                }
+                return true
+            }
+            let targets = resolveTargets(meterName)
+            for m in targets {
+                switch sub {
+                case "focus": m.focus()
+                case "dismiss": m.dismiss()
+                case "submit": m.submit()
+                case "clear": m.clear()
+                case "reset": m.reset()
+                case "resetscroll": m.resetScroll()
+                case "selectall": m.selectAll()
+                default: break
+                }
+                if closed { return true }
+            }
+            if !targets.isEmpty {
+                layoutPending = true
+                needsDisplay()
+            }
+        case "settext", "scrollbyline":
+            let valueIndex: Int
+            if a.count <= 1 {
+                meterName = ""
+                valueIndex = 0
+            } else if a.count == 2 {
+                if isMeterTarget(a[0]) || !(section is TextEditMeter) {
+                    meterName = a[0]
+                    valueIndex = 1
+                } else {
+                    meterName = section?.name ?? ""
+                    valueIndex = 0
+                    configTarget = a[1].trimmingCharacters(in: .whitespaces)
+                }
+            } else {
+                meterName = a[0]
+                valueIndex = 1
+                configTarget = a[2].trimmingCharacters(in: .whitespaces)
+            }
+            let val = evalArg(valueIndex)
+            if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
+                let forwarded = Bang(name: bang.name, args: [meterName, val])
+                if cfg == "*" {
+                    _ = performTextEditBang(forwarded, from: section, literal: [])
+                    host?.skin(self, forward: forwarded, toConfig: "*")
+                } else {
+                    host?.skin(self, forward: forwarded, toConfig: cfg)
+                }
+                return true
+            }
+            let targets = resolveTargets(meterName)
+            for m in targets {
+                if sub == "settext" {
+                    m.setText(val)
+                } else if let lines = OptionValue.int(val) {
+                    m.scrollByLine(lines)
+                }
+            }
+            if !targets.isEmpty {
+                layoutPending = true
+                needsDisplay()
+            }
+        case "select":
+            let startIdx: Int
+            let lenIdx: Int
+            if a.count <= 2 {
+                meterName = ""
+                startIdx = 0
+                lenIdx = 1
+            } else if a.count == 3 {
+                if isMeterTarget(a[0]) || !(section is TextEditMeter) {
+                    meterName = a[0]
+                    startIdx = 1
+                    lenIdx = 2
+                } else {
+                    meterName = section?.name ?? ""
+                    startIdx = 0
+                    lenIdx = 1
+                    configTarget = a[2].trimmingCharacters(in: .whitespaces)
+                }
+            } else {
+                meterName = a[0]
+                startIdx = 1
+                lenIdx = 2
+                configTarget = a[3].trimmingCharacters(in: .whitespaces)
+            }
+            let startStr = evalArg(startIdx)
+            let lenStr = evalArg(lenIdx)
+            if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
+                let forwarded = Bang(name: bang.name, args: [meterName, startStr, lenStr])
+                if cfg == "*" {
+                    _ = performTextEditBang(forwarded, from: section, literal: [])
+                    host?.skin(self, forward: forwarded, toConfig: "*")
+                } else {
+                    host?.skin(self, forward: forwarded, toConfig: cfg)
+                }
+                return true
+            }
+            let startVal = OptionValue.int(startStr) ?? 0
+            let lenVal = OptionValue.int(lenStr) ?? 0
+            let targets = resolveTargets(meterName)
+            for m in targets {
+                m.select(start: startVal, length: lenVal)
+            }
+            if !targets.isEmpty { needsDisplay() }
+        default:
+            break
+        }
+        return true
     }
 
     private func isOwnConfig(_ name: String) -> Bool {
@@ -2298,9 +2515,9 @@ public final class Skin {
         }
     }
 
-    /// `!SetOption`: stored raw (the section resolves it when reading options, once, or every update when
+    /// `!SetOption` / `SKIN:SetOption`: stored raw (the section resolves it when reading options, once, or every update when
     /// dynamic); "" removes the option. The `[Rainmeter]` section only accepts the context menu options.
-    private func setOption(_ section: SkinSection, key: String, value: String) {
+    func setOption(_ section: SkinSection, key: String, value: String) {
         let lower = key.trimmingCharacters(in: .whitespaces).lowercased()
         guard !lower.isEmpty, lower != "meter", lower != "measure" else { return }
         if section is RainmeterSection {
@@ -2329,6 +2546,27 @@ public final class Skin {
         case "paused": (section as? Measure)?.lastPausedOption = nil
         default: break
         }
+    }
+
+    func setOption(named targetName: String, key: String, value: String, fallbackSection: SkinSection? = nil) {
+        let trimmed = targetName.trimmingCharacters(in: .whitespaces)
+        if trimmed == "*" {
+            for s in (measures as [SkinSection] + meters as [SkinSection]) {
+                setOption(s, key: key, value: value)
+            }
+        } else if let group = Skin.groupTarget(in: trimmed) {
+            for s in sections(inGroup: group) { setOption(s, key: key, value: value) }
+        } else if let s = self.section(named: trimmed) {
+            setOption(s, key: key, value: value)
+        } else if let fb = fallbackSection, fb.name.caseInsensitiveCompare(trimmed) == .orderedSame {
+            setOption(fb, key: key, value: value)
+        } else {
+            log("!SetOption: section [\(targetName)] not found", level: .warning)
+        }
+    }
+
+    func setOptionGroup(_ group: String, key: String, value: String) {
+        for s in sections(inGroup: group) { setOption(s, key: key, value: value) }
     }
 
     /// The `[Rainmeter]` options `!SetOption` may change besides the context menu (lowercased).
@@ -2532,6 +2770,12 @@ public final class Skin {
         defer { endWork() }
         defer { mirror(.mouse(kind, x: x, y: y)) }
         environmentValid = false
+        if kind == .leftDown {
+            for case let m as TextEditMeter in meters where m.isFocused && !m.isHit(x: x, y: y) {
+                m.dismiss()
+                if closed { return true }
+            }
+        }
         var alreadyNotified: Meter?
         if kind == .leftUp, let captured = pressedMeter {
             pressedMeter = nil

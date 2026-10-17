@@ -828,7 +828,7 @@ public enum EditorSchema {
     }
 
     /// Every measure type and plugin the engine and the app provide (Skin.makeMeasure, CorePlugins, LuaSupport,
-    /// AudioPlugins, MediaUIPlugins) — 54 in all.
+    /// AudioPlugins, MediaUIPlugins) — 55 in all.
     public static let measureTypes: [MeasureType] = [
         type("CPU", "CPU usage", "cpu"),
         type("Memory", "Memory used (Windows-style)", "memorychip"),
@@ -849,10 +849,11 @@ public enum EditorSchema {
         type("Registry", "Windows registry", "list.bullet.rectangle", mac: false),
         type("Script", "Lua script", "curlybraces"),
         type("RecycleManager", "Trash", "trash", both: true),
+        type("DragDrop", "Dropped file", "arrow.down.doc", both: true, aliases: ["Drag&Drop"]),
         type("NowPlaying", "Now playing", "music.note", both: true),
         type("MediaKey", "Media keys", "playpause", both: true),
         type("WiFiStatus", "Wi-Fi signal", "wifi", both: true),
-        type("PowerPlugin", "Battery", "battery.75percent", plugin: true),
+        type("PowerPlugin", "Battery", "battery.75percent", plugin: true, aliases: ["Power"]),
         type("ActionTimer", "Timed actions", "stopwatch", plugin: true),
         type("CoreTemp", "CPU temperature", "thermometer.medium", plugin: true),
         type("AdvancedCPU", "Processor time by app", "chart.bar.xaxis", plugin: true),
@@ -872,7 +873,7 @@ public enum EditorSchema {
         type("MacSensors", "Temperatures, fans and power", "gauge.with.dots.needle.50percent", plugin: true),
         type("MSIAfterburner", "Graphics card (MSI Afterburner)", "flame", plugin: true),
         type("AudioLevel", "Sound", "waveform", plugin: true),
-        type("Win7AudioPlugin", "Volume", "speaker.wave.2", plugin: true, aliases: ["Win7Audio"]),
+        type("Win7AudioPlugin", "Volume", "speaker.wave.2", plugin: true, aliases: ["Win7Audio", "Audio"]),
         type("AppVolume", "App volume", "speaker.wave.2.circle", plugin: true),
         type("iTunesPlugin", "Now playing (iTunes)", "music.note.list", plugin: true, aliases: ["iTunes"]),
         type("WebNowPlaying", "Now playing (any player)", "play.rectangle", plugin: true),
@@ -1767,7 +1768,7 @@ public enum EditorSchema {
         let (h, v) = StringMeter.parseAlign(value)
         let name: String
         switch h {
-        case .left: name = "Left"
+        case .left, .justify: name = "Left"
         case .center: name = "Center"
         case .right: name = "Right"
         }
@@ -1809,7 +1810,9 @@ public enum EditorSchema {
             default: return "“\(v)” is not one of the choices for \(p.label) — \(fallback())"
             }
         case .alignment9:
-            if choice(for: v.filter { !$0.isWhitespace }, in: alignments) != nil { return nil }
+            let compact = v.filter { !$0.isWhitespace }.lowercased()
+            if choice(for: v.filter { !$0.isWhitespace }, in: alignments) != nil
+                || ["justify", "justifytop", "justifycenter", "justifybottom"].contains(compact) { return nil }
             return "“\(v)” is not an alignment — \(alignmentChoice(for: v).title) is used"
         case .bool:
             return OptionValue.number(v) == nil ? "“\(v)” is not 0 or 1 — \(fallback())" : nil

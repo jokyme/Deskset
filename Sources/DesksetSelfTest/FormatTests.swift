@@ -628,9 +628,12 @@ private func runTimeStampTests(_ t: TestRunner) {
         // "If the year is not defined in the TimeStamp option, then 1900 will be used as the default year."
         t.equal(TimeFormatting.parseTimeStamp("15:22:30", mask: "%H:%M:%S", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 15, 22, 30))
         t.equal(TimeFormatting.parseTimeStamp("27 Jan", mask: "%d %b", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 27))
-        // "%z and %Z cannot be used in the TimeStampFormat option."
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 +0000", mask: "%Y-%m-%d %z", systemLocale: .autoupdatingCurrent), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 UTC", mask: "%Y-%m-%d %Z", systemLocale: .autoupdatingCurrent), nil)
+        // Rainmeter 5.0: "%z and %Z apply time-zone offsets, converting the parsed timestamp to UTC."
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 +0000", mask: "%Y-%m-%d %z", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 10:22:30 -0500", mask: "%Y-%m-%d %H:%M:%S %z", systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 20:52:30 +05:30", mask: "%Y-%m-%d %H:%M:%S %z", systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 UTC", mask: "%Y-%m-%d %Z", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 10:22:30 Eastern Standard Time", mask: "%Y-%m-%d %H:%M:%S %Z", systemLocale: .autoupdatingCurrent), tue)
         // A mask that does not match → error (nil).
         t.equal(TimeFormatting.parseTimeStamp("2015/01/27", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
         t.equal(TimeFormatting.parseTimeStamp("2015/01/27", format: "%Y-%m-%d", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
@@ -702,8 +705,12 @@ private func runTimeStampTests(_ t: TestRunner) {
         t.equal(TimeFormatting.parseTimeStamp("2015\n01", mask: "%Y%n%m", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 1))
         t.equal(TimeFormatting.parseTimeStamp("7% 10", mask: "%d%% %H", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 7, 10))
         t.equal(TimeFormatting.parseTimeStamp("7 10", mask: "%d%% %H", systemLocale: .autoupdatingCurrent), nil)
-        // Ignored fields.
-        t.equal(TimeFormatting.parseTimeStamp("2015 W05 2", mask: "%Y W%V %u", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 1))
+        // ISO week dates and week-number dates (Rainmeter 5.0).
+        t.equal(TimeFormatting.parseTimeStamp("2015 W05 2", mask: "%Y W%V %u", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015-W01-1", mask: "%G-W%V-%u", systemLocale: .autoupdatingCurrent), winTS(2014, 12, 29))
+        t.equal(TimeFormatting.parseTimeStamp("15-W05-2", mask: "%g-W%V-%u", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015 04 2", mask: "%Y %U %w", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015 04 2", mask: "%Y %W %u", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
         // Trailing text is ignored; a missing part fails.
         t.equal(TimeFormatting.parseTimeStamp("2015-01-27 and more", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
         t.equal(TimeFormatting.parseTimeStamp("2015-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)

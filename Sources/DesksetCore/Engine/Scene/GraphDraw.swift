@@ -41,6 +41,8 @@ public struct LineDraw: Equatable, Sendable {
     public let rangeMax: Double
     public let autoScale: Bool
     public let lineWidth: Double
+    public let lineJoin: ShapeLineJoin
+    public let miterLimit: Double
     public let horizontalLines: Bool
     public let horizontalLineColor: RGBA
     public let markerCoordinates: [Double]
@@ -128,6 +130,7 @@ public extension LineMeter {
         }
         return LineDraw(lines: captured, geometry: geometry, historyLength: historyLength,
                         rangeMin: rangeMin, rangeMax: rangeMax, autoScale: autoScale, lineWidth: lineWidth,
+                        lineJoin: lineJoin, miterLimit: miterLimit,
                         horizontalLines: horizontalLines, horizontalLineColor: horizontalLineColor,
                         markerCoordinates: markerCoordinates, transformStrokeFixed: transformStrokeFixed,
                         transformationMatrix: transformationMatrix, antiAlias: antiAlias)

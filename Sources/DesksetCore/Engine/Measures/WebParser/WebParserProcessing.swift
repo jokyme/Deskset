@@ -8,6 +8,8 @@ struct WebParserOptions {
     /// Name of the parent WebParser measure when `URL` references one (`URL=[Parent]`, `URL=https://host[Parent]`).
     var parentName: String?
     var regExp = ""
+    var jsonPointer = ""
+    var localeConversion = false
     var stringIndex = 0
     var stringIndex2 = 0
     var decodeCharacterReference = 0
@@ -25,7 +27,8 @@ struct WebParserOptions {
     var flags = WebParserFlags()
     var proxy = "/auto"
 
-    var hasRegExp: Bool { !regExp.isEmpty }
+    var hasRegExp: Bool { !regExp.isEmpty || !jsonPointer.isEmpty }
+    var hasJsonPointer: Bool { !jsonPointer.isEmpty }
 }
 
 /// A parent measure and (recursively) the child measures that read its captures.
@@ -93,7 +96,7 @@ enum WebParserProcessor {
 
     /// Parses a downloaded page for a whole parent tree. Runs on a background queue.
     static func process(_ root: WebParserNode, text: String) -> WebParserNodeResult {
-        var result = processNode(root, input: text, isRoot: true, depth: 0)
+        var result = processNode(root, input: text, jsonContext: nil, isRoot: true, depth: 0)
         if root.options.debug == 1 {
             result.logs.insert(WebParserLogLine(level: .debug,
                                                 message: "WebParser [\(root.options.name)]: read \(text.count) characters"),
@@ -102,7 +105,8 @@ enum WebParserProcessor {
         return result
     }
 
-    static func processNode(_ node: WebParserNode, input: String?, isRoot: Bool, depth: Int) -> WebParserNodeResult {
+    static func processNode(_ node: WebParserNode, input: String?, jsonContext: Any? = nil,
+                            isRoot: Bool, depth: Int) -> WebParserNodeResult {
         let o = node.options
         var r = WebParserNodeResult(name: o.name, hasRegExp: o.hasRegExp)
         guard let input else {
@@ -110,13 +114,18 @@ enum WebParserProcessor {
             r.value = ""
             r.captures = []
             r.substringCount = 0
-            r.children = depth < maxDepth ? node.children.map { processNode($0, input: nil, isRoot: false, depth: depth + 1) } : []
+            r.children = depth < maxDepth
+                ? node.children.map { processNode($0, input: nil, jsonContext: nil, isRoot: false, depth: depth + 1) } : []
             return r
+        }
+
+        if o.hasJsonPointer {
+            return processJsonPointer(node, &r, input: input, jsonContext: jsonContext, isRoot: isRoot, depth: depth)
         }
 
         var captures: [String]
         var count: Int
-        if o.hasRegExp {
+        if !o.regExp.isEmpty {
             switch match(o.regExp, in: input) {
             case .invalid:
                 r.regExpError = "RegExp is not a valid regular expression"
@@ -141,10 +150,112 @@ enum WebParserProcessor {
         return finish(node, &r, captures: captures, count: count, input: input, isRoot: isRoot, depth: depth)
     }
 
+    private static func processJsonPointer(_ node: WebParserNode, _ r: inout WebParserNodeResult,
+                                           input: String, jsonContext: Any?,
+                                           isRoot: Bool, depth: Int) -> WebParserNodeResult {
+        let o = node.options
+        let baseNode: Any
+        if let jsonContext {
+            baseNode = jsonContext
+        } else {
+            guard let data = input.data(using: .utf8),
+                  let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
+                r.regExpError = "JSON parsing error"
+                r.logs.append(WebParserLogLine(level: .error, message: "WebParser [\(o.name)]: JSON parsing error"))
+                return r
+            }
+            baseNode = parsed
+        }
+
+        let pointer = o.jsonPointer.trimmingCharacters(in: .whitespaces)
+        let isEnableOnly = (pointer == "1")
+        let selected: Any?
+        if isEnableOnly || pointer.isEmpty {
+            selected = baseNode
+        } else {
+            selected = evaluateJsonPointer(pointer, in: baseNode)
+        }
+
+        guard let selectedNode = selected else {
+            if o.logSubstringErrors {
+                r.logs.append(WebParserLogLine(level: .error,
+                                               message: "WebParser [\(o.name)]: JsonPointer \(pointer) not found"))
+            }
+            r.value = ""
+            r.captures = []
+            r.substringCount = 0
+            r.children = depth < maxDepth
+                ? node.children.map { processNode($0, input: nil, jsonContext: nil, isRoot: false, depth: depth + 1) } : []
+            return r
+        }
+
+        var raw = isEnableOnly ? "" : stringifyJsonNode(selectedNode)
+        if o.decodeCodePoints { raw = WebParserText.decodeCodePoints(raw) }
+        if o.decodeCharacterReference != 0 {
+            raw = WebParserText.decodeCharacterReferences(raw, mode: o.decodeCharacterReference)
+        }
+        r.captures = [raw]
+        r.substringCount = 1
+        if o.download {
+            r.downloadSource = raw
+        } else {
+            r.value = raw
+        }
+
+        guard depth < maxDepth else { return r }
+        for child in node.children {
+            let url = child.options.url
+            let childInput = url.contains(parentMark) ? url.replacingOccurrences(of: parentMark, with: raw) : raw
+            let childJson = child.options.hasJsonPointer ? selectedNode : nil
+            r.children.append(processNode(child, input: childInput, jsonContext: childJson, isRoot: false, depth: depth + 1))
+        }
+        return r
+    }
+
+    /// Evaluates RFC 6901 JSON Pointer (`/a/b/0`) against `root`.
+    static func evaluateJsonPointer(_ pointer: String, in root: Any) -> Any? {
+        guard pointer.hasPrefix("/") else { return nil }
+        let rawTokens = pointer.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
+        var current: Any = root
+        for rawToken in rawTokens {
+            let token = String(rawToken)
+                .replacingOccurrences(of: "~1", with: "/")
+                .replacingOccurrences(of: "~0", with: "~")
+            if let dict = current as? [String: Any] {
+                guard let next = dict[token] else { return nil }
+                current = next
+            } else if let arr = current as? [Any] {
+                guard token == "0" || (!token.hasPrefix("0") && token.allSatisfy(\.isNumber)),
+                      let idx = Int(token), idx >= 0, idx < arr.count else { return nil }
+                current = arr[idx]
+            } else {
+                return nil
+            }
+        }
+        return current
+    }
+
+    private static func stringifyJsonNode(_ node: Any) -> String {
+        if let s = node as? String { return s }
+        if node is NSNull { return "" }
+        if let n = node as? NSNumber {
+            if CFGetTypeID(n) == CFBooleanGetTypeID() {
+                return n.boolValue ? "true" : "false"
+            }
+            return NumberFormatting.plain(n.doubleValue, maxDecimals: 15)
+        }
+        if JSONSerialization.isValidJSONObject(node),
+           let data = try? JSONSerialization.data(withJSONObject: node, options: [.sortedKeys]),
+           let s = String(data: data, encoding: .utf8) {
+            return s
+        }
+        return String(describing: node)
+    }
+
     private static func finish(_ node: WebParserNode, _ r: inout WebParserNodeResult, captures: [String], count: Int,
                                input: String, isRoot: Bool, depth: Int) -> WebParserNodeResult {
         let o = node.options
-        if o.debug == 1 && o.hasRegExp {
+        if o.debug == 1 && !o.regExp.isEmpty {
             for index in 1..<max(count, 1) where index < captures.count {
                 var shown = captures[index]
                 if shown.count > debugTextLimit { shown = String(shown.prefix(debugTextLimit)) + "…" }
@@ -154,7 +265,7 @@ enum WebParserProcessor {
 
         // The measure's own value.
         var raw: String
-        if !isRoot && !o.hasRegExp {
+        if !isRoot && o.regExp.isEmpty {
             raw = input
         } else {
             let index = isRoot ? o.stringIndex : o.stringIndex2
@@ -190,7 +301,7 @@ enum WebParserProcessor {
                 r.logs.append(WebParserLogLine(level: .error, message:
                     "WebParser [\(child.options.name)]: Not enough substrings (StringIndex \(index) of [\(o.name)])"))
             }
-            r.children.append(processNode(child, input: childInput, isRoot: false, depth: depth + 1))
+            r.children.append(processNode(child, input: childInput, jsonContext: nil, isRoot: false, depth: depth + 1))
         }
         return r
     }

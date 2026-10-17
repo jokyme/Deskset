@@ -10,7 +10,7 @@ public struct ElementID: Equatable, Hashable, Sendable {
 }
 
 public enum ElementKind: Equatable, Sendable {
-    case string, image, bar, line, histogram, roundline, rotator, shape, button, bitmap
+    case string, image, bar, line, histogram, roundline, rotator, shape, button, bitmap, svg, textEdit
     case unknown(String)
 }
 

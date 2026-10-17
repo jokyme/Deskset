@@ -127,6 +127,8 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         o.name = name
         readURL(into: &o)
         o.regExp = string("RegExp")
+        o.jsonPointer = string("JsonPointer")
+        o.localeConversion = usesLocaleNumberConversion
         o.stringIndex = index("StringIndex")
         o.stringIndex2 = index("StringIndex2")
         o.updateRate = int("UpdateRate", 600)
@@ -311,7 +313,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
 
     private func setResult(_ text: String) {
         resultString = text
-        let number = WebParserText.leadingNumber(text)
+        let number = Measure.parseNumber(text, locale: options.localeConversion ? skin.locale : nil, leadingOnly: true)
         resultNumber = number
         observedMin = min(observedMin, number)
         observedMax = max(observedMax, number)

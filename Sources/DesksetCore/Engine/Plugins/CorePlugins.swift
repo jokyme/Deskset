@@ -17,6 +17,8 @@ public enum CorePlugins {
         ("ActionTimer", ActionTimerMeasure.self),
         ("CoreTemp", CoreTempMeasure.self),
         ("AdvancedCPU", AdvancedCPUMeasure.self),
+        ("PowerPlugin", PowerPluginMeasure.self),
+        ("Power", PowerPluginMeasure.self),
         ("PingPlugin", PingMeasure.self),
         ("Ping", PingMeasure.self),
         ("RunCommand", RunCommandMeasure.self),
@@ -24,6 +26,8 @@ public enum CorePlugins {
         ("Quote", QuoteMeasure.self),
         ("FileView", FileViewMeasure.self),
         ("FolderInfo", FolderInfoMeasure.self),
+        ("Drag&Drop", DragDropMeasure.self),
+        ("DragDrop", DragDropMeasure.self),
         ("RecycleManager", RecycleManagerMeasure.self),
         ("UsageMonitor", UsageMonitorMeasure.self),
         ("PerfMon", PerfMonMeasure.self),
@@ -42,9 +46,25 @@ public enum CorePlugins {
         ("MacSun", MacSunMeasure.self),
     ]
 
-    /// `Measure=` types provided here (RecycleManager "was previously a plugin measure").
+    /// `Measure=` types provided here (Rainmeter 5.0 promoted bundled plugins and Mouse/DragDrop to built-in measures).
     public static let measureTypes: [(name: String, type: Measure.Type)] = [
         ("RecycleManager", RecycleManagerMeasure.self),
+        ("ActionTimer", ActionTimerMeasure.self),
+        ("AdvancedCPU", AdvancedCPUMeasure.self),
+        ("CoreTemp", CoreTempMeasure.self),
+        ("DragDrop", DragDropMeasure.self),
+        ("FileView", FileViewMeasure.self),
+        ("FolderInfo", FolderInfoMeasure.self),
+        ("Mouse", MouseMeasure.self),
+        ("PerfMon", PerfMonMeasure.self),
+        ("Ping", PingMeasure.self),
+        ("Power", PowerPluginMeasure.self),
+        ("Quote", QuoteMeasure.self),
+        ("ResMon", ResMonMeasure.self),
+        ("RunCommand", RunCommandMeasure.self),
+        ("SpeedFan", SpeedFanMeasure.self),
+        ("UsageMonitor", UsageMonitorMeasure.self),
+        ("WindowMessage", WindowMessageMeasure.self),
     ]
 
     /// Registers every core plugin with `MeasureRegistry`. Safe to call more than once.

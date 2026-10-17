@@ -517,6 +517,8 @@ random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache 
 
 random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
 
+random.UUID	Sources/DesksetCore/Engine/Meters/SVGMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
 random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	cancelling every run, and collecting option names into a dictionary: the order reaches no skin state
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
@@ -563,7 +565,7 @@ background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects
 background.global	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: plugin helper programs start off the skin's thread (PluginProcess.launcher)
 background.process	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and plugin helper programs (a recording starts none)
 background.queue	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand's pipe queue
-effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
+effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	9	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
 effect.iniWrite	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: !WriteKeyValue (a recording writes its copy, through here)
 effect.signal	Sources/DesksetCore/Engine/SideEffects.swift	2	SideEffects live implementation: RunCommand Close, Kill, Timeout and unload (a recording records the signal)
 timer.asyncAfter	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand drains the pipes on its own queue

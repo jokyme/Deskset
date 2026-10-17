@@ -1520,6 +1520,85 @@ private func runLuaLibraryTests(_ t: TestRunner) {
         t.equal(h.variable("Out"), "温度 °C → Überschrift ✓")
         t.equal(h.value(), Double("温度 °C".utf8.count))
     }
+
+    t.suite("Lua: Rainmeter 5.0 string.uc* Unicode codepoint functions") {
+        let h = try harness(t, #"""
+            function Update()
+              local s = 'café'
+              local len = string.uclen(s) .. '/' .. s:uclen() .. '/' .. string.len(s)
+              local sub = s:ucsub(2, 4) .. '/' .. s:ucsub(-2)
+              local rev = ('Привет'):ucreverse()
+              local up = ('café привет'):ucupper()
+              local lo = ('CAFÉ ПРИВЕТ'):uclower()
+              local b1, b2 = ('é€'):ucbyte(1, 2)
+              local ch = string.ucchar(b1, b2)
+              local fi, fj = ('aébc'):ucfind('é')
+              local m = ('日本語123'):ucmatch('^(...)%d+$')
+              local g = {}
+              for w in ('αβ,γδ'):ucgmatch('[^,]+') do g[#g + 1] = w end
+              local subbed, cnt = ('café'):ucgsub('.', '<%0>', 2)
+              return table.concat({ len, sub, rev, up, lo, b1 .. ',' .. b2, ch, fi .. ',' .. fj, m, table.concat(g, '|'), subbed .. ':' .. cnt }, ';')
+            end
+            """#)
+        h.update()
+        t.equal(h.string(), "4/4/5;afé/fé;тевирП;CAFÉ ПРИВЕТ;café привет;233,8364;é€;2,2;日本語;αβ|γδ;<c><a>fé:2")
+        t.equal(h.errors, [])
+    }
+
+    t.suite("Lua: Rainmeter 5.0 SetOption, SetOptionGroup, SetVariable, ReadTextFile and WriteTextFile") {
+        let h = try harness(t, #"""
+            function Initialize()
+              SKIN:SetVariable('SingleVar', 42)
+              SKIN:SetVariable({'VarA', 'alpha'}, {'VarB', 99})
+              SKIN:SetOption('Label1', 'Text', 'Direct 1')
+              SKIN:SetOption('Label1', {'FontSize', 16}, {'ToolTipText', 'Tip 1'})
+              SKIN:SetOptionGroup('Labels', {'SolidColor', '10,20,30,255'})
+              local m = SKIN:GetMeter('Label2')
+              m:SetOption({'Text', 'Direct 2'}, {'FontSize', 18})
+              SELF:SetOption('CustomOpt', 'from self')
+              local txt, err = SKIN:ReadTextFile('input.txt')
+              assert(txt == 'Привет\n世界', tostring(err))
+              local ok, werr = SKIN:WriteTextFile('out_utf8.txt', txt, 'UTF-8')
+              assert(ok == true, tostring(werr))
+              local ok16 = SKIN:WriteTextFile('out_utf16.txt', txt, 'UTF-16')
+              assert(ok16 == true)
+              readBack8 = SKIN:ReadTextFile('out_utf8.txt')
+              readBack16 = SKIN:ReadTextFile('out_utf16.txt')
+              local missingText, err2 = SKIN:ReadTextFile('no_such_file.txt')
+              missingIsNil = (missingText == nil)
+              missingErr = err2
+            end
+            function Update()
+              return SELF:GetOption('CustomOpt')
+            end
+            """#, extra: """
+            [Label1]
+            Meter=String
+            Group=Labels
+            Text=Before1
+            [Label2]
+            Meter=String
+            Group=Labels
+            Text=Before2
+            """, files: ["Root/Sub/input.txt": "Привет\r\n世界"])
+        h.update()
+        t.equal(h.variable("SingleVar"), "42")
+        t.equal(h.variable("VarA"), "alpha")
+        t.equal(h.variable("VarB"), "99")
+        t.equal(h.text("Label1"), "Direct 1")
+        t.equal(h.skin.meter(named: "Label1")?.rawOption("FontSize"), "16")
+        t.equal(h.skin.meter(named: "Label1")?.rawOption("ToolTipText"), "Tip 1")
+        t.equal(h.skin.meter(named: "Label1")?.rawOption("SolidColor"), "10,20,30,255")
+        t.equal(h.text("Label2"), "Direct 2")
+        t.equal(h.skin.meter(named: "Label2")?.rawOption("FontSize"), "18")
+        t.equal(h.skin.meter(named: "Label2")?.rawOption("SolidColor"), "10,20,30,255")
+        t.equal(h.string(), "from self")
+        t.equal(h.inline("readBack8"), "Привет\n世界")
+        t.equal(h.inline("readBack16"), "Привет\n世界")
+        t.equal(h.inline("missingIsNil"), "1")
+        t.check((h.inline("missingErr") ?? "").contains("cannot open"))
+        t.equal(h.errors, [])
+    }
 }
 
 

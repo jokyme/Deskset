@@ -468,6 +468,95 @@ open class Measure: SkinSection {
         substitute?.apply(to: text) ?? text
     }
 
+    /// True when `NumberConversionFormat=Locale` is set on the measure.
+    var usesLocaleNumberConversion: Bool {
+        string("NumberConversionFormat", "Default")
+            .trimmingCharacters(in: .whitespaces)
+            .caseInsensitiveCompare("Locale") == .orderedSame
+    }
+
+    /// Converts `text` to a number using `NumberConversionFormat=Default` (`locale == nil`) or `Locale`.
+    static func parseNumber(_ text: String, locale: Locale?, leadingOnly: Bool = false) -> Double {
+        guard let locale else {
+            if leadingOnly { return WebParserText.leadingNumber(text) }
+            guard let v = Double(text.trimmingCharacters(in: .whitespaces)), v.isFinite else { return 0 }
+            return v
+        }
+        let candidate: String
+        if leadingOnly {
+            let trimmed = text.drop(while: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r" })
+            var prefix = ""
+            var index = trimmed.startIndex
+            if index < trimmed.endIndex, trimmed[index] == "+" || trimmed[index] == "-" {
+                prefix.append(trimmed[index])
+                index = trimmed.index(after: index)
+            }
+            while index < trimmed.endIndex {
+                let c = trimmed[index]
+                if c.isASCII && c.isNumber || c == "." || c == "," || c == "\u{00A0}" || c == "\u{202F}" || c == "'" {
+                    prefix.append(c)
+                    index = trimmed.index(after: index)
+                } else {
+                    break
+                }
+            }
+            if index < trimmed.endIndex, trimmed[index] == "e" || trimmed[index] == "E" {
+                var expIndex = trimmed.index(after: index)
+                var expPart = String(trimmed[index])
+                if expIndex < trimmed.endIndex, trimmed[expIndex] == "+" || trimmed[expIndex] == "-" {
+                    expPart.append(trimmed[expIndex])
+                    expIndex = trimmed.index(after: expIndex)
+                }
+                var hasExpDigit = false
+                while expIndex < trimmed.endIndex, trimmed[expIndex].isASCII, trimmed[expIndex].isNumber {
+                    hasExpDigit = true
+                    expPart.append(trimmed[expIndex])
+                    expIndex = trimmed.index(after: expIndex)
+                }
+                if hasExpDigit { prefix += expPart }
+            }
+            candidate = prefix
+        } else {
+            candidate = text.trimmingCharacters(in: .whitespaces)
+        }
+        guard !candidate.isEmpty else { return 0 }
+        let dec = locale.decimalSeparator ?? "."
+        let grp = locale.groupingSeparator ?? ","
+        for (d, g) in [(dec, grp), (",", "."), (".", ",")] {
+            if let v = parseWithSeparators(candidate, decimal: d, grouping: g), v.isFinite {
+                return v
+            }
+        }
+        if let v = Double(candidate), v.isFinite { return v }
+        return 0
+    }
+
+    private static func parseWithSeparators(_ text: String, decimal: String, grouping: String) -> Double? {
+        guard !decimal.isEmpty else { return Double(text) }
+        let parts = text.components(separatedBy: decimal)
+        guard parts.count <= 2 else { return nil }
+        var intPart = parts[0]
+        if !grouping.isEmpty, grouping != decimal, intPart.contains(grouping) {
+            let groups = intPart.components(separatedBy: grouping)
+            // When no explicit decimal separator is present, a single separator with != 3 trailing digits
+            // (e.g. "123,5") is a decimal separator, not thousands grouping.
+            if parts.count == 1, groups.dropFirst().contains(where: { $0.count != 3 }) {
+                return nil
+            }
+            intPart = groups.joined()
+        }
+        intPart = intPart.replacingOccurrences(of: "\u{00A0}", with: "")
+            .replacingOccurrences(of: "\u{202F}", with: "")
+        if parts.count == 2 {
+            let fracPart = parts[1]
+            if !grouping.isEmpty, grouping != decimal, fracPart.contains(grouping) {
+                return nil
+            }
+            return Double(intPart + "." + fracPart)
+        }
+        return Double(intPart)
+    }
+
     // MARK: Bangs
 
     /// `!EnableMeasure` / `!DisableMeasure`: a disabled measure is 0 in numerical contexts right away.

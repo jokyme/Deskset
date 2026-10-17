@@ -17,6 +17,8 @@ enum MediaUIPlugins {
         ("NowPlaying", NowPlayingMeasure.self),
         ("WiFiStatus", WiFiStatusMeasure.self),
         ("MediaKey", MediaKeyMeasure.self),
+        ("InputText", InputTextMeasure.self),
+        ("iTunes", ITunesMeasure.self),
     ]
 
     /// Plugins only (Rainmeter's own and third-party).

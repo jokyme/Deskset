@@ -169,6 +169,9 @@ public final class StringMeter: Meter {
         } else if key.hasPrefix("center") {
             horizontal = .center
             rest = key.dropFirst(6)
+        } else if key.hasPrefix("justify") {
+            horizontal = .justify
+            rest = key.dropFirst(7)
         } else {
             // Judgment: unknown values use the default (LeftTop).
             return (.left, .top)
@@ -416,7 +419,7 @@ public final class StringMeter: Meter {
     public override func anchorOffset(width: Double, height: Double) -> (dx: Double, dy: Double) {
         let dx: Double
         switch style.horizontalAlign {
-        case .left: dx = 0
+        case .left, .justify: dx = 0
         case .center: dx = -width / 2
         case .right: dx = -width
         }

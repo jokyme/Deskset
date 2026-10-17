@@ -28,6 +28,12 @@ enum LuaHostOp: Int {
     case removeFile = 23         // (path) → path[, done, message] (done: a sandboxed skin removed its copy)
     case renameFile = 24         // (from, to) → from, to[, done, message]
     case temporaryName = 25      // () → the name of a new empty file | nil, message
+    case setOption = 26          // (kind: 0=byName|1=measure|2=meter, target, option, value)
+    case setOptionGroup = 27     // (group, option, value)
+    case setVariable = 28        // (name, value)
+    case readTextFile = 29       // (path) → text | nil, message
+    case writeTextFile = 30      // (path, text[, encoding]) → true | false, message
+    case unicodeCase = 31        // (text, isUpper) → text
 }
 
 /// Section kinds passed to `getOption` / `getNumberOption`.
@@ -77,6 +83,36 @@ local function check(self, kind, method)
   return rawget(self, NAME)
 end
 
+local function applyPairs(op, method, kind, target, ...)
+  local first = select(1, ...)
+  if type(first) == 'table' then
+    local n = select('#', ...)
+    local offset = (target ~= nil and kind == 0 or (target ~= nil and kind == nil)) and 1 or 0
+    for i = 1, n do
+      local t = select(i, ...)
+      if type(t) ~= 'table' then
+        error(format("bad argument #%d to '%s' (table expected, got %s)", i + offset, method, type(t)), 3)
+      end
+      if kind ~= nil then
+        host(op, kind, target, t[1], t[2])
+      elseif target ~= nil then
+        host(op, target, t[1], t[2])
+      else
+        host(op, t[1], t[2])
+      end
+    end
+  else
+    local k, v = select(1, ...), select(2, ...)
+    if kind ~= nil then
+      host(op, kind, target, k, v)
+    elseif target ~= nil then
+      host(op, target, k, v)
+    else
+      host(op, k, v)
+    end
+  end
+end
+
 function Measure:GetName() return check(self, MEASURE, 'GetName') end
 function Measure:GetValue() return host(13, check(self, MEASURE, 'GetValue'), 'value') end
 function Measure:GetStringValue() return host(13, check(self, MEASURE, 'GetStringValue'), 'string') end
@@ -100,6 +136,9 @@ function Measure:GetNumberOption(option, default)
   end
   return v
 end
+function Measure:SetOption(...)
+  applyPairs(26, 'SetOption', MEASURE, check(self, MEASURE, 'SetOption'), ...)
+end
 function Measure:Disable() host(14, check(self, MEASURE, 'Disable'), false) end
 function Measure:Enable() host(14, check(self, MEASURE, 'Enable'), true) end
 
@@ -119,6 +158,9 @@ function Meter:GetNumberOption(option, default)
     return default
   end
   return v
+end
+function Meter:SetOption(...)
+  applyPairs(26, 'SetOption', METER, check(self, METER, 'SetOption'), ...)
 end
 function Meter:GetX(absolute) return host(15, check(self, METER, 'GetX'), 'x', absolute and true or false) end
 function Meter:GetY(absolute) return host(15, check(self, METER, 'GetY'), 'y', absolute and true or false) end
@@ -156,11 +198,23 @@ function Skin:GetMeter(name)
   if n == nil then return nil end
   return handle(MeterMeta, METER, n)
 end
+function Skin:SetOption(section, ...)
+  checkSkin(self, 'SetOption')
+  applyPairs(26, 'SetOption', 0, section, ...)
+end
+function Skin:SetOptionGroup(group, ...)
+  checkSkin(self, 'SetOptionGroup')
+  applyPairs(27, 'SetOptionGroup', nil, group, ...)
+end
 function Skin:GetVariable(name, default)
   checkSkin(self, 'GetVariable')
   local v = host(3, name)
   if v == nil then return default end
   return v
+end
+function Skin:SetVariable(...)
+  checkSkin(self, 'SetVariable')
+  applyPairs(28, 'SetVariable', nil, nil, ...)
 end
 function Skin:GetX() checkSkin(self, 'GetX') return host(4, 'x') end
 function Skin:GetY() checkSkin(self, 'GetY') return host(4, 'y') end
@@ -170,6 +224,11 @@ function Skin:MoveWindow(x, y) checkSkin(self, 'MoveWindow') host(5, x, y) end
 function Skin:FadeWindow(from, to) checkSkin(self, 'FadeWindow') host(6, from, to) end
 function Skin:Bang(...) checkSkin(self, 'Bang') host(7, ...) end
 function Skin:MakePathAbsolute(path) checkSkin(self, 'MakePathAbsolute') return host(8, path) end
+function Skin:ReadTextFile(path) checkSkin(self, 'ReadTextFile') return host(29, path) end
+function Skin:WriteTextFile(path, text, encoding)
+  checkSkin(self, 'WriteTextFile')
+  return host(30, path, text, encoding)
+end
 function Skin:ReplaceVariables(text) checkSkin(self, 'ReplaceVariables') return host(9, text) end
 function Skin:ParseFormula(text) checkSkin(self, 'ParseFormula') return host(10, text) end
 
@@ -352,6 +411,9 @@ string.rep = function(s, n, ...)
   if s == '' then return '' end
   return rep(s, n, ...)
 end
+
+string.uclower = function(s) return host(31, s, false) end
+string.ucupper = function(s) return host(31, s, true) end
 
 -- MARK: Internal functions (called by the engine)
 

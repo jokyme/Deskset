@@ -39,7 +39,7 @@ enum NowPlayingPlayerNames {
     static let musicNames: Set<String> = [
         "", "itunes", "wmp", "aimp", "cad", "foobar2000", "foobar", "winamp", "wlm", "mediamonkey", "musicbee",
         "jriver", "mediacenter", "mediajukebox", "zune", "lastfm", "last.fm", "ttplayer", "openpandora", "music",
-        "applemusic", "apple music", "itunes.exe",
+        "applemusic", "apple music", "itunes.exe", "windows",
     ]
 
     /// Preferred app and whether the name is one of the documented / known names.
@@ -49,10 +49,10 @@ enum NowPlayingPlayerNames {
         return (.music, musicNames.contains(name))
     }
 
-    /// Names of players that exist on the Mac (Music, formerly iTunes, and Spotify); every other player interface is
-    /// a Windows player shown with Music / Spotify instead.
+    /// Names of players that exist on the Mac (Music, formerly iTunes, Spotify, and Windows media session); every
+    /// other player interface is a Windows player shown with Music / Spotify instead.
     static let macPlayerNames: Set<String> = [
-        "", "itunes", "itunes.exe", "music", "applemusic", "apple music", "spotify", "spotify.exe",
+        "", "itunes", "itunes.exe", "music", "applemusic", "apple music", "spotify", "spotify.exe", "windows",
     ]
 
     /// Whether the player a `PlayerName` names exists on the Mac.

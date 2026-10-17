@@ -1101,6 +1101,8 @@ enum NowPlayingCoverCache {
         if b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46 { return "gif" }
         if b[0] == 0x42 && b[1] == 0x4D { return "bmp" }
         if b.count >= 12, b[8] == 0x57, b[9] == 0x45, b[10] == 0x42, b[11] == 0x50 { return "webp" }
+        if b.count >= 12, b[4] == 0x66, b[5] == 0x74, b[6] == 0x79, b[7] == 0x70,
+           b[8] == 0x61, b[9] == 0x76, b[10] == 0x69, (b[11] == 0x66 || b[11] == 0x73) { return "avif" }
         if (b[0] == 0x49 && b[1] == 0x49) || (b[0] == 0x4D && b[1] == 0x4D) { return "tiff" }
         return nil
     }

@@ -93,6 +93,8 @@ public final class SceneProjector {
         case let m as ShapeMeter: return (.shape, .shape(m.lower()))
         case let m as ButtonMeter: return (.button, .sprite(m.lower()))
         case let m as BitmapMeter: return (.bitmap, .sprite(m.lower()))
+        case let m as SVGMeter: return (.svg, .shape(m.lower()))
+        case let m as TextEditMeter: return (.textEdit, .text(m.lower()))
         default: return (.unknown(meter.type), nil)
         }
     }

@@ -334,7 +334,7 @@ extension StudioPartPage {
         // Align.
         let alignIndex: Int
         switch s.style.horizontalAlign {
-        case .left: alignIndex = 0
+        case .left, .justify: alignIndex = 0
         case .center: alignIndex = 1
         case .right: alignIndex = 2
         }

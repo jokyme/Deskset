@@ -71,12 +71,18 @@ package enum TextRenderer {
         }
         var positioned: [(line: TextLayout.Placed, origin: CGPoint)] = []
         positioned.reserveCapacity(placed.count)
-        for line in placed {
+        for var line in placed {
             let x: CGFloat
             switch style.horizontalAlign {
             case .left: x = innerX
             case .center: x = innerX + (innerWidth - line.width) / 2
             case .right: x = innerX + innerWidth - line.width
+            case .justify:
+                x = innerX
+                if line.canJustify, innerWidth - line.indent > 1,
+                   let justified = CTLineCreateJustifiedLine(line.line, 1.0, Double(innerWidth - line.indent)) {
+                    line.line = justified
+                }
             }
             positioned.append((line, CGPoint(x: x + line.indent, y: y + line.ascent)))
             y += line.height
@@ -507,17 +513,20 @@ package final class TextLayout {
         var descent: CGFloat
         var leading: CGFloat
         var indent: CGFloat = 0
+        var canJustify: Bool = false
         var height: CGFloat { ascent + descent + leading }
     }
 
     /// The lines to draw: all of them without clipping; otherwise those that fit in the box height (at least one),
     /// with ellipses where ClipString asks for them.
     func visibleLines(clip: Int, boxHeight: CGFloat, innerWidth: CGFloat) -> [Placed] {
-        func placed(_ l: Line) -> Placed {
-            Placed(line: l.line, width: l.width, ascent: l.ascent, descent: l.descent, leading: l.leading,
-                   indent: l.indent)
+        func placed(_ index: Int, _ l: Line) -> Placed {
+            let end = l.range.location + l.range.length
+            let softWrapped = index + 1 < lines.count && end > 0 && end <= units.count && !TextLayout.isNewline(units[end - 1])
+            return Placed(line: l.line, width: l.width, ascent: l.ascent, descent: l.descent, leading: l.leading,
+                          indent: l.indent, canJustify: softWrapped)
         }
-        guard clip != 0 else { return lines.map(placed) }
+        guard clip != 0 else { return lines.enumerated().map { placed($0.offset, $0.element) } }
         if let c = visibleCache, c.clip == clip, c.boxHeight == boxHeight, c.innerWidth == innerWidth { return c.lines }
         var count = 0
         var used: CGFloat = 0
@@ -526,7 +535,7 @@ package final class TextLayout {
             used += l.height
             count += 1
         }
-        var result = lines.prefix(count).map(placed)
+        var result = lines.prefix(count).enumerated().map { placed($0.offset, $0.element) }
         let available = max(innerWidth, 0)
         if clip == 1 {
             for i in result.indices where result[i].width > available + 0.5 {

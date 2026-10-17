@@ -27,7 +27,8 @@ extension TimeFormatting {
             return dst.value
         }
         if let mask = format, !mask.isEmpty {
-            return parseTimeStamp(raw, mask: mask, locale: locale ?? defaultLocale, systemLocale: systemLocale)
+            return parseTimeStamp(raw, mask: mask, locale: locale ?? defaultLocale, systemLocale: systemLocale,
+                                  localTimeZone: localTimeZone)
         }
         if let v = Double(raw), v.isFinite { return v }
         return nil
@@ -54,7 +55,8 @@ extension TimeFormatting {
     /// `%I` uses `%p` (default AM); `%u %U %V %w %W %g %G` are read but ignored. Missing month / day → 1,
     /// missing time → 0. Out-of-range values (month 13, February 30, hour 24 …) → nil.
     public static func parseTimeStamp(_ string: String, mask: String, locale: Locale = Locale(identifier: "en_US_POSIX"),
-                                      systemLocale: Locale) -> Double? {
+                                      systemLocale: Locale,
+                                      localTimeZone: TimeZone = TimeZone(secondsFromGMT: 0)!) -> Double? {
         guard string.count <= 4096, mask.count <= 1024 else { return nil }
         // `locale-date` / `locale-time` are listed among the codes "used in the Format and TimeStampFormat
         // options" and "cannot be modified by using TimeStampLocale": a whole mask of either reads the system
@@ -68,7 +70,7 @@ extension TimeFormatting {
             default: break
             }
         }
-        var parser = MaskParser(input: string, info: info)
+        var parser = MaskParser(input: string, info: info, localTimeZone: localTimeZone, systemLocale: systemLocale)
         guard parser.match(maskChars, depth: 0) else { return nil }
         return parser.fields.windowsTimestamp()
     }
@@ -155,6 +157,12 @@ struct ParsedTimeFields {
     var year: Int?
     var yearInCentury: Int?
     var century: Int?
+    var isoYear: Int?
+    var isoYearInCentury: Int?
+    var isoWeek: Int?
+    var weekSunday: Int?
+    var weekMonday: Int?
+    var weekday: Int?
     var month: Int?
     var day: Int?
     var yearDay: Int?
@@ -163,10 +171,23 @@ struct ParsedTimeFields {
     var isPM: Bool?
     var minute: Int?
     var second: Int?
+    var tzOffsetSeconds: Int?
+    var hasConflict = false
+
+    mutating func set<T: Equatable>(_ keyPath: WritableKeyPath<ParsedTimeFields, T?>, _ value: T) {
+        if let existing = self[keyPath: keyPath], existing != value {
+            hasConflict = true
+        }
+        self[keyPath: keyPath] = value
+    }
 
     func windowsTimestamp() -> Double? {
-        let y: Int
+        guard !hasConflict else { return nil }
+        let hasExplicitYear = year != nil || yearInCentury != nil || century != nil
+        var y: Int
         if let year {
+            if let yy = yearInCentury, ((year % 100) + 100) % 100 != yy { return nil }
+            if let century, year / 100 != century { return nil }
             y = year
         } else if let yy = yearInCentury {
             if let century { y = century * 100 + yy } else { y = yy < 69 ? 2000 + yy : 1900 + yy }
@@ -175,17 +196,90 @@ struct ParsedTimeFields {
         } else {
             y = 1900   // manual: "If the year is not defined in the TimeStamp option, then 1900 will be used"
         }
+
+        var resolvedIsoYear: Int?
+        if let isoYear {
+            if let iyy = isoYearInCentury, ((isoYear % 100) + 100) % 100 != iyy { return nil }
+            resolvedIsoYear = isoYear
+        } else if let iyy = isoYearInCentury {
+            if let century { resolvedIsoYear = century * 100 + iyy } else { resolvedIsoYear = iyy < 69 ? 2000 + iyy : 1900 + iyy }
+        }
+
+        if let wd = weekday {
+            guard (0...6).contains(wd) else { return nil }
+        }
+
         var m = month ?? 1
         var d = day ?? 1
-        if month == nil, day == nil, let yd = yearDay {
-            guard yd >= 1, yd <= (CivilTime.isLeapYear(y) ? 366 : 365) else { return nil }
-            let (_, mm, dd) = CivilTime.civilFromDays(CivilTime.daysFromCivil(y, 1, 1) + yd - 1)
-            m = mm
-            d = dd
+        if month == nil, day == nil {
+            if let yd = yearDay {
+                guard yd >= 1, yd <= (CivilTime.isLeapYear(y) ? 366 : 365) else { return nil }
+                let (_, mm, dd) = CivilTime.civilFromDays(CivilTime.daysFromCivil(y, 1, 1) + yd - 1)
+                m = mm
+                d = dd
+            } else if let v = isoWeek {
+                guard (1...53).contains(v) else { return nil }
+                let wy = resolvedIsoYear ?? (hasExplicitYear ? y : 1900)
+                let wd = weekday ?? 1 // Default to Monday (ISO day 1)
+                let mondayBased = (wd + 6) % 7
+                let jan4Days = CivilTime.daysFromCivil(wy, 1, 4)
+                let jan4MondayBased = (CivilTime.weekday(ofDay: jan4Days) + 6) % 7
+                let targetDays = (jan4Days - jan4MondayBased) + (v - 1) * 7 + mondayBased
+                let check = CivilTime(wallSeconds: targetDays * CivilTime.secondsPerDay)
+                guard check.isoWeek.year == wy, check.isoWeek.week == v else { return nil }
+                if hasExplicitYear, check.year != y { return nil }
+                y = check.year
+                m = check.month
+                d = check.day
+            } else if let u = weekSunday {
+                guard (0...53).contains(u) else { return nil }
+                let wd = weekday ?? 0 // Default to Sunday
+                let jan1Days = CivilTime.daysFromCivil(y, 1, 1)
+                let jan1Wd = CivilTime.weekday(ofDay: jan1Days)
+                let firstSundayYd = (7 - jan1Wd) % 7
+                let yd0 = firstSundayYd + (u - 1) * 7 + wd
+                guard yd0 >= 0, yd0 < (CivilTime.isLeapYear(y) ? 366 : 365) else { return nil }
+                let (_, mm, dd) = CivilTime.civilFromDays(jan1Days + yd0)
+                m = mm
+                d = dd
+            } else if let w = weekMonday {
+                guard (0...53).contains(w) else { return nil }
+                let wd = weekday ?? 1 // Default to Monday
+                let mondayBasedWd = (wd + 6) % 7
+                let jan1Days = CivilTime.daysFromCivil(y, 1, 1)
+                let jan1MondayBased = (CivilTime.weekday(ofDay: jan1Days) + 6) % 7
+                let firstMondayYd = (7 - jan1MondayBased) % 7
+                let yd0 = firstMondayYd + (w - 1) * 7 + mondayBasedWd
+                guard yd0 >= 0, yd0 < (CivilTime.isLeapYear(y) ? 366 : 365) else { return nil }
+                let (_, mm, dd) = CivilTime.civilFromDays(jan1Days + yd0)
+                m = mm
+                d = dd
+            } else if let wy = resolvedIsoYear, !hasExplicitYear {
+                y = wy
+            }
         }
         guard (1...12).contains(m), d >= 1, d <= CivilTime.daysInMonth(y, m) else { return nil }
+
+        let resolvedDays = CivilTime.daysFromCivil(y, m, d)
+        let resolvedCivil = CivilTime(wallSeconds: resolvedDays * CivilTime.secondsPerDay)
+        if let yd = yearDay, resolvedCivil.yearDay + 1 != yd { return nil }
+        if let v = isoWeek, resolvedCivil.isoWeek.week != v { return nil }
+        if let wy = resolvedIsoYear, (month != nil || day != nil || yearDay != nil || isoWeek != nil), resolvedCivil.isoWeek.year != wy { return nil }
+        if let u = weekSunday, resolvedCivil.weekOfYearSunday != u { return nil }
+        if let w = weekMonday, resolvedCivil.weekOfYearMonday != w { return nil }
+        if let wd = weekday, (hasExplicitYear || resolvedIsoYear != nil || yearDay != nil || isoWeek != nil || weekSunday != nil || weekMonday != nil) {
+            if resolvedCivil.weekday != wd { return nil }
+        }
+
         var h = 0
         if let hour24 {
+            guard (0...23).contains(hour24) else { return nil }
+            if let hour12 {
+                guard (1...12).contains(hour12) else { return nil }
+                let expected = isPM != nil ? (hour12 % 12 + (isPM == true ? 12 : 0)) : nil
+                if let expected, expected != hour24 { return nil }
+                if isPM == nil && (hour24 % 12) != (hour12 % 12) { return nil }
+            }
             h = hour24
         } else if let hour12 {
             guard (1...12).contains(hour12) else { return nil }
@@ -196,7 +290,7 @@ struct ParsedTimeFields {
         let mi = minute ?? 0
         let s = second ?? 0
         guard (0...23).contains(h), (0...59).contains(mi), (0...60).contains(s) else { return nil }
-        let wall = CivilTime.wallSeconds(year: y, month: m, day: d, hour: h, minute: mi, second: s)
+        let wall = CivilTime.wallSeconds(year: y, month: m, day: d, hour: h, minute: mi, second: s) - (tzOffsetSeconds ?? 0)
         return Double(wall) + TimeFormatting.windowsEpochOffset
     }
 }
@@ -205,12 +299,18 @@ struct MaskParser {
     /// Input characters, each lower-cased (for case-insensitive matching).
     let input: [String]
     let info: LocaleTimeInfo
+    let localTimeZone: TimeZone
+    let systemLocale: Locale
     var pos = 0
     var fields = ParsedTimeFields()
 
-    init(input: String, info: LocaleTimeInfo) {
+    init(input: String, info: LocaleTimeInfo,
+         localTimeZone: TimeZone = TimeZone(secondsFromGMT: 0)!,
+         systemLocale: Locale = Locale(identifier: "en_US_POSIX")) {
         self.input = LocaleTimeInfo.folded(input)
         self.info = info
+        self.localTimeZone = localTimeZone
+        self.systemLocale = systemLocale
     }
 
     private static let compositeC = Array("%a %b %e %H:%M:%S %Y")
@@ -260,6 +360,168 @@ struct MaskParser {
         return Int(v)
     }
 
+    private mutating func parseNumericOffset(requireSign: Bool = true) -> Int? {
+        let saved = pos
+        var sign = 1
+        if pos < input.count, input[pos] == "+" || input[pos] == "-" {
+            sign = input[pos] == "-" ? -1 : 1
+            pos += 1
+        } else if requireSign {
+            return nil
+        }
+        var digits: [Int] = []
+        while pos < input.count, digits.count < 2, let d = MaskParser.decimalDigit(input[pos]) {
+            digits.append(d)
+            pos += 1
+        }
+        guard !digits.isEmpty else { pos = saved; return nil }
+        let hh: Int
+        var mm = 0
+        if digits.count == 2 {
+            hh = digits[0] * 10 + digits[1]
+            if pos < input.count, input[pos] == ":" {
+                let colonPos = pos
+                pos += 1
+                if pos + 1 < input.count,
+                   let m1 = MaskParser.decimalDigit(input[pos]),
+                   let m2 = MaskParser.decimalDigit(input[pos + 1]) {
+                    mm = m1 * 10 + m2
+                    pos += 2
+                } else {
+                    pos = colonPos
+                }
+            } else if pos + 1 < input.count,
+                      let m1 = MaskParser.decimalDigit(input[pos]),
+                      let m2 = MaskParser.decimalDigit(input[pos + 1]) {
+                mm = m1 * 10 + m2
+                pos += 2
+            }
+        } else {
+            hh = digits[0]
+            if pos < input.count, input[pos] == ":",
+               pos + 2 < input.count,
+               let m1 = MaskParser.decimalDigit(input[pos + 1]),
+               let m2 = MaskParser.decimalDigit(input[pos + 2]) {
+                mm = m1 * 10 + m2
+                pos += 3
+            } else {
+                pos = saved
+                return nil
+            }
+        }
+        guard (0...14).contains(hh), (0...59).contains(mm), !(hh == 14 && mm > 0) else {
+            pos = saved
+            return nil
+        }
+        return sign * (hh * 3600 + mm * 60)
+    }
+
+    private static let knownTimeZoneCandidates: [(name: [String], value: Int)] = {
+        let pairs: [(String, Int)] = [
+            ("coordinated universal time", 0),
+            ("greenwich mean time", 0),
+            ("gmt standard time", 0),
+            ("utc standard time", 0),
+            ("eastern standard time", -5 * 3600),
+            ("eastern daylight time", -4 * 3600),
+            ("central standard time", -6 * 3600),
+            ("central daylight time", -5 * 3600),
+            ("mountain standard time", -7 * 3600),
+            ("mountain daylight time", -6 * 3600),
+            ("pacific standard time", -8 * 3600),
+            ("pacific daylight time", -7 * 3600),
+            ("alaska standard time", -9 * 3600),
+            ("alaska daylight time", -8 * 3600),
+            ("hawaiian standard time", -10 * 3600),
+            ("atlantic standard time", -4 * 3600),
+            ("atlantic daylight time", -3 * 3600),
+            ("british summer time", 1 * 3600),
+            ("central european standard time", 1 * 3600),
+            ("central european summer time", 2 * 3600),
+            ("central european daylight time", 2 * 3600),
+            ("central european time", 1 * 3600),
+            ("w. europe standard time", 1 * 3600),
+            ("w. europe daylight time", 2 * 3600),
+            ("eastern european standard time", 2 * 3600),
+            ("eastern european summer time", 3 * 3600),
+            ("eastern european daylight time", 3 * 3600),
+            ("eastern european time", 2 * 3600),
+            ("russian standard time", 3 * 3600),
+            ("india standard time", 5 * 3600 + 1800),
+            ("china standard time", 8 * 3600),
+            ("japan standard time", 9 * 3600),
+            ("tokyo standard time", 9 * 3600),
+            ("korea standard time", 9 * 3600),
+            ("australian eastern standard time", 10 * 3600),
+            ("australian eastern daylight time", 11 * 3600),
+            ("aus eastern standard time", 10 * 3600),
+            ("aus eastern daylight time", 11 * 3600),
+            ("new zealand standard time", 12 * 3600),
+            ("new zealand daylight time", 13 * 3600),
+            ("aest", 10 * 3600), ("aedt", 11 * 3600),
+            ("nzst", 12 * 3600), ("nzdt", 13 * 3600),
+            ("akst", -9 * 3600), ("akdt", -8 * 3600),
+            ("cest", 2 * 3600), ("eest", 3 * 3600),
+            ("utc", 0), ("gmt", 0),
+            ("est", -5 * 3600), ("edt", -4 * 3600),
+            ("cst", -6 * 3600), ("cdt", -5 * 3600),
+            ("mst", -7 * 3600), ("mdt", -6 * 3600),
+            ("pst", -8 * 3600), ("pdt", -7 * 3600),
+            ("hst", -10 * 3600), ("ast", -4 * 3600), ("adt", -3 * 3600),
+            ("bst", 1 * 3600), ("cet", 1 * 3600), ("eet", 2 * 3600),
+            ("msk", 3 * 3600), ("ist", 5 * 3600 + 1800),
+            ("hkt", 8 * 3600), ("sgt", 8 * 3600),
+            ("jst", 9 * 3600), ("kst", 9 * 3600),
+            ("z", 0)
+        ]
+        return pairs
+            .map { (LocaleTimeInfo.folded($0.0), $0.1) }
+            .sorted { $0.name.count > $1.name.count }
+    }()
+
+    private mutating func parseTimeZoneOffsetCode() -> Int? {
+        skipSpaces()
+        guard pos < input.count else { return nil }
+        if input[pos] == "z" {
+            pos += 1
+            return 0
+        }
+        return parseNumericOffset(requireSign: true)
+    }
+
+    private mutating func parseTimeZoneName() -> Int? {
+        skipSpaces()
+        guard pos < input.count else { return nil }
+        // Check for UTC±HH:MM / GMT±HH:MM first.
+        for prefix in [["u", "t", "c"], ["g", "m", "t"]] {
+            if pos + prefix.count <= input.count, Array(input[pos..<(pos + prefix.count)]) == prefix {
+                let afterPrefix = pos + prefix.count
+                if afterPrefix < input.count, input[afterPrefix] == "+" || input[afterPrefix] == "-" {
+                    pos = afterPrefix
+                    if let off = parseNumericOffset(requireSign: true) {
+                        return off
+                    }
+                    return nil
+                }
+            }
+        }
+        // Check current system TimeZone localized names (standard and daylight).
+        let currentZone = localTimeZone
+        for daylight in [false, true] {
+            let sysName = TimeZoneNames.name(of: currentZone, daylight: daylight, locale: systemLocale)
+            let foldedName = LocaleTimeInfo.folded(sysName)
+            if !foldedName.isEmpty, pos + foldedName.count <= input.count,
+               Array(input[pos..<(pos + foldedName.count)]) == foldedName {
+                pos += foldedName.count
+                return currentZone.secondsFromGMT()
+            }
+        }
+        if let off = name(MaskParser.knownTimeZoneCandidates, asciiWordBoundary: true) {
+            return off
+        }
+        return parseNumericOffset(requireSign: true)
+    }
+
     /// Matches `primary` (a locale composite) and falls back to `fallback` (the English pattern) from the same
     /// position when it does not match.
     private mutating func matchComposite(_ primary: [Character]?, _ fallback: [Character], depth: Int) -> Bool {
@@ -273,17 +535,40 @@ struct MaskParser {
         return match(fallback, depth: depth + 1)
     }
 
-    private mutating func name<T>(_ candidates: [(name: [String], value: T)]) -> T? {
+    private mutating func name<T>(_ candidates: [(name: [String], value: T)], asciiWordBoundary: Bool = false) -> T? {
         skipSpaces()
         for candidate in candidates {
             let n = candidate.name.count
             guard n > 0, pos + n <= input.count else { continue }
             if Array(input[pos..<(pos + n)]) == candidate.name {
+                if asciiWordBoundary,
+                   let last = candidate.name.last?.first, last.isASCII && last.isLetter,
+                   pos + n < input.count, let next = input[pos + n].first, next.isASCII && next.isLetter {
+                    continue
+                }
                 pos += n
                 return candidate.value
             }
         }
         return nil
+    }
+
+    private static func isValidModifier(modifier: Character?, hash: Bool, for code: Character) -> Bool {
+        if let modifier {
+            if hash { return false }
+            switch modifier {
+            case "E":
+                return ["c", "C", "x", "X", "y", "Y"].contains(code)
+            case "O":
+                return ["d", "e", "H", "I", "m", "M", "S", "u", "U", "V", "w", "W", "y"].contains(code)
+            default:
+                return false
+            }
+        }
+        if hash {
+            return ["a", "A", "b", "B", "c", "C", "d", "D", "e", "F", "g", "G", "h", "H", "I", "j", "m", "M", "p", "r", "R", "S", "T", "u", "U", "V", "w", "W", "x", "X", "y", "Y", "z", "Z", "%"].contains(code)
+        }
+        return true
     }
 
     mutating func match(_ mask: [Character], depth: Int) -> Bool {
@@ -303,19 +588,28 @@ struct MaskParser {
             }
             i += 1
             var hash = false
+            var modifier: Character?
             while i < mask.count, mask[i] == "#" || mask[i] == "E" || mask[i] == "O" {
-                if mask[i] == "#" { hash = true }
+                if mask[i] == "#" {
+                    if hash { return false }
+                    hash = true
+                } else {
+                    if modifier != nil { return false }
+                    modifier = mask[i]
+                }
                 i += 1
             }
             guard i < mask.count else { return false }
             let code = mask[i]
             i += 1
+            guard MaskParser.isValidModifier(modifier: modifier, hash: hash, for: code) else { return false }
             switch code {
             case "a", "A":
-                guard name(info.weekdayCandidates) != nil else { return false }
+                guard let wd = name(info.weekdayCandidates) else { return false }
+                fields.set(\.weekday, wd)
             case "b", "B", "h":
                 guard let m = name(info.monthCandidates) else { return false }
-                fields.month = m
+                fields.set(\.month, m)
             case "c":
                 var local: [Character]?
                 if let d = hash ? info.fullDateMask : info.shortDateMask, let tm = info.mediumTimeMask {
@@ -339,52 +633,74 @@ struct MaskParser {
                 guard match(MaskParser.compositeR24, depth: depth + 1) else { return false }
             case "C":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.century = v
+                fields.set(\.century, v)
             case "d", "e":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.day = v
-            case "g", "U", "V", "W":
-                guard number(maxDigits: 2) != nil else { return false }
+                fields.set(\.day, v)
+            case "g":
+                guard let v = number(maxDigits: 2) else { return false }
+                fields.set(\.isoYearInCentury, v)
             case "G":
-                guard number(maxDigits: 4) != nil else { return false }
-            case "u", "w":
-                guard number(maxDigits: 1) != nil else { return false }
+                guard let v = number(maxDigits: 4) else { return false }
+                fields.set(\.isoYear, v)
+            case "U":
+                guard let v = number(maxDigits: 2) else { return false }
+                fields.set(\.weekSunday, v)
+            case "V":
+                guard let v = number(maxDigits: 2) else { return false }
+                fields.set(\.isoWeek, v)
+            case "W":
+                guard let v = number(maxDigits: 2) else { return false }
+                fields.set(\.weekMonday, v)
+            case "u":
+                guard let v = number(maxDigits: 1), (1...7).contains(v) else { return false }
+                fields.set(\.weekday, v % 7)
+            case "w":
+                guard let v = number(maxDigits: 1), (0...6).contains(v) else { return false }
+                fields.set(\.weekday, v)
             case "H":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.hour24 = v
+                fields.set(\.hour24, v)
             case "I":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.hour12 = v
+                fields.set(\.hour12, v)
             case "j":
                 guard let v = number(maxDigits: 3) else { return false }
-                fields.yearDay = v
+                fields.set(\.yearDay, v)
             case "m":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.month = v
+                fields.set(\.month, v)
             case "M":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.minute = v
+                fields.set(\.minute, v)
             case "S":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.second = v
+                fields.set(\.second, v)
             case "y":
                 guard let v = number(maxDigits: 2) else { return false }
-                fields.yearInCentury = v
+                fields.set(\.yearInCentury, v)
             case "Y":
                 guard let v = number(maxDigits: 4) else { return false }
-                fields.year = v
+                fields.set(\.year, v)
             case "p":
                 guard let pm = name(info.ampmCandidates) else { return false }
-                fields.isPM = pm
+                fields.set(\.isPM, pm)
+            case "z":
+                guard let off = parseTimeZoneOffsetCode() else { return false }
+                fields.set(\.tzOffsetSeconds, off)
+            case "Z":
+                guard let off = parseTimeZoneName() else { return false }
+                fields.set(\.tzOffsetSeconds, off)
             case "n", "t":
                 skipSpaces()
             case "%":
                 guard pos < input.count, input[pos] == "%" else { return false }
                 pos += 1
             default:
-                return false   // %z / %Z ("cannot be used in the TimeStampFormat option") and unknown codes
+                return false
             }
         }
         return true
     }
 }
+

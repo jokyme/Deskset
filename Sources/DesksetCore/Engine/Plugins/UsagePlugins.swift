@@ -99,7 +99,17 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             lastSystemReading = nil
             cachedSerial = nil
         }
-        index = min(max(int("Index", 0), -1), 100_000)
+        let rawIndex = string("Index", "0").trimmingCharacters(in: .whitespaces).lowercased()
+        switch rawIndex {
+        case "sum", "":
+            index = 0
+        case "average":
+            index = -1
+        case "count":
+            index = -2
+        default:
+            index = min(max(int("Index", 0), -1), 100_000)
+        }
         let n = string("Name")
         instanceName = n.isEmpty ? nil : n
         let white = string("Whitelist")
@@ -262,9 +272,9 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             break
         case .noTotal:
             report("percent", "UsageMonitor [\(name)]: Percent=1 needs a _Total instance; the value is 0")
-            return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
+            return (0, index == 0 ? "Total" : index == -1 ? "Average" : index == -2 ? "Count" : "")
         case .nothingCounted:
-            return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
+            return (0, index == 0 ? "Total" : index == -1 ? "Average" : index == -2 ? "Count" : "")
         }
         let values = ranking.values
         func label(_ v: PerfValue) -> String {
@@ -285,6 +295,8 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             return (values.reduce(0) { $0 + $1.value }, "Total")
         case -1:
             return (values.isEmpty ? 0 : values.reduce(0) { $0 + $1.value } / Double(values.count), "Average")
+        case -2:
+            return (Double(values.count), "Count")
         default:
             let sorted = ranking.ranked
             guard index - 1 < sorted.count else { return (0, "") }

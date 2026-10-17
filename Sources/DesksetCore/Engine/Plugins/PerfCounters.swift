@@ -101,7 +101,8 @@ struct PerfValue: Equatable {
 enum PerfCounters {
     /// The counter for `category` / `counter` (case-insensitive), or nil when unknown.
     static func spec(category rawCategory: String, counter rawCounter: String) -> PerfCounterSpec? {
-        let c = rawCategory.trimmingCharacters(in: .whitespaces).lowercased()
+        let rawC = rawCategory.trimmingCharacters(in: .whitespaces).lowercased()
+        let c = rawC == "process v2" ? "process" : rawC
         let n = rawCounter.trimmingCharacters(in: .whitespaces).lowercased()
         guard let category = PerfCategory(rawValue: c) else { return nil }
         func make(_ kind: PerfKind, _ field: PerfField) -> PerfCounterSpec {

@@ -141,6 +141,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         var showSystem = false
         var hideExtensions = false
         var extensions: [String] = []
+        var excludeExtensions: [String] = []
         var sortType = "name"
         var sortDateType = DateType.modified
         var sortAscending = true
@@ -231,6 +232,9 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         o.showSystem = bool("ShowSystem", false)
         o.hideExtensions = bool("HideExtensions", false)
         o.extensions = string("Extensions").split(separator: ";").map {
+            $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: ".*")).lowercased()
+        }.filter { !$0.isEmpty }
+        o.excludeExtensions = string("ExcludeExtensions").split(separator: ";").map {
             $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: ".*")).lowercased()
         }.filter { !$0.isEmpty }
         o.sortType = string("SortType", "Name").trimmingCharacters(in: .whitespaces).lowercased()
@@ -511,7 +515,11 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
             if hidden && !system && !o.showHidden { return nil }
             let item = makeItem(u, v, followLinks: followLinks)
             if !item.isFolder {
-                if !o.extensions.isEmpty && !o.extensions.contains(item.ext.lowercased()) { return nil }
+                if !o.extensions.isEmpty {
+                    if !o.extensions.contains(item.ext.lowercased()) { return nil }
+                } else if !o.excludeExtensions.isEmpty {
+                    if o.excludeExtensions.contains(item.ext.lowercased()) { return nil }
+                }
                 if !wildcard.matches(name) { return nil }
             } else if o.wildcard != "*" && o.wildcard != "*.*" && !wildcard.matches(name) && o.recursive == 0 {
                 return nil
@@ -643,10 +651,12 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
             if offset + count < total { offset += count }
             refreshChildren()
         case "indexup":
-            if offset > 0 { offset -= 1 }
+            let step = argument.isEmpty ? 1 : (Int(argument) ?? 0)
+            if step > 0, offset > 0 { offset = max(0, offset - step) }
             refreshChildren()
         case "indexdown":
-            if offset + count < total { offset += 1 }
+            let step = argument.isEmpty ? 1 : (Int(argument) ?? 0)
+            if step > 0, offset + count < total { offset = min(max(0, total - count), offset + step) }
             refreshChildren()
         case "previousfolder":
             guard parentOptions.recursive != 2 else { return }
