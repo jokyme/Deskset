@@ -202,8 +202,6 @@ effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private 
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 
-mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
-
 mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
 
 event.location	Sources/Deskset/Location/LocationCenter.swift	1	location service: faked in verification
@@ -378,8 +376,6 @@ zone.localizedText	Sources/Deskset/Studio2/StudioCodeWiring.swift	*	the Studio w
 
 effect.sound	Sources/Deskset/Studio2/StudioColorPopover.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-effect.sound	Sources/Deskset/Studio2/StudioCompatCapsule.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 timer.Timer	Sources/Deskset/Studio2/StudioGeometry.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioGeometry.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
@@ -515,14 +511,20 @@ background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.
 
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
+random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
 random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	cancelling every run, and collecting option names into a dictionary: the order reaches no skin state
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
 background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	concurrent file I/O queue; results come back through Skin.hop (fake completions)
-background.queue	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	serial queue per installed icon renderer; captured requests retain their lane, replacement services remain independent
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
+background.queue	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	serial queue per installed icon renderer; captured requests retain their lane, replacement services remain independent
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
 zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
 
@@ -550,6 +552,8 @@ timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	alre
 random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a dictionary: a ranking's values are an array (the counter's instances after Percent and the lists)
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
+
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
 
 random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
 
@@ -592,12 +596,13 @@ random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live()
 random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
 
 background.dispatch	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	2	the skin thread executor itself: work and cancellations go to its own thread
-background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
-timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 background.thread	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: the engine thread (8 MB stack, a run loop of its own)
 timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 wait.runLoop	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its thread runs its run loop
+
+background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
+timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 
@@ -652,10 +657,4 @@ effect.fileWrite	Sources/DesksetCore/Weather/WeatherService.swift	5	weather serv
 background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.no requests: faked through WeatherEnvironment
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
 
-random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
-
-random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
-
-random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
-
-random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
+mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input

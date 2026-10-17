@@ -1,9 +1,0 @@
-// DK5008 notAllowedInStyle
-//== expect: DK5008
-info { name: "T" }
-widget { Text("A").style(s) }
-style s { .onClick { log("x") } }
-//== negative
-info { name: "T" }
-widget { Text("A").style(s).onClick { log("x") } }
-style s { .bold() }

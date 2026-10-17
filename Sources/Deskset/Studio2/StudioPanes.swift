@@ -52,12 +52,12 @@ final class StudioCanvasViewController: NSViewController {
     let statusCapsule: StudioStatusCapsule
     let previewBar: StudioPreviewBar
     let zoomCapsule: StudioZoomCapsule
-    /// "Rainmeter skin · compatibility mode" (and the offer to switch), over a Rainmeter skin.
+    /// "Rainmeter skin · compatibility mode", over a Rainmeter skin.
     let compatCapsule: StudioCompatCapsule
     /// A hint over the canvas's corner while the sidebar is closed ("Rainmeter names on · ⌥⌘R to hide").
     let hintPill = StudioHintPill()
-    /// Whether the compatibility capsule shows, and its offer.
-    var compatState: () -> (shown: Bool, offer: Bool) = { (false, false) }
+    /// Whether the compatibility capsule shows.
+    var compatState: () -> Bool = { false }
     /// The skin the canvas draws (the session's instance).
     var skinProvider: () -> Skin? = { nil } {
         didSet {
@@ -281,7 +281,7 @@ final class StudioCanvasViewController: NSViewController {
         guard card.height > 0 else { return }
         // Where the top would be with the widget centred, and how far above that it should go.
         let centredTop = card.minY - Self.toolbarHeight + clip.verticalBias * zoom
-        let room = compatState().shown ? Self.topRoomUnderCapsule : Self.topRoom
+        let room = compatState() ? Self.topRoomUnderCapsule : Self.topRoom
         let bias = max(0, centredTop - room) / zoom
         guard abs(bias - clip.verticalBias) > 0.25 else { return }
         clip.verticalBias = bias
@@ -387,12 +387,10 @@ final class StudioCanvasViewController: NSViewController {
         updateCompatCapsule()
     }
 
-    /// Shows or hides the compatibility capsule and its offer, as the window says.
+    /// Shows or hides the compatibility capsule, as the window says.
     func updateCompatCapsule() {
         _ = view
-        let state = compatState()
-        compatCapsule.isHidden = !state.shown || !problemCapsule.isHidden
-        compatCapsule.showsOffer = state.offer
+        compatCapsule.isHidden = !compatState() || !problemCapsule.isHidden
         layoutFloating()
     }
 

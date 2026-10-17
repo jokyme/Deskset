@@ -353,20 +353,9 @@ enum Studio2SidebarSelfTests {
             let studio = opened.controller, capsule = studio.canvasController.compatCapsule
             t.check(!capsule.isHidden, "a Rainmeter skin says how it is edited")
             t.equal(capsule.titleLabel.stringValue, "Rainmeter skin · compatibility mode")
-            t.check(capsule.showsOffer, "the offer, before the first change")
-            t.equal(capsule.switchButton.title, "Switch")
-            t.equal(capsule.stayButton.title, "Stay with INI")
             t.check(capsule.frame.minY > StudioCanvasViewController.toolbarHeight, "under the toolbar: \(capsule.frame)")
-            // A change: the offer goes (switching then would break the undo stack); undone, it is back.
             studio.toggleHidden("MeterTitle")
-            t.check(!capsule.showsOffer, "no offer after a change")
             t.check(!capsule.isHidden, "the capsule stays")
-            studio.session?.undoStack.undo()
-            t.check(capsule.showsOffer, "the offer again once undone")
-            // Stay with INI: remembered for this skin.
-            capsule.stayClicked()
-            t.check(!capsule.showsOffer, "Stay with INI")
-            t.check(studio.app.state.editor.seenTips.contains(StudioCompatChoice.tip("Nocturne")))
             // A built-in widget has none.
             guard let system = open(t, "03-customize") else { return }
             defer { system.close() }

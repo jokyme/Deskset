@@ -54,26 +54,15 @@ extension StudioWindowController {
             self.deleteParts(self.canvasController.canvas.selectedNames)
         }
         canvasController.compatState = { [weak self] in
-            guard let self, let session = self.session, self.isRainmeterSkin else {
-                return (false, false)
-            }
-            let stayed = self.app.state.editor.seenTips.contains(StudioCompatChoice.tip(session.config))
-            return (true, !stayed && !session.undoStack.canUndo)
+            guard let self, self.session != nil else { return false }
+            return self.isRainmeterSkin
         }
-        canvasController.compatCapsule.onStay = { [weak self] in self?.stayWithINI() }
         sidebarState.shownDetails = showsRainmeterDetails
         sidebarState.observers.append(NotificationCenter.default.addObserver(
             forName: .desksetEditorPreferencesChanged, object: app.state, queue: .main) { [weak self] _ in
                 guard let self, self.sidebarState.shownDetails != self.showsRainmeterDetails else { return }
                 self.rainmeterDetailsChanged()
             })
-    }
-
-    /// Stay with INI: the offer goes for this skin, remembered.
-    func stayWithINI() {
-        guard let config = session?.config else { return }
-        app.state.updateEditor { $0.seenTips.insert(StudioCompatChoice.tip(config)) }
-        canvasController.updateCompatCapsule()
     }
 
     // MARK: The Layers list

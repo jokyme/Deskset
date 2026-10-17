@@ -421,11 +421,6 @@ enum StudioText {
         case rainmeterNamesHidden = "details.off"
         case rainmeterNamesShown = "details.shown"
         case showRainmeterDetails = "details.menu"
-        case compatOffer = "compat.offer"
-        case compatSwitch = "compat.switch"
-        case compatSwitchLater = "compat.switchLater"
-        case compatStay = "compat.stay"
-        case compatTip = "compat.tip"
         case stepOrder = "step.order"
         case stepShow = "step.show"
         case stepDelete = "step.delete"
@@ -1007,11 +1002,6 @@ enum StudioText {
         .rainmeterNamesHidden: ("Rainmeter names hidden", "已隐藏 Rainmeter 名称"),
         .rainmeterNamesShown: ("Rainmeter names shown", "已显示 Rainmeter 名称"),
         .showRainmeterDetails: ("Show Rainmeter Details", "显示 Rainmeter 细节"),
-        .compatOffer: ("Also available as a Deskset widget: more Mac features, but you’d edit Desk instead of INI.", "也可以换成 Deskset 小组件：能用更多 Mac 功能，但以后改的是 Desk，不是 INI。"),
-        .compatSwitch: ("Switch", "换过去"),
-        .compatSwitchLater: ("Switching to a Deskset widget comes in a later version", "以后的版本可以换成 Deskset 小组件"),
-        .compatStay: ("Stay with INI", "继续用 INI"),
-        .compatTip: ("%@ stays a Rainmeter skin: changes are written into its .ini files.", "%@ 仍是 Rainmeter 皮肤：改动写进它的 .ini 文件。"),
         .stepOrder: ("Change Order", "更改顺序"),
         .stepShow: ("Show", "显示"),
         .stepDelete: ("Delete", "删除"),

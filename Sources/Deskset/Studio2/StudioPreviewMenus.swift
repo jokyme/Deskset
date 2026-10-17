@@ -1,9 +1,8 @@
 import AppKit
 import DesksetCore
 
-/// The popover of the preview bar's first item, titled "Preview only": the Mac's look and the glass the canvas shows
-/// (the language row comes with Desk widgets, which carry translations). Nothing in it is a setting of the widget —
-/// the footer says so.
+/// The popover of the preview bar's first item, titled "Preview only": the Mac's look and the glass the canvas shows.
+/// Nothing in it is a setting of the widget — the footer says so.
 final class StudioPreviewPopoverController: NSViewController {
     let appearanceControl = NSSegmentedControl(labels: [StudioText[.followMac], StudioText[.appearanceLight],
                                                         StudioText[.appearanceDark]],
