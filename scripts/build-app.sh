@@ -148,7 +148,8 @@ else
 fi
 case "$ARCH" in arm64|x86_64) ;; *) echo "--arch must be arm64 or x86_64" >&2; exit 2 ;; esac
 
-swift build -c release --arch "$ARCH" --product "$APP_NAME"
+JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+swift build -c release --arch "$ARCH" --product "$APP_NAME" -j "$JOBS" -Xswiftc -no-whole-module-optimization
 BIN="$(swift build -c release --arch "$ARCH" --product "$APP_NAME" --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP"
@@ -177,7 +178,7 @@ CREDITS
 # the other architecture may not run on this Mac (no Rosetta), so the icon then comes from a build for this Mac.
 ICON_BIN="$BIN"
 if ! "$ICON_BIN" --help > /dev/null 2>&1; then
-    swift build -c release --product "$APP_NAME"
+    swift build -c release --product "$APP_NAME" -j "$JOBS" -Xswiftc -no-whole-module-optimization
     ICON_BIN="$(swift build -c release --product "$APP_NAME" --show-bin-path)/$APP_NAME"
 fi
 ICONSET="build/$APP_NAME-$ARCH.iconset"

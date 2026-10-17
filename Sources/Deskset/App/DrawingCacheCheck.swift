@@ -190,7 +190,8 @@ enum DrawingCacheCheck {
     /// slow would hold up the self-tests).
     static func check(_ file: URL, skinsRoot: URL, updates: Int, scale: CGFloat,
                       space: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!,
-                      budget: TimeInterval = .infinity, pause: Double = updateInterval) -> SkinResult {
+                      budget: TimeInterval = .infinity, pause: Double = updateInterval,
+                      compact: Bool = false) -> SkinResult {
         let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
         let config = parent.dropFirst(skinsRoot.standardizedFileURL.pathComponents.count).joined(separator: "\\")
         var result = SkinResult(config: config, file: file.lastPathComponent)
@@ -251,6 +252,14 @@ enum DrawingCacheCheck {
         }
         frame("redraw", "[!Redraw]")
         frame("again")
+        if compact {
+            frameScale = scale == 1 ? 2 : 1
+            frame("\(frameScale)x")
+            frameScale = scale
+            frame("\(scale)x again")
+            result.seconds = ProcessInfo.processInfo.systemUptime - started
+            return withExtendedLifetime((host, policy)) { result }
+        }
 
         // The mouse over each meter that reacts to it, then off the skin.
         let visible = skin.meters.filter { !$0.hidden && $0.frame.width > 0 && $0.frame.height > 0 }

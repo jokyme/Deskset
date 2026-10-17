@@ -385,7 +385,7 @@ extension Parser {
     /// `if let t = music.title { Text(t) }` → `if not music.title.isMissing { Text(music.title) }` (DK9110).
     func ifLetMatch(_ j: Int, _ lineEnd: Int) -> ForeignLineMatch? {
         let end = extendOverBlocks(j, lineEnd)
-        guard isNameLike(j + 2), kind(j + 3) == .equal else {
+        guard j + 4 < lineEnd, isNameLike(j + 2), kind(j + 3) == .equal else {
             return ForeignLineMatch(kind: .swiftIfLet, start: j, end: end, diagnostic: .swiftIfLet, severity: .error)
         }
         let name = tokens[j + 2].text

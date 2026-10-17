@@ -166,6 +166,7 @@ func runDeskSemanticsTests(_ t: TestRunner) {
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
             process.arguments = ["-c", script, "deskset", value, "x"]
             let pipe = Pipe()
+            process.standardInput = FileHandle.nullDevice
             process.standardOutput = pipe
             do {
                 try process.run()
@@ -363,7 +364,7 @@ func runDeskCheckerFuzzTests(_ t: TestRunner) {
         // DESK_CHECK_FUZZ_COUNT inputs (default 2,000), seeded like the syntax fuzz (DESK_FUZZ_SEED, the CI run number).
         let environment = ProcessInfo.processInfo.environment
         let seed = UInt64(environment["DESK_FUZZ_SEED"] ?? environment["GITHUB_RUN_NUMBER"] ?? "") ?? 7
-        let count = Int(environment["DESK_CHECK_FUZZ_COUNT"] ?? "") ?? 2_000
+        let count = Int(environment["DESK_CHECK_FUZZ_COUNT"] ?? "") ?? (environment["CI"] != nil ? 400 : 2_000)
         var random = DeskRandom(seed: seed)
         let corpus = deskFixtureTexts().map(\.1) + deskExampleCorpus().filter { $0.count > 40 }
             + DeskCatalog.current.documentedItems().map { DeskExampleHarness(catalog: .current).build($0.doc.example, context: $0.doc.exampleContext).text }

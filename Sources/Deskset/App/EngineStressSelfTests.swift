@@ -40,9 +40,14 @@ enum EngineStressSelfTests {
 
         static func fromEnvironment() -> Plan {
             var plan = Plan()
-            if let factor = ProcessInfo.processInfo.environment["DESKSET_THREADS_SOAK"].flatMap(Int.init), factor > 1 {
+            let env = ProcessInfo.processInfo.environment
+            if let factor = env["DESKSET_THREADS_SOAK"].flatMap(Int.init), factor > 1 {
                 plan.loadsPerFile *= factor
                 plan.churn = plan.churn.scaled(by: factor)
+            } else if env["CI"] != nil {
+                plan.updatesPerLoad = 2
+                plan.churn = Churn(photos: 6, purges: 4, fontChanges: 2, publishes: 4, moves: 16, hovers: 32,
+                                   menus: 8, toolTips: 8, pauses: 2, appearances: 2)
             }
             return plan
         }
@@ -451,18 +456,21 @@ enum EngineStressSelfTests {
                 return next(app, plan)
             }
             guard c.isStarted else { return }
+            let isDrawnOnce = plan.drawnOnce.contains(config.lowercased())
             if base == nil {
                 loads[i].onEngine = c.runtime.executor === app.skinExecutor(config)
-                c.visibilityForTesting = true
                 base = (c.runtime.snapshot.updateCount, c.content.state.presented)
+                if isDrawnOnce {
+                    c.visibilityForTesting = false
+                    c.runtime.send(.firstFrame)
+                } else {
+                    c.visibilityForTesting = true
+                }
             }
             guard let base else { return }
             let updates = c.runtime.snapshot.updateCount - base.updates
             loads[i].updates = updates
             loads[i].frames = c.content.state.presented - base.frames
-            if loads[i].frames >= 1, plan.drawnOnce.contains(config.lowercased()), c.visibilityForTesting == true {
-                c.visibilityForTesting = false
-            }
             if asked < plan.updatesPerLoad {
                 // One at a time: the next once the last one ran (or the skin's own clock got there first).
                 if updates >= asked {

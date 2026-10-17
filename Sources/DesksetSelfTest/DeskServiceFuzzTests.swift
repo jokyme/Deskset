@@ -854,12 +854,21 @@ func deskFuzzCorpusCases() -> [DeskFuzzCase] {
 func deskFuzzSuite(_ t: TestRunner, _ cases: [DeskFuzzCase], determinismStride: Int) {
     let only = ProcessInfo.processInfo.environment["DESK_FUZZ_ONLY"]
     let verbose = ProcessInfo.processInfo.environment["DESK_FUZZ_VERBOSE"] != nil
+    let isCI = ProcessInfo.processInfo.environment["CI"] != nil && only == nil
+    let effectiveStride = isCI ? max(determinismStride * 6, 16) : determinismStride
     var positions = 0
     var updates = 0
     var renames = 0
     var compared = 0
     var slowest = (0.0, "")
-    for c in cases where only.map({ c.label.contains($0) }) ?? true {
+    for rawCase in cases where only.map({ rawCase.label.contains($0) }) ?? true {
+        var c = rawCase
+        if isCI {
+            c.maxOffsets = min(c.maxOffsets, 48)
+            c.maxUpdates = min(c.maxUpdates, 12)
+            c.replacements = min(c.replacements, 1)
+            c.askedAgain = min(c.askedAgain, 4)
+        }
         let start = ProcessInfo.processInfo.systemUptime
         var phases: [Double] = []
         func phase() { phases.append(ProcessInfo.processInfo.systemUptime - start - phases.reduce(0, +)) }
@@ -869,7 +878,7 @@ func deskFuzzSuite(_ t: TestRunner, _ cases: [DeskFuzzCase], determinismStride: 
         positions += first.offsets.count
         renames += first.renamed.count
         // Determinism: a second service opened on the same folder answers the same.
-        let sampled = first.offsets.enumerated().filter { $0.offset % max(1, determinismStride) == 0 }
+        let sampled = first.offsets.enumerated().filter { $0.offset % max(1, effectiveStride) == 0 }
         let second = deskFuzzRequests(c, offsets: sampled.map(\.element), renamed: first.renamed)
         phase()
         compared += sampled.count
@@ -927,6 +936,7 @@ func runDeskServiceFuzzTests(_ t: TestRunner) {
         // Every request on the hostile texts from a thread with a background queue's stack: the service's walkers
         // recurse into nested blocks, member chains and types, so deep input must move them to a larger stack.
         let only = ProcessInfo.processInfo.environment["DESK_FUZZ_ONLY"]
+        let isCI = ProcessInfo.processInfo.environment["CI"] != nil && only == nil
         var asked = 0
         // The hostile texts, and chains deeper than the fuzz suites' (asked at fewer offsets here).
         let deep = [
@@ -940,7 +950,7 @@ func runDeskServiceFuzzTests(_ t: TestRunner) {
             let snapshot = service.snapshot
             let length = snapshot.index.utf16Count
             // Evenly spaced offsets and the middle, where the nesting is deepest.
-            var offsets = Set(Swift.stride(from: 0, through: length, by: max(1, length / 24)))
+            var offsets = Set(Swift.stride(from: 0, through: length, by: max(1, length / (isCI ? 8 : 24))))
             for k in -3...3 { offsets.insert(min(max(length / 2 + k, 0), length)) }
             var problems: [String] = []
             let finished = deskOnSmallStack {

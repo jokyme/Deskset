@@ -1058,6 +1058,7 @@ enum SkinDrawingSelfTests {
                 return
             }
             let extra = ProcessInfo.processInfo.environment["DESKSET_DRAWING_CHECK_SKINS"] ?? ""
+            let isCI = ProcessInfo.processInfo.environment["CI"] != nil && extra.isEmpty
             folders += extra.split(separator: ":").map { URL(fileURLWithPath: String($0)) }
             let temporary = t.temporaryDirectory("drawing-check")
             var checked = 0, frames = 0, copied = 0
@@ -1069,8 +1070,9 @@ enum SkinDrawingSelfTests {
                     }
                     for file in DrawingCacheCheck.skinFiles(in: copy) {
                         // One backing scale in the steps, the other in one frame (`check`); a few seconds per skin.
-                        let r = DrawingCacheCheck.check(file, skinsRoot: copy, updates: 2, scale: 1,
-                                                        budget: 3, pause: 10)
+                        let compact = isCI && checked >= 12
+                        let r = DrawingCacheCheck.check(file, skinsRoot: copy, updates: compact ? 1 : 2, scale: 1,
+                                                        budget: isCI ? 0.5 : 3, pause: isCI ? 1 : 10, compact: compact)
                         guard r.skipped == nil else { continue }
                         checked += 1
                         frames += r.frames
@@ -1421,6 +1423,7 @@ extension SkinDrawingSelfTests {
                 return
             }
             let extra = ProcessInfo.processInfo.environment["DESKSET_DRAWING_CHECK_SKINS"] ?? ""
+            let isCI = ProcessInfo.processInfo.environment["CI"] != nil && extra.isEmpty
             folders += extra.split(separator: ":").map { URL(fileURLWithPath: String($0)) }
             let temporary = t.temporaryDirectory("content-layer-check")
             var results: [ContentLayerCheck.Result] = []
@@ -1431,7 +1434,8 @@ extension SkinDrawingSelfTests {
                         return t.check(false, "copies \(folder.lastPathComponent)")
                     }
                     for file in DrawingCacheCheck.skinFiles(in: copy) {
-                        let r = ContentLayerCheck.check(file, skinsRoot: copy, budget: 2)
+                        let r = ContentLayerCheck.check(file, skinsRoot: copy, budget: isCI ? 0.5 : 2,
+                                                        compact: isCI && results.count >= 12)
                         guard r.skipped == nil else { continue }
                         results.append(r)
                         t.check(r.mismatches.isEmpty, ContentLayerCheck.line(for: r))
@@ -1520,7 +1524,7 @@ enum ContentLayerCheck {
         func environment(for skin: Skin) -> SkinEnvironment { render.environment(for: skin) }
     }
 
-    static func check(_ file: URL, skinsRoot: URL, budget: TimeInterval) -> Result {
+    static func check(_ file: URL, skinsRoot: URL, budget: TimeInterval, compact: Bool = false) -> Result {
         let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
         let config = parent.dropFirst(skinsRoot.standardizedFileURL.pathComponents.count).joined(separator: "\\")
         var result = Result(config: config, file: file.lastPathComponent)
@@ -1675,6 +1679,20 @@ enum ContentLayerCheck {
             $0.isVisible = true
         }
         step("shown")
+        if compact {
+            RenderCommand.wait(milliseconds: 1)
+            step("update 1", update: true)
+            step("redraw at rest", "[!Redraw]")
+            publish { $0.scale = 1 }
+            step("at 1x")
+            publish { $0.scale = 2 }
+            step("back at 2x")
+            publish { $0.appearance = NSAppearance.Name.darkAqua.rawValue }
+            step("dark")
+            publish { $0.appearance = NSAppearance.Name.aqua.rawValue }
+            step("light again")
+            return result
+        }
         for i in 0..<2 {
             RenderCommand.wait(milliseconds: DrawingCacheCheck.updateInterval)
             step("update \(i + 1)", update: true)

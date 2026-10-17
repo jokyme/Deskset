@@ -25,7 +25,7 @@ enum CommandLineTools {
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--settings-dir",
-                                           "--dark", "--appearance", "--select", "--size", "--zoom",
+                                           "--dark", "--appearance", "--select", "--size",
                                            "--clock-hours", "--first-weekday", "--temperature-unit",
                                            "--clock", "--time-zone", "--seed", "--color-space", "--data", "--state",
                                            "--locale", "--languages", "--accent-color", "--screen",
