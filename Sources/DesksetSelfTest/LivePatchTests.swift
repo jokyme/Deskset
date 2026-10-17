@@ -526,6 +526,7 @@ private let sampleOverrides: [String: [String]] = [
     "h": ["40", "", "5"], "text": ["Value %1", "", "#Size# pt"], "prefix": ["Up ", ""], "postfix": [" %", ""],
     "measurename": ["MeasureB", "MeasureText", ""], "measurename2": ["MeasureA", "MeasureText", ""],
     "secondarymeasurename": ["MeasureA", ""], "meterstyle": ["Style2", "Style | Style2", ""],
+    "@inherit": ["Style2", "Style | Style2", ""],
     "group": ["G1 | G2", ""], "tooltipicon": ["Info", ""], "tooltiptype": ["1", "0"],
     "tooltipwidth": ["200", "50"], "path": ["Images", ""], "macdecodesize": ["Drawn", ""],
     "inlinesetting": ["Color | 255,0,0,255", "Size | 20"], "inlinesetting2": ["Weight | 700", ""],
@@ -631,6 +632,8 @@ private func runLivePatchConsistencyTests(_ t: TestRunner) {
             [Rainmeter]
             [Variables]
             Zone=0
+            [StyleM]
+            Group=Inherited
             [MeasureTime]
             Measure=Time
             TimeStamp=13390000000
@@ -681,7 +684,7 @@ private func runLivePatchConsistencyTests(_ t: TestRunner) {
             "timestamplocale": ["en-US", ""], "adddaystohours": ["0", "1"], "secondsvalue": ["100", "90061", ""],
             "processor": ["1", "3", "0"], "string": ["Hi", "", "42"], "minvalue": ["10", "-5", ""],
             "maxvalue": ["200", "50", ""], "substitute": ["\"1\":\"one\"", "\"2\":\"\"", ""],
-            "regexpsubstitute": ["1", "0"], "group": ["G | H", ""],
+            "regexpsubstitute": ["1", "0"], "group": ["G | H", ""], "@inherit": ["StyleM", ""],
         ]
         for (section, type) in byType {
             let keys = (LiveOptions.measureKeys[type] ?? []).union(LiveOptions.measureGeneral).sorted()

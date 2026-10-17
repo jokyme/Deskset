@@ -78,13 +78,14 @@ public protocol PluginLifecycle: AnyObject {
 /// - `~` is the home folder; a relative path is relative to the skin's folder.
 enum PluginPaths {
     static func resolve(_ raw: String, skin: Skin) -> String {
-        resolve(raw, relativeTo: skin.directory.path)
+        resolve(raw, relativeTo: skin.directory.path, expandPercentEnvironment: skin.settings.syntaxVersion < 2)
     }
 
-    static func resolve(_ raw: String, relativeTo base: String) -> String {
+    static func resolve(_ raw: String, relativeTo base: String, expandPercentEnvironment: Bool = true) -> String {
         var p = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while p.count >= 2, p.hasPrefix("\""), p.hasSuffix("\"") { p = String(p.dropFirst().dropLast()) }
-        p = expandEnvironment(p).replacingOccurrences(of: "\\", with: "/")
+        if expandPercentEnvironment { p = expandEnvironment(p) }
+        p = p.replacingOccurrences(of: "\\", with: "/")
         if p.isEmpty { return base }
         let home = NSHomeDirectory()
         if p == "~" || p.hasPrefix("~/") { return standardize(home + p.dropFirst()) }

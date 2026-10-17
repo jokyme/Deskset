@@ -158,33 +158,48 @@ public struct VariableResolver {
     public var sectionLookup: ((String, SectionVariableParameter) -> String?)?
     /// Event variable name as written between the `$` signs or after `[$` (e.g. `MouseX`, `MouseY:%`) → value, or
     /// nil when unknown. Set it only while executing an action that has event values (a mouse action); when nil,
-    /// `$…$` and `[$…]` are left untouched.
+    /// `$…$` is left untouched.
     public var eventLookup: ((String) -> String?)?
+    /// Bracketed `[$…]` variable lookup (e.g. `SkinW`, `DisplayW:0`, `DisplayDevice1Name`) → value, or nil when
+    /// unknown. Checked after `eventLookup` for `[$…]` references (never for classic `$…$`).
+    public var dollarLookup: ((String) -> String?)?
+    /// Environment variable name after `[%` (e.g. `APPDATA`, `USERPROFILE`) → value, or nil when undefined.
+    /// Defaults to `BuiltInVariables.environmentValue`.
+    public var environmentLookup: ((String) -> String?)?
 
     public init(variableLookup: @escaping (String) -> String?,
-                sectionLookup: ((String, SectionVariableParameter) -> String?)? = nil) {
+                sectionLookup: ((String, SectionVariableParameter) -> String?)? = nil,
+                dollarLookup: ((String) -> String?)? = nil,
+                environmentLookup: ((String) -> String?)? = BuiltInVariables.environmentValue) {
         self.variableLookup = variableLookup
         self.sectionLookup = sectionLookup
         self.eventLookup = nil
+        self.dollarLookup = dollarLookup
+        self.environmentLookup = environmentLookup
     }
 
     /// Same as `init(variableLookup:sectionLookup:)`, also resolving event variables such as `$MouseX$`.
     public init(variableLookup: @escaping (String) -> String?,
                 sectionLookup: ((String, SectionVariableParameter) -> String?)? = nil,
-                eventLookup: ((String) -> String?)?) {
+                eventLookup: ((String) -> String?)?,
+                dollarLookup: ((String) -> String?)? = nil,
+                environmentLookup: ((String) -> String?)? = BuiltInVariables.environmentValue) {
         self.variableLookup = variableLookup
         self.sectionLookup = sectionLookup
         self.eventLookup = eventLookup
+        self.dollarLookup = dollarLookup
+        self.environmentLookup = environmentLookup
     }
 
-    /// Resolves `#Var#`, nested `[#Var]` / `[#Color[#Index]]`, `[&Measure]`, section variables `[Name]` /
-    /// `[Name:param]` (only when `sectionLookup` is set), character variables `[\x263A]` / `[\9731]`, and the
-    /// escapes `#*Var*#` → `#Var#`, `[*Name*]` → `[Name]`, in the order the manual specifies.
+    /// Resolves `#Var#`, nested `[#Var]` / `[#Color[#Index]]`, `[&Measure]`, `[%EnvVar]`, `[$SkinVar]`, section
+    /// variables `[Name]` / `[Name:param]` (only when `sectionLookup` is set), character variables `[\x263A]` /
+    /// `[\9731]`, and the escapes `#*Var*#` → `#Var#`, `[*Name*]` → `[Name]`, in the order the manual specifies.
     /// Undefined names are left as written. Never loops forever on self-referencing values.
     /// See the type documentation for the complete rules.
     public func resolve(_ text: String) -> String {
         guard Self.mayContainSyntax(text, events: eventLookup != nil) else { return text }
         return VarExpansion(variableLookup: variableLookup, sectionLookup: sectionLookup, eventLookup: eventLookup,
+                            dollarLookup: dollarLookup, environmentLookup: environmentLookup,
                             fullSyntax: true, rescanValues: true).run(text)
     }
 
@@ -218,15 +233,22 @@ public struct VariableResolver {
     /// - `#Var#` and the nested variable form `[#Var]` / `[#Color[#Index]]` are replaced: the nesting page says the
     ///   nested forms "function exactly as their normal counterparts do" and that their one difference (dynamic
     ///   resolution) "only applies to use in bangs", so `B=[#A]` is fixed at load time exactly like `B=#A#`.
+    /// - `[%EnvVar]` environment variables are also resolved in `[Variables]` definitions (Rainmeter 5.0).
     /// - Formulas are not evaluated ("the [Variables] section itself does not resolve the formula"); escapes
-    ///   (`#*X*#`, `[#*X*]`), character variables (`[\x263A]`), `[&M]`, section and event variables are kept
+    ///   (`#*X*#`, `[#*X*]`, `[%*X*]`), character variables (`[\x263A]`), `[&M]`, section and event variables are kept
     ///   verbatim — `[Variables]` cannot use dynamic variables — and are resolved where the variable is used
     ///   (inner `#X#` / `[#X]` parts of them are replaced: `[&M[#Idx]]` → `[&M2]`).
     /// - Undefined and circular references (`A=#B#`, `B=#A#`) stay as written; nothing loops. All definitions
     ///   together may substitute at most 4 MiB of text (hostile `E2=#E1##E1#`-style chains); past that,
     ///   references stay as written.
-    public static func resolveDefinitions(_ entries: [IniEntry], builtins: [String: String]) -> [String: String] {
-        VarDefinitionTable(entries: entries, builtins: builtins).table()
+    public static func resolveDefinitions(
+        _ entries: [IniEntry],
+        builtins: [String: String],
+        dollarLookup: ((String) -> String?)? = nil,
+        environmentLookup: ((String) -> String?)? = BuiltInVariables.environmentValue
+    ) -> [String: String] {
+        VarDefinitionTable(entries: entries, builtins: builtins,
+                           dollarLookup: dollarLookup, environmentLookup: environmentLookup).table()
     }
 
     /// Quick reject: text without `#`, `[` (and `$` when event variables are on) has nothing to resolve.

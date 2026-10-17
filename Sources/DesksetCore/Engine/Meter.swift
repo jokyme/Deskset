@@ -262,21 +262,6 @@ open class Meter: SkinSection {
 
     open override func readOptions() {
         noteDrawChange()
-        // MeterStyle is read from the meter itself (and !SetOption), never from styles.
-        let styleOption: String
-        if let override = overrides["meterstyle"] {
-            styleOption = override
-        } else {
-            styleOption = own.value(forKey: "MeterStyle") ?? ""
-        }
-        let styleSectionVariables = bool("DynamicVariables", false) || readingAfterLoad
-        let styleText = skin.resolve(styleOption, in: self, sectionVariables: styleSectionVariables)
-        styles = OptionValue.list(styleText)
-        // `MeterStyle=A | B[MeasureX]` read without section variables (the load-time read of a section without
-        // DynamicVariables in the meter itself): read once more at the first update, like any other option.
-        noteSectionVariables(raw: styleOption, resolved: styleText, sectionVariablesResolved: styleSectionVariables)
-        reportMissingStyles(styleOption, sectionVariablesResolved: styleSectionVariables)
-
         super.readOptions()
 
         xPosition = Meter.position(option("X"))
@@ -331,31 +316,6 @@ open class Meter: SkinSection {
         glass = readGlassOptions()
 
         readMeterOptions()
-    }
-
-    /// Logs the MeterStyle names that name no section — an authoring mistake that behaves the same in Rainmeter, so a
-    /// log line (once per name), not a compatibility issue.
-    ///
-    /// A name built from a section variable (`StyleGrabber[MeasureActive1]`, Enigma's Reader and Notes grabbers)
-    /// cannot be checked before section variables have real values: at the load-time read they are either not
-    /// resolved (the name still reads `StyleGrabber[MeasureActive1]`, e.g. when DynamicVariables=1 comes from a
-    /// style, which is not known yet) or resolved before any measure has updated. Such names are checked from the
-    /// first read after the skin loaded that resolves section variables (the first update); names written without
-    /// section variables are checked right away.
-    private func reportMissingStyles(_ styleOption: String, sectionVariablesResolved: Bool) {
-        var missing = styles.filter { skin.styleSection(named: $0) == nil }
-        guard !missing.isEmpty else { return }
-        if !(sectionVariablesResolved && skin.optionsLoaded), styleOption.utf8.contains(UInt8(ascii: "[")) {
-            let written = OptionValue.list(skin.resolve(styleOption, in: self, sectionVariables: false))
-            let pending = written.filter { $0.utf8.contains(UInt8(ascii: "[")) && skin.mentionsSectionVariable($0) }
-            if !pending.isEmpty {
-                let settled = Set(written.filter { !pending.contains($0) }.map { $0.lowercased() })
-                missing = missing.filter { settled.contains($0.lowercased()) }
-            }
-        }
-        for style in missing {
-            skin.logOnce("MeterStyle \"\(style)\" used by [\(name)] does not exist", level: .warning)
-        }
     }
 
     /// `MeasureName`, `MeasureName2`… → `measureSlots` (index-aligned) and `measures` (found ones). A name that

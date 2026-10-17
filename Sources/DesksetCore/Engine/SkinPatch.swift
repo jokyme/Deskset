@@ -203,31 +203,47 @@ extension Skin {
             var keys = ownChanges[lower] ?? []
             // Nothing it reads changed: its own text, the styles it uses and the variables are as they were.
             if keys.isEmpty, changedNames.isEmpty,
-               !((section as? Meter)?.styles.contains { ownChanges[$0.lowercased()] != nil } ?? false) { continue }
+               !section.styles.contains(where: { ownChanges[$0.lowercased()] != nil }) { continue }
             let newOwn = SkinSection.index(newIndex[lower] ?? IniSection(name: section.name))
             var newStyles: [String] = []
-            if let meter = section as? Meter {
-                newStyles = meter.styles
-                // MeterStyle is read from the meter itself (or `!SetOption`), never from a style.
-                let styleChanged = keys.contains("meterstyle")
-                    || (!changedNames.isEmpty && Skin.mentions(newOwn["meterstyle"] ?? "", changedNames))
-                // A `!SetOption` MeterStyle gives way to the file's new one (`apply` drops it, as a reload would).
-                if styleChanged {
-                    let raw = newOwn["meterstyle"] ?? ""
-                    if raw.contains("#") || raw.contains("[") { return .failure(.meterStyle(section: meter.name)) }
-                    newStyles = OptionValue.list(raw)
+            if !(section is RainmeterSection) {
+                newStyles = section.styles
+                let meterStyleChanged = (section is Meter) && (
+                    keys.contains("meterstyle")
+                        || (!changedNames.isEmpty && Skin.mentions(newOwn["meterstyle"] ?? "", changedNames))
+                )
+                let inheritChanged = keys.contains("@inherit")
+                    || (!changedNames.isEmpty && Skin.mentions(newOwn["@inherit"] ?? "", changedNames))
+                // A `!SetOption` MeterStyle / @Inherit gives way to the file's new one (`apply` drops it, as a reload would).
+                if meterStyleChanged || inheritChanged {
+                    var combined: [String] = []
+                    if section is Meter {
+                        let raw = meterStyleChanged
+                            ? (newOwn["meterstyle"] ?? "")
+                            : (section.overrides["meterstyle"] ?? newOwn["meterstyle"] ?? "")
+                        if raw.contains("#") || raw.contains("[") { return .failure(.meterStyle(section: section.name)) }
+                        combined.append(contentsOf: OptionValue.list(raw))
+                    }
+                    let rawInherit = inheritChanged
+                        ? (newOwn["@inherit"] ?? "")
+                        : (section.overrides["@inherit"] ?? newOwn["@inherit"] ?? "")
+                    if rawInherit.contains("#") || rawInherit.contains("[") {
+                        return .failure(.meterStyle(section: section.name))
+                    }
+                    combined.append(contentsOf: OptionValue.list(rawInherit))
+                    newStyles = combined
                 }
-                let oldOwn = SkinSection.index(meter.own)
+                let oldOwn = SkinSection.index(section.own)
                 var candidates = keys
-                if newStyles.map({ $0.lowercased() }) != meter.styles.map({ $0.lowercased() }) {
-                    for style in meter.styles { candidates.formUnion(styleValues(named: style)?.keys ?? [:].keys) }
+                if newStyles.map({ $0.lowercased() }) != section.styles.map({ $0.lowercased() }) {
+                    for style in section.styles { candidates.formUnion(styleValues(named: style)?.keys ?? [:].keys) }
                     for style in newStyles { candidates.formUnion(newStyleValues(style)?.keys ?? [:].keys) }
                 } else {
-                    for style in meter.styles { candidates.formUnion(ownChanges[style.lowercased()] ?? []) }
+                    for style in section.styles { candidates.formUnion(ownChanges[style.lowercased()] ?? []) }
                 }
                 keys = candidates.filter { key in
-                    key == "meterstyle" && keys.contains(key)
-                        || Skin.fileValue(key, own: oldOwn, styles: meter.styles, style: styleValues(named:))
+                    (key == "meterstyle" || key == "@inherit") && keys.contains(key)
+                        || Skin.fileValue(key, own: oldOwn, styles: section.styles, style: styleValues(named:))
                             != Skin.fileValue(key, own: newOwn, styles: newStyles, style: newStyleValues)
                 }
             }
@@ -236,7 +252,7 @@ extension Skin {
                 var used = Set(newOwn.keys)
                 for style in newStyles { used.formUnion(newStyleValues(style)?.keys ?? [:].keys) }
                 for key in used where !keys.contains(key) {
-                    let raw = section is Meter
+                    let raw = !(section is RainmeterSection)
                         ? Skin.fileValue(key, own: newOwn, styles: newStyles, style: newStyleValues) : newOwn[key]
                     if let raw, Skin.mentions(raw, changedNames) { keys.insert(key) }
                 }
@@ -306,10 +322,12 @@ extension Skin {
             if !v.isEmpty { return v }
             foundEmpty = true
         }
-        for name in styles.reversed() {
-            if let v = style(name)?[key] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
+        if !SkinSection.nonInheritableOptions.contains(key) {
+            for name in styles.reversed() {
+                if let v = style(name)?[key] {
+                    if !v.isEmpty { return v }
+                    foundEmpty = true
+                }
             }
         }
         return foundEmpty ? "" : nil

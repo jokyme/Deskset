@@ -98,7 +98,18 @@ public enum BangCatalog {
 
     /// The definition for a raw (`!RainmeterRefresh`) or canonical (`refresh`) bang name.
     public static func definition(for name: String) -> BangDefinition? {
-        byName[canonicalName(name)]
+        let canonical = canonicalName(name)
+        if let found = byName[canonical] { return found }
+        if let found = namespacedByName[canonical] { return found }
+        if canonical.hasPrefix("skin:") {
+            let sub = String(canonical.dropFirst(5))
+            if let base = byName[sub], base.category == .skin || base.category == .skinGroup {
+                return BangDefinition(name: canonical, displayName: "!Skin:" + String(base.displayName.dropFirst()),
+                                      parameters: base.parameters, category: base.category,
+                                      isDeprecated: base.isDeprecated, configParameterIndex: nil)
+            }
+        }
+        return nil
     }
 
     public static func isKnown(_ name: String) -> Bool {
@@ -142,6 +153,9 @@ public enum BangCatalog {
         return map
     }()
 
+    /// Rainmeter 5.0 colon-namespaced bangs (`!Skin:Load`, `!Loop:Reset`, `!WebParser:Refetch`, `!TextEdit:Focus`…).
+    private static let namespacedByName: [String: BangDefinition] = makeNamespacedCatalog()
+
     // MARK: - Table
 
     private static func makeCatalog() -> [BangDefinition] {
@@ -165,9 +179,12 @@ public enum BangCatalog {
         // Operating System bangs
         add(["!SetClip"], ["String"], .operatingSystem)
         add(["!SetWallpaper"], ["File", "Position?"], .operatingSystem)
+        add(["!SendKey"], ["Key"], .operatingSystem)
 
         // Application bangs
+        add(["!Launch"], [], .application)
         add(["!About"], ["TabName?"], .application)
+        add(["!Debug"], ["TabName?", "Config?"], .application, config: false)
         // `Config` here only selects an entry in the Manage window; it does not target a skin.
         add(["!Manage"], ["TabName?", "Config?", "File?"], .application, config: false)
         add(["!TrayMenu"], [], .application)
@@ -175,6 +192,7 @@ public enum BangCatalog {
         add(["!ResetStats"], [], .application)
         add(["!LoadLayout"], ["LayoutName"], .application)
         add(["!RefreshApp"], [], .application)
+        add(["!Restart"], [], .application)
         add(["!Quit"], [], .application)
         add(["Play"], ["SoundFile"], .command)
         add(["PlayLoop"], ["SoundFile"], .command)
@@ -196,10 +214,13 @@ public enum BangCatalog {
         add(["!Move"], ["X", "Y", "Config?"], .skin)
         add(["!SetWindowPosition"], ["WindowX", "WindowY", "AnchorX?", "AnchorY?", "Config?"], .skin)
         add(["!SetAnchor"], ["AnchorX", "AnchorY", "Config?"], .skin)
+        add(["!SetZoomFactor"], ["Factor", "Config?"], .skin)
         add(["!ActivateConfig"], ["Config", "File?"], .skin)
         add(["!DeactivateConfig"], ["Config?"], .skin)
         add(["!ToggleConfig"], ["Config", "File?"], .skin)
         add(["!Update"], ["Config?"], .skin)
+        add(["!SetUpdate"], ["Milliseconds", "Config?"], .skin)
+        add(["!ForceEnableVisibleMode"], ["Setting?", "Config?"], .skin, config: false)
         add(["!Redraw"], ["Config?"], .skin)
         add(["!Refresh"], ["Config?"], .skin)
         add(["!Delay"], ["milliseconds"], .skin)
@@ -218,6 +239,7 @@ public enum BangCatalog {
         add(["!ShowGroup", "!HideGroup", "!ToggleGroup"], ["Group"], .skinGroup)
         add(["!ShowFadeGroup", "!HideFadeGroup", "!ToggleFadeGroup"], ["Group"], .skinGroup)
         add(["!FadeDurationGroup"], ["milliseconds", "Group"], .skinGroup)
+        add(["!SetZoomFactorGroup"], ["Factor", "Group"], .skinGroup)
         add(["!DeactivateConfigGroup"], ["Group"], .skinGroup)
         add(["!UpdateGroup"], ["Group"], .skinGroup)
         add(["!RedrawGroup"], ["Group"], .skinGroup)
@@ -250,6 +272,7 @@ public enum BangCatalog {
             .measureGroup)
         add(["!PauseMeasureGroup", "!UnpauseMeasureGroup", "!TogglePauseMeasureGroup"], ["Group", "Config?"],
             .measureGroup)
+        add(["!CommandMeasureGroup"], ["Group", "Arguments", "Config?"], .measureGroup)
         add(["!UpdateMeasureGroup"], ["Group", "Config?"], .measureGroup)
 
         // Mouse Action state bangs
@@ -265,5 +288,68 @@ public enum BangCatalog {
         add(["!PluginBang"], ["Measure", "Arguments", "Config?"], .deprecated, deprecated: true)
 
         return list
+    }
+
+    private static func makeNamespacedCatalog() -> [String: BangDefinition] {
+        var map: [String: BangDefinition] = [:]
+        func add(_ displayNames: [String], _ params: [String], _ category: BangDefinition.Category) {
+            let parameters = params.map { p -> BangParameter in
+                p.hasSuffix("?") ? BangParameter(String(p.dropLast()), optional: true) : BangParameter(p)
+            }
+            for display in displayNames {
+                let name = canonicalName(display)
+                map[name] = BangDefinition(name: name, displayName: display, parameters: parameters,
+                                           category: category, configParameterIndex: nil)
+            }
+        }
+
+        // !Skin: aliases
+        add(["!Skin:Load"], ["Config", "File?"], .skin)
+        add(["!Skin:Unload"], ["Config?"], .skin)
+        add(["!Skin:Toggle"], ["Config", "File?"], .skin)
+        add(["!Skin:Edit"], ["Config?", "File?"], .skin)
+
+        // !Loop:
+        add(["!Loop:Reset"], ["Measure?", "Config?"], .measure)
+
+        // !ActionTimer:
+        add(["!ActionTimer:Execute", "!ActionTimer:Stop"], ["Measure?", "ActionList?", "Config?"], .measure)
+
+        // !RunCommand:
+        add(["!RunCommand:Run", "!RunCommand:Close", "!RunCommand:Kill"], ["Measure?", "Config?"], .measure)
+
+        // !WebParser:
+        add(["!WebParser:Refetch", "!WebParser:ClearResults", "!WebParser:ResetData"], ["Measure?", "Config?"], .measure)
+        add(["!WebParser:UpdateData"], ["Measure?", "Data?", "Config?"], .measure)
+
+        // !RecycleManager:
+        add(["!RecycleManager:EmptyBin", "!RecycleManager:EmptyBinSilent", "!RecycleManager:OpenBin"],
+            ["Measure?", "Config?"], .measure)
+
+        // !Audio:
+        add(["!Audio:SetVolume", "!Audio:ChangeVolume", "!Audio:SetOutputIndex"],
+            ["Measure?", "Value?", "Config?"], .measure)
+        add(["!Audio:Mute", "!Audio:Unmute", "!Audio:ToggleMute"], ["Measure?", "Config?"], .measure)
+
+        // !NowPlaying:
+        add(["!NowPlaying:Play", "!NowPlaying:Pause", "!NowPlaying:PlayPause", "!NowPlaying:Stop",
+             "!NowPlaying:Next", "!NowPlaying:Previous", "!NowPlaying:OpenPlayer", "!NowPlaying:ClosePlayer",
+             "!NowPlaying:TogglePlayer"], ["Measure?", "Config?"], .measure)
+        add(["!NowPlaying:SetPosition", "!NowPlaying:SetRating", "!NowPlaying:SetShuffle",
+             "!NowPlaying:SetRepeat", "!NowPlaying:SetVolume"], ["Measure?", "Value?", "Config?"], .measure)
+
+        // !Mouse:
+        add(["!Mouse:StartCapture", "!Mouse:StopCapture"], ["Measure?", "Config?"], .measure)
+
+        // !WindowMessage:
+        add(["!WindowMessage:Send"], ["Measure?", "Message?", "WParam?", "LParam?", "Config?"], .measure)
+
+        // !TextEdit:
+        add(["!TextEdit:Focus", "!TextEdit:Dismiss", "!TextEdit:Submit", "!TextEdit:SelectAll",
+             "!TextEdit:Clear", "!TextEdit:Reset", "!TextEdit:ResetScroll"], ["Meter?", "Config?"], .meter)
+        add(["!TextEdit:Select"], ["Meter?", "Start?", "Length?", "Config?"], .meter)
+        add(["!TextEdit:SetText", "!TextEdit:ScrollByLine"], ["Meter?", "Value?", "Config?"], .meter)
+
+        return map
     }
 }

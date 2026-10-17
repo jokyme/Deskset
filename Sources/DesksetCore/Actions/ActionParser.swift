@@ -319,7 +319,7 @@ private struct ActionScanner {
     }
 
     private static func isNameCharacter(_ c: Unicode.Scalar) -> Bool {
-        (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c == "_"
+        (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c == "_" || c == ":"
     }
 
     /// `Play`, `PlayLoop`, `PlayStop` are commands without `!` (manual: Application bangs).

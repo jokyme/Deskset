@@ -68,8 +68,10 @@ extension SkinSection {
         if !ownRemoved, own.entries.contains(where: { $0.key.lowercased() == lower }) {
             return .own(skin.sources.location(section: name, key: lower))
         }
-        for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
-            return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
+        if !SkinSection.nonInheritableOptions.contains(lower) {
+            for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
+                return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
+            }
         }
         return nil
     }
@@ -84,7 +86,10 @@ extension SkinSection {
         }
         for e in own.entries { add(e.key) }
         for style in styles {
-            for e in skin.styleSection(named: style)?.entries ?? [] { add(e.key) }
+            for e in skin.styleSection(named: style)?.entries ?? []
+            where !SkinSection.nonInheritableOptions.contains(e.key.lowercased()) {
+                add(e.key)
+            }
         }
         for key in overrides.keys.sorted() { add(key) }
 
@@ -93,7 +98,9 @@ extension SkinSection {
             let lower = key.lowercased()
             let winningStyle: String? = { if case .style(let s, _) = origin { return s.lowercased() } else { return nil } }()
             let shadowed = styles.reversed().compactMap { style -> String? in
-                guard skin.styleValues(named: style)?[lower] != nil, style.lowercased() != winningStyle else { return nil }
+                guard !SkinSection.nonInheritableOptions.contains(lower),
+                      skin.styleValues(named: style)?[lower] != nil,
+                      style.lowercased() != winningStyle else { return nil }
                 return skin.styleSection(named: style)?.name ?? style
             }
             // Section variables are resolved also for sections without DynamicVariables: the engine resolves them

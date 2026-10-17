@@ -137,10 +137,12 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
         }) {
             report(message, level: .error)
         }
-        if case .failure(let message) = invoke("properties", flush: false, {
-            state.callInternal("properties", [.text(name)])
-        }) {
-            report(message, level: .error)
+        if skin.settings.syntaxVersion < 2 {
+            if case .failure(let message) = invoke("properties", flush: false, {
+                state.callInternal("properties", [.text(name)])
+            }) {
+                report(message, level: .error)
+            }
         }
         if initializeNow { runInitialize() }
     }
@@ -213,7 +215,9 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             report(message, level: .error)
             failed = true
         }
-        if !failed && values.allSatisfy({ $0 == .none }) { values = deprecatedValues(lua) }
+        if !failed && values.allSatisfy({ $0 == .none }), skin.settings.syntaxVersion < 2 {
+            values = deprecatedValues(lua)
+        }
         let result = failed ? (number: 0.0, text: "") : ScriptMeasure.interpret(values)
         rawString = result.text
         lastNumber = result.number.isFinite ? result.number : 0

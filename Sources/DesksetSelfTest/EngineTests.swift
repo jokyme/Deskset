@@ -4457,4 +4457,153 @@ private func runEngineCompatTests(_ t: TestRunner) {
         skin.close()
         skin.fontsDidChange()
     }
+
+    t.suite("Engine: Rainmeter 5.0 Phase 1 — SyntaxVersion, @Inherit, [%Env], [$Skin/$Display], formulas & bangs") {
+        // 1. Packed RMSKIN version comparison
+        t.equal(RmskinManifest.versionComponents("5000000"), [5, 0, 0, 0])
+        t.equal(RmskinManifest.versionComponents("5001002"), [5, 1, 2, 0])
+        t.equal(RmskinManifest.versionComponents("5.0.0.4000"), [5, 0, 0, 4000])
+
+        // 2. Unsupported SyntaxVersion fails cleanly
+        let (badSkin, _) = try makeSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=99
+        [MeterA]
+        Meter=String
+        Text=ShouldNotLoad
+        """)
+        t.equal(badSkin.isSupportedSyntaxVersion, false)
+        t.equal(badSkin.meters.count, 0)
+        t.equal(badSkin.measures.count, 0)
+
+        // 3. SyntaxVersion=2, @Inherit on measures & meters, [%Env], [$Skin...] & [$Display...], unbracketed formulas
+        final class EnvHost: FakeHost {
+            var env = SkinEnvironment()
+            override func environment(for skin: Skin) -> SkinEnvironment { env }
+        }
+        let host = EnvHost()
+        host.env.windowFrame = SkinRect(x: 100, y: 200, width: 300, height: 150)
+        host.env.screens = [
+            SkinScreen(area: SkinRect(x: 0, y: 0, width: 1920, height: 1080),
+                       workArea: SkinRect(x: 0, y: 25, width: 1920, height: 1055),
+                       dpiFactor: 2.0,
+                       name: "Built-in Retina Display")
+        ]
+        host.env.zoomFactor = 1.5
+        host.env.visible = true
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=2
+        Update=500 | Invisible (30 * 1000)
+        AppVersion=5000000
+        Group=Alpha | Beta
+        OnDisplayMetricsChange=[!SetVariable MetricsChanged 1]
+
+        [Variables]
+        MetricsChanged=0
+        UserFromEnv=[%USERNAME]
+        EscapedEnv=[%*USERNAME*]
+        ScreenWFromVar=[$Display1W]
+
+        [BaseMeasureStyle]
+        MinValue=0
+        MaxValue=200
+
+        [MeasureVal]
+        Measure=Calc
+        @Inherit=BaseMeasureStyle
+        Formula=40
+
+        [MeasureLoop]
+        Measure=Loop
+        StartValue=1
+        EndValue=10
+        Increment=1
+
+        [BaseMeterStyle]
+        W=(MeasureVal + 10)
+        H=20
+        Group=GroupA | GroupB
+
+        [MeterOne]
+        Meter=String
+        @Inherit=BaseMeterStyle
+        DynamicVariables=1
+        X=($Display1W / 10)
+        Y=($SkinY / 10)
+        Text=[$SkinX],[$SkinPhysicalX],[$SkinZoomedW],[$SkinPhysicalW],[$SkinDpiFactor:1],[$Display1Name],[$DisplayDevice1Name],[*$SkinX*],[$*SkinX*],#EscapedEnv#
+        LeftMouseUpAction=[!SetOption Text "ClickedSelf"]
+
+        [MeterTwo]
+        Meter=String
+        Group=GroupB | GroupC
+        Text=Two
+        """, host: host)
+        t.equal(skin.isSupportedSyntaxVersion, true)
+        t.equal(skin.settings.syntaxVersion, 2)
+        t.equal(skin.settings.accurateText, true, "SyntaxVersion=2 defaults AccurateText to true")
+        t.equal(skin.settings.update, 500)
+        t.equal(skin.settings.invisibleUpdate, 30_000)
+        t.equal(skin.settings.appVersion, "5000000")
+        t.equal(skin.effectiveUpdate, 500)
+
+        skin.update()
+        t.equal(skin.variable("UserFromEnv"), NSUserName())
+        t.equal(skin.variable("EscapedEnv"), "[%*USERNAME*]", "definition keeps escape for the place of use")
+        t.equal(skin.variable("ScreenWFromVar"), "1920")
+        t.close(skin.measure(named: "MeasureVal")?.maxValue ?? 0, 200, "Measure inherited MaxValue via @Inherit")
+        let m1 = skin.meter(named: "MeterOne")!
+        t.close(m1.frame.width, 50, "W=(MeasureVal + 10) evaluated unbracketed measure in Meter option")
+        t.close(m1.frame.x, 192, "X=($Display1W / 10) evaluated $Display1W in formula")
+        t.close(m1.frame.y, 20, "Y=($SkinY / 10) evaluated $SkinY in formula")
+        t.equal(text(skin, "MeterOne"),
+                "100,200,450,900,2.0,Built-in Retina Display,\\\\.\\DISPLAY1,[$SkinX],[$SkinX],[%USERNAME]")
+
+        // 4. Invisible update, !SetUpdate, !ForceEnableVisibleMode
+        host.env.visible = false
+        skin.hostFactsChanged()
+        t.equal(skin.effectiveUpdate, 30_000, "uses Invisible update interval when hidden")
+        skin.execute("[!SetUpdate 250]", from: nil)
+        t.equal(skin.settings.update, 250)
+        t.equal(skin.settings.invisibleUpdate, 30_000, "!SetUpdate does not overwrite Invisible interval")
+        skin.execute("[!ForceEnableVisibleMode 1]", from: nil)
+        t.equal(skin.forceEnableVisibleMode, true)
+        t.equal(skin.effectiveUpdate, 250, "ForceEnableVisibleMode forces visible update interval while hidden")
+        skin.execute("[!ForceEnableVisibleMode -1]", from: nil)
+        t.equal(skin.forceEnableVisibleMode, false)
+
+        // 5. 2-argument !SetOption from section context
+        skin.execute(m1.mouseActions[.leftUp] ?? "", from: m1)
+        skin.update()
+        t.equal(text(skin, "MeterOne"), "ClickedSelf")
+
+        // 6. Group selectors (OR | and AND &) in bangs and skin groups
+        t.check(skin.isInSkinGroup("Alpha | Gamma"))
+        t.check(skin.isInSkinGroup("Alpha & Beta"))
+        t.check(!skin.isInSkinGroup("Alpha & Gamma"))
+        t.check(!skin.isInSkinGroup("Alpha | Beta & Gamma"), "mixing | and & is invalid")
+
+        skin.execute("[!HideMeter \"Group=GroupA & GroupB\"]", from: nil)
+        t.equal(skin.meter(named: "MeterOne")?.hidden, true)
+        t.equal(skin.meter(named: "MeterTwo")?.hidden, false)
+
+        skin.execute("[!ShowMeterGroup \"GroupA | GroupC\"]", from: nil)
+        t.equal(skin.meter(named: "MeterOne")?.hidden, false)
+        t.equal(skin.meter(named: "MeterTwo")?.hidden, false)
+
+        // 7. Colon-namespaced bangs (!Loop:Reset, !Skin:SetZoomFactor)
+        skin.update()
+        t.close(skin.measure(named: "MeasureLoop")?.value ?? 0, 3)
+        skin.execute("[!Loop:Reset MeasureLoop]", from: nil)
+        skin.update()
+        t.close(skin.measure(named: "MeasureLoop")?.value ?? 0, 1)
+
+        skin.execute("[!Skin:SetZoomFactor 2.0]", from: nil)
+        t.close(skin.effectiveZoomFactor, 2.0)
+
+        // 8. OnDisplayMetricsChange
+        skin.displayMetricsDidChange()
+        skin.update()
+        t.equal(skin.variable("MetricsChanged"), "1")
+    }
 }

@@ -149,7 +149,8 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             if header == nil { report("header", "WebParser [\(name)]: ignoring invalid Header: \(entry.value)") }
             return header
         }
-        o.flags = WebParserFlags(option: option("Flags"), forceReload: bool("ForceReload", false))
+        let forceReload = skin.settings.syntaxVersion < 2 ? bool("ForceReload", false) : false
+        o.flags = WebParserFlags(option: option("Flags"), forceReload: forceReload)
         for flag in o.flags.unsupported {
             skin.addIssue("WebParser Flags=\(flag) is not supported")
         }
@@ -254,7 +255,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
 
     public override func execute(command: String) {
         switch command.trimmingCharacters(in: .whitespaces).lowercased() {
-        case "update":
+        case "update", "refetch":
             readOptionsIfNeeded()
             guard parentName == nil else {
                 skin.log("WebParser [\(name)]: !CommandMeasure Update is only valid on a parent measure", level: .warning)
@@ -265,7 +266,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             startFetch(force: true)
             updateCounter = 0
             advanceCounter()
-        case "reset":
+        case "reset", "clearresults":
             guard parentName == nil else {
                 skin.log("WebParser [\(name)]: !CommandMeasure Reset is only valid on a parent measure", level: .warning)
                 return

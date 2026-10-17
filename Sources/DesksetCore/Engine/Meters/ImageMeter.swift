@@ -67,7 +67,9 @@ public final class ImageMeter: Meter {
     public override func readMeterOptions() {
         nameTemplate = string("ImageName")
         imagePathOption = ImageOptions.imagePathOption(self)
-        if imagePathOption.isEmpty { imagePathOption = string("Path").trimmingCharacters(in: .whitespaces) }
+        if imagePathOption.isEmpty, skin.settings.syntaxVersion < 2 {
+            imagePathOption = string("Path").trimmingCharacters(in: .whitespaces)
+        }
         imageOptions = ImageOptions.read(from: self)
 
         onlyOneSide = (widthOption == nil) != (heightOption == nil)
