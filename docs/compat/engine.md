@@ -998,6 +998,22 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Lua-driven layouts (Enigma's Taskbar skin widths, calendars, notes, readers) run their scripts now (lua.md); their
   first update sees provisional meter geometry (§1).
 
+### Rainmeter 5.0 engine additions
+- Windows (Rainmeter 5.0): `[Rainmeter] SyntaxVersion` / `AppVersion`, `Update=<visible> | Invisible <invisible>`,
+  `DefaultZoomFactor`, `OnDisplayMetricsChange`, `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`, `[%EnvVar]`,
+  `[$Skin…]`, `[$Display…]` / `[$DisplayDevice…@N]`, unbracketed formulas when `SyntaxVersion >= 5`, `Group=a|b` /
+  `Group=a&b`, 2-argument `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`,
+  `!SetZoomFactor` / `!SetZoomFactorGroup`, colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`,
+  `!ActionTimer:Execute/Stop`, `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults/UpdateData/ResetData`,
+  `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
+  `!WindowMessage:Send`), `Measure=DragDrop`, `NumberConversionFormat`, `TimeStampFormat=ISO8601`, Calc `UseRandomSeed`,
+  Loop `ResetValue`, RecycleManager `Drives`, WebParser `JsonPointer` and `KeepOldData`, `Meter=SVG`
+  (`[Meter:Attribute(selector, attr)]`, `ImportStyleSheet`, `InlineStyleSheet`), `Meter=TextEdit` (`[$Input]`,
+  `[$Input:MatchN]`, `!TextEdit:*`), `StringAlign=Justify…`, and Shape `LineJoin`.
+- Mac (Deskset): all implemented and tested in `Sources/DesksetSelfTest/Rainmeter5SelfTests.swift` and
+  `Sources/Deskset/App/SkinWindowModelSelfTests.swift`.
+- Status: identical / emulated
+
 ---
 
 ## 9. Deskset extensions

@@ -385,3 +385,14 @@ content; before, those areas stayed empty.
 - Why: skins and their sections are not thread-safe.
 - Skin impact: io on slow network volumes blocks the skin while it runs, as on Windows.
 - Status: identical
+
+### Rainmeter 5.0 Lua additions
+- Windows (Rainmeter 5.0): UTF-8 `string` functions (`string.uchar`, `string.ucodepoint`, `string.ulen`,
+  `string.uoffset`, Unicode-aware `string.upper` / `string.lower`, codepoint-indexed `string.ucfind`,
+  `string.ucgmatch`, `string.ucgsub`, `string.ucmatch`, `string.ucreverse`, `string.ucsub`), plus
+  `SKIN:SetOption(Section, Option, Value)`, `SKIN:SetOptionGroup(Group, Option, Value)`,
+  `SKIN:SetVariable(Name, Value)`, `SKIN:ReadTextFile(Path)`, `SKIN:WriteTextFile(Path, Content)`,
+  `Meter:SetOption(Option, Value)` and `Measure:SetOption(Option, Value)`.
+- Mac (Deskset): all supported; `SKIN:ReadTextFile` decodes UTF-8 / UTF-16 / ANSI files and `SKIN:WriteTextFile`
+  writes UTF-8 files under `#SKINSPATH#` or `#SETTINGSPATH#`.
+- Status: identical
