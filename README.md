@@ -8,14 +8,14 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[中文说明](README.zh-CN.md)
+[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)
 
 ![Deskset's example skins in the dark and light themes](docs/images/example-skins.jpg)
 
-Deskset puts live widgets on your Mac's desktop: clocks, calendars, system monitors, network and disk meters, audio
-visualizers, now-playing panels and more. Use the example skins, build your own in the Skin Studio, or install skins
-made for [Rainmeter](https://www.rainmeter.net) — the large library of `.ini` / `.rmskin` skins from the Windows
-world — and run them on the Mac.
+Deskset puts live widgets on your Mac's desktop: clocks, calendars, weather, system monitors, network and disk meters,
+audio visualizers, now-playing panels, to-do lists, timers, launchers and more. Use the bundled **Stationery** widget
+collection, edit widgets in the Skin Studio, or install skins made for [Rainmeter](https://www.rainmeter.net) — the
+large library of `.ini` / `.rmskin` skins from the Windows world — and run them on the Mac.
 
 ## Why "Deskset"
 
@@ -24,16 +24,22 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 
 ## Features
 
-- **Runs Rainmeter skins.** `@Include`, variables, formulas, section variables, MeterStyles, bangs and mouse actions;
-  every meter (String with inline styles, Image, Bar, Line, Histogram, Roundline, Rotator, Shape, Button, Bitmap);
-  the measures (CPU, memory, network, disk, time, uptime, battery, Calc, WebParser…); Lua scripts; and Rainmeter's
-  bundled plugins rewritten natively for macOS (AudioLevel, NowPlaying for Music and Spotify, WiFiStatus, InputText…).
-  Double-click a `.rmskin` to install it.
-- **Native and light.** Swift and AppKit, drawn with Core Graphics and Core Text — no web views. Each skin is a
-  transparent panel on the desktop, on the desktop level, with normal windows or always on top; click-through,
-  snapping, fading and saved positions included.
-- **Skin Studio.** A visual editor with a canvas, layers, a component library, a property inspector and a code editor
-  side by side. Edits are written back into the skin's own files, keeping their formatting.
+- **Runs Rainmeter skins (including 5.0).** `@Include`, `@Inherit`, variables, formulas, section variables,
+  MeterStyles, bangs, mouse actions and file drag-and-drop; every meter (String with inline styles, Image, Bar, Line,
+  Histogram, Roundline, Rotator, Shape, Button, Bitmap, SVG, TextEdit); the measures (CPU, memory, network, disk, time,
+  uptime, battery, Calc, WebParser…); Lua scripts; and Rainmeter's bundled plugins rewritten natively for macOS
+  (AudioLevel, NowPlaying for Music and Spotify, WiFiStatus, InputText, FileInfo, FolderInfo…). Double-click a `.rmskin`
+  to install it.
+- **The Stationery widget collection.** Ships with a matched set of desktop widgets — clocks, calendars, weather, system
+  monitors, music controls, vinyl turntable, audio spectrum, photos, notes, to-do lists, timers and folder launchers —
+  with light and dark looks, multiple sizes, and English and Chinese labels.
+- **Native macOS styling and sensors.** Swift and AppKit, drawn with Core Graphics and Core Text off the main thread —
+  no web views. Skins can use Liquid Glass (macOS 26; frosted blur on earlier systems) via `MacGlass`, SF Symbols icons
+  (`sf:<name>`), Apple system fonts (`System`, `System Rounded`, `System Mono`, `New York`), colors that follow Light
+  and Dark Mode, and Mac hardware sensors (`Plugin=MacSensors` for temperatures, fan speeds, power and clocks, with
+  automatic mapping for CoreTemp, SpeedFan and MSIAfterburner).
+- **Skin Studio.** A side-by-side code editor and live canvas preview with syntax highlighting, diagnostics, and instant
+  updates as you edit, plus one-click opening in your preferred external code editor.
 - **Weather and sun.** Deskset's own `Plugin=MacWeather` shows forecasts for any place (now, hourly, daily, with
   SF Symbols icons) from [MET Norway](https://api.met.no/), and `Plugin=MacSun` works out sunrise, sunset and the moon
   on your Mac. See [Weather](#weather).
@@ -53,9 +59,9 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 
 ## Install
 
-1. Download the latest release from the [Releases](../../releases) page:
-   - `Deskset-<version>-arm64.dmg` for Macs with Apple silicon (M1 and later),
-   - `Deskset-<version>-x86_64.dmg` for Intel Macs.
+1. Download the latest release (or see all versions on the [Releases](../../releases) page):
+   - [**Deskset-0.2.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.zip)) for Macs with Apple silicon (M1 and later),
+   - [**Deskset-0.2.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.zip)) for Intel Macs.
 2. Open the disk image and drag **Deskset** to **Applications**.
 3. Deskset is not notarized by Apple yet, so the first time you open it macOS says it cannot check it for malicious
    software. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run
@@ -148,10 +154,11 @@ reading skins can use, and `Deskset --help` lists the rest.
 | Path | What |
 |---|---|
 | `Sources/DesksetCore` | The skin engine: INI, `@Include`, variables, formulas, bangs, measures, meters, Lua, `.rmskin` (Foundation only) |
-| `Sources/Deskset` | The app: menu bar, skin windows, drawing, system data, plugins, Skin Studio |
+| `Sources/DesksetDraw` | Core Graphics and Core Text renderers, symbol rasterizing and drawing primitives |
+| `Sources/Deskset` | The app: menu bar, skin windows, runtime, system data, plugins, Skin Studio |
 | `Sources/DesksetSelfTest` | The engine's self-tests (`swift run DesksetSelfTest`) |
 | `Sources/CLua` | Lua 5.1.5 |
-| `DefaultSkins` | The example skins shipped with the app |
+| `DefaultSkins` | The bundled Stationery widget collection shipped with the app |
 | `TestSkins` | Skins used by the tests and for checking features by eye |
 | `Data/Places` | The offline place table of the weather plugins (GeoNames, CC BY 4.0) |
 | `docs` | Compatibility documentation and design notes |

@@ -48,9 +48,9 @@ bash scripts/build-app.sh            # build/Deskset.app
   the folder it prints. Run it when you change which thread runs what. (ThreadSanitizer does not work yet: on
   macOS 26.5 with Xcode 26.2 its runtime crashes at startup.)
 - Skin work that runs later — timers, delays, the results of background work — goes through the skin's executor
-  (`Skin.executor`, or `Skin.async` / `Skin.hop()`), never `DispatchQueue.main` or `RunLoop.main` directly: skins are
-  moving off the main thread ([docs/skin-threading.md](docs/skin-threading.md)). Debug builds check that a skin is
-  only touched where its executor runs.
+  (`Skin.executor`, or `Skin.async` / `Skin.hop()`), never `DispatchQueue.main` or `RunLoop.main` directly: desktop
+  skins run on a dedicated engine thread or worker pool ([docs/skin-threading.md](docs/skin-threading.md)). Debug builds
+  check that a skin is only touched where its executor runs.
 - Anything that makes two runs of the same skin differ goes through the skin's seams, so that a run can be replayed
   with a fixed clock, seed and data (`--render --clock --seed --data`): the time, uptime and time zone through
   `Skin.skinClock`, the locale through `Skin.locale`, random numbers through `Skin.random`, timers and delays through
@@ -82,9 +82,9 @@ bash scripts/build-app.sh            # build/Deskset.app
   Request URLs match exactly, including the query. Files must be nonempty regular files inside the manifest's folder;
   page and download limits are 16 MiB and 64 MiB. Unlisted requests still fail and never reach the network. Use payloads
   that exercise the skin's parsed values and images; equal empty or error pictures do not establish content coverage.
-- Skins update and draw on the main thread, so anything that keeps it busy makes animated skins skip frames. Build
-  windows in steps (`MainThreadSteps`, as the skin editor does) rather than all at once. To find stalls,
-  `defaults write app.deskset.Deskset MainThreadStallLog -int 50` logs every main-thread step of 50 ms or more to
+- Desktop skins update and draw on the engine thread (`SkinThreading=engine`), while window management and UI stay on
+  the main thread (`SkinWindowController` communicates with `SkinRuntime` via messages and snapshots). To find main-thread
+  stalls, `defaults write app.deskset.Deskset MainThreadStallLog -int 50` logs every main-thread step of 50 ms or more to
   `~/Library/Logs/Deskset/Deskset.log`, with what was running (read at launch; `defaults delete` to turn it off).
 
 ## Weather requests

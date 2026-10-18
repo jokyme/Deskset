@@ -146,3 +146,24 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" \
             --title "Deskset ${{ github.ref_name }}" --generate-notes --draft
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update download links in README
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          sed -i -E \
+            -e "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?/Deskset-[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?-|releases/download/${TAG}/Deskset-${VERSION}-|g" \
+            -e "s|(\*\*Deskset-)[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(-arm64\.dmg\*\*)|\1${VERSION}\3|g" \
+            -e "s|(\*\*Deskset-)[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(-x86_64\.dmg\*\*)|\1${VERSION}\3|g" \
+            README.md README.zh-CN.md
+          if ! git diff --quiet README.md README.zh-CN.md; then
+            git config user.name "joky"
+            git config user.email "524510745@qq.com"
+            git add README.md README.zh-CN.md
+            git commit -m "docs: update README download links for ${TAG}"
+            git push origin HEAD:main
+          fi

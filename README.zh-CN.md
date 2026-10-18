@@ -8,13 +8,13 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[English](README.md)
+[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)
 
 ![Deskset 自带示例皮肤的深色与浅色主题](docs/images/example-skins.jpg)
 
-Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、系统监控、网速和磁盘、音频可视化、正在播放……可以用自带的示例皮肤，
-在 Skin Studio 里做自己的皮肤，也可以直接安装为 [Rainmeter](https://www.rainmeter.net) 制作的皮肤——Windows 世界里海量的
-`.ini` / `.rmskin` 皮肤——在 Mac 上运行。
+Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天气、系统监控、网速和磁盘、音频可视化、正在播放、待办清单、计时器、
+启动器……可以用自带的 **Stationery（文房）** 组件套装，在 Skin Studio 里修改皮肤，也可以直接安装为
+[Rainmeter](https://www.rainmeter.net) 制作的皮肤——Windows 世界里海量的 `.ini` / `.rmskin` 皮肤——在 Mac 上运行。
 
 ## 名字的由来
 
@@ -23,13 +23,17 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、系�
 
 ## 功能
 
-- **运行 Rainmeter 皮肤。** `@Include`、变量、公式、节变量、MeterStyle、Bang 与鼠标动作；全部 meter（含内联样式的 String、
-  Image、Bar、Line、Histogram、Roundline、Rotator、Shape、Button、Bitmap）；各类 measure（CPU、内存、网络、磁盘、时间、
-  开机时长、电池、Calc、WebParser……）；Lua 脚本；Rainmeter 自带插件为 macOS 原生重写（AudioLevel、接 Music / Spotify 的
-  NowPlaying、WiFiStatus、InputText……）。双击 `.rmskin` 即可安装。
-- **原生、轻量。** Swift + AppKit，Core Graphics 与 Core Text 绘制，不用网页视图。每个皮肤是桌面上的一个透明面板，可放在桌面层、
-  普通层或置顶；支持点击穿透、贴边、淡入淡出和记住位置。
-- **Skin Studio。** 可视化编辑器：画布、图层、组件库、属性面板，代码编辑器可以并排显示。修改会写回皮肤自己的文件，保留原有格式。
+- **运行 Rainmeter 皮肤（含 5.0）。** `@Include`、`@Inherit`、变量、公式、节变量、MeterStyle、Bang、鼠标动作与文件拖放；全部
+  meter（含内联样式的 String、Image、Bar、Line、Histogram、Roundline、Rotator、Shape、Button、Bitmap、SVG、TextEdit）；各类
+  measure（CPU、内存、网络、磁盘、时间、开机时长、电池、Calc、WebParser……）；Lua 脚本；Rainmeter 自带插件为 macOS 原生重写
+  （AudioLevel、接 Music / Spotify 的 NowPlaying、WiFiStatus、InputText、FileInfo、FolderInfo……）。双击 `.rmskin` 即可安装。
+- **Stationery 默认小组件套装。** 内置全套精心设计的桌面小组件——时钟、日历、天气、系统监控、音乐控制、黑胶唱片、音频频谱、照片、
+  便签、待办、计时器和常用文件夹启动器——提供深浅外观、多种尺寸与中英文界面。
+- **原生 macOS 外观与硬件传感器。** Swift + AppKit，由独立引擎线程通过 Core Graphics 与 Core Text 绘制，不用网页视图。支持
+  macOS 26 的 `MacGlass` 液态玻璃（较早系统为磨砂模糊）、SF Symbols 图标（`sf:<名称>`）、苹果系统字体（`System`、`System Rounded`、
+  `System Mono`、`New York`）、随深浅色模式自动切换的颜色变量，以及免权限读取 Mac 温度、风扇转速、功耗与频率的
+  `Plugin=MacSensors`（自动兼容 CoreTemp、SpeedFan 和 MSIAfterburner 皮肤）。
+- **Skin Studio。** 代码编辑器与实时预览画布并排显示，支持语法高亮、诊断提示与边改边看，也可一键调用外部代码编辑器打开。
 - **天气与日出日落。** Deskset 自己的 `Plugin=MacWeather` 显示任意地点的天气预报（当前、逐小时、逐日，配 SF Symbols 图标），
   数据来自 [MET Norway](https://api.met.no/)；`Plugin=MacSun` 在本机计算日出、日落和月相。见[天气](#天气)。
 - **如实记录兼容性。** 所有与 Windows 表现不一致的地方都写在 [docs/COMPATIBILITY.zh-CN.md](docs/COMPATIBILITY.zh-CN.md)。
@@ -45,9 +49,9 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、系�
 
 ## 安装
 
-1. 在 [Releases](../../releases) 页面下载最新版本：
-   - `Deskset-<版本>-arm64.dmg`：Apple 芯片（M1 及以后）的 Mac；
-   - `Deskset-<版本>-x86_64.dmg`：Intel 芯片的 Mac。
+1. 直接下载最新版本（或在 [Releases](../../releases) 页面查看所有版本）：
+   - [**Deskset-0.2.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
+   - [**Deskset-0.2.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.zip)）：Intel 芯片的 Mac。
 2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」。
 3. Deskset 暂未经过 Apple 公证，第一次打开时 macOS 会提示无法验证。打开「系统设置 → 隐私与安全性」，向下滚动，点「仍要打开」。
    （也可以在终端执行 `xattr -dr com.apple.quarantine /Applications/Deskset.app`。）
@@ -116,8 +120,25 @@ bash scripts/build-app.sh --arch arm64 --package    # dist/Deskset-<版本>-arm6
 bash scripts/build-app.sh --arch x86_64 --package   # dist/Deskset-<版本>-x86_64.dmg 和 .zip
 ```
 
-推送 `v0.1.0` 这样的标签，GitHub Actions 会构建两种架构并创建一个 Release 草稿（见
+推送 `v0.2.0` 这样的标签，GitHub Actions 会构建两种架构并创建一个 Release 草稿（见
 [.github/workflows/release.yml](.github/workflows/release.yml)）。
+
+开发用命令行工具：`Deskset --render Skin.ini --out skin.png` 无需窗口直接离屏渲染皮肤，`Deskset --snapshot-ui manage --out ui.png`
+渲染应用窗口快照，`Deskset --system-report` 打印皮肤可用的全部系统与传感器读数，`Deskset --help` 列出其余选项。
+
+## 项目结构
+
+| 路径 | 说明 |
+|---|---|
+| `Sources/DesksetCore` | 皮肤引擎：INI、`@Include`、变量、公式、Bang、Measure、Meter、Lua、`.rmskin`（仅依赖 Foundation） |
+| `Sources/DesksetDraw` | Core Graphics 与 Core Text 渲染器、SF Symbols 光栅化与绘制原语 |
+| `Sources/Deskset` | 应用程序：菜单栏、皮肤窗口、运行时、系统数据采集、插件、Skin Studio |
+| `Sources/DesksetSelfTest` | 引擎自测程序（`swift run DesksetSelfTest`） |
+| `Sources/CLua` | Lua 5.1.5 |
+| `DefaultSkins` | 随应用分发的 Stationery 默认小组件套装 |
+| `TestSkins` | 自测与视觉验证使用的回归测试皮肤 |
+| `Data/Places` | 天气插件的离线城市检索表（GeoNames，CC BY 4.0） |
+| `docs` | 兼容性文档与设计说明 |
 
 ## 参与贡献
 

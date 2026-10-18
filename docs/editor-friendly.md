@@ -1,5 +1,7 @@
 # Deskset Skin Studio: a friendlier sidebar, inspector and canvas (v4, "Keynote-calm")
 
+> **Historical note (v0.2.0):** In v0.2.0, the visual sidebar and property inspector described here were removed in favor of a streamlined side-by-side **code editor and live preview** layout in Skin Studio.
+>
 > Status: buildable spec. It replaces §2 (sidebar) and §3 (inspector) of `docs/editor-design.md`, and adds the agreed canvas-overflow behaviour. Everything not mentioned here stays as described in `editor-design.md`: the Design | Split | Code modes, the code editor, Settings and routing, and the Shape editor internals.
 > Clean room: every behaviour below comes from Deskset's own engine and the public Rainmeter manual. No Rainmeter source was read.
 
