@@ -9,6 +9,7 @@ enum MainMenu {
 
         let appMenu = NSMenu(title: "Deskset")
         appMenu.addItem(item("About Deskset", #selector(AppController.aboutAction), target: app))
+        appMenu.addItem(item(app.updates.menuTitle, #selector(AppController.checkForUpdatesAction), target: app))
         appMenu.addItem(.separator())
         appMenu.addItem(item("Settings…", #selector(AppController.settingsAction), key: ",", target: app))
         let manage = item("Manage Skins…", #selector(AppController.manageAction), key: ",", target: app)

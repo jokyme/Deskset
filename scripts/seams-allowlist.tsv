@@ -29,6 +29,22 @@ event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage
 
 effect.fileWrite	Sources/Deskset/App/AppIcon.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.global	Sources/Deskset/App/AppInstallation.swift	1	copying and verifying the app off the UI thread; installation only, never a skin input
+background.mainHop	Sources/Deskset/App/AppInstallation.swift	4	installation prompts, launch handoff and completion on the main thread
+background.process	Sources/Deskset/App/AppInstallation.swift	1	codesign verification of the staged app before replacement
+effect.fileWrite	Sources/Deskset/App/AppInstallation.swift	9	user-confirmed installation with staged copying, replacement and rollback; injectable copy and replace in tests
+effect.terminate	Sources/Deskset/App/AppInstallation.swift	1	exit the unstarted disk-image instance after installation or cancellation
+effect.workspace	Sources/Deskset/App/AppInstallation.swift	3	open the installed app or reveal installer/recovery locations after user interaction
+random.UUID	Sources/Deskset/App/AppInstallation.swift	2	unique staging and backup names on the destination volume
+random.pid	Sources/Deskset/App/AppInstallation.swift	1	exclude the installer itself when checking for a running copy
+
+timer.Timer	Sources/Deskset/App/AppUpdateController.swift	1	app update check cadence; never runs inside skins and only starts in the interactive app
+timer.runLoopAdd	Sources/Deskset/App/AppUpdateController.swift	1	the app update check timer on the main run loop
+wall.Date()	Sources/Deskset/App/AppUpdateController.swift	1	default injected clock for the persistent daily update check interval
+
+background.URLSession	Sources/Deskset/App/AppUpdateService.swift	2	GitHub release lookup behind AppUpdateFetching with an injectable URLSession
+background.mainHop	Sources/Deskset/App/AppUpdateService.swift	1	update completion delivered to the app UI; cancellation suppresses late delivery
+
 background.mainHop	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 background.process	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.workspace	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -106,7 +122,7 @@ wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a s
 background.mainHop	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
 effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
 effect.terminate	Sources/Deskset/AppController.swift	2	app lifecycle, menus and single-instance handover; not a skin input
-effect.workspace	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+effect.workspace	Sources/Deskset/AppController.swift	4	app lifecycle, menus, single-instance handover and user-requested release page; not a skin input
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.notification	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input

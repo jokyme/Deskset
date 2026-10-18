@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)
+[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)
 
 ![Deskset's example skins in the dark and light themes](docs/images/example-skins.jpg)
 
@@ -56,15 +56,30 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 ## Install
 
 1. Download the latest release (or see all versions on the [Releases](../../releases) page):
-   - [**Deskset-0.2.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.zip)) for Macs with Apple silicon (M1 and later),
-   - [**Deskset-0.2.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.zip)) for Intel Macs.
-2. Open the disk image and drag **Deskset** to **Applications**.
+   - [**Deskset-0.2.1-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.zip)) for Macs with Apple silicon (M1 and later),
+   - [**Deskset-0.2.1-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.zip)) for Intel Macs.
+2. Open the disk image and drag **Deskset** to **Applications**, then open it from Applications. You can also open
+   Deskset in the disk image and choose **Install to Applications**. A first installation uses `~/Applications` if
+   `/Applications` is not writable. If no installation prompt appears, use the drag-and-drop steps.
 3. Deskset is not notarized by Apple yet, so the first time you open it macOS says it cannot check it for malicious
    software. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run
    `xattr -dr com.apple.quarantine /Applications/Deskset.app` in Terminal.)
 
 Deskset lives in the menu bar and has no Dock icon. If the menu bar icon is hidden (macOS lets you hide menu bar
 items), open Deskset again from Applications to show the **Manage Skins** window.
+
+### Updates and upgrading
+
+Choose **Check for Updates…** in the Deskset menu or **Settings… ▸ General**. Deskset also checks for a new public
+release once a day by default and prompts once for each newer version; turn this off in General settings if you
+prefer manual checks. Automatic checks stay quiet when offline or when GitHub cannot be reached. **View Update**
+opens the release on GitHub, where you can download the disk image for your Mac.
+
+To upgrade, quit Deskset from its menu and save any edits, then open the new disk image. Drag Deskset to Applications
+and choose **Replace**, or open the copy in the disk image and choose **Replace and Open**. The installer shows the
+installed version, waits for you to quit any running copy, and refuses to replace a newer version with an older one.
+If the existing application is not writable, use Finder to replace it. Open Deskset from Applications and eject the
+disk image. Your skins and settings in `~/Library/Application Support/Deskset` are preserved.
 
 ## Using skins
 
@@ -127,6 +142,10 @@ open build/Deskset.app
 ```
 
 For development setup, tests, and architecture details, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+To create the ZIP and styled drag-to-Applications DMG, add `--package`. Packaging also requires Python 3.10 or later;
+the first run downloads the pinned tools in `scripts/dmg/requirements.txt` into `build/dmg-tools`. Later runs reuse
+them. The Finder layout and Retina background are generated without a desktop session.
 
 ## Contributing
 

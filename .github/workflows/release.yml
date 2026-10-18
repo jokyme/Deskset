@@ -104,6 +104,11 @@ jobs:
             --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple "$APP"
 
+      - name: Python for disk image layout
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Package
         run: bash scripts/package-app.sh "build/${{ matrix.arch }}/Deskset.app" "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
 
