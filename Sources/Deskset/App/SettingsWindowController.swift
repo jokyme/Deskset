@@ -31,6 +31,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private(set) var pane = Pane.general
     private var paneViews: [Pane: NSView] = [:]
     private var observer: NSObjectProtocol?
+    private var updateObserver: NSObjectProtocol?
 
     // Editor pane.
     let editorPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -41,6 +42,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
                                  target: nil, action: nil)
     // General pane.
     let loginBox = NSButton(checkboxWithTitle: "Launch Deskset at login", target: nil, action: nil)
+    let automaticUpdatesBox = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
+    let checkUpdatesButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
+    let viewUpdateButton = NSButton(title: "View Update…", target: nil, action: nil)
+    let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -102,12 +107,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         select(app.state.data.settingsPane.flatMap(Pane.init(rawValue:)) ?? .general)
         observer = NotificationCenter.default.addObserver(forName: .desksetEditorPreferencesChanged, object: app.state,
                                                           queue: .main) { [weak self] _ in self?.preferencesChanged() }
+        updateObserver = NotificationCenter.default.addObserver(forName: .desksetUpdatesChanged, object: app.updates,
+                                                                 queue: .main) { [weak self] _ in self?.updateControls() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let updateObserver { NotificationCenter.default.removeObserver(updateObserver) }
     }
 
     // MARK: Toolbar
@@ -140,12 +148,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         let view = paneView(pane)
         if window.contentView !== view {
             window.contentView = view
-            view.layoutSubtreeIfNeeded()
-            let size = NSSize(width: Self.contentWidth, height: ceil(view.fittingSize.height))
-            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-            frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
-            window.setFrame(frame, display: true, animate: window.isVisible)
         }
+        view.layoutSubtreeIfNeeded()
+        let size = NSSize(width: Self.contentWidth, height: ceil(view.fittingSize.height))
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        if window.frame != frame { window.setFrame(frame, display: true, animate: window.isVisible) }
         app.state.setSettingsPane(pane.rawValue)
     }
 
@@ -186,6 +194,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontStepper.action = #selector(fontStepperChanged)
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
+        automaticUpdatesBox.target = self
+        automaticUpdatesBox.action = #selector(automaticUpdatesToggled)
+        checkUpdatesButton.target = app
+        checkUpdatesButton.action = #selector(AppController.checkForUpdatesAction)
+        viewUpdateButton.target = app
+        viewUpdateButton.action = #selector(AppController.showAvailableUpdateAction)
+        updateStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        updateStatusLabel.textColor = .secondaryLabelColor
+        updateStatusLabel.preferredMaxLayoutWidth = 340
+        updateStatusLabel.widthAnchor.constraint(equalToConstant: 340).isActive = true
     }
 
     private func label(_ text: String) -> NSTextField {
@@ -247,11 +265,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         folder.spacing = 8
         let loginNote = note(LaunchAtLogin.isAvailable ? "Your skins come back when you log in."
                                                        : "Available when Deskset runs from the Applications folder.")
+        let updateButtons = NSStackView(views: [checkUpdatesButton, viewUpdateButton])
+        updateButtons.spacing = 8
         return makePane(rows: [
             [label("Startup:"), loginBox],
             [NSGridCell.emptyContentView, loginNote],
             [label("Skins folder:"), folder],
-        ], spacingAfter: [1: 8])
+            [label("Updates:"), automaticUpdatesBox],
+            [NSGridCell.emptyContentView, note("Checks daily. New versions open on GitHub for download.")],
+            [NSGridCell.emptyContentView, updateButtons],
+            [NSGridCell.emptyContentView, updateStatusLabel],
+        ], spacingAfter: [1: 8, 2: 8])
     }
 
     // MARK: Editor list
@@ -323,6 +347,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         liveReloadBox.state = e.liveReload ? .on : .off
         loginBox.state = LaunchAtLogin.isEnabled ? .on : .off
         loginBox.isEnabled = LaunchAtLogin.isAvailable
+        automaticUpdatesBox.state = app.updates.automaticallyChecks ? .on : .off
+        checkUpdatesButton.title = app.updates.menuTitle
+        checkUpdatesButton.isEnabled = !app.updates.isChecking
+        viewUpdateButton.isHidden = app.updates.availableRelease == nil
+        updateStatusLabel.stringValue = app.updates.statusText
+        if pane == .general, paneViews[.general] != nil { select(.general) }
     }
 
     private func preferencesChanged() {
@@ -417,6 +447,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     @objc private func loginToggled() {
         LaunchAtLogin.toggle(app: app)
         updateControls()
+    }
+
+    @objc private func automaticUpdatesToggled() {
+        app.updates.setAutomaticallyChecks(automaticUpdatesBox.state == .on)
     }
 
     // MARK: Snapshot (UISnapshot, self-tests)

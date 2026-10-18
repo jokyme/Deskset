@@ -77,6 +77,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Watches the preference keys behind the clock, week and temperature settings (`regionalSettingsChanged`).
     private var regionalDefaults: RegionalDefaultsObserver?
     private var regionalRecheck: DispatchWorkItem?
+    private var updateAlertVisible = false
+    lazy var updates: AppUpdateController = {
+        let controller = AppUpdateController(state: state)
+        controller.onNotice = { [weak self] notice, automatic in
+            self?.showUpdateNotice(notice, automatic: automatic) ?? false
+        }
+        controller.onChange = { [weak self] in self?.updateUpdateIndicator() }
+        return controller
+    }()
 
     private var systemAsleep = false
     private var screensAsleep = false
@@ -126,6 +135,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if presentsWindows, AppInstallation.handleLaunchIfNeeded() {
+            isDuplicateInstance = true // This installer instance must never save a stale copy of state.json.
+            return
+        }
         if handOffToRunningInstance() { return }
         Paths.ensureDirectories()
         Log.rotateIfNeeded()
@@ -175,6 +188,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             installer.open(CodeEditorRouter.routeOpenedFiles(pendingOpenURLs, app: self))
             pendingOpenURLs = []
         }
+        if presentsWindows { updates.start() }
     }
 
     /// Set when this launch handed over to an instance that was already running (see `handOffToRunningInstance`).
@@ -194,6 +208,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard let other = NSRunningApplication.runningApplications(withBundleIdentifier: id).first(where: {
                   $0.processIdentifier != me.processIdentifier && !$0.isTerminated && startedEarlier($0)
+                    && !($0.bundleURL.map(AppInstallation.isInstallationSource) ?? false)
               }),
               let otherURL = other.bundleURL else { return false }
         isDuplicateInstance = true
@@ -224,6 +239,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // A duplicate instance never loaded anything; saving its copy of the state would overwrite the running one's.
         guard !isDuplicateInstance else { return }
+        updates.stop()
         stopAllForTermination()
         SoundPlayer.stop()
         state.saveNow()
@@ -435,6 +451,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         observe(workspace, NSWorkspace.didWakeNotification) { app in
             app.systemAsleep = false
             app.systemDidWake()
+            if app.presentsWindows, !app.isTerminating { app.updates.checkAutomaticallyIfDue() }
         }
         observe(workspace, NSWorkspace.screensDidSleepNotification) { app in
             app.screensAsleep = true
@@ -1104,7 +1121,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                          .foregroundColor: NSColor.secondaryLabelColor])
         var options: [NSApplication.AboutPanelOptionKey: Any] = [.credits: credits,
-                                                                .applicationVersion: DesksetCore.version]
+                                                                .applicationVersion: AppVersion.current]
         if !Paths.isAppBundle { options[.applicationIcon] = AppIcon.image(size: 256) }
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
@@ -1131,6 +1148,66 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: Status item
+
+    private func updateUpdateIndicator() {
+        let release = updates.availableRelease
+        statusItem?.button?.toolTip = release.map { "Deskset \($0.version.description) is available" } ?? "Deskset"
+        statusItem?.button?.title = release == nil ? "" : "•"
+        statusItem?.length = release == nil ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        if let menu = NSApp.mainMenu?.items.first?.submenu {
+            for item in menu.items where item.action == #selector(checkForUpdatesAction) {
+                item.title = updates.menuTitle
+            }
+        }
+    }
+
+    /// Standard AppKit notices, also inspectable in headless tests. Automatic checks never report network failures.
+    @discardableResult
+    func showUpdateNotice(_ notice: AppUpdateController.Notice, automatic: Bool) -> Bool {
+        guard !updateAlertVisible else { return false }
+        // Don't interrupt an installation or an editor's save confirmation with another modal loop.
+        if automatic, NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }) {
+            return false
+        }
+        let title: String
+        let text: String
+        var style = NSAlert.Style.informational
+        var releaseURL: URL?
+        switch notice {
+        case .available(let release):
+            title = "A new version of Deskset is available"
+            text = "Deskset \(release.version.description) is available. You have \(updates.currentVersion).\n\n"
+                + "View the release notes and download the update on GitHub."
+            releaseURL = release.url
+        case .upToDate:
+            title = "You’re up to date"
+            text = "Deskset \(updates.currentVersion) is the latest available version."
+        case .noRelease:
+            title = "No release available"
+            text = "There is no public release available yet. Please check again later."
+        case .failed(let message):
+            style = .warning
+            title = "Couldn’t check for updates"
+            text = message + "\n\nTry again using Check for Updates."
+        }
+        lastAlert = (title, text)
+        guard presentsWindows else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = title
+        alert.informativeText = text
+        alert.addButton(withTitle: releaseURL == nil ? "OK" : "View Update")
+        if releaseURL != nil { alert.addButton(withTitle: "Later") }
+        updateAlertVisible = true
+        defer { updateAlertVisible = false }
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn, let url = releaseURL {
+            if !NSWorkspace.shared.open(url) {
+                self.alert("Couldn’t open the download page", "Please visit https://github.com/jokyme/Deskset/releases.")
+            }
+        }
+        return true
+    }
 
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -1194,6 +1271,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(login)
         menu.addItem(item("Settings…", #selector(settingsAction), key: ","))
+        if let release = updates.availableRelease {
+            menu.addItem(item("Update to Deskset \(release.version.description)…", #selector(showAvailableUpdateAction)))
+        }
+        menu.addItem(item(updates.menuTitle, #selector(checkForUpdatesAction)))
         menu.addItem(item("About Deskset", #selector(aboutAction)))
         menu.addItem(item("Quit Deskset", #selector(quitAction), key: "q"))
     }
@@ -1535,6 +1616,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func aboutAction() { showAbout() }
+
+    @objc func checkForUpdatesAction() { updates.checkManually() }
+
+    @objc func showAvailableUpdateAction() { updates.showAvailableUpdate() }
 
     /// The skin menu's MET Norway credit: opens the data's source.
     @objc func openWeatherSourceAction(_ sender: NSMenuItem) {

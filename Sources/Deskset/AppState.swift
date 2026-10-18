@@ -116,6 +116,41 @@ struct SkinState: Codable, Equatable {
     }
 }
 
+/// Update checks and the last version announced, kept with the app's other preferences in state.json.
+struct AppUpdatePreferences: Codable, Equatable {
+    var automaticallyChecks = true
+    var lastCheckAttempt: Date?
+    var lastNotifiedVersion: String?
+    /// Preferences from newer versions survive opening and saving the state with this version.
+    var unknownKeys: [String: JSONValue] = [:]
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case automaticallyChecks, lastCheckAttempt, lastNotifiedVersion
+    }
+
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+
+    init(from decoder: Decoder) throws {
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?
+            .unknownValues(besides: Self.knownKeys) ?? [:]
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        automaticallyChecks = ((try? c.decodeIfPresent(Bool.self, forKey: .automaticallyChecks)) ?? nil) ?? true
+        lastCheckAttempt = (try? c.decodeIfPresent(Date.self, forKey: .lastCheckAttempt)) ?? nil
+        lastNotifiedVersion = (try? c.decodeIfPresent(String.self, forKey: .lastNotifiedVersion)) ?? nil
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(automaticallyChecks, forKey: .automaticallyChecks)
+        try c.encodeIfPresent(lastCheckAttempt, forKey: .lastCheckAttempt)
+        try c.encodeIfPresent(lastNotifiedVersion, forKey: .lastNotifiedVersion)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
+    }
+}
+
 struct AppStateData: Codable {
     /// Keyed by config name (`Root\Sub`).
     var skins: [String: SkinState] = [:]
@@ -126,6 +161,8 @@ struct AppStateData: Codable {
     var shippedVariables: [String: [String: String]] = [:]
     /// Settings ▸ Editor.
     var editor = EditorPreferences()
+    /// Settings ▸ General: update checks and notifications.
+    var updates = AppUpdatePreferences()
     /// The Settings pane shown last (the window reopens on it).
     var settingsPane: String?
     /// False until the file has held editor preferences: the one moment the old UserDefaults live-reload switch is
@@ -137,7 +174,7 @@ struct AppStateData: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case skins, defaultSkinsInstalled, shippedVariables, editor, settingsPane
+        case skins, defaultSkinsInstalled, shippedVariables, editor, updates, settingsPane
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -152,6 +189,7 @@ struct AppStateData: Codable {
         let storedEditor = (try? c.decodeIfPresent(EditorPreferences.self, forKey: .editor)) ?? nil
         editor = storedEditor ?? EditorPreferences()
         hasEditorPreferences = storedEditor != nil
+        updates = ((try? c.decodeIfPresent(AppUpdatePreferences.self, forKey: .updates)) ?? nil) ?? AppUpdatePreferences()
         settingsPane = (try? c.decodeIfPresent(String.self, forKey: .settingsPane)) ?? nil
     }
 
@@ -161,6 +199,7 @@ struct AppStateData: Codable {
         try c.encode(defaultSkinsInstalled, forKey: .defaultSkinsInstalled)
         if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
+        try c.encode(updates, forKey: .updates)
         try c.encodeIfPresent(settingsPane, forKey: .settingsPane)
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: AppStateData.knownKeys)
@@ -246,6 +285,17 @@ final class AppState {
     func setSettingsPane(_ pane: String) {
         guard data.settingsPane != pane else { return }
         data.settingsPane = pane
+        scheduleSave()
+    }
+
+    var updates: AppUpdatePreferences { data.updates }
+
+    /// Saves only actual changes; the update controller publishes its own state changes to the UI.
+    func updateUpdates(_ change: (inout AppUpdatePreferences) -> Void) {
+        var preferences = data.updates
+        change(&preferences)
+        guard preferences != data.updates else { return }
+        data.updates = preferences
         scheduleSave()
     }
 

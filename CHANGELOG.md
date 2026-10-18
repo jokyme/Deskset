@@ -2,6 +2,30 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.2.1
+
+This release adds update checks, a clearer installation experience, and fixes for music widgets after Music restarts.
+
+### Added
+
+- **Update checks and notifications.** Check for updates from the Deskset menu or General settings. Deskset checks daily by default and automatically prompts once for each newer version; automatic checks can be turned off. **View Update** opens the GitHub release page to download the version for your Mac. Updates are not downloaded or installed automatically.
+
+### Changed and improved
+
+- **A styled disk image.** The installer now has a custom background, a drag-to-Applications arrow, and English and Chinese installation instructions.
+- **Guided installation and replacement.** Open Deskset from the disk image to install it or replace an existing copy. The installer verifies the copied app's signature, prevents downgrades, asks you to quit running copies, and keeps the previous application available for recovery if replacement fails.
+
+### Fixed
+
+- Fixed player controls and audio spectrum recovery after quitting and reopening Music.
+
+### Upgrading
+
+- Quit Deskset and save any edits before replacing the application. Your skins, settings and desktop layout are preserved.
+- Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.2.0...v0.2.1)
+
 ## 0.2.0
 
 This release brings a new collection of desktop widgets, a simpler code-and-preview layout, and support for more Rainmeter skins.

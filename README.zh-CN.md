@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)
+[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)
 
 ![Deskset 自带示例皮肤的深色与浅色主题](docs/images/example-skins.jpg)
 
@@ -47,14 +47,27 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天�
 ## 安装
 
 1. 直接下载最新版本（或在 [Releases](../../releases) 页面查看所有版本）：
-   - [**Deskset-0.2.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
-   - [**Deskset-0.2.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.0/Deskset-0.2.0-x86_64.zip)）：Intel 芯片的 Mac。
-2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」。
+   - [**Deskset-0.2.1-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
+   - [**Deskset-0.2.1-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.zip)）：Intel 芯片的 Mac。
+2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」，再从「应用程序」打开。也可以打开磁盘映像中的 Deskset，点击
+   **Install to Applications**。首次安装时若 `/Applications` 不可写，会使用 `~/Applications`。
+   如果没有出现安装提示，请按上述拖拽方式安装。
 3. Deskset 暂未经过 Apple 公证，第一次打开时 macOS 会提示无法验证。打开「系统设置 → 隐私与安全性」，向下滚动，点「仍要打开」。
    （也可以在终端执行 `xattr -dr com.apple.quarantine /Applications/Deskset.app`。）
 
 Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了（macOS 允许隐藏菜单栏项目），从「应用程序」里再次打开 Deskset，
 会弹出「Manage Skins」窗口。
+
+### 检查更新与升级
+
+在 Deskset 菜单或 **Settings… ▸ General** 中点击 **Check for Updates…**。默认每天自动检查一次公开发布的新版，
+每个新版本只自动提示一次；可以在 General 设置中关闭自动检查，改为手动检查。离线或无法连接 GitHub 时，自动检查不会弹出错误提示。
+点击 **View Update** 会打开 GitHub 上的版本页面，从中下载适合你的 Mac 的磁盘映像。
+
+升级前，先在 Deskset 菜单中选择 **Quit Deskset** 并保存编辑，再打开新版磁盘映像。把 Deskset 拖进「应用程序」并选择
+**替换**，或打开磁盘映像中的 Deskset，点击 **Replace and Open**。安装器会显示已安装的版本，要求先退出正在运行的副本，
+并防止用旧版覆盖新版。如果原应用不可写，请使用 Finder 替换。安装后从「应用程序」打开 Deskset，再推出磁盘映像。
+`~/Library/Application Support/Deskset` 中的皮肤与设置会保留。
 
 ## 使用皮肤
 
@@ -107,6 +120,10 @@ open build/Deskset.app
 ```
 
 开发调试、自测与项目结构说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+添加 `--package` 可生成 ZIP 和带拖拽安装界面的 DMG。打包还需要 Python 3.10 或更新版本；首次运行会将
+`scripts/dmg/requirements.txt` 中固定版本的工具下载到 `build/dmg-tools`，后续复用。Finder 布局与 Retina 背景
+无需桌面会话即可生成。
 
 ## 参与贡献
 
