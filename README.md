@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)
+[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.dmg)
 
 ![Deskset's example skins in the dark and light themes](docs/images/example-skins.jpg)
 
@@ -56,8 +56,8 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 ## Install
 
 1. Download the latest release (or see all versions on the [Releases](../../releases) page):
-   - [**Deskset-0.2.1-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.zip)) for Macs with Apple silicon (M1 and later),
-   - [**Deskset-0.2.1-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.zip)) for Intel Macs.
+   - [**Deskset-0.3.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.zip)) for Macs with Apple silicon (M1 and later),
+   - [**Deskset-0.3.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.zip)) for Intel Macs.
 2. Open the disk image and drag **Deskset** to **Applications**, then open it from Applications. You can also open
    Deskset in the disk image and choose **Install to Applications**. A first installation uses `~/Applications` if
    `/Applications` is not writable. If no installation prompt appears, use the drag-and-drop steps.
@@ -71,11 +71,17 @@ items), open Deskset again from Applications to show the **Manage Skins** window
 ### Updates and upgrading
 
 Choose **Check for Updates…** in the Deskset menu or **Settings… ▸ General**. Deskset also checks for a new public
-release once a day by default and prompts once for each newer version; turn this off in General settings if you
-prefer manual checks. Automatic checks stay quiet when offline or when GitHub cannot be reached. **View Update**
-opens the release on GitHub, where you can download the disk image for your Mac.
+release once a day by default; turn this off in General settings if you prefer manual checks. Automatic checks stay
+quiet when offline or when GitHub cannot be reached. **Close** dismisses the current notice; **Skip This Version**
+stops automatic reminders for that version. A manual check still offers a skipped version.
 
-To upgrade, quit Deskset from its menu and save any edits, then open the new disk image. Drag Deskset to Applications
+Choose **Update** to download and verify the release for your Mac inside Deskset. When it is ready, choose
+**Install and Relaunch** to save your edits, quit, replace the application, and reopen it, or **Later** to keep using
+the current version. Cancelling an unsaved-edits prompt pauses installation. If downloading fails, you can retry or
+use **Download Manually…** to open the release on GitHub. The application and its parent folder must be writable.
+Downloads match your Mac: Apple silicon uses `arm64`, even when Deskset runs under Rosetta; Intel uses `x86_64`.
+
+To upgrade manually, quit Deskset from its menu and save any edits, then open the new disk image. Drag Deskset to Applications
 and choose **Replace**, or open the copy in the disk image and choose **Replace and Open**. The installer shows the
 installed version, waits for you to quit any running copy, and refuses to replace a newer version with an older one.
 If the existing application is not writable, use Finder to replace it. Open Deskset from Applications and eject the

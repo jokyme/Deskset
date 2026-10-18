@@ -44,7 +44,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let loginBox = NSButton(checkboxWithTitle: "Launch Deskset at login", target: nil, action: nil)
     let automaticUpdatesBox = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
     let checkUpdatesButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
-    let viewUpdateButton = NSButton(title: "View Update…", target: nil, action: nil)
+    let viewUpdateButton = NSButton(title: "Update…", target: nil, action: nil)
     let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
@@ -272,7 +272,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             [NSGridCell.emptyContentView, loginNote],
             [label("Skins folder:"), folder],
             [label("Updates:"), automaticUpdatesBox],
-            [NSGridCell.emptyContentView, note("Checks daily. New versions open on GitHub for download.")],
+            [NSGridCell.emptyContentView, note("Checks daily. Updates download here; you choose when to install and relaunch.")],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
         ], spacingAfter: [1: 8, 2: 8])

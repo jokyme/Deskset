@@ -42,6 +42,7 @@ final class AppUpdateController {
         // The canonical latest page works with both `v1.2.3` and `1.2.3` release tags.
         if let text = state.updates.lastNotifiedVersion, let version = ReleaseVersion(text),
            let installed = ReleaseVersion(currentVersion), version > installed,
+           version != state.updates.skippedVersion.flatMap(ReleaseVersion.init),
            let url = URL(string: "https://github.com/jokyme/Deskset/releases/latest") {
             let release = AppRelease(version: version, url: url)
             availableRelease = release
@@ -114,9 +115,26 @@ final class AppUpdateController {
 
     func showAvailableUpdate() {
         guard let release = availableRelease else { return }
-        if onNotice?(.available(release), false) == true {
+        if onNotice?(.available(release), false) == true, !isSkipped(release) {
             state.updateUpdates { $0.lastNotifiedVersion = release.version.description }
         }
+    }
+
+    /// Skip the version offered in this alert, even if a different release becomes available while it is open.
+    func skipUpdate(_ release: AppRelease) {
+        state.updateUpdates {
+            $0.skippedVersion = release.version.description
+            if $0.lastNotifiedVersion.flatMap(ReleaseVersion.init) == release.version {
+                $0.lastNotifiedVersion = nil
+            }
+        }
+        if availableRelease?.version == release.version { availableRelease = nil }
+        if case .available(let current) = status, current.version == release.version { status = .idle }
+        changed()
+    }
+
+    private func isSkipped(_ release: AppRelease) -> Bool {
+        state.updates.skippedVersion.flatMap(ReleaseVersion.init) == release.version
     }
 
     private func check(manual: Bool) {
@@ -145,8 +163,9 @@ final class AppUpdateController {
             switch result {
             case .success(let release):
                 if let release, release.version > installed {
-                    self.availableRelease = release
-                    self.status = .available(release)
+                    // A manual check may present a skipped release, but does not restore its persistent reminder.
+                    self.availableRelease = self.isSkipped(release) ? nil : release
+                    self.status = self.isSkipped(release) ? .idle : .available(release)
                     notice = .available(release)
                 } else {
                     self.availableRelease = nil
@@ -161,8 +180,10 @@ final class AppUpdateController {
             self.changed()
             if case .available(let release) = notice {
                 let version = release.version.description
-                if manual || self.state.updates.lastNotifiedVersion != version {
-                    if self.onNotice?(notice, !manual) == true {
+                if manual || !self.isSkipped(release) {
+                    // Closing an offer only dismisses this check. The daily throttle controls later reminders.
+                    // The callback can skip the release while its modal alert is open.
+                    if self.onNotice?(notice, !manual) == true, !self.isSkipped(release) {
                         self.state.updateUpdates { $0.lastNotifiedVersion = version }
                     }
                 }

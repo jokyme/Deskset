@@ -19,7 +19,7 @@ enum AppUpdateControllerSelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
-        t.suite("App: Updates: daily checks and notification deduplication") {
+        t.suite("App: Updates: closing an offer allows a later daily reminder") {
             let state = state(t), fetcher = Fetcher()
             var now = Date(timeIntervalSince1970: 1_000_000)
             let controller = AppUpdateController(state: state, service: fetcher, currentVersion: "0.2.0", now: { now })
@@ -42,17 +42,114 @@ enum AppUpdateControllerSelfTests {
             now.addTimeInterval(AppUpdateController.checkInterval)
             controller.checkAutomaticallyIfDue()
             fetcher.completions[1](.success(update))
-            t.equal(notices.count, 1, "same version stays in the menu without another automatic alert")
+            t.equal(notices.count, 2, "Close dismisses this check; the next daily check can remind again")
             now.addTimeInterval(AppUpdateController.checkInterval)
             controller.checkAutomaticallyIfDue()
             fetcher.completions[2](.success(release("0.4.0")))
-            t.equal(notices.count, 2, "a newer version is announced")
+            t.equal(notices.count, 3, "a newer version is announced")
             state.saveNow()
             let reopened = AppState(fileURL: state.fileURL)
             let next = AppUpdateController(state: reopened, service: fetcher, currentVersion: "0.2.0", now: { now })
             next.checkAutomaticallyIfDue()
             t.equal(fetcher.completions.count, 3, "relaunch preserves the check interval")
             t.equal(next.availableRelease?.version, ReleaseVersion("0.4.0"), "relaunch preserves the update hint")
+        }
+
+        t.suite("App: Updates: skip survives relaunch and manual Close does not reset it") {
+            let state = state(t), fetcher = Fetcher(), update = release("0.3.0")
+            var now = Date(timeIntervalSince1970: 1_000_000)
+            let controller = AppUpdateController(state: state, service: fetcher, currentVersion: "0.2.0", now: { now })
+            var notices = 0
+            controller.onNotice = { [weak controller] notice, automatic in
+                t.equal(notice, .available(update))
+                t.check(automatic)
+                notices += 1
+                controller?.skipUpdate(update)
+                return true
+            }
+            controller.checkAutomaticallyIfDue()
+            fetcher.completions[0](.success(update))
+            t.equal(notices, 1)
+            t.equal(state.updates.skippedVersion, "0.3.0")
+            t.equal(state.updates.lastNotifiedVersion, nil, "returning from a skipped alert must not restore its hint")
+            t.equal(controller.availableRelease, nil)
+            t.equal(controller.status, .idle)
+            state.saveNow()
+
+            let reopened = AppState(fileURL: state.fileURL)
+            let next = AppUpdateController(state: reopened, service: fetcher, currentVersion: "0.2.0", now: { now })
+            t.equal(next.availableRelease, nil, "no skipped badge is restored on launch")
+            next.onNotice = { _, _ in notices += 1; return true }
+            now.addTimeInterval(AppUpdateController.checkInterval)
+            next.checkAutomaticallyIfDue()
+            fetcher.completions[1](.success(update))
+            t.equal(notices, 1, "automatic checks still run without prompting about a skipped version")
+            t.equal(next.availableRelease, nil)
+
+            next.onNotice = { notice, automatic in
+                t.equal(notice, .available(update))
+                t.check(!automatic)
+                notices += 1
+                return true // Close, without changing the skip choice.
+            }
+            next.checkManually()
+            fetcher.completions[2](.success(update))
+            t.equal(notices, 2, "manual checks offer skipped releases")
+            t.equal(reopened.updates.skippedVersion, "0.3.0")
+            t.equal(reopened.updates.lastNotifiedVersion, nil)
+            t.equal(next.availableRelease, nil, "a manual Close does not reactivate the badge")
+            next.showAvailableUpdate()
+            t.equal(notices, 2)
+            now.addTimeInterval(AppUpdateController.checkInterval)
+            next.checkAutomaticallyIfDue()
+            fetcher.completions[3](.success(update))
+            t.equal(notices, 2, "the next automatic check still respects Skip")
+
+            let newer = release("0.4.0")
+            next.onNotice = { notice, automatic in
+                t.equal(notice, .available(newer))
+                t.check(automatic)
+                notices += 1
+                return true
+            }
+            now.addTimeInterval(AppUpdateController.checkInterval)
+            next.checkAutomaticallyIfDue()
+            fetcher.completions[4](.success(newer))
+            t.equal(notices, 3, "skipping one version does not suppress a newer version")
+            t.equal(next.availableRelease, newer)
+            t.equal(reopened.updates.lastNotifiedVersion, "0.4.0")
+            next.skipUpdate(update)
+            t.equal(next.availableRelease, newer, "an old alert's Skip cannot hide a newer offer")
+            t.equal(next.status, .available(newer))
+            t.equal(reopened.updates.lastNotifiedVersion, "0.4.0")
+        }
+
+        t.suite("App: Updates: skipped hints and skipping an existing menu offer") {
+            let state = state(t), fetcher = Fetcher(), update = release("0.3.0")
+            state.updateUpdates {
+                $0.lastNotifiedVersion = "0.3.0"
+                $0.skippedVersion = "v0.3.0+build.1"
+            }
+            let skipped = AppUpdateController(state: state, service: fetcher, currentVersion: "0.2.0")
+            t.equal(skipped.availableRelease, nil, "a skipped version suppresses stale cached hints too")
+            t.equal(skipped.status, .idle)
+            state.updateUpdates { $0.skippedVersion = nil }
+            let controller = AppUpdateController(state: state, service: fetcher, currentVersion: "0.2.0")
+            t.equal(controller.availableRelease?.version, update.version, "older preference files retain their update hint")
+            controller.onNotice = { [weak controller] notice, automatic in
+                t.check(!automatic)
+                if case .available(let offered) = notice {
+                    t.equal(offered.version, update.version)
+                } else {
+                    t.check(false, "the cached release is offered")
+                }
+                controller?.skipUpdate(update)
+                return true
+            }
+            controller.showAvailableUpdate()
+            t.equal(controller.availableRelease, nil)
+            t.equal(state.updates.lastNotifiedVersion, nil)
+            t.equal(state.updates.skippedVersion, "0.3.0")
         }
 
         t.suite("App: Updates: manual feedback and joining an in-flight check") {

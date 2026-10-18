@@ -992,6 +992,13 @@ enum EngineThreadSelfTests {
     static func defaultSuiteTests(_ t: AppTestRunner) {
         t.suite("App: engine thread: every default widget loads, updates and draws on the engine thread") {
             guard let app = try AppSelfTest.makeApp(t, threading: .engine), let source = Paths.defaultSkins else { return }
+            // A real playing track makes Turntable refresh its tempo, replacing a controller this suite is waiting
+            // for. Keep the player idle so the load/draw checks are independent of the user's media session.
+            let savedCenter = NowPlayingCenter.current
+            let backend = DemoNowPlayingBackend()
+            backend.running = []
+            NowPlayingCenter.current = NowPlayingCenter(backend: backend)
+            defer { NowPlayingCenter.current = savedCenter }
             try FileManager.default.copyItem(at: source.appendingPathComponent("Stationery"),
                                              to: app.skinsDirectory.appendingPathComponent("Stationery"))
             app.rescanLibrary()

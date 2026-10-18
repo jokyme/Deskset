@@ -1,4 +1,5 @@
 import DesksetCore
+import Darwin
 import Foundation
 
 enum AppVersion {
@@ -76,9 +77,64 @@ struct ReleaseVersion: Comparable, CustomStringConvertible {
     }
 }
 
+struct AppUpdateAsset: Equatable {
+    let name: String
+    let url: URL
+    let sha256: String
+    let size: Int64
+
+    static let maximumSize: Int64 = 256 * 1024 * 1024
+    /// Pick the Mac's native architecture even when this copy of Deskset is running through Rosetta.
+    static var currentArchitecture: String {
+        #if arch(arm64)
+        let processIsARM64 = true
+        #else
+        let processIsARM64 = false
+        #endif
+        return resolveArchitecture(processIsARM64: processIsARM64, supportsARM64: sysctlFlag("hw.optional.arm64"),
+                                   isTranslated: sysctlFlag("sysctl.proc_translated"))
+    }
+
+    static var processorName: String { currentArchitecture == "arm64" ? "Apple silicon" : "Intel" }
+
+    static func resolveArchitecture(processIsARM64: Bool, supportsARM64: Bool, isTranslated: Bool) -> String {
+        processIsARM64 || supportsARM64 || isTranslated ? "arm64" : "x86_64"
+    }
+
+    private static func sysctlFlag(_ name: String) -> Bool {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        // Intel macOS may not expose an ARM/Rosetta flag. Its absence leaves the native x86_64 choice intact.
+        return sysctlbyname(name, &value, &size, nil, 0) == 0 && size == MemoryLayout<Int32>.size && value == 1
+    }
+
+    static func name(version: ReleaseVersion, architecture: String) -> String {
+        "Deskset-\(version.description)-\(architecture).zip"
+    }
+
+    func isValid(version: ReleaseVersion, releaseURL: URL) -> Bool {
+        let tag = releaseURL.lastPathComponent
+        guard ReleaseVersion(tag) == version,
+              releaseURL.absoluteString == "https://github.com/jokyme/Deskset/releases/tag/\(tag)",
+              ["arm64", "x86_64"].contains(where: { name == Self.name(version: version, architecture: $0) }),
+              url.absoluteString == "https://github.com/jokyme/Deskset/releases/download/\(tag)/\(name)",
+              size > 0, size <= Self.maximumSize,
+              sha256.utf8.count == 64, sha256.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) })
+        else { return false }
+        return true
+    }
+}
+
 struct AppRelease: Equatable {
     let version: ReleaseVersion
     let url: URL
+    let assets: [AppUpdateAsset]
+
+    init(version: ReleaseVersion, url: URL, assets: [AppUpdateAsset] = []) {
+        self.version = version
+        self.url = url
+        self.assets = assets
+    }
 }
 
 protocol AppUpdateFetching {
@@ -163,11 +219,24 @@ final class GitHubAppUpdateService: AppUpdateFetching {
         let htmlURL: String
         let draft: Bool
         let prerelease: Bool
+        let assets: [AssetResponse]?
 
         enum CodingKeys: String, CodingKey {
             case tagName = "tag_name"
             case htmlURL = "html_url"
-            case draft, prerelease
+            case draft, prerelease, assets
+        }
+    }
+
+    private struct AssetResponse: Decodable {
+        let name: String?
+        let browserDownloadURL: String?
+        let digest: String?
+        let size: Int64?
+
+        enum CodingKeys: String, CodingKey {
+            case name, digest, size
+            case browserDownloadURL = "browser_download_url"
         }
     }
 
@@ -190,6 +259,13 @@ final class GitHubAppUpdateService: AppUpdateFetching {
               components.user == nil, components.password == nil, components.query == nil, components.fragment == nil,
               components.path == "/jokyme/Deskset/releases/tag/\(release.tagName)",
               let url = components.url else { throw AppUpdateError.invalidRelease }
-        return AppRelease(version: version, url: url)
+        let assets = (release.assets ?? []).compactMap { item -> AppUpdateAsset? in
+            guard let name = item.name, let text = item.browserDownloadURL, let assetURL = URL(string: text),
+                  let digest = item.digest, digest.hasPrefix("sha256:"), let size = item.size else { return nil }
+            let asset = AppUpdateAsset(name: name, url: assetURL,
+                                       sha256: String(digest.dropFirst(7)).lowercased(), size: size)
+            return asset.isValid(version: version, releaseURL: url) ? asset : nil
+        }
+        return AppRelease(version: version, url: url, assets: assets)
     }
 }

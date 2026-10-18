@@ -11,6 +11,7 @@ enum AppUpdatePreferencesSelfTests {
             t.check(data.updates.automaticallyChecks)
             t.equal(data.updates.lastCheckAttempt, nil)
             t.equal(data.updates.lastNotifiedVersion, nil)
+            t.equal(data.updates.skippedVersion, nil)
             t.equal(data.skins["Clock"]?.file, "Clock.ini")
             t.equal(data.editor.liveReload, false)
         }
@@ -24,6 +25,7 @@ enum AppUpdatePreferencesSelfTests {
                 $0.automaticallyChecks = false
                 $0.lastCheckAttempt = checkedAt
                 $0.lastNotifiedVersion = "1.2.3"
+                $0.skippedVersion = "1.2.3"
             }
             state.saveNow()
             let loaded = AppState(fileURL: url)
@@ -31,12 +33,14 @@ enum AppUpdatePreferencesSelfTests {
             t.equal(loaded.updates.automaticallyChecks, false)
             t.equal(loaded.updates.lastCheckAttempt, checkedAt)
             t.equal(loaded.updates.lastNotifiedVersion, "1.2.3")
+            t.equal(loaded.updates.skippedVersion, "1.2.3")
             t.equal(loaded.skin("Clock")?.file, "Clock.ini")
 
             loaded.updateUpdates {
                 $0.automaticallyChecks = true
                 $0.lastCheckAttempt = nil
                 $0.lastNotifiedVersion = nil
+                $0.skippedVersion = nil
             }
             loaded.saveNow()
             t.equal(AppState(fileURL: url).updates, AppUpdatePreferences())
@@ -47,17 +51,19 @@ enum AppUpdatePreferencesSelfTests {
                 let raw = #"{"skins":{"Clock":{"file":"Clock.ini"}},"editor":{"liveReload":false},"updates":\#(updates)}"#
                 return try JSONDecoder().decode(AppStateData.self, from: Data(raw.utf8))
             }
-            let broken = try decode(#"{"automaticallyChecks":"yes","lastCheckAttempt":"yesterday","lastNotifiedVersion":"1.2.3"}"#)
+            let broken = try decode(#"{"automaticallyChecks":"yes","lastCheckAttempt":"yesterday","lastNotifiedVersion":"1.2.3","skippedVersion":false}"#)
             t.check(broken.updates.automaticallyChecks)
             t.equal(broken.updates.lastCheckAttempt, nil)
             t.equal(broken.updates.lastNotifiedVersion, "1.2.3")
+            t.equal(broken.updates.skippedVersion, nil)
             t.equal(broken.skins["Clock"]?.file, "Clock.ini")
             t.equal(broken.editor.liveReload, false)
 
-            let partial = try decode(#"{"automaticallyChecks":false,"lastCheckAttempt":800000000,"lastNotifiedVersion":false}"#)
+            let partial = try decode(#"{"automaticallyChecks":false,"lastCheckAttempt":800000000,"lastNotifiedVersion":false,"skippedVersion":"1.3.0"}"#)
             t.equal(partial.updates.automaticallyChecks, false)
             t.equal(partial.updates.lastCheckAttempt, Date(timeIntervalSinceReferenceDate: 800_000_000))
             t.equal(partial.updates.lastNotifiedVersion, nil)
+            t.equal(partial.updates.skippedVersion, "1.3.0")
 
             for value in ["null", "5", "[]", "{}"] {
                 let data = try decode(value)
@@ -69,7 +75,7 @@ enum AppUpdatePreferencesSelfTests {
 
         t.suite("App: Updates: unknown fields survive preference changes") {
             let url = t.temporaryDirectory("update-unknown-fields").appendingPathComponent("state.json")
-            let raw = #"{"updates":{"automaticallyChecks":false,"future":{"channels":["stable","preview"],"enabled":true}},"futureApp":{"count":3}}"#
+            let raw = #"{"updates":{"automaticallyChecks":false,"skippedVersion":"1.2.3","future":{"channels":["stable","preview"],"enabled":true}},"futureApp":{"count":3}}"#
             try raw.write(to: url, atomically: true, encoding: .utf8)
             let state = AppState(fileURL: url)
             let expected = JSONValue.object(["channels": .array([.string("stable"), .string("preview")]),
@@ -86,6 +92,8 @@ enum AppUpdatePreferencesSelfTests {
             t.equal(loaded.data.unknownKeys["futureApp"], state.data.unknownKeys["futureApp"])
             t.check(loaded.updates.automaticallyChecks)
             t.equal(loaded.updates.lastNotifiedVersion, "1.2.3")
+            t.equal(loaded.updates.skippedVersion, "1.2.3")
+            t.check(loaded.updates.unknownKeys["skippedVersion"] == nil, "skippedVersion is a known preference")
         }
     }
 }
