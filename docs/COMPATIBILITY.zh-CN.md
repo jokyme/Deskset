@@ -7,7 +7,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 本文档由 [`docs/compat/`](compat/) 中各领域的说明（引擎、Lua、插件、音频、媒体与界面、天气、安装器、App）以及对 15 个真实
 皮肤包的重新测试（见[真实皮肤测试结果](#12-真实皮肤测试结果)）汇编而成。所有内容都基于公开的 Rainmeter 手册
 （<https://docs.rainmeter.net/manual/>）、公开的插件 README 以及对皮肤实际表现的观察。Deskset 是独立的净室实现，不包含
-任何 Rainmeter 代码。本文档描述的是 2026-09-27 时的 Deskset。
+任何 Rainmeter 代码。本文档描述的是 2026-09-27 时的 Deskset；Layouts 相关条目于 2026-10-19 更新，尚未完成 Windows 桌面的对照验证。
 
 **目录**
 
@@ -67,8 +67,8 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | Rainmeter 自带插件 | 模拟实现 | 除两个以外全部实现（其中 6 个部分支持）：ActionTimer、AudioLevel、NowPlaying、InputText、RunCommand、UsageMonitor、CoreTemp 和 SpeedFan（真实的温度、风扇、频率和功耗）…… | WindowMessage 和 VirtualDesktops 在 macOS 上没有对应物 |
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
-| 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局（layout）会安装但暂不能应用 |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、`!SetZoomFactor`（5.0，部分）、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | 缩放菜单、拖动缩放、`DefaultZoom` 和多选皮肤尚未实现；窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup、Aero 模糊和保存的锚点；暂不能加载布局 |
+| 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、`!SetZoomFactor`（5.0，部分）、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | 缩放菜单、拖动缩放、`DefaultZoom` 和多选皮肤尚未实现；窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup 多选操作和 Aero 模糊；`!SetAnchor` 仍不支持 |
 
 ---
 
@@ -91,7 +91,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
    `date`、`open`）可以在 RunCommand 中使用；网址和文件照常打开。
 8. **皮肤窗口默认位于桌面层**（即 Rainmeter 的 “On Desktop” 层级），并使用 macOS 的窗口层级。
 9. **老皮肤可以直接安装：** Rainmeter 4 会拒绝的旧版 Rainstaller 包和普通 ZIP 都能安装，其中附带的字体也会装进皮肤。
-10. **布局会被安装，但暂时不能应用**，所以依靠布局自动排列的套件目前需要逐个加载皮肤。
+10. **布局可以保存和应用**，支持已安装的布局与 `!LoadLayout`；壁纸的平台映射与 Windows 待验证项见 [Layouts](compat/layouts.md)。
 11. **⌘ 代替 Ctrl**：按住 ⌘ 拖动可以移动任何皮肤，Control-点按（Mac 的右键）会打开皮肤菜单。
 
 ---
@@ -974,7 +974,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   `ForceDefaultZoom`（管理窗口 → 设置）。
 - **Mac：** `Default…` 选项相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、
   公式、`@N`）。锚点只在摆放皮肤时应用一次（见下面的“位置”）。缩放：`!SetZoomFactor 系数` 可用，缩放系数保存在 state.json
-  中，`[$SkinZoomFactor]` 等变量随之变化；但范围限制为 0.25–10（不是 0.1–5），`Default` 参数、右键菜单的缩放子菜单、拖动边缘
+  中，`[$SkinZoomFactor]` 等变量随之变化；范围为 0.1–5（10%–500%），布局使用原生 `Zoom` 百分数。`Default` 参数、右键菜单的缩放子菜单、拖动边缘
   缩放以及 `DefaultZoom` / `ForceDefaultZoom` 尚未实现。Deskset 另外接受皮肤 `[Rainmeter]` 中的 `DefaultZoomFactor` 作为初始
   缩放（手册中没有这个选项）和 `!SetZoomFactorGroup 系数 组`（Deskset 扩展）。
 - **原因：** 尚未完成 5.0 的缩放界面和全局设置。
@@ -1038,12 +1038,13 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   皮肤的锚点（`AnchorX` / `AnchorY`、`!SetAnchor`）与位置一起保存。
 - **Mac：** 以点为单位，原点在主显示器（带菜单栏的那个）的左上角，y 向下增大——约定相同，只是单位为点。`!Move` 的数值限制
   在 ±1 000 000 以内。关闭 SavePosition 时，位置只在本次运行期间有效。没有保存位置也没有默认位置的新皮肤从可见区域的左上角
-  开始层叠摆放。AutoSelectScreen 决定不带 `@N` 的显示器变量描述哪块显示器。锚点（`DefaultAnchorX` / `DefaultAnchorY`、
-  `!SetWindowPosition` 的锚点参数）只在摆放皮肤时应用一次；保存的位置始终是窗口的左上角，不支持 `!SetAnchor`。
-- **原因：** macOS 以点为单位（Retina）；尚未实现保存的锚点。
-- **对皮肤的影响：** 按特定 Windows 分辨率摆放的皮肤在 Retina Mac 上会落在别处；KeepOnScreen 会让它们保持可见。锚定在右侧或
-  底部的皮肤改变尺寸时（DynamicWindowSize）会向右、向下扩展，而不是围绕锚点变化。
-- **状态：** 模拟实现 / 部分支持（保存的锚点）
+  开始层叠摆放。AutoSelectScreen 决定不带 `@N` 的显示器变量描述哪块显示器。导入布局的位置表达式和锚点会在保存、重载、
+  移动与尺寸变化时保留并应用（见 [Layouts](compat/layouts.md)）。原有 `DefaultAnchorX/Y` 和 `!SetWindowPosition` 的摆放
+  路径仍单独处理，`!SetAnchor` 尚不支持。
+- **原因：** macOS 以点为单位（Retina）；尚未实现 `!SetAnchor`。
+- **对皮肤的影响：** 按特定 Windows 分辨率摆放的皮肤在 Retina Mac 上可能落在别处；KeepOnScreen 会让它们保持可见。
+  布局中的锚点现在会继续影响皮肤尺寸变化。
+- **状态：** 模拟实现 / 部分支持（`!SetAnchor`）
 
 #### 显示器变化（`OnDisplayMetricsChange`）
 - **Windows：** `[Rainmeter] OnDisplayMetricsChange` 是一个动作；Rainmeter 5.0 起，任何显示器的布局、分辨率或缩放改变时都会执行。
@@ -1158,7 +1159,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### 主菜单（托盘菜单）
 - **Windows：** 通知区域图标的菜单；`!TrayMenu` 打开它。
-- **Mac：** 菜单栏图标的菜单（管理皮肤…、皮肤、已加载的皮肤、全部刷新、安装皮肤…、打开皮肤文件夹、打开日志、登录时启动、
+- **Mac：** 菜单栏图标的菜单（管理皮肤…、皮肤、布局、已加载的皮肤、全部刷新、安装皮肤…、打开皮肤文件夹、打开日志、登录时启动、
   关于、退出）；`!TrayMenu` 在指针处弹出它。macOS 可能会隐藏菜单栏图标（系统设置 → 菜单栏）：从访达、聚焦搜索或启动台再次
   打开 Deskset 会显示管理窗口，第一次启动时也会显示。再启动一个 Deskset 时，它会把要打开的文件交给正在运行的那个，然后退出。
 - **原因：** macOS 允许用户隐藏菜单栏项目。
@@ -1218,13 +1219,25 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### 布局（`!LoadLayout`）
-- **Windows：** 布局用于保存和恢复一组已加载的皮肤及其设置。
-- **Mac：** 皮肤包中的布局会被安装到 `~/Library/Application Support/Deskset/Layouts`，但暂时不能应用；`!LoadLayout` 会添加
-  兼容性提示，要求加载布局的包会在安装后说明这一点。
-- **原因：** 尚未实现。
-- **对皮肤的影响：** 依靠布局完成设置的套件（Enigma、FluentDash11、Nelamint、Simple Clean、PogPack）需要在管理窗口中逐个
-  加载皮肤。
-- **状态：** 不支持
+- **Windows：** [Manage → Layouts](https://docs.rainmeter.net/manual/user-interface/manage/#LayoutsTab) 保存并恢复配置设置，
+  普通加载保留指定的旧全局选项，并应用目标布局中的其他全局选项；关闭动作完成后保存 `@Backup`。
+  加载 `@Backup` 本身不覆盖备份，也不应用其中的壁纸。
+- **Mac：** 管理窗口提供保存、加载、删除、编辑，以及空布局、排除未加载皮肤、包含当前壁纸三个保存选项。
+  使用 `Layouts/<名称>/Rainmeter.ini`：非空导出使用 UTF-16 LE BOM，空布局为零字节文件；选择空布局会清空并禁用另外两个选项。
+  同名保存需确认，不能手动保存为 `@Backup`。不包含新壁纸时保留目录里的旧壁纸及其他文件；删除会把布局目录移入废纸篓。
+  保留未知配置键与缺失配置，不复制皮肤文件；相同 LoadOrder 按 INI 节顺序加载。状态栏菜单、`!LoadLayout`、`!Manage Layouts`、
+  安装后应用，以及可执行文件的同名命令走同一流程。空布局重启后仍为空，本机应用偏好保持不变。
+  正常关闭阶段允许 [OnCloseAction](https://docs.rainmeter.net/manual/skins/rainmeter-section/#OnCloseAction)
+  执行本地清理及已支持的跨配置／UI／系统／打开操作。皮肤按配置名逐一关闭，之后才保存 `@Backup`；丢弃已退休实例的迟到请求。
+  `!LoadLayout`、`!RefreshApp` 和 `!Quit` 按先后顺序等待当前布局完成。加载 `@Backup` 不覆盖它，也不应用其壁纸。
+- **原因：** 原始 `[Rainmeter]` 和 `[TrayMeasure]` 数据会被保留；普通加载按指定规则合并旧全局值，`@Backup` 恢复其原始值。
+  这些数据不改变本机 Mac 偏好，也不会让未支持的 Windows 全局／托盘选项生效。
+  主屏壁纸保留原始图片编码并使用 `Wallpaper.bmp` 文件名，普通加载时应用到各显示器并保留当前缩放选项；不保存动态壁纸、
+  各屏不同图片和 Spaces 配置。Windows 变体枚举顺序取决于文件系统，Deskset 使用确定的字母排序，不保证所有数字／Unicode
+  文件名在不同文件系统上顺序相同；跨配置停用保留现有淡出时序。尚未完成 Windows 桌面对照，详见 [Layouts](compat/layouts.md)。
+- **对皮肤的影响：** 已安装的布局可以自动排列兼容皮肤，但不改变皮肤／插件原有的支持范围。缺失目标会在关闭前拒绝，
+  关闭之后发生的加载失败会恢复先前的皮肤会话。
+- **状态：** 模拟实现 / 部分支持（全局设置、壁纸及文件名跨平台差异）
 
 #### 其他宿主 bang
 - **Windows：** `!SetClip`、`!SetWallpaper`、`!Play` / `!PlayLoop` / `!PlayStop`、`!Manage`、`!About`、`!EditSkin`、
@@ -1232,7 +1245,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Mac：** `!SetClip` 设置剪贴板；`!SetWallpaper` 为每块显示器设置墙纸（Tile 与 Center 一样按原尺寸显示——macOS 不能平铺）；
   `!Play` 一次播放一个声音；`!Manage` 打开管理窗口并定位到指定的配置；`!About Log` 打开日志；`!EditSkin` 在文本编辑器中打开
   文件；`!Quit` 在当前动作结束后退出。`!ResetStats` 和 `!SetAnchor` 不起作用，并添加兼容性提示。
-- **原因：** 重启后不保留网络统计；尚未实现保存的锚点。
+- **原因：** 重启后不保留网络统计；尚未实现 `!SetAnchor`。
 - **对皮肤的影响：** 受支持的 bang 没有影响。
 - **状态：** 模拟实现 / 不支持（`!ResetStats`、`!SetAnchor`）
 
@@ -2507,9 +2520,10 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 #### 确认对话框与安装之后
 - **Windows：** 皮肤安装器显示头图、名称、作者、版本、皮肤、布局和插件；旧版本被备份并替换，然后加载包指定的皮肤或布局。
 - **Mac：** 提示框显示头图、“安装“名称”？”、作者和版本；普通压缩包或文件夹会注明皮肤是自动识别的（文件夹会被复制，原件保留），
-  旧版包会注明这一点；列出根配置以及它们是替换（会备份）还是添加到已安装的配置；布局（会保存，但不应用）；安装会添加的字体
-  （“不做系统级安装”）；安装后会加载什么；Windows 插件（从不安装）及其他警告。被替换的根配置中正在运行的皮肤会先停止，安装后
-  重新加载；包指定的皮肤会淡入加载，并在管理窗口中选中。
+  旧版包会注明这一点；列出根配置以及它们是替换（会备份）还是添加到已安装的配置；布局及应用随包布局的选项；安装会添加的字体
+  （“不做系统级安装”）；安装后会加载什么；Windows 插件（从不安装）及其他警告。若应用随包布局，会先关闭所有旧皮肤再替换文件，
+  并用安装前的变体列表将关闭后的设置保存为 `@Backup`；否则，被替换根配置中的运行皮肤会先停止，安装后重新加载。
+  包指定的皮肤会淡入加载，并在管理窗口中选中。
 - **原因：** —
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
@@ -2579,11 +2593,13 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 
 #### 布局与安装后加载
 - **Windows：** 布局安装到 Layouts 文件夹并可以应用；作者可以指定安装后加载的皮肤或布局。
-- **Mac：** 布局会被安装（去掉 `[Rainmeter]` 选项），但**暂时不能应用**（App 会说明）。`LoadType=Skin` +
-  `Load=Config\File.ini` 在该皮肤是从这个包安装的情况下会被加载。
-- **原因：** App 尚未实现布局。
-- **对皮肤的影响：** 依靠布局排列的套件可以安装，但需要用户手动加载各个皮肤。
-- **状态：** 部分支持
+- **Mac：** 安装布局时去掉 `[Rainmeter]` 选项。选择 Apply included layout 后应用包中已安装的布局，并在 `@Backup` 中保留
+  旧皮肤关闭动作完成后的设置，变体序号使用安装前的文件列表。所有旧皮肤先关闭，再替换包内文件；关闭超时会在替换文件前中止安装。
+  不选择时只安装布局。
+  `LoadType=Skin` + `Load=Config\File.ini` 仍会加载本包安装的指定皮肤。
+- **原因：** 安装后应用与 `!LoadLayout` 使用同一布局流程，Mac 上无需重启应用进程。
+- **对皮肤的影响：** 兼容的套件可以在安装后自动排列；平台限制见 [Layouts](compat/layouts.md)。
+- **状态：** 模拟实现
 
 #### 字体
 - **Windows：** 旧版包的 `Fonts\` 文件夹曾安装到 `Windows\Fonts`（2.4 起不再如此）；只有 `@Resources\Fonts` 会自动加载；放在
@@ -2687,7 +2703,7 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 | **Mini Weather**（1） | 没有变化 | 没有天气：它使用的 weather.com XML 服务已关闭（Windows 上也一样）。 |
 | **Mnml Drives**（2） | 可用；旧版 Rainstaller 包现在可以安装，并带上其像素字体 | 盘符显示启动磁盘。 |
 | **Nelamint**（13） | 播放器（曲目、封面）、频谱、CPU、内存、磁盘、时钟、链接、设置 | 天气为空（weather.com XML 服务已关闭）；因为 `UpdateDivider=4`，Wi-Fi 在 3 次更新的测试中为 0（在 App 中会正常显示）。 |
-| **PogPack 1.3**（26） | 旧版包现在作为根配置 `PogPack` 安装，带上三个字体，主题变为布局；安装后每个标签页都显示其图形、字体和数值（系统、电池、垃圾箱、信号、音量、音乐控制） | 布局暂时不能应用；Windows 附加程序（配置工具）不会安装；天气为空（weather.com XML 服务已关闭）；音乐的分钟数不显示，因为皮肤的公式引用的是 meter 而不是 measure（皮肤错误，Windows 上也一样）；音乐标签页只在 Music 或 Spotify 运行时显示数据。 |
+| **PogPack 1.3**（26） | 旧版包现在作为根配置 `PogPack` 安装，带上三个字体，主题变为布局；安装后每个标签页都显示其图形、字体和数值（系统、电池、垃圾箱、信号、音量、音乐控制） | 原测试时布局尚不能应用（当前支持情况见 [Layouts](compat/layouts.md)）；Windows 附加程序（配置工具）不会安装；天气为空（weather.com XML 服务已关闭）；音乐的分钟数不显示，因为皮肤的公式引用的是 meter 而不是 measure（皮肤错误，Windows 上也一样）；音乐标签页只在 Music 或 Spotify 运行时显示数据。 |
 | **Simple Clean**（8） | 问候语带用户名（以前显示原始的节变量）、播放器和频谱、时钟、设置 | 天气为空（weather.com XML 服务已关闭）；启动 Windows 程序的菜单项不起作用。 |
 | **Simplistic Analog Clock**（2） | 时间正确（以前指针错误） | 无 |
 | **cpu meter**（1） | 使用其自带的手写体字体正常运行 | 加载后 CPU 数值多一位数字时文字会被截断：皮肤既没有 `W` 也没有 `DynamicWindowSize`（与 Rainmeter 的规则相同）。 |
@@ -2733,9 +2749,9 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | 缺口 | 状态 | 说明 |
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
-| 布局（`!LoadLayout`、应用已安装的布局） | 不支持 | 已安装的布局会保留，等这一功能推出后使用 |
+| 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
 | Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang）、`!ResetStats` | 不支持 | 模糊效果请用 FrostedGlass |
-| 保存的窗口锚点（`!SetAnchor`；保存的位置记住锚点） | 部分支持 | 锚点只在摆放皮肤时应用一次；改变尺寸的皮肤向右、向下扩展 |
+| `!SetAnchor` | 不支持 | 布局表达式和锚点已保存并应用；该 bang 仍不支持 |
 | `DragGroup`；点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖 | 不支持 | 请在菜单或管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |

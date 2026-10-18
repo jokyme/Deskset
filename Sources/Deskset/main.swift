@@ -25,11 +25,26 @@ if let status = CommandLineTools.run(CommandLine.arguments) {
     exit(status)
 }
 
+let initialCommand: LayoutCommand?
+if case .command(let command) = LayoutCommand.parse(CommandLine.arguments) {
+    initialCommand = command
+    switch LayoutCommandClient().forwardIfRunning(.command(command)) {
+    case .succeeded: exit(0)
+    case .failed(let message):
+        fputs("Deskset: \(message)\n", stderr)
+        exit(1)
+    case .noListener: break
+    }
+} else {
+    initialCommand = nil
+}
+
 let app = NSApplication.shared
 // Where the desktop skins run (`SkinThreading`: main or engine), read once: the modes above always use the main thread.
 let threading = SkinThreading.chosen(in: .standard)
 let controller = AppController(threading: threading.mode)
 controller.threadingNote = threading.note
+controller.initialLayoutCommand = initialCommand
 app.delegate = controller
 // Menu bar app (the bundle also sets LSUIElement; this covers `swift run`).
 app.setActivationPolicy(.accessory)

@@ -60,11 +60,16 @@ struct SkinDirectory {
 /// Where an app keeps its current `SkinDirectory`: the main thread publishes, the skins read it from any thread.
 final class SkinDirectoryStore {
     private let current = Guarded(SkinDirectory())
+    private let actions = Guarded<UInt64>(0)
     /// Counts the publishes (main thread).
     private var generation = 0
 
     /// The directory as last published. Any thread.
     var directory: SkinDirectory { current.current }
+
+    /// A closing barrier repeats when a peer dispatch or host action adds work after another executor's marker.
+    var actionRevision: UInt64 { actions.current }
+    func noteAction() { actions.access { $0 &+= 1 } }
 
     /// Replaces the directory (main thread).
     func publish(entries: [SkinDirectory.Entry], pendingLoads: Set<String>) {

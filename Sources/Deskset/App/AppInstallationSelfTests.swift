@@ -25,6 +25,16 @@ enum AppInstallationSelfTests {
             t.check(!AppInstallation.needsInstallation(bundle: translocated, volume: translocated.deletingLastPathComponent(),
                                                        readOnly: true), "unknown read-only locations use manual installation")
         }
+        t.suite("App: Installation: supported layout commands survive opening the installed app") {
+            t.equal(AppInstallation.relaunchArguments(["Deskset"]), [])
+            t.equal(AppInstallation.relaunchArguments(["Deskset", "!LoadLayout", "My saved desktop"]),
+                    ["!LoadLayout", "My saved desktop"])
+            t.equal(AppInstallation.relaunchArguments(["Deskset", "!Manage", "Layouts"]), ["!Manage", "Layouts"])
+            for arguments in [["--self-test"], ["-psn_0_123"], ["!LoadLayout", "../outside"],
+                              ["!LoadLayout", "Desktop", "extra"], ["!Execute", "anything"], ["!Manage", "Skins"]] {
+                t.equal(AppInstallation.relaunchArguments(["Deskset"] + arguments), [])
+            }
+        }
     }
 
     private static func destinationTests(_ t: AppTestRunner) {

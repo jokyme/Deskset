@@ -105,8 +105,21 @@ mono.threadCPUTime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line toolin
 random.UUID	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
 timer.executorTimer	Sources/Deskset/App/SkinBenchmark.swift	1	--benchmark: the update timer, on the skin's executor as a skin window's
 
+effect.fileWrite	Sources/Deskset/App/LayoutCommands.swift	1	create the same-user application lock directory before command startup; not a skin effect
+effect.signal	Sources/Deskset/App/LayoutCommands.swift	1	kill(pid, 0) only probes whether the lock owner exists; no signal is sent
+event.notification	Sources/Deskset/App/LayoutCommands.swift	2	application command channel and termination cleanup; command transport is injected in tests
+mono.systemUptime	Sources/Deskset/App/LayoutCommands.swift	3	bounded command-client acknowledgement and retry deadline; never runs on a skin executor
+random.UUID	Sources/Deskset/App/LayoutCommands.swift	2	command request IDs for acknowledgement and duplicate suppression; not skin randomness
+random.pid	Sources/Deskset/App/LayoutCommands.swift	2	same-user application lock ownership and addressed command delivery
+wait.runLoop	Sources/Deskset/App/LayoutCommands.swift	1	command-client acknowledgement wait with a bounded timeout; not a skin execution loop
+wall.sinceNow	Sources/Deskset/App/LayoutCommands.swift	1	short command-client run-loop slices while awaiting the running application
+
+effect.fileWrite	Sources/Deskset/App/LayoutWallpaper.swift	4	LayoutWallpaper live boundary: cached desktop bitmap and rollback; tests inject a memory implementation
+effect.workspace	Sources/Deskset/App/LayoutWallpaper.swift	2	LayoutWallpaper live boundary: apply or restore desktop images; tests never call NSWorkspace
+
 background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
+event.notification	Sources/Deskset/App/SkinInstallFlow.swift	1	resume an installation after the active layout replacement completes; app lifecycle only
 
 background.fileEvents	Sources/Deskset/App/SourceWatcher.swift	2	Skin Studio watches the files of the skin it edits
 
@@ -119,15 +132,17 @@ random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a s
 wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 
-background.mainHop	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+background.mainHop	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
 effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
-effect.terminate	Sources/Deskset/AppController.swift	2	app lifecycle, menus and single-instance handover; not a skin input
-effect.workspace	Sources/Deskset/AppController.swift	4	app lifecycle, menus, single-instance handover and user-requested release page; not a skin input
+effect.terminate	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+effect.workspace	Sources/Deskset/AppController.swift	5	app lifecycle, menus, single-instance handover and user-requested release page; not a skin input
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.notification	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
 mono.systemUptime	Sources/Deskset/AppController.swift	1	config lookup rescans at most every 3 s
-random.pid	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+random.pid	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
+mono.DispatchTime.now	Sources/Deskset/App/LayoutController.swift	2	one total lifecycle deadline for requesting actions and desktop closure; blocked-executor and installer-timeout regression tests; not a skin input
+timer.asyncAfter	Sources/Deskset/App/LayoutController.swift	2	bounded application lifecycle barriers for action completion and peer draining; exercised with blocked executors
 timer.asyncAfter	Sources/Deskset/AppController.swift	2	re-check of regional settings after a change; the installer's wait for skins to close gives up after its timeout (app lifecycle, not a skin input)
 wall.Date()	Sources/Deskset/AppController.swift	1	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
@@ -497,6 +512,9 @@ timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the s
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 
 effect.fileWrite	Sources/DesksetCore/Ini/IniWriter.swift	1	the writer itself
+
+effect.fileWrite	Sources/DesksetCore/Layouts/LayoutStore.swift	12	layout storage boundary: injected root and Trash operation, preserved files, staged replacement and rollback; runs outside skin execution
+random.UUID	Sources/DesksetCore/Layouts/LayoutStore.swift	2	unique sibling staging and recovery directory names; not a skin input
 
 effect.fileWrite	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
 random.UUID	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin

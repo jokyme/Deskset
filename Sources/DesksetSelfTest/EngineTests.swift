@@ -4653,11 +4653,35 @@ private func runEngineCompatTests(_ t: TestRunner) {
 
         skin.execute("[!Skin:SetZoomFactor 2.0]", from: nil)
         t.close(skin.effectiveZoomFactor, 2.0)
+        for (requested, expected) in [(0.1, 0.1), (5.0, 5.0), (0.01, 0.1), (9.0, 5.0)] {
+            skin.execute("[!Skin:SetZoomFactor \(requested)]", from: nil)
+            t.close(skin.effectiveZoomFactor, expected, "Rainmeter zoom is constrained to 10–500 percent")
+        }
+        skin.execute("[!Skin:SetZoomFactor 2.0]", from: nil)
 
         // 8. OnDisplayMetricsChange
         skin.displayMetricsDidChange()
         skin.update()
         t.equal(skin.variable("MetricsChanged"), "1")
+    }
+
+    t.suite("Engine: layout config groups join skin groups") {
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        Update=-1
+        Group=Skin | Shared
+        DragGroup=Cards | Shared
+        [Meter]
+        Meter=String
+        Text=Original fixture
+        """)
+        skin.applyConfigGroups(group: "shared | Layout | LAYOUT", dragGroup: "CARDS | LayoutDrag | layoutdrag")
+        t.equal(skin.settings.groups, ["Skin", "Shared", "Layout"])
+        t.equal(skin.settings.dragGroups, ["cards", "shared", "layoutdrag"])
+        t.check(skin.isInSkinGroup("skin & layout"), "config groups supplement the skin's own groups")
+        skin.applyConfigGroups(group: "layout", dragGroup: "LayoutDrag")
+        t.equal(skin.settings.groups, ["Skin", "Shared", "Layout"], "repeat application does not duplicate groups")
+        t.equal(skin.settings.dragGroups, ["cards", "shared", "layoutdrag"])
     }
 
     t.suite("Engine: Rainmeter 5.0 Phase 2 — Meters and Measures") {

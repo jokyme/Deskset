@@ -219,9 +219,17 @@ enum AppInstallation {
         progress.runModal()
     }
 
+    /// Preserve only supported application commands when moving from the disk-image copy to the installed one.
+    /// Development flags and Launch Services arguments do not become launch instructions for the installed app.
+    static func relaunchArguments(_ arguments: [String]) -> [String] {
+        guard case .command = LayoutCommand.parse(arguments) else { return [] }
+        return Array(arguments.dropFirst())
+    }
+
     private static func openInstalled(_ target: URL) {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
+        configuration.arguments = relaunchArguments(CommandLine.arguments)
         NSWorkspace.shared.openApplication(at: target, configuration: configuration) { _, error in
             DispatchQueue.main.async {
                 if let error {

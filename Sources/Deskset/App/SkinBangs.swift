@@ -16,11 +16,11 @@ enum HostBangs {
     }
 
     /// The kind of a bang the engine left to the host (`Bang.name`); nil when it is not supported on macOS
-    /// (!LoadLayout, !ResetStats, blur bangs, !SetAnchor…).
+    /// (!ResetStats, blur bangs, !SetAnchor…).
     static func kind(of name: String) -> Kind? {
         switch name {
         case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
-             "toggleconfig", "quit":
+             "toggleconfig", "loadlayout", "quit":
             return .lifecycle
         case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
              "togglemouseactionskingroup", "updategroup", "redrawgroup", "setvariablegroup":
@@ -62,7 +62,10 @@ extension SkinWindowController {
         // A stopped window still does what its skin asked for until the skin has closed: OnCloseAction's bangs
         // (`whileClosing`: the skin cannot reload or unload itself any more, `others`), and, for a skin on another
         // thread, what its work queued before the close asked. With the main executor both happen before `stop` returns.
-        guard !isStopped || !hasClosed else { return }
+        guard !isStopped || !hasClosed || (host.whileClosing && runtime.acceptsLayoutCloseActions) else { return }
+        if retiredByLayout || runtime.isRetiredForLayout {
+            guard host.whileClosing, runtime.acceptsLayoutCloseActions else { return }
+        }
         let bang = host.bang
         let a = bang.args
         // `[!ActivateConfig X][!Show X]`: X is loaded on the next run loop turn, so a bang for X that follows in the
@@ -80,12 +83,10 @@ extension SkinWindowController {
         }
         func group(_ index: Int) -> [SkinWindowController] { app.controllers(inGroup: arg(index)) }
 
-        /// While OnCloseAction runs, the closing skin cannot reload or unload itself.
+        /// Do not refresh or stop an instance whose close action is already running.
         func others(_ list: [SkinWindowController]) -> [SkinWindowController] {
             host.whileClosing ? list.filter { $0 !== self } : list
         }
-        let isSelf = SkinLibrary.normalizedConfigName(arg(0)).caseInsensitiveCompare(config) == .orderedSame
-
         switch bang.name {
         // Config level. Loading, unloading and refreshing always happen on a later run loop turn, after the action
         // that asked for them has finished: a skin whose OnRefreshAction refreshes it (or another skin that
@@ -95,39 +96,58 @@ extension SkinWindowController {
         // any of them loaded.
         case "refresh":
             if arg(0) == "*" {
-                app.later { $0.refreshAll(rescan: false) }
+                app.laterLifecycle(from: self, whileClosing: host.whileClosing) { $0.refreshAll(rescan: false) }
             } else {
-                for t in others(targets(0)) { app.later { $0.refreshInTurn(t) } }
+                for t in others(targets(0)) {
+                    app.laterLifecycle(from: self, whileClosing: host.whileClosing) { $0.refreshInTurn(t) }
+                }
             }
         case "refreshapp":
-            app.later { $0.refreshAll(rescan: true) }
+            app.layouts.enqueueApplicationAction(afterAction: runtime) { $0.refreshAll(rescan: true) }
         case "refreshgroup":
             let list = others(group(0))
-            app.later { app in list.forEach(app.refreshInTurn) }
+            app.laterLifecycle(from: self, whileClosing: host.whileClosing) { app in list.forEach(app.refreshInTurn) }
         case "activateconfig":
             let config = arg(0)
-            guard !config.isEmpty, !(host.whileClosing && isSelf) else { return }
+            guard !config.isEmpty else { return }
             let file = arg(1).isEmpty ? nil : arg(1)
             let sender = self.config
-            app.later(loading: config) { app in app.activateFromBang(config: config, file: file, sender: sender) }
+            app.laterLifecycle(from: self, loading: config, whileClosing: host.whileClosing) { app in
+                app.activateFromBang(config: config, file: file, sender: sender)
+            }
         case "deactivateconfig":
+            if host.whileClosing && arg(0).isEmpty {
+                if !app.isTerminating { app.state.update(config) { $0.active = false } }
+                return
+            }
             let list = others(arg(0).isEmpty ? [self] : targets(0))
-            for t in list { app.later { $0.deactivate(t, fade: true) } }
+            for t in list {
+                app.laterLifecycle(from: self, whileClosing: host.whileClosing) { $0.deactivate(t, fade: true) }
+            }
         case "deactivateconfiggroup":
             let list = others(group(0))
-            app.later { app in list.forEach { app.deactivate($0, fade: true) } }
+            app.laterLifecycle(from: self, whileClosing: host.whileClosing) { app in
+                list.forEach { app.deactivate($0, fade: true) }
+            }
         case "toggleconfig":
             let config = arg(0)
-            guard !config.isEmpty, !(host.whileClosing && isSelf) else { return }
+            guard !config.isEmpty else { return }
             let file = arg(1).isEmpty ? nil : arg(1)
             // Decided when it runs: an earlier bang of the same action may have loaded or unloaded the config.
-            app.later(loading: config) { app in
+            app.laterLifecycle(from: self, loading: config, whileClosing: host.whileClosing) { app in
                 if let running = app.controller(for: config) {
                     app.deactivate(running, fade: true)
                 } else {
                     app.activate(config: config, file: file, fade: true)
                 }
             }
+        case "loadlayout":
+            let name = arg(0)
+            guard !name.isEmpty else {
+                Log.write("!LoadLayout requires a layout name", level: .warning, source: config)
+                return
+            }
+            app.layouts.load(named: name, afterAction: runtime) { _ in }
 
         // Menus and windows
         case "skinmenu":
@@ -139,7 +159,8 @@ extension SkinWindowController {
         case "manage":
             // !Manage [TabName] [Config] [File]
             let config = arg(1).isEmpty ? nil : SkinLibrary.normalizedConfigName(arg(1))
-            app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2))
+            app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2),
+                                 tab: arg(0).caseInsensitiveCompare("Layouts") == .orderedSame ? .layouts : .skins)
         case "about":
             if arg(0).lowercased() == "log" { Workspace.edit(Paths.logFile) } else { app.showAbout() }
         case "editskin":
@@ -164,7 +185,7 @@ extension SkinWindowController {
         case "playstop":
             SoundPlayer.stop()
         case "quit":
-            app.later { _ in NSApp.terminate(nil) }
+            app.layouts.enqueueApplicationAction(afterAction: runtime) { _ in NSApp.terminate(nil) }
 
         default:
             // Window and group bangs never come here (the runtime carries them out), nor unsupported ones.
@@ -266,6 +287,16 @@ enum WindowPosition {
     }
 
     /// Top-left position (skin coordinates) for the given values, or nil when a value cannot be read.
+    static func anchor(x: String, y: String, size: CGSize) -> (x: Double, y: Double)? {
+        guard let x = parse(x, endLetter: "R"), let y = parse(y, endLetter: "B") else { return nil }
+        func offset(_ value: Coordinate, _ length: CGFloat) -> Double {
+            let amount = value.percent ? value.value / 100 * Double(length) : value.value
+            return value.fromEnd ? Double(length) - amount : amount
+        }
+        return (offset(x, size.width), offset(y, size.height))
+    }
+
+    /// Resolves saved coordinates after the skin's dimensions and monitors are known.
     static func resolve(x: String, y: String, anchorX: String, anchorY: String, skinSize: CGSize,
                         screens: [WindowGeometry.Screen]) -> (x: Double, y: Double)? {
         guard let cx = parse(x, endLetter: "R"), let cy = parse(y, endLetter: "B"),
@@ -288,9 +319,45 @@ enum WindowPosition {
             let offset = c.percent ? c.value / 100 * Double(length) : c.value
             return c.fromEnd ? Double(length) - offset : offset
         }
-        let xArea = area(cx.screen), yArea = area(cy.screen ?? cx.screen)
+        let xArea = area(cx.screen ?? cy.screen), yArea = area(cy.screen ?? cx.screen)
         let px = place(cx, start: xArea.minX, length: xArea.width) - anchor(ax, length: skinSize.width)
         let py = place(cy, start: yArea.minY, length: yArea.height) - anchor(ay, length: skinSize.height)
         return (px, py)
+    }
+
+    /// Writes a moved position in the same coordinate system as the imported layout. A percentage / right-edge
+    /// / monitor-relative position remains relative when the layout is saved and used on another screen.
+    static func moved(x: Double, y: Double, windowX: String?, windowY: String?, anchorX: String?, anchorY: String?,
+                      skinSize: CGSize, screens: [WindowGeometry.Screen], autoSelectScreen: Bool) -> (x: String, y: String) {
+        var cx = parse(windowX ?? "0", endLetter: "R") ?? Coordinate(value: 0)
+        var cy = parse(windowY ?? "0", endLetter: "B") ?? Coordinate(value: 0)
+        let ax = parse(anchorX ?? "0", endLetter: "R") ?? Coordinate(value: 0)
+        let ay = parse(anchorY ?? "0", endLetter: "B") ?? Coordinate(value: 0)
+        let ph = WindowGeometry.primaryHeight(screens)
+        if autoSelectScreen, let screen = WindowGeometry.screenIndex(
+            for: WindowGeometry.frame(topLeftX: x, y: y, size: skinSize, primaryHeight: ph), screens: screens) {
+            cx.screen = screen + 1
+            cy.screen = screen + 1
+        }
+        let rects = screens.map { CGRect(x: $0.frame.minX, y: ph - $0.frame.maxY,
+                                        width: $0.frame.width, height: $0.frame.height) }
+        func area(_ n: Int?) -> CGRect {
+            let first = rects.first ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
+            guard let n else { return first }
+            if n == 0 { return rects.dropFirst().reduce(first) { $0.union($1) } }
+            return n > 0 && n <= rects.count ? rects[n - 1] : first
+        }
+        func text(_ position: Double, _ coordinate: Coordinate, _ anchor: Coordinate,
+                  start: CGFloat, length: CGFloat, size: CGFloat, end: String) -> String {
+            let offset = anchor.percent ? anchor.value / 100 * Double(size) : anchor.value
+            let point = position + (anchor.fromEnd ? Double(size) - offset : offset)
+            var value = coordinate.fromEnd ? Double(start + length) - point : point - Double(start)
+            if coordinate.percent && length != 0 { value = value / Double(length) * 100 }
+            return NumberFormatting.plain(value, maxDecimals: 10) + (coordinate.percent ? "%" : "")
+                + (coordinate.fromEnd ? end : "") + (coordinate.screen.map { "@\($0)" } ?? "")
+        }
+        let xa = area(cx.screen ?? cy.screen), ya = area(cy.screen ?? cx.screen)
+        return (text(x, cx, ax, start: xa.minX, length: xa.width, size: skinSize.width, end: "R"),
+                text(y, cy, ay, start: ya.minY, length: ya.height, size: skinSize.height, end: "B"))
     }
 }

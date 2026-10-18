@@ -9,7 +9,7 @@ weather, installer, app) and from a re-test of 15 real skin packages (see
 [Real-world test results](#12-real-world-test-results)). Everything is based on the public Rainmeter manual
 (<https://docs.rainmeter.net/manual/>), public plugin READMEs, and observation of how skins behave. Deskset is an
 independent clean-room implementation and does not contain Rainmeter code. The document describes Deskset as of
-2026-09-27.
+2026-09-27, with the Layouts entries updated on 2026-10-19; those updates have not been compared on a Windows desktop.
 
 **Contents**
 
@@ -70,8 +70,8 @@ shipped with Deskset.
 | Rainmeter's bundled plugins | emulated | Every one except two (six of them partly): ActionTimer, AudioLevel, NowPlaying, InputText, RunCommand, UsageMonitor, CoreTemp and SpeedFan (real temperatures, fans, clocks and power), … | WindowMessage and VirtualDesktops have no macOS counterpart |
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
-| Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layouts are installed but not applied yet |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, `!SetZoomFactor` (5.0, partial), visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | No zoom menu, edge-drag zoom, `DefaultZoom` or multiple skin selection yet; window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup, no Aero blur, no stored anchors; layouts cannot be loaded yet |
+| Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, `!SetZoomFactor` (5.0, partial), visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | No zoom menu, edge-drag zoom, `DefaultZoom` or multiple skin selection yet; window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup selection or Aero blur; `!SetAnchor` remains unsupported |
 
 ---
 
@@ -96,8 +96,8 @@ shipped with Deskset.
 8. **Skin windows sit on the desktop by default** (Rainmeter's "On Desktop" level) and use macOS window levels.
 9. **Old skins install directly:** legacy Rainstaller packages and plain ZIPs that Rainmeter 4 refuses are
    accepted, and fonts they carry are installed into the skin.
-10. **Layouts are installed but not applied yet**, so a suite that arranges itself with a layout has to be
-    loaded skin by skin for now.
+10. **Layouts can be saved and applied**, including installed layouts and `!LoadLayout`; macOS wallpaper mapping
+    and unverified Windows details are documented in [Layouts](compat/layouts.md).
 11. **⌘ replaces Ctrl**: ⌘-drag moves any skin, and Control-click (the Mac's right click) opens the skin menu.
 
 ---
@@ -1081,7 +1081,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** the `Default…` options work the same, with state.json in place of Rainmeter.ini; positions accept the WindowX /
   WindowY forms (`%`, `R` / `B`, formulas, `@N`). The anchor is applied once, to place the skin (see Positions below).
   Zoom: `!SetZoomFactor Factor` works, the factor is kept in state.json and `[$SkinZoomFactor]` and friends follow it;
-  but the range is clamped to 0.25–10 (not 0.1–5), and the `Default` argument, the skin menu's zoom items, zooming by
+  the factor is clamped to 0.1–5 (10–500%), and layouts use the native `Zoom` percentage. The `Default` argument,
+  the skin menu's zoom items, zooming by
   dragging edges and `DefaultZoom` / `ForceDefaultZoom` are not implemented yet. Deskset also reads `DefaultZoomFactor`
   in a skin's `[Rainmeter]` section as the first zoom (not an option of the manual) and `!SetZoomFactorGroup Factor Group`
   (Deskset extension).
@@ -1155,14 +1156,13 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** points with the origin at the top-left of the primary display (the one with the menu bar), y growing
   downward — the same convention, in points. `!Move` values are clamped to ±1 000 000. With SavePosition off the
   position lasts for the session. A new skin without a saved or default position is cascaded from the top-left of the
-  visible area. AutoSelectScreen decides which display the monitor variables without `@N` describe. Anchors
-  (`DefaultAnchorX` / `DefaultAnchorY`, the anchor arguments of `!SetWindowPosition`) are applied once, when the skin
-  is placed; the saved position is always the window's top-left corner, and `!SetAnchor` is not supported.
-- **Why:** macOS works in points (Retina); stored anchors are not implemented yet.
-- **Skin impact:** skins positioned for a specific Windows resolution land elsewhere on a Retina Mac; KeepOnScreen keeps
-  them visible. A right- or bottom-anchored skin that changes size (DynamicWindowSize) grows to the right and down
-  instead of around its anchor.
-- **Status:** emulated / partial (stored anchors)
+  visible area. AutoSelectScreen decides which display the monitor variables without `@N` describe. Imported layout
+  positions retain their expressions and anchors across save/reload, movement and resizing (see [Layouts](compat/layouts.md)).
+  Existing `DefaultAnchorX/Y` and `!SetWindowPosition` placement remain separate; `!SetAnchor` is not supported.
+- **Why:** macOS works in points (Retina); `!SetAnchor` has not been implemented.
+- **Skin impact:** skins positioned for a specific Windows resolution can land elsewhere on a Retina Mac; KeepOnScreen
+  keeps them visible. Layout anchors now remain effective when the skin changes size.
+- **Status:** emulated / partial (`!SetAnchor`)
 
 #### Display changes (`OnDisplayMetricsChange`)
 - **Windows:** `[Rainmeter] OnDisplayMetricsChange` is an action; since Rainmeter 5.0 it runs when any display's layout,
@@ -1288,7 +1288,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### Main menu (the tray menu)
 - **Windows:** the notification-area icon's menu; `!TrayMenu` opens it.
-- **Mac:** the menu bar icon's menu (Manage Skins…, Skins, loaded skins, Refresh All, Install Skin…, Open Skins
+- **Mac:** the menu bar icon's menu (Manage Skins…, Skins, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
   Folder, Open Log, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   so does the first launch. A second copy of Deskset hands the files it was opened with to the running one and quits.
@@ -1359,13 +1359,31 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### Layouts (`!LoadLayout`)
-- **Windows:** layouts save and restore sets of loaded skins with their settings.
-- **Mac:** layouts from packages are installed into `~/Library/Application Support/Deskset/Layouts` but cannot be applied
-  yet; `!LoadLayout` adds a compatibility note, and a package that asks to load a layout says so after installing.
-- **Why:** not implemented yet.
-- **Skin impact:** suites that set themselves up through a layout (Enigma, FluentDash11, Nelamint, Simple Clean,
-  PogPack) are loaded skin by skin from the Manage window.
-- **Status:** not supported
+- **Windows:** [Manage → Layouts](https://docs.rainmeter.net/manual/user-interface/manage/#LayoutsTab) saves and loads
+  config settings. Normal loads preserve selected previous global options, apply other target options, and save
+  `@Backup` after close actions. Loading `@Backup` leaves it unchanged and ignores its wallpaper.
+- **Mac:** Save, Load, Delete, Edit, empty layout, exclude unloaded skins and include wallpaper are available in Manage.
+  Layouts use `Layouts/<name>/Rainmeter.ini`: UTF-16 LE BOM for nonempty exports, zero bytes for empty layouts. Empty
+  clears/disables the other save options. Overwrite requires confirmation; manual Save cannot replace `@Backup`.
+  Saving without a picture keeps an existing wallpaper and other folder files. Delete moves the folder to the Trash.
+  Unknown config keys and missing configs are retained; skin files are not copied. Equal LoadOrder values use INI
+  section order. The status menu, `!LoadLayout`, `!Manage Layouts`, package application and their executable commands
+  share the coordinator. An empty layout remains empty after restart; local application preferences stay unchanged.
+  [OnCloseAction](https://docs.rainmeter.net/manual/skins/rainmeter-section/#OnCloseAction) cleanup and supported
+  cross-config/UI/system/open actions run as skins close sequentially in config-name order, before `@Backup` is
+  saved. Late retired requests are discarded; `!LoadLayout`, `!RefreshApp` and `!Quit` wait in FIFO order until the
+  current layout finishes. Loading `@Backup` neither replaces it nor applies its wallpaper.
+- **Why:** raw `[Rainmeter]` and `[TrayMeasure]` metadata is retained. Normal loads merge the specified preserved
+  global values; `@Backup` restores its raw values. These do not change local Mac preferences or implement unsupported
+  Windows global/tray behavior.
+  The primary display's picture keeps its original encoding under `Wallpaper.bmp`; normal loads apply it to every
+  display with current scaling options. Dynamic/per-display/Spaces wallpaper settings are not serialized.
+  Windows variant enumeration is filesystem-dependent; Deskset uses deterministic alphabetical order without a
+  universal numeric/Unicode ordering guarantee. Cross-config deactivation retains the existing fade timing.
+  No Windows desktop parity run is claimed. Details: [Layouts](compat/layouts.md).
+- **Skin impact:** installed layouts can arrange compatible skins automatically; unsupported skins/plugins remain
+  unsupported. Missing targets are rejected before closing; later load failures restore the previous skin session.
+- **Status:** emulated / partial (global settings, wallpaper and filename portability)
 
 #### Other host bangs
 - **Windows:** `!SetClip`, `!SetWallpaper`, `!Play` / `!PlayLoop` / `!PlayStop`, `!Manage`, `!About`, `!EditSkin`,
@@ -1374,7 +1392,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   Center — macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage window on the named config;
   `!About Log` opens the log; `!EditSkin` opens the file in the text editor; `!Quit` quits after the current action.
   `!ResetStats` and `!SetAnchor` do nothing and add a compatibility note.
-- **Why:** network statistics are not kept across restarts; stored anchors are not implemented yet.
+- **Why:** network statistics are not kept across restarts; `!SetAnchor` has not been implemented.
 - **Skin impact:** none for the supported ones.
 - **Status:** emulated / not supported (`!ResetStats`, `!SetAnchor`)
 
@@ -2802,10 +2820,12 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
   version is backed up and replaced, and the package's skin or layout is loaded.
 - **Mac:** an alert shows the header image, "Install “Name”?", author and version; for a plain archive or folder a
   note that the skins were found automatically (a folder is copied, the original stays), for a legacy package a note
-  saying so; the root configs and whether they replace (backed up) or add to installed ones; layouts (saved, not
-  applied); the fonts the installation adds ("not installed system-wide"); what loads afterwards; Windows plugins
-  (never installed) and other warnings. Running skins of a replaced root config are stopped first and loaded again
-  afterwards; the package's skin is loaded with a fade and selected in the Manage window.
+  saying so; the root configs and whether they replace (backed up) or add to installed ones; layouts and the option
+  to apply an included layout; the fonts the installation adds ("not installed system-wide"); what loads afterwards; Windows plugins
+  (never installed) and other warnings. Applying an included layout closes all old skins before replacing files,
+  then saves their post-close settings for `@Backup` using the old variant list. Otherwise, running skins of a
+  replaced root config are stopped first and loaded again afterwards; the package's skin is loaded with a fade and
+  selected in the Manage window.
 - **Why:** —
 - **Skin impact:** none.
 - **Status:** emulated
@@ -2884,11 +2904,14 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 
 #### Layouts and loading after installation
 - **Windows:** layouts go to the Layouts folder and can be applied; the author may choose a skin or layout to load.
-- **Mac:** layouts are installed with their `[Rainmeter]` options removed but **not applied yet** (the app says so).
-  `LoadType=Skin` + `Load=Config\File.ini` loads that skin when it was installed from this package.
-- **Why:** layouts are not implemented in the app yet.
-- **Skin impact:** suites that arrange themselves with a layout install, but the user loads the skins by hand.
-- **Status:** partial
+- **Mac:** layouts are installed with their `[Rainmeter]` options removed. Selecting Apply included layout first
+  closes all old skins before replacing package files, then loads the installed layout. `@Backup` captures their
+  post-close settings using the old variant list. A close timeout cancels installation before file replacement.
+  Without application, installation only saves the layout.
+  `LoadType=Skin` + `Load=Config\File.ini` still loads a skin installed by this package.
+- **Why:** installer application and `!LoadLayout` use the same layout coordinator without a Mac process restart.
+- **Skin impact:** a compatible suite can arrange itself after installation; see [layout limits](compat/layouts.md).
+- **Status:** emulated
 
 #### Fonts
 - **Windows:** legacy packages' `Fonts\` folder was installed into `Windows\Fonts` (no longer since 2.4); only
@@ -3003,7 +3026,7 @@ Compatibility notes by cause:
 | **Mini Weather** (1) | Unchanged | No weather: the weather.com XML service it uses was shut down (same on Windows). |
 | **Mnml Drives** (2) | Works; the legacy Rainstaller package now installs, with its pixel font | Drive letters show the startup disk. |
 | **Nelamint** (13) | Player (track, cover), visualizer, CPU, RAM, disks, clock, links, settings | Weather empty (weather.com XML service shut down); Wi-Fi reads 0 in a 3-update test because of its `UpdateDivider=4` (fills in the app). |
-| **PogPack 1.3** (26) | The legacy package now installs as the root config `PogPack` with its three fonts and its theme as a layout; installed, every tab shows its art, fonts and values (system, battery, garbage, signal, volume, music controls) | The layout is not applied yet; the Windows add-on (configuration tool) is not installed; weather is empty (the weather.com XML service was shut down); the music minute counter shows nothing because the skin's formula names a meter instead of a measure (skin bug, same on Windows); the music tabs show data only while Music or Spotify runs. |
+| **PogPack 1.3** (26) | The legacy package now installs as the root config `PogPack` with its three fonts and its theme as a layout; installed, every tab shows its art, fonts and values (system, battery, garbage, signal, volume, music controls) | At the original test date the layout was not applied (current support: [Layouts](compat/layouts.md)); the Windows add-on (configuration tool) is not installed; weather is empty (the weather.com XML service was shut down); the music minute counter shows nothing because the skin's formula names a meter instead of a measure (skin bug, same on Windows); the music tabs show data only while Music or Spotify runs. |
 | **Simple Clean** (8) | Greeting with the user's name (showed the raw section variable), player and visualizer, clocks, settings | Weather empty (weather.com XML service shut down); menu entries that launch Windows programs do nothing. |
 | **Simplistic Analog Clock** (2) | Correct time (hands were wrong) | None |
 | **cpu meter** (1) | Works with its bundled script font | The text is cut off when the CPU value gains a digit after loading: the skin has no `W` or `DynamicWindowSize` (same rule as in Rainmeter). |
@@ -3055,9 +3078,9 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | Gap | Status | Notes |
 | --- | --- | --- |
 | Hardware sensors (temperatures, fans, power, clocks) | emulated | Read directly without privileges (§9.3); Apple documents none of them, the values are approximations; M1–M3 and Intel Macs untested; HWiNFO skins still read nothing |
-| Layouts (`!LoadLayout`, applying installed layouts) | not supported | Installed layouts are kept for when this ships |
+| Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
 | Aero blur (`Blur`, `BlurRegion`, blur bangs), `!ResetStats` | not supported | Use FrostedGlass for blur |
-| Stored window anchors (`!SetAnchor`; saved positions keep an anchor) | partial | Anchors are applied once when a skin is placed; a resizing skin grows to the right and down |
+| `!SetAnchor` | not supported | Layout expressions and anchors are persisted and applied; the bang remains unsupported |
 | `DragGroup`; the Ctrl / ⌘ override on click-through skins | not supported | Turn click-through off from the menu or the Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |

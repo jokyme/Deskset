@@ -11,6 +11,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let defaultSkinsSource: URL?
     /// `#SETTINGSPATH#`: where `Stationery.inc` is kept.
     let settingsDirectory: URL
+    let layoutWallpaper: LayoutWallpaper
+    lazy var layoutStore = LayoutStore(directory: layoutsDirectory)
+    lazy var layouts = LayoutController(app: self)
+    /// Invalidates deferred lifecycle requests made by the desktop a layout replaces.
+    var lifecycleGeneration = 0
     /// False for headless use (`--self-test`, `--snapshot-ui`): skin windows are created but never shown.
     let presentsWindows: Bool
     /// The widget on the desktop follows the Studio a moment later (`EditingSession`): a step's reload waits for the
@@ -98,7 +103,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
          settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
-         workWatchdog: SkinWorkWatchdog = .shared) {
+         workWatchdog: SkinWorkWatchdog = .shared, layoutWallpaper: LayoutWallpaper? = nil) {
         self.threading = threading
         self.workWatchdog = workWatchdog
         self.state = state ?? AppState()
@@ -107,6 +112,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.backupsDirectory = backupsDirectory
         self.defaultSkinsSource = defaultSkinsSource
         self.settingsDirectory = settingsDirectory
+        self.layoutWallpaper = layoutWallpaper ?? (presentsWindows
+            ? SystemLayoutWallpaper(file: settingsDirectory.appendingPathComponent("Wallpaper.bmp"))
+            : MemoryLayoutWallpaper())
         self.presentsWindows = presentsWindows
         defersDesktopUpdates = presentsWindows
         super.init()
@@ -131,6 +139,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Said in the log at launch about the `SkinThreading` default (an unknown value; the main thread).
     var threadingNote: String?
+    var initialLayoutCommand: LayoutCommand?
+    var layoutCommandServer: LayoutCommandServer?
+    var layoutCommandsReady = false
+    var pendingLayoutCommands: [(LayoutCommandRequest, (Bool) -> Void)] = []
 
     // MARK: Lifecycle
 
@@ -140,6 +152,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if handOffToRunningInstance() { return }
+        if presentsWindows {
+            let lockURL = settingsDirectory.appendingPathComponent(".layout-command.lock")
+            do {
+                guard let lock = try LayoutInstanceLock.acquire(at: lockURL) else {
+                    // A launch may have its lock before its listener is ready. Never start another desktop on timeout.
+                    isDuplicateInstance = true
+                    let request = initialLayoutCommand.map(LayoutCommandRequest.command) ?? .reopen(pendingOpenURLs)
+                    let client = LayoutCommandClient()
+                    let target = client.discover(timeout: 2) ?? LayoutInstanceLock.owner(at: lockURL)
+                    let result = target.map { client.send(request, to: $0) }
+                        ?? .failed("Another Deskset instance is starting but has not published its process identifier.")
+                    if initialLayoutCommand != nil, !pendingOpenURLs.isEmpty, let target {
+                        _ = client.send(.reopen(pendingOpenURLs), to: target)
+                    }
+                    if case .failed(let message) = result {
+                        fputs("Deskset: \(message)\n", stderr)
+                        exit(1)
+                    }
+                    NSApp.terminate(nil)
+                    return
+                }
+                layoutCommandServer = LayoutCommandServer(instanceLock: lock) { [weak self] request, completion in
+                    guard let self else { completion(false); return }
+                    self.receiveLayoutCommand(request, completion: completion)
+                }
+            } catch {
+                isDuplicateInstance = true
+                fputs("Deskset: Could not acquire the application instance lock: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+        }
         Paths.ensureDirectories()
         Log.rotateIfNeeded()
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
@@ -162,7 +205,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         WebParserAccess.install(settingsFolder: Paths.appSupport)
         // Weather skins may reach MET Norway from here on (never in the command-line modes or the self-tests).
         WeatherWiring.install()
-        let firstRun = state.data.skins.isEmpty
+        let firstRun = state.data.skins.isEmpty && !state.data.hasLoadedLayout
         installDefaultSkinsIfNeeded()
         ensureStationeryFile()
         setUpStatusItem()
@@ -174,14 +217,32 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         EnvironmentStore.shared.publish()
         observeAppearance()
         let opensFiles = !pendingOpenURLs.isEmpty
-        loadActiveSkins { [weak self] in
+        let finishedLoading: () -> Void = { [weak self] in
             // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
             // rather than over them, once they are placed.
-            guard let self, firstRun, !opensFiles else { return }
-            let manage = self.manageWindow ?? ManageWindowController(app: self)
-            self.manageWindow = manage
-            manage.placeBeside(self.controllers.values.map { $0.window.frame })
-            self.showManageWindow(selecting: self.firstRunSelection, file: nil)
+            guard let self else { return }
+            if self.initialLayoutCommand == .manageLayouts {
+                self.showManageWindow(selecting: nil, file: nil, tab: .layouts)
+            } else if self.initialLayoutCommand == nil, firstRun, !opensFiles {
+                let manage = self.manageWindow ?? ManageWindowController(app: self)
+                self.manageWindow = manage
+                manage.placeBeside(self.controllers.values.map { $0.window.frame })
+                self.showManageWindow(selecting: self.firstRunSelection, file: nil)
+            }
+            self.finishLayoutCommandStartup()
+        }
+        if case .loadLayout(let name) = initialLayoutCommand {
+            // A valid layout is the first desktop: do not briefly load first-run or previous-session skins first.
+            loadLayout(named: name) { [weak self] success in
+                guard let self else { return }
+                if success { finishedLoading() }
+                else {
+                    fputs("Deskset: Could not load layout \"\(name)\"; restoring the previous desktop.\n", stderr)
+                    self.loadActiveSkins(then: finishedLoading)
+                }
+            }
+        } else {
+            loadActiveSkins(then: finishedLoading)
         }
         launched = true
         if opensFiles {
@@ -213,6 +274,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let otherURL = other.bundleURL else { return false }
         isDuplicateInstance = true
         Log.write("Deskset is already running (pid \(other.processIdentifier)); handing over and quitting")
+        if let initialLayoutCommand {
+            let result = LayoutCommandClient().send(.command(initialLayoutCommand), to: other.processIdentifier)
+            let status: Int32
+            if case .failed(let message) = result {
+                fputs("Deskset: \(message)\n", stderr)
+                status = 1
+            } else { status = 0 }
+            if !pendingOpenURLs.isEmpty {
+                // Preserve files Finder supplied as well as the explicit command.
+                let configuration = NSWorkspace.OpenConfiguration()
+                NSWorkspace.shared.open(pendingOpenURLs, withApplicationAt: otherURL, configuration: configuration) { _, _ in
+                    DispatchQueue.main.async { exit(status) }
+                }
+            } else { exit(status) }
+            return true
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         let quit: (NSRunningApplication?, Error?) -> Void = { _, _ in
@@ -343,7 +420,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// alone. `then`: once the last one has started (at once with the main executor).
     func loadActiveSkins(then: (() -> Void)? = nil) {
         var active = state.activeConfigs
-        if active.isEmpty && state.data.skins.isEmpty {
+        // A layout may name a config that was not installed when it was loaded. Resolve its retained one-based
+        // variant once it becomes available; an invalid index never falls through to activate's default variant.
+        active = active.compactMap { item in
+            guard item.state.file.isEmpty, let index = item.state.activeVariant else { return item }
+            guard let entry = config(named: item.config) else { return nil }
+            let variants = LayoutStateCodec.variants(in: entry)
+            guard index > 0, index <= variants.count else { return nil }
+            state.update(item.config) { $0.file = variants[index - 1] }
+            return (item.config, state.skin(item.config) ?? item.state)
+        }
+        if active.isEmpty && state.data.skins.isEmpty && !state.data.hasLoadedLayout {
             let layout = firstRunLayout()
             if let first = layout.first {
                 // Known before the first one loads: `then` shows the Manage window on it.
@@ -620,11 +707,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controllers[SkinLibrary.normalizedConfigName(config).lowercased()]
     }
 
-    /// Active skins sorted by load order, then name.
+    /// Active skins sorted by load order, then their layout's section order.
     var sortedControllers: [SkinWindowController] {
-        controllers.values.sorted {
+        let indices = Dictionary(uniqueKeysWithValues: state.orderedConfigs.enumerated().map {
+            ($0.element.config.lowercased(), $0.offset)
+        })
+        return controllers.values.sorted {
             let a = $0.state, b = $1.state
-            return (a.loadOrder, $0.config.lowercased()) < (b.loadOrder, $1.config.lowercased())
+            let aKey = $0.config.lowercased(), bKey = $1.config.lowercased()
+            return (a.loadOrder, indices[aKey] ?? Int.max, aKey)
+                < (b.loadOrder, indices[bKey] ?? Int.max, bKey)
         }
     }
 
@@ -716,7 +808,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
                   continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
                   thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
-        guard !isTerminating else { return nil }
+        guard !isTerminating, layouts.allowsLifecycleMutation else { return nil }
         activating += 1
         defer { activating -= 1 }
         guard let entry = config(named: rawConfig) else {
@@ -826,7 +918,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func deactivate(config: String, fade: Bool = false) {
-        guard !isTerminating, let c = controller(for: config) else { return }
+        guard !isTerminating, layouts.allowsLifecycleMutation, let c = controller(for: config) else { return }
         controllers[c.config.lowercased()] = nil
         state.update(c.config) { $0.active = false }
         c.stop(fadeOut: fade)
@@ -945,11 +1037,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// other applications' windows.
     func restack() {
         guard presentsWindows else { return }
-        let items = controllers.values.filter(\.isShown).map { c -> (item: SkinWindowController, alwaysOnTop: Int, loadOrder: Int, name: String) in
-            let s = c.state
-            return (c, s.alwaysOnTop, s.loadOrder, c.config)
-        }
-        for group in WindowGeometry.stackingGroups(items) {
+        let items = sortedControllers.filter(\.isShown)
+        for level in -2...2 {
+            let group = items.filter { $0.state.alwaysOnTop == level }
             for (below, above) in zip(group, group.dropFirst()) {
                 above.window.order(.above, relativeTo: below.window.windowNumber)
             }
@@ -1008,7 +1098,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for session in studioSessions.values { session.studioSkin?.fontsDidChange() }
     }
 
-    private func notifyChanged() {
+    func notifyChanged() {
         NotificationCenter.default.post(name: .desksetSkinsChanged, object: self)
     }
 
@@ -1028,9 +1118,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Windows
 
-    func showManageWindow(selecting config: String?, file: String?) {
+    func showManageWindow(selecting config: String?, file: String?, tab: ManageWindowController.Tab = .skins) {
         let controller = manageWindow ?? ManageWindowController(app: self)
         manageWindow = controller
+        controller.selectTab(tab)
         if presentsWindows {
             NSApp.activate(ignoringOtherApps: true)
             controller.showWindow(nil)
@@ -1245,6 +1336,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let skinsItem = NSMenuItem(title: "Skins", action: nil, keyEquivalent: "")
         skinsItem.submenu = skinsSubmenu()
         menu.addItem(skinsItem)
+        let layoutsItem = NSMenuItem(title: "Layouts", action: nil, keyEquivalent: "")
+        layoutsItem.submenu = layoutsMenu()
+        menu.addItem(layoutsItem)
 
         let active = sortedControllers.sorted { $0.config.localizedStandardCompare($1.config) == .orderedAscending }
         if !active.isEmpty {

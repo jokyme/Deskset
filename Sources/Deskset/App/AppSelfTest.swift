@@ -32,6 +32,11 @@ enum AppSelfTest {
         AppUpdateServiceSelfTests.run(t)
         AppUpdateControllerSelfTests.run(t)
         AppInstallationSelfTests.run(t)
+        LayoutStoreSelfTests.run(t)
+        LayoutPositionSelfTests.run(t)
+        LayoutsSelfTests.run(t)
+        LayoutsUISelfTests.run(t)
+        LayoutCommandsSelfTests.run(t)
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
@@ -935,7 +940,7 @@ enum AppSelfTest {
             t.equal(focus.skin.updateCount, count + 1)
 
             // Unsupported host bangs are reported as such.
-            t.equal(focus.handleHostBang(Bang(name: "loadlayout", args: ["x"])), false)
+            t.equal(focus.handleHostBang(Bang(name: "resetstats", args: [])), false)
             t.equal(focus.handleHostBang(Bang(name: "autoselectscreen", args: ["1"])), true)
         }
 

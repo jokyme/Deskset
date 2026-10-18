@@ -54,6 +54,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// scheduled yet, by lowercased config: until then a bang for that config goes behind them, through the main
     /// thread (the directory does not know of them yet). Only requests queued from another thread count.
     private let loadsInFlight = Guarded<[String: Int]>([:])
+    /// Retirement distinguishes genuine close actions from old queued work, on every executor.
+    private enum LayoutRetirement { case active, closing, finished }
+    private let layoutRetirement = Guarded(LayoutRetirement.active)
+    var isRetiredForLayout: Bool { layoutRetirement.current != .active }
+    var acceptsLayoutCloseActions: Bool { layoutRetirement.current == .closing }
+    func retireForLayout() { layoutRetirement.access { $0 = .closing } }
+    func finishLayoutRetirement() { layoutRetirement.access { $0 = .finished } }
+    private var permitsLayoutAction: Bool { !isRetiredForLayout || (isClosing && acceptsLayoutCloseActions) }
     /// Bangs for other skins dropped because a chain of skins triggering each other reached `maxHops`, and whether that
     /// was logged (once).
     private(set) var droppedHops = 0
@@ -112,8 +120,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     /// Loads the skin and registers its fonts (`@Resources/Fonts`). On the executor.
-    func load() throws -> LoadResult {
+    func load(configState: SkinState? = nil) throws -> LoadResult {
         try skin.load()
+        if let configState {
+            skin.applyConfigGroups(group: configState.group, dragGroup: configState.dragGroup)
+        }
         return LoadResult(registeredFonts: Fonts.registerFonts(for: skin), issues: skin.issues)
     }
 
@@ -127,7 +138,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         queueLock.unlock()
         let loaded: LoadResult
         do {
-            loaded = try load()
+            loaded = try load(configState: order.state)
         } catch {
             isClosing = true
             isClosed = true
@@ -170,7 +181,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// a message from another thread does.
     @discardableResult
     func send(_ message: SkinMessage) -> Bool? {
-        if executor.isCurrent && !isLoadQueued { return handle(message) }
+        if executor.isCurrent && !isLoadQueued {
+            noteAction(message)
+            return handle(message)
+        }
         enqueue(message)
         return nil
     }
@@ -210,6 +224,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     private func enqueue(_ message: SkinMessage) {
+        noteAction(message)
         queueLock.lock()
         defer { queueLock.unlock() }
         if let tail = coalescingTail, tail.takes(message) {
@@ -227,6 +242,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             let message = box.message
             self.queueLock.unlock()
             self.handle(message)
+        }
+    }
+
+    private func noteAction(_ message: SkinMessage) {
+        switch message {
+        case .bang, .execute, .run, .update, .redraw: directoryStore?.noteAction()
+        default: break
         }
     }
 
@@ -410,6 +432,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// Asks the main thread: at once when on it, else queued there in order.
     func request(_ request: SkinRequest) {
+        guard permitsAfterLayoutRetirement(request) else { return }
+        switch request {
+        case .window, .lifecycle, .ui, .system, .open, .forward, .fadeWindow: directoryStore?.noteAction()
+        default: break
+        }
         if Thread.isMainThread {
             window?.apply(request, from: self)
             return
@@ -419,13 +446,22 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.window?.apply(request, from: self)
+            if self.permitsAfterLayoutRetirement(request) { self.window?.apply(request, from: self) }
             if let load {
                 self.loadsInFlight.access {
                     let left = ($0[load] ?? 1) - 1
                     $0[load] = left > 0 ? left : nil
                 }
             }
+        }
+    }
+
+    /// Closing notifications settle the old lifecycle; marked close actions finish before its barrier completes.
+    private func permitsAfterLayoutRetirement(_ request: SkinRequest) -> Bool {
+        guard isRetiredForLayout else { return true }
+        switch request {
+        case .closed, .failed: return true
+        default: return acceptsLayoutCloseActions && request.isClosingAction
         }
     }
 
@@ -451,6 +487,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// so their ordering does not depend on worker placement. Other modes deliver inline on the same executor. A
     /// chain of skins triggering each other stops at `maxHops`: the bang is dropped and logged, once per skin.
     private func deliver(_ bang: String, to target: SkinRuntime, _ message: (_ hops: Int) -> SkinMessage) {
+        guard permitsLayoutAction, !target.isRetiredForLayout else { return }
         guard currentHops < SkinRuntime.maxHops else {
             droppedHops += 1
             if hopLimitLogs == 0 {
@@ -472,11 +509,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// the main thread when it is loading (the bang follows the load) or not running (the main thread says so in the
     /// log), or without a directory.
     private func send(_ bang: Bang, toConfig name: String) {
+        guard permitsLayoutAction else { return }
         if let directory = directoryStore?.directory, !isLoadPending(name, in: directory),
            let target = directory.runtime(for: name) {
             deliver(bang.name, to: target) { .bang(bang, from: config, hops: $0) }
         } else {
-            request(.forward(bang, toConfig: name, hops: currentHops))
+            request(.forward(bang, toConfig: name, hops: currentHops, whileClosing: isClosing))
         }
     }
 
@@ -490,6 +528,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// runtimes (a skin group, `*` and a config by name are resolved here, in load order). On the main thread the
     /// windows are stacked again and the app hears of the changed settings once, after all of them.
     private func windowBang(_ bang: Bang) {
+        guard permitsLayoutAction else { return }
         guard let (targets, member) = SkinWindowBangs.targets(of: bang) else { return }
         inWindowBatch {
             switch targets {
@@ -498,7 +537,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             case .config(let name) where name == "*":
                 guard let directory = directoryStore?.directory else {
                     ownWindowBang(member)
-                    request(.forward(member, toConfig: "*", hops: currentHops))
+                    request(.forward(member, toConfig: "*", hops: currentHops, whileClosing: isClosing))
                     return
                 }
                 for target in directory.runtimes {
@@ -509,7 +548,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                     }
                 }
             case .config(let name):
-                if name.caseInsensitiveCompare(config) == .orderedSame {
+                if name.caseInsensitiveCompare(config) == .orderedSame && !isRetiredForLayout {
                     ownWindowBang(member)
                 } else if let directory = directoryStore?.directory, directory.runtime(for: name) == nil,
                           !isLoadPending(name, in: directory) {
@@ -531,7 +570,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
     private func ownWindowBang(_ bang: Bang) {
-        guard !isClosed, let change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        guard !isClosed, var change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        change.whileClosing = isClosing
         if case .zoomFactor(let factor) = change.operation {
             skin.applyHostZoomFactor(factor)
         }
@@ -558,6 +598,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// !UpdateGroup, !RedrawGroup, !SetVariableGroup and the skin group mouse bangs: for each skin of the group, in load
     /// order (this one too when it is in the group, at once).
     private func groupBang(_ bang: Bang) {
+        guard permitsLayoutAction else { return }
         let a = bang.args
         func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
         func each(_ group: String, _ message: (_ hops: Int) -> SkinMessage) {
@@ -771,10 +812,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// other running skin follows, in load order).
     func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
         HostCallAudit.note(self, "forward \(bang.name)")
+        guard permitsLayoutAction else { return }
         let name = SkinLibrary.normalizedConfigName(config)
         guard name == "*" else { return send(bang, toConfig: name) }
         guard let directory = directoryStore?.directory else {
-            return request(.forward(bang, toConfig: "*", hops: currentHops))
+            return request(.forward(bang, toConfig: "*", hops: currentHops, whileClosing: isClosing))
         }
         for target in directory.runtimes where target !== self {
             deliver(bang.name, to: target) { .bang(bang, from: self.config, hops: $0) }
@@ -787,6 +829,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
         HostCallAudit.note(self, "handle \(bang.name)")
         guard !isClosed else { return true }
+        guard permitsLayoutAction else { return true }
         if bang.name == "setupdate" || bang.name == "forceenablevisiblemode" {
             startTimer()
             return true
@@ -814,6 +857,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Lua `SKIN:FadeWindow`: the saved AlphaValue stays; the window model notes what it was faded to.
     func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool {
         HostCallAudit.note(self, "fadeWindow")
+        guard !isRetiredForLayout else { return true }
         model.settings.fadedAlpha = SkinFadedAlpha(value: min(max(to, 0), 255), base: model.settings.alphaValue)
         request(.fadeWindow(from: from, to: to))
         return true
@@ -857,13 +901,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     func skin(_ skin: Skin, execute target: String, arguments: [String]) {
         HostCallAudit.note(self, "execute")
+        guard !isRetiredForLayout || (isClosing && acceptsLayoutCloseActions) else { return }
         switch SkinRuntime.executePlan(skin, target: target, arguments: arguments) {
         case .nothing:
             break
         case .unsupported(let t):
             Log.write("Cannot run \"\(t)\" (Windows programs are not supported)", level: .warning, source: config)
         case let plan:
-            request(.open(plan))
+            request(.open(plan, whileClosing: isClosing))
         }
     }
 
