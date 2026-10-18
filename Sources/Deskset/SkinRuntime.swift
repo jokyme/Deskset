@@ -96,9 +96,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     deinit {
         timer?.cancel()
         // Only the executor lets go of a skin (docs/skin-threading.md, phase 0: Lifetime).
-        guard let skin, !skin.executor.isCurrent else { return }
+        guard self.skin != nil, !self.skin.executor.isCurrent else { return }
+        let executor = self.skin.executor
+        let retained = Unmanaged.passRetained(self.skin)
         self.skin = nil
-        skin.executor.async { withExtendedLifetime(skin) {} }
+        executor.async { retained.release() }
     }
 
     // MARK: Loading
