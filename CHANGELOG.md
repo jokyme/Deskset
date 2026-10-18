@@ -2,6 +2,34 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.3.0
+
+This release adds saved desktop layouts, updates you can download and install inside Deskset, and a clearer installation experience.
+
+### Added
+
+- **Saved desktop layouts.** Save, load, edit and delete layouts from Manage, or load one from the menu bar. Save an empty layout, exclude unloaded skins, or include your wallpaper. Loading a normal layout saves the previous configuration as `@Backup`.
+- **Layout commands and package support.** Load layouts with `!LoadLayout`, open the Layouts tab with `!Manage Layouts`, or apply a layout included in a skin package during installation.
+- **Updates inside Deskset.** Check from the menu or General settings, with automatic daily checks enabled by default. Choose **Update** to download and verify the correct version for your Mac, then **Install and Relaunch** when ready. Deskset prompts you to save open edits before restarting. Choose **Later** to postpone installation or **Skip This Version** to stop automatic reminders for that release.
+
+### Changed and improved
+
+- **Clearer native dialogs.** Update and installation windows now show progress, version details and readable error messages, with light and dark appearances and keyboard-accessible controls.
+- **A styled disk image and guided installation.** The disk image includes a custom background, a drag-to-Applications arrow, and English and Chinese instructions. Open Deskset from the disk image to install or replace it; the installer verifies the copied app, prevents downgrades and keeps the previous copy available for recovery if replacement fails.
+- **More complete layout restoration.** Layouts retain skin settings, saved positions and anchors, and support Rainmeter 5.0 `Zoom` values from 10–500%. Layout replacement waits for skin close actions before loading the new desktop.
+
+### Fixed
+
+- Fixed the disk-image installer remaining on its progress window after copying the application, preventing the installed copy from opening.
+- Fixed player controls and audio spectrum recovery after quitting and reopening Music.
+
+### Upgrading
+
+- To upgrade from 0.2.0 or 0.2.1, download this release's DMG or ZIP and replace the application. In-app installation is available after upgrading.
+- Your skins, saved layouts and settings are preserved. Save open edits and quit Deskset before replacing it manually.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.2.0...v0.3.0)
+
 ## 0.2.1
 
 This release adds update checks, a clearer installation experience, and fixes for music widgets after Music restarts.

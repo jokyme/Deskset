@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)
+[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.dmg)
 
 ![Deskset 自带示例皮肤的深色与浅色主题](docs/images/example-skins.jpg)
 
@@ -47,8 +47,8 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天�
 ## 安装
 
 1. 直接下载最新版本（或在 [Releases](../../releases) 页面查看所有版本）：
-   - [**Deskset-0.2.1-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
-   - [**Deskset-0.2.1-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.2.1/Deskset-0.2.1-x86_64.zip)）：Intel 芯片的 Mac。
+   - [**Deskset-0.3.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
+   - [**Deskset-0.3.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-x86_64.zip)）：Intel 芯片的 Mac。
 2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」，再从「应用程序」打开。也可以打开磁盘映像中的 Deskset，点击
    **Install to Applications**。首次安装时若 `/Applications` 不可写，会使用 `~/Applications`。
    如果没有出现安装提示，请按上述拖拽方式安装。
