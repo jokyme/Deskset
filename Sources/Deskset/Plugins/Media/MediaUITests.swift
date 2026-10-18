@@ -1715,7 +1715,7 @@ enum MediaUITests {
                     second()
                 }
                 let turntable = widget.config == "Turntable"
-                inline([center.worker]) {
+                try inline([center.worker]) {
                     for case let m as NowPlayingClientMeasure in skin.measures { m.center = center }
                     center.poll()
                     second()
@@ -1754,17 +1754,40 @@ enum MediaUITests {
                     let thirdCover = cover()
                     t.check(thirdCover.contains("cover-") && thirdCover != secondCover,
                             "\(name): the third cover on the label: \(thirdCover)")
-                    // What the deck saves when it closes (a change of tempo refreshes it) and shows after a restart.
-                    t.equal(skin.measure(named: "MeasureLastTrack")?.stringValue, "Third Song", "\(name): saved title")
-                    t.equal(skin.measure(named: "MeasureLastArtist")?.stringValue, "A Third Band", "\(name): saved artist")
-                    t.equal(skin.measure(named: "MeasureLastCover")?.stringValue, thirdCover, "\(name): saved cover")
-                    // The player quits: the idle deck keeps the last track.
+                    // Pausing keeps the current track and cover on the deck.
+                    backend.statuses[.music]?.state = 2
+                    now += 1
+                    center.poll()
+                    second()
+                    t.equal(text("MeterTitle"), "Third Song", "\(name): the paused title stays")
+                    t.equal(text("MeterArtist"), "A Third Band", "\(name): the paused artist stays")
+                    t.equal(cover(), thirdCover, "\(name): the paused cover stays")
+                    // Quitting clears the track instead of leaving a song that an empty queue cannot resume.
                     backend.running = []
                     center.poll()
                     second()
-                    t.equal(text("MeterTitle"), "Third Song", "\(name): the last title stays")
-                    t.equal(skin.measure(named: "MeasureLastArtist")?.stringValue, "A Third Band", "\(name): its artist")
-                    t.equal(cover(), thirdCover, "\(name): and its cover")
+                    t.equal(skin.measure(named: "MeasureLastTrack")?.stringValue, "", "\(name): the title clears")
+                    t.equal(text("MeterTitle"), skin.variable("NowPlayingNotPlaying") ?? "",
+                            "\(name): the idle title replaces the song")
+                    t.equal(text("MeterArtist"), "", "\(name): the artist clears")
+                    t.equal(skin.measure(named: "MeasureLastCover")?.stringValue, "", "\(name): the cover value clears")
+                    t.equal(cover(), "", "\(name): the paper label returns")
+
+                    // Reloading the deck while the player is closed must not resurrect the previous song.
+                    skin.close()
+                    let reloaded = Skin(config: skin.config, fileURL: url, skinsDirectory: root,
+                                        system: SystemMonitor.shared, host: RenderHost())
+                    try reloaded.load()
+                    defer { reloaded.close() }
+                    for case let m as NowPlayingClientMeasure in reloaded.measures { m.center = center }
+                    center.poll()
+                    let reloadUpdates = max(1, Int((1000 / Double(max(reloaded.settings.update, 1))).rounded()))
+                    for _ in 0..<reloadUpdates { reloaded.update() }
+                    t.equal((reloaded.meter(named: "MeterTitle") as? StringMeter)?.text,
+                            reloaded.variable("NowPlayingNotPlaying"), "\(name): no song after reloading")
+                    t.equal((reloaded.meter(named: "MeterArtist") as? StringMeter)?.text, "",
+                            "\(name): no artist after reloading")
+                    t.equal(reloaded.variable("CoverPath"), "", "\(name): no cover after reloading")
                 }
             }
         }

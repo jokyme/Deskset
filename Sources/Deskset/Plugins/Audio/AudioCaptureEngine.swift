@@ -372,8 +372,8 @@ final class AudioCaptureEngine: AudioLevelEngine {
     var quickRetapWindow: TimeInterval = 180
     /// Calls its argument (any thread) whenever the user may have changed a permission: System Settings or macOS's
     /// prompt goes away, or Deskset becomes active or inactive (`AudioPermissions.watchPermissionChanges`). A source
-    /// whose verdict stands then takes a new tap at once. Set up at the first verdict; nil watches nothing (tests,
-    /// command-line modes).
+    /// whose verdict stands, or whose first tap has not heard sound yet, then takes a new tap. Set up before that
+    /// first tap can show the prompt; nil watches nothing (tests, command-line modes).
     var watchPermissionChanges: ((@escaping () -> Void) -> Void)?
     /// A tap younger than this is not replaced at once when a permission may have changed, but once it is this old:
     /// taking it may itself have brought macOS's prompt up, and the prompt going away must not start a round of new
@@ -402,8 +402,10 @@ final class AudioCaptureEngine: AudioLevelEngine {
     private var statuses: [AudioSourceKey: AudioSourceStatus] = [:]
     /// HAL queue only. While suspended nothing captures; subscriptions are kept and capture starts again on resume.
     private var suspended = false
-    /// HAL queue only: `outputActivity` is being observed (while a system-audio source exists).
+    /// HAL queue only: `outputActivity` is being observed (while a system-audio source has subscribers and is awake).
     private var observingActivity = false
+    /// HAL queue: notifications give immediate updates; a slow reconciliation also covers missed HAL notifications.
+    private var activityTimer: DispatchSourceTimer?
     /// HAL queue only: a system-audio stream has carried sound since Deskset started, so the permission was given, and
     /// a later silence while other apps run their output (a call app between calls, a paused video) is not taken for a
     /// refusal.
@@ -492,6 +494,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
             source.pendingStop?.cancel()
             source.pendingStop = nil
             if !source.analyzers.contains(where: { $0 === analyzer }) { source.analyzers.append(analyzer) }
+            observeActivityIfNeeded()
             if source.backend == nil {
                 // A source waiting for sound goes on waiting.
                 if !source.standby { startIfWanted(source) }
@@ -512,6 +515,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
                 if source.analyzers.isEmpty { scheduleStop(source) }
                 analysisQueue.async { analyzer.reset() }
             }
+            stopObservingActivityIfUnused()
         }
     }
 
@@ -545,6 +549,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
         AudioHAL.queue.async { [self] in
             guard suspended != value else { return }
             suspended = value
+            if value { stopObservingActivity() }
             for source in sources.values {
                 source.pendingRestart?.cancel()
                 source.pendingRestart = nil
@@ -627,7 +632,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
     /// Another process started or stopped playing sound: sources waiting for it start at once; running ones stop
     /// `standbyDelay` seconds after the last one stopped (unless one plays again by then).
     private func outputActivityChanged() {
-        guard let activity = outputActivity, !suspended else { return }
+        guard let activity = outputActivity, observingActivity, !suspended else { return }
         let playing = activity.othersPlay()
         for source in sources.values where waitsForSound(source.key) && !source.analyzers.isEmpty {
             if playing {
@@ -638,7 +643,8 @@ final class AudioCaptureEngine: AudioLevelEngine {
                 let item = DispatchWorkItem { [weak self, weak source] in
                     guard let self, let source, self.sources[source.key] === source else { return }
                     source.pendingStandby = nil
-                    guard !self.suspended, source.backend != nil, !activity.othersPlay() else { return }
+                    guard !self.suspended, !source.analyzers.isEmpty, source.backend != nil,
+                          !activity.othersPlay() else { return }
                     self.enterStandby(source)
                 }
                 source.pendingStandby = item
@@ -652,13 +658,26 @@ final class AudioCaptureEngine: AudioLevelEngine {
     }
 
     private func observeActivityIfNeeded() {
-        guard !observingActivity, let activity = outputActivity else { return }
+        guard !observingActivity, !suspended, isCaptureAllowed, let activity = outputActivity,
+              sources.values.contains(where: { waitsForSound($0.key) && !$0.analyzers.isEmpty }) else { return }
         observingActivity = true
         activity.observe { [weak self] in self?.outputActivityChanged() }
+        let timer = DispatchSource.makeTimerSource(queue: AudioHAL.queue)
+        timer.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(100))
+        timer.setEventHandler { [weak self] in self?.outputActivityChanged() }
+        activityTimer = timer
+        timer.resume()
     }
 
     private func stopObservingActivityIfUnused() {
-        guard observingActivity, !sources.keys.contains(where: waitsForSound) else { return }
+        guard !sources.values.contains(where: { waitsForSound($0.key) && !$0.analyzers.isEmpty }) else { return }
+        stopObservingActivity()
+    }
+
+    private func stopObservingActivity() {
+        activityTimer?.cancel()
+        activityTimer = nil
+        guard observingActivity else { return }
         observingActivity = false
         outputActivity?.stopObserving()
     }
@@ -695,6 +714,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
             })
         source.backend = backend
         source.startedAt = ProcessInfo.processInfo.systemUptime
+        if source.key.kind == .output && backend.deliversSilenceWhenRefused { watchPermissionChangesIfNeeded() }
         let status = backend.start(ring: source.ring, events: events)
         source.sampleRate = status.sampleRate
         setStatus(withVerdict(status, of: source), for: source.key)
@@ -795,16 +815,23 @@ final class AudioCaptureEngine: AudioLevelEngine {
     }
 
     /// The user may have changed a permission (System Settings or macOS's prompt went away, Deskset became active or
-    /// inactive): a source whose verdict stands takes a new tap at once if it captures — or, when its tap is younger
-    /// than `permissionRetapMinAge`, once it is that old — and `quickRetapWindow` and `retapDelays` start again (HAL
-    /// queue; tests call it directly).
+    /// inactive): a source whose verdict stands, or an unheard first system tap, takes a new tap once it is
+    /// `permissionRetapMinAge` old. The first prompt can close before the watchdog's verdict, so it must not have to
+    /// wait for that verdict. Already heard system audio and input devices are unaffected (HAL queue).
     func permissionMayHaveChanged() {
         let now = ProcessInfo.processInfo.systemUptime
-        for source in sources.values where source.refusalSuspected {
+        for source in sources.values {
+            if source.heardAudio {
+                noteSound(source)
+                continue
+            }
+            let awaitingFirstSound = source.key.kind == .output && !heardSystemAudio && !source.heardAudio
+                && source.backend?.deliversSilenceWhenRefused == true
+            guard source.refusalSuspected || awaitingFirstSound else { continue }
             restartRetaps(source, players: [], now: now)
             guard source.backend != nil && !suspended else { continue }
             let age = now - source.startedAt
-            scheduleRestart(source.key, after: max(0, permissionRetapMinAge - age))
+            scheduleRestart(source.key, after: max(0, permissionRetapMinAge - age), onlyIfSilent: true)
         }
     }
 
@@ -860,13 +887,16 @@ final class AudioCaptureEngine: AudioLevelEngine {
         }
     }
 
-    /// Stops and starts the source again `restartDelay` seconds (plus `after`) from now; a later call replaces a restart
-    /// that has not run yet.
-    private func scheduleRestart(_ key: AudioSourceKey, after: TimeInterval = 0) {
+    /// Stops and starts the source again `restartDelay` seconds (plus `after`) from now. Device changes replace an
+    /// earlier request; a permission retry preserves any pending restart so it cannot discard a required reconnect.
+    private func scheduleRestart(_ key: AudioSourceKey, after: TimeInterval = 0, onlyIfSilent: Bool = false) {
         guard let source = sources[key] else { return }
+        if onlyIfSilent && source.pendingRestart != nil { return }
         source.pendingRestart?.cancel()
         let item = DispatchWorkItem { [weak self, weak source] in
             guard let self, let source, self.sources[key] === source else { return }
+            source.pendingRestart = nil
+            if onlyIfSilent && source.heardAudio { return }
             self.stop(source)
             if !source.analyzers.isEmpty { self.startIfWanted(source) }
         }

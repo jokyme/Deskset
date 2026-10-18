@@ -515,6 +515,7 @@ enum AudioSelfTests {
     final class FakeBackend: AudioCaptureBackend {
         var deviceID: AudioObjectID? = 7
         var running = true
+        var deliversSilenceWhenRefused = false
         private(set) var starts = 0
         private(set) var stops = 0
         private(set) var ring: AudioRingBuffer?
@@ -726,21 +727,28 @@ enum AudioSelfTests {
         /// HAL queue only.
         private var handler: (() -> Void)?
         private(set) var observing = false
+        private(set) var reads = 0
+        private(set) var observations = 0
 
         var playing: Bool {
             get { lock.lock(); defer { lock.unlock() }; return _playing }
-            set {
-                lock.lock(); _playing = newValue; lock.unlock()
-                AudioHAL.queue.async { self.handler?() }
-            }
+            set { setPlaying(newValue) }
+        }
+
+        /// A missing Core Audio notification changes the property without calling its listener.
+        func setPlaying(_ value: Bool, notify: Bool = true) {
+            lock.lock(); _playing = value; lock.unlock()
+            if notify { AudioHAL.queue.async { self.handler?() } }
         }
 
         var isObserved: Bool { AudioHAL.queue.sync { observing } }
+        var counts: (reads: Int, observations: Int) { AudioHAL.queue.sync { (reads, observations) } }
 
-        func othersPlay() -> Bool { playing }
+        func othersPlay() -> Bool { reads += 1; return playing }
         func observe(_ handler: @escaping () -> Void) {
             self.handler = handler
             observing = true
+            observations += 1
         }
         func stopObserving() {
             handler = nil
@@ -749,6 +757,108 @@ enum AudioSelfTests {
     }
 
     static func standbyTests(_ t: AppTestRunner) {
+        t.suite("App: Audio output activity refreshes process objects and retries failed listeners") {
+            guard #available(macOS 14.2, *) else { return }
+            let activity = CoreAudioOutputActivity()
+            var objects: [AudioObjectID] = [101]
+            var playing: Set<AudioObjectID> = []
+            var lookedAt: Set<AudioObjectID> = []
+            var attempts: [AudioObjectID: Int] = [:]
+            activity.processes = { objects }
+            activity.othersRunOutput = { current in
+                lookedAt = Set(current)
+                return !playing.isDisjoint(with: current)
+            }
+            activity.listen = { object, _, _ in
+                attempts[object, default: 0] += 1
+                return nil
+            }
+            AudioHAL.queue.sync {
+                activity.observe {}
+                t.check(!activity.othersPlay(), "the original player is silent")
+                let initialAttempts = attempts
+                // A player was quit and reopened with a new Core Audio process object; its list-change
+                // notification never arrived. The next reconciliation must inspect the new object anyway.
+                objects = [202]
+                playing = [202]
+                t.check(activity.othersPlay(), "a relaunched player is discovered without a notification")
+                t.equal(lookedAt, [202], "the stale process object is no longer queried")
+                t.equal(attempts[101], initialAttempts[101], "the old object's listener is no longer retried")
+                t.equal(attempts[202], 1, "the new object gets a listener attempt")
+                t.check(activity.othersPlay())
+                t.equal(attempts[202], 2, "a failed process listener is retried on the next check")
+                let system = AudioObjectID(kAudioObjectSystemObject)
+                t.equal(attempts[system], (initialAttempts[system] ?? 0) + 2,
+                        "a failed process-list listener is retried too")
+                activity.stopObserving()
+                let stoppedAttempts = attempts
+                t.check(activity.othersPlay(), "a one-off read still sees current processes")
+                t.equal(attempts, stoppedAttempts, "a one-off read does not reinstall listeners")
+            }
+        }
+
+        t.suite("App: Audio output activity recovers missed notifications and sleep changes") {
+            let activity = FakeActivity()
+            let engine = makeEngine { _ in FakeBackend() }
+            engine.outputActivity = activity
+            engine.standbyDelay = 0.05
+            let output = AudioSourceKey(kind: .output, deviceID: nil)
+            let input = AudioSourceKey(kind: .input, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            let mic = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(mic, to: input)
+            engine.drain()
+            t.check(!activity.isObserved, "an input alone does not watch output activity")
+            engine.subscribe(a, to: output)
+            engine.drain()
+            t.check(engine.isWaitingForSound(output))
+
+            activity.setPlaying(true, notify: false)
+            let began = ProcessInfo.processInfo.systemUptime
+            let recovered = wait(timeout: 3) { engine.status(for: output).running }
+            t.check(recovered, "a missed play notification recovers within one activity check")
+            if recovered {
+                print("    missed play notification recovered in \(String(format: "%.3f", ProcessInfo.processInfo.systemUptime - began)) s")
+            }
+            activity.setPlaying(false, notify: false)
+            t.check(wait(timeout: 3) { engine.isWaitingForSound(output) },
+                    "a missed stop notification also returns the capture to standby")
+
+            engine.setSuspended(true)
+            engine.drain()
+            t.check(!activity.isObserved, "sleep removes the activity listeners")
+            let asleep = activity.counts
+            activity.setPlaying(true, notify: false)
+            Thread.sleep(forTimeInterval: 1.2)
+            t.equal(activity.counts.reads, asleep.reads, "sleep has no reconciliation wake-ups")
+            t.check(!engine.status(for: output).running, "a change during sleep does not capture")
+            engine.setSuspended(false)
+            engine.drain()
+            t.check(engine.status(for: output).running, "resume reads the changed playing state immediately")
+            t.equal(activity.counts.observations, asleep.observations + 1, "resume rebuilds activity listeners")
+
+            // A refresh may resubscribe during the capture's grace period. Stop activity checks as soon as the
+            // last output subscriber leaves, then start them again even if that capture is still alive.
+            engine.stopDelay = 2
+            engine.unsubscribe(a)
+            engine.drain()
+            t.check(!activity.isObserved, "the remaining input subscriber does not keep activity checks alive")
+            let unused = activity.counts.reads
+            Thread.sleep(forTimeInterval: 1.2)
+            t.equal(activity.counts.reads, unused, "no activity reads without output subscribers")
+            engine.subscribe(a, to: output)
+            engine.drain()
+            t.check(activity.isObserved, "a subscriber returning during the grace period restores observation")
+            activity.setPlaying(false, notify: false)
+            t.check(wait(timeout: 3) { engine.isWaitingForSound(output) }, "reconciliation was restored too")
+            engine.stopDelay = 0
+            engine.unsubscribe(a)
+            engine.unsubscribe(mic)
+            engine.drain()
+            engine.drain()
+            t.check(engine.activeSourceKeys().isEmpty, "all test captures released")
+        }
+
         t.suite("App: Audio system audio is captured only while another app plays") {
             let activity = FakeActivity()
             var created: [AudioSourceKey: [FakeBackend]] = [:]
@@ -836,6 +946,106 @@ enum AudioSelfTests {
             t.check(always.status(for: output).running)
             always.unsubscribe(c)
             always.drain()
+        }
+
+        t.suite("App: Audio a permission retry preserves a pending device restart") {
+            var created: [FakeBackend] = []
+            let engine = makeEngine { _ in
+                let backend = FakeBackend()
+                backend.deliversSilenceWhenRefused = true
+                created.append(backend)
+                return backend
+            }
+            engine.silenceCheckInterval = 0
+            engine.permissionRetapMinAge = 0.2
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: key)
+            engine.drain()
+            guard let first = AudioHAL.queue.sync(execute: { created.first }), let ring = first.ring else {
+                return t.check(false, "the first capture started")
+            }
+            first.events?.restart()
+            engine.drain()
+            AudioHAL.queue.sync { engine.permissionMayHaveChanged() }
+            // The old device begins delivering sound before the scheduled reconnect. A permission-only retry
+            // should now be skipped, but it must not have replaced the required device/format restart.
+            let samples = [Float](repeating: 0.25, count: 1024)
+            t.check(wait(timeout: 1) {
+                samples.withUnsafeBufferPointer {
+                    ring.write(interleaved: $0.baseAddress!, frames: samples.count / 2, channels: 2)
+                }
+                return a.rms(.sum) > 0.05
+            }, "the old tap starts carrying sound")
+            t.equal(AudioHAL.queue.sync { first.stops }, 0, "sound arrived before the pending restart")
+            t.check(wait(timeout: 2) { AudioHAL.queue.sync { created.count == 2 } },
+                    "the required device restart still runs despite recovered sound")
+            t.equal(AudioHAL.queue.sync { first.stops }, 1)
+            engine.unsubscribe(a)
+            engine.drain()
+            engine.drain()
+            t.check(engine.activeSourceKeys().isEmpty)
+        }
+
+        t.suite("App: Audio the first permission prompt can recover before the silence verdict") {
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.permissionRetapMinAge = 0.2
+            // Keep the real first-look interval: this test must recover well before the ten-second watchdog.
+            let output = AudioSourceKey(kind: .output, deviceID: nil)
+            let input = AudioSourceKey(kind: .input, deviceID: nil)
+            var created: [AudioSourceKey: [AppSelfTest.SilenceBackend]] = [:]
+            var permissionChanged: (() -> Void)?
+            var observations = 0
+            engine.watchPermissionChanges = { changed in
+                observations += 1
+                permissionChanged = changed
+            }
+            engine.makeBackend = { key in
+                let backend = AppSelfTest.SilenceBackend()
+                created[key, default: []].append(backend)
+                return backend
+            }
+            func count(_ key: AudioSourceKey) -> Int { AudioHAL.queue.sync { created[key]?.count ?? 0 } }
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            let mic = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(mic, to: input)
+            engine.drain()
+            t.equal(AudioHAL.queue.sync { observations }, 0, "an input never watches System Audio Recording")
+            engine.subscribe(a, to: output)
+            engine.drain()
+            t.equal(AudioHAL.queue.sync { observations }, 1, "permission changes are watched at the first tap")
+            t.equal(engine.status(for: output).macPermission.number, 0, "silence is not an early refusal verdict")
+            let began = ProcessInfo.processInfo.systemUptime
+            AudioHAL.queue.sync { permissionChanged?() }
+            t.check(wait(timeout: 2) { count(output) == 2 }, "closing the first prompt takes a fresh tap promptly")
+            let elapsed = ProcessInfo.processInfo.systemUptime - began
+            t.check(elapsed >= engine.permissionRetapMinAge, "the minimum tap age still limits retries")
+            t.equal(count(input), 1, "the permission event leaves input capture alone")
+            t.equal(engine.status(for: output).macPermission.number, 0, "no refusal is invented during recovery")
+
+            // Another prompt/focus event arrives while the new tap is young. If sound arrives before its delayed
+            // retry, keep the recovered tap instead of interrupting it at the end of the minimum-age delay.
+            AudioHAL.queue.sync { permissionChanged?() }
+            engine.drain()
+            let backend = AudioHAL.queue.sync { created[output]?.last }
+            t.check(wait(timeout: 1) {
+                backend?.feed(0.25)
+                return a.rms(.sum) > 0.05
+            }, "the current tap starts carrying sound")
+            Thread.sleep(forTimeInterval: 0.7)
+            t.equal(count(output), 2, "sound arriving during the retry delay cancels that retry")
+            AudioHAL.queue.sync { permissionChanged?() }
+            engine.drain()
+            Thread.sleep(forTimeInterval: 0.4)
+            t.equal(count(output), 2, "later focus changes do not retap audio already heard")
+            t.equal(count(input), 1)
+            engine.unsubscribe(a)
+            engine.unsubscribe(mic)
+            engine.drain()
+            engine.drain()
+            t.check(engine.activeSourceKeys().isEmpty)
         }
 
         t.suite("App: Audio MacPermission 1 is the silence watchdog's verdict") {

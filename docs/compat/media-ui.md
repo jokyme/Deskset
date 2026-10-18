@@ -66,6 +66,12 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 
 ## NowPlaying (`Measure=NowPlaying`, `Plugin=NowPlaying`)
 
+### Stationery Turntable with no current track
+The bundled Turntable shows a blank record and its localized "Not Playing" message when the player closes or has an
+empty queue. A paused track keeps its title and cover, including after the tonearm returns to its rest. Only the
+record's angle is saved across skin refreshes and restarts; legacy saved titles and covers are ignored. Opening Music
+does not restore its previous playback queue.
+
 ### PlayerName → macOS player
 - Windows (Rainmeter): selects a player interface: AIMP, CAD (foobar2000, MusicBee, J. River), iTunes, Winamp, WMP,
   Spotify (partial), WLM (Last.fm, TTPlayer, OpenPandora, Zune), or `[MainMeasure]`.

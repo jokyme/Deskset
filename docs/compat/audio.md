@@ -81,10 +81,13 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Windows (Rainmeter): a loopback capture runs while the skin is loaded; Windows shows nothing for it.
 - Mac (Deskset): on macOS 14.2 and later a system-audio stream (`Port=Output`) is tapped only while a process other
   than Deskset runs audio output (Core Audio's process objects and their "is running output" state, followed with
-  listeners: nothing is polled). When the last one stops, the tap stays 5 s more (the gap between two tracks, a
+  listeners, with a once-a-second check to recover missed notifications and retry failed listeners). The check runs
+  only while an output source has subscribers and capture is not suspended; waking rebuilds the listeners. When the
+  last process stops, the tap stays 5 s more (the gap between two tracks, a
   browser that stops its stream a moment after a video), then goes, and with it the purple recording indicator and the
   busy output device. The first sound starts it again at once (Core Audio tells Deskset when a process starts its
-  output). While it waits the levels read 0, `DeviceStatus` reads 1 (the device is there), and the device name, ID and
+  output; a missed notification is recovered at the next check). While it waits the levels read 0, `DeviceStatus`
+  reads 1 (the device is there), and the device name, ID and
   format come from the device list. The permission prompt therefore comes the first time something plays while a
   visualizer is loaded, not when the visualizer loads. Not on macOS 13 – 14.1 (no process objects: the capture runs
   while the skin is loaded, as before), nor for `Port=Input`, AppVolume's taps or the demo signal.
@@ -337,7 +340,9 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   (its Privacy & Security pane closes with it), when macOS's permission prompt goes away (its window belongs to the
   system app UserNotificationCenter), and when Deskset becomes active or inactive — but never on a tap younger than
   2 s: that one waits until it is 2 s old, so a prompt brought up by a new tap cannot start a round of taps and
-  prompts. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
+  prompts. These permission-change events are watched from the first system-audio tap: while it has not yet carried
+  sound, they can also renew it before the watchdog's verdict, so granting the first prompt does not wait for the
+  20 s verdict and the next 10 s look. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
   silence is only silence (a call app that keeps its output running between calls, a paused video): no verdict until
   Deskset restarts. `DeviceStatus` stays 1 meanwhile.
 - Why: Deskset extension: without it a skin can only say "nothing playing" when a permission is missing, and a

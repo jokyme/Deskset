@@ -137,7 +137,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | --- | --- | --- |
 | ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop（含 `!ActionTimer:Execute/Stop`）；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
-| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；需要权限；`Type=MacPermission` 表示缺少哪个权限 |
+| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；每秒核对播放状态以恢复漏掉的通知，睡眠唤醒后重建监听；首次 tap 即监听权限变化；`Type=MacPermission` 表示缺少哪个权限 |
 | CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
 | DragDrop（5.0 measure / 插件） | 完全一致 | 向皮肤或 `TargetMeter` 拖入文件 / 文件夹（`Type=FileCount\|FileList\|FilePath\|FileFolder\|FileName\|FileExt`、`SubFolders`、`Limit`、`Separator`、`Format`、`MatchPattern`、`OnEnterAction` / `OnLeaveAction` / `OnDropAction`） |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
