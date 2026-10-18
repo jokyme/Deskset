@@ -1,5 +1,7 @@
 # Deskset Skin Studio — editor design (v3)
 
+> **Historical note (v0.2.0):** In v0.2.0, the visual editing interface described below (component library, layer list, property inspector, and canvas dragging) was removed in favor of a streamlined side-by-side **code editor and live preview** layout. This document is kept for historical context on the code editor, settings, and external editor routing.
+
 Design brief: the editor should not feel like an INI key/value editor. Goals:
 1. A **component library**: drag common components onto the canvas; clicking a component shows its configuration.
 2. **Fool-proof controls**: enumerations and structured values get proper controls (Shape type must be a menu —
