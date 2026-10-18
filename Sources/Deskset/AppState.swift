@@ -147,18 +147,19 @@ struct SkinState: Codable, Equatable {
     }
 }
 
-/// Update checks and the last version announced, kept with the app's other preferences in state.json.
+/// Update checks and version choices, kept with the app's other preferences in state.json.
 struct AppUpdatePreferences: Codable, Equatable {
     var automaticallyChecks = true
     var lastCheckAttempt: Date?
     var lastNotifiedVersion: String?
+    var skippedVersion: String?
     /// Preferences from newer versions survive opening and saving the state with this version.
     var unknownKeys: [String: JSONValue] = [:]
 
     init() {}
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case automaticallyChecks, lastCheckAttempt, lastNotifiedVersion
+        case automaticallyChecks, lastCheckAttempt, lastNotifiedVersion, skippedVersion
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -170,6 +171,7 @@ struct AppUpdatePreferences: Codable, Equatable {
         automaticallyChecks = ((try? c.decodeIfPresent(Bool.self, forKey: .automaticallyChecks)) ?? nil) ?? true
         lastCheckAttempt = (try? c.decodeIfPresent(Date.self, forKey: .lastCheckAttempt)) ?? nil
         lastNotifiedVersion = (try? c.decodeIfPresent(String.self, forKey: .lastNotifiedVersion)) ?? nil
+        skippedVersion = (try? c.decodeIfPresent(String.self, forKey: .skippedVersion)) ?? nil
     }
 
     func encode(to encoder: Encoder) throws {
@@ -177,6 +179,7 @@ struct AppUpdatePreferences: Codable, Equatable {
         try c.encode(automaticallyChecks, forKey: .automaticallyChecks)
         try c.encodeIfPresent(lastCheckAttempt, forKey: .lastCheckAttempt)
         try c.encodeIfPresent(lastNotifiedVersion, forKey: .lastNotifiedVersion)
+        try c.encodeIfPresent(skippedVersion, forKey: .skippedVersion)
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: Self.knownKeys)
     }

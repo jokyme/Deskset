@@ -39,8 +39,14 @@ enum AppInstallation {
     static func handleLaunchIfNeeded() -> Bool {
         let source = Bundle.main.bundleURL
         guard isInstallationSource(source) else { return false }
-        DispatchQueue.main.async { begin(source: source) }
+        scheduleAfterLaunch { begin(source: source) }
         return true
+    }
+
+    static func scheduleAfterLaunch(_ operation: @escaping () -> Void) {
+        // A modal loop entered from a main-queue block cannot drain another main-queue block. Start from the
+        // run loop instead, so the worker's completion can close the progress alert and open the installed app.
+        RunLoop.main.perform(operation)
     }
 
     /// A newly installed app must not hand off to the disk-image process that is opening it.
@@ -144,14 +150,28 @@ enum AppInstallation {
                                                 options: [.usingNewMetadataOnly, .withoutDeletingBackupItem])
     }
 
-    private static func verifySignature(_ app: URL) throws {
+    static func verifySignature(_ app: URL) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["--verify", "--deep", "--strict", app.path]
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        try runSignatureVerification(process)
+    }
+
+    static func runSignatureVerification(_ process: Process, timeout: TimeInterval = 60) throws {
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         try process.run()
-        process.waitUntilExit()
+        guard finished.wait(timeout: .now() + max(0, timeout)) == .success else {
+            if process.isRunning { process.terminate() }
+            if finished.wait(timeout: .now() + 2) == .timedOut, process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 2)
+            }
+            throw Failure.signature
+        }
         guard process.terminationStatus == 0 else { throw Failure.signature }
     }
 
@@ -179,30 +199,13 @@ enum AppInstallation {
             quit()
             return
         }
-        let alert = NSAlert()
-        alert.messageText = installed.map { "Replace Deskset \($0.version)?" } ?? "Install Deskset \(incoming.version)?"
-        alert.informativeText = "Install Deskset \(incoming.version) in \(target.deletingLastPathComponent().path) and open it there. "
-            + (installed == nil ? "" : "The installed application will be replaced. ")
-            + "Your skins and settings will be kept."
-        alert.addButton(withTitle: installed == nil ? "Install to Applications" : "Replace and Open")
-        alert.addButton(withTitle: "Cancel")
+        let alert = makeConfirmation(sourceVersion: incoming.version, installedVersion: installed?.version, destination: target)
         guard alert.runModal() == .alertFirstButtonReturn else { quit(); return }
         while isAnotherCopyRunning() {
-            let running = NSAlert()
-            running.messageText = "Quit the other copy of Deskset first"
-            running.informativeText = "Choose Quit Deskset from its menu and save any edits. Then click Retry to install."
-            running.addButton(withTitle: "Retry")
-            running.addButton(withTitle: "Cancel")
+            let running = makeRunningConflict(sourceVersion: incoming.version, destination: target)
             guard running.runModal() == .alertFirstButtonReturn else { quit(); return }
         }
-        let progress = NSAlert()
-        progress.messageText = "Installing Deskset…"
-        progress.informativeText = "Copying and verifying the application. Your skins and settings are kept in place."
-        progress.addButton(withTitle: "Installing…").isEnabled = false
-        let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 28, height: 28))
-        spinner.style = .spinning
-        spinner.startAnimation(nil)
-        progress.accessoryView = spinner
+        let progress = makeProgress(sourceVersion: incoming.version, destination: target)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try install(source: source, destination: target) }
             DispatchQueue.main.async {
@@ -233,11 +236,7 @@ enum AppInstallation {
         NSWorkspace.shared.openApplication(at: target, configuration: configuration) { _, error in
             DispatchQueue.main.async {
                 if let error {
-                    let alert = NSAlert()
-                    alert.messageText = "Deskset was installed"
-                    alert.informativeText = "Open it from \(target.deletingLastPathComponent().path). \(error.localizedDescription)"
-                    alert.addButton(withTitle: "Show in Finder")
-                    alert.addButton(withTitle: "Close")
+                    let alert = makeLaunchFailure(error: error, destination: target)
                     if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([target]) }
                 }
                 quit()
@@ -246,13 +245,110 @@ enum AppInstallation {
     }
 
     private static func showFailure(_ error: Error, source: URL) {
-        let alert = NSAlert()
-        alert.messageText = "Couldn’t install Deskset"
-        alert.informativeText = error.localizedDescription
+        let alert = makeFailure(error: error)
+        if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([source]) }
+    }
+
+    static func makeConfirmation(sourceVersion: String, installedVersion: String?, destination: URL) -> AppMaintenancePanel {
+        let alert = AppMaintenancePanel()
+        alert.content.badgeText = AppUpdateAsset.processorName
+        let parentPath = destination.deletingLastPathComponent().path
+        if let installedVersion {
+            alert.messageText = "Replace Deskset \(installedVersion)?"
+            alert.informativeText = "Update the installed app in \(parentPath) and reopen Deskset."
+            alert.content.configureTwoRowCard(
+                leftLabel: "Replacing",
+                oldVersion: installedVersion,
+                mainValue: "→  \(sourceVersion)",
+                rightMeta: parentPath,
+                rightMetaAccent: false,
+                bottomNote: "Your skins, layouts, and settings will be kept."
+            )
+            alert.addButton(withTitle: "Replace and Open")
+        } else {
+            alert.messageText = "Install Deskset \(sourceVersion)?"
+            alert.informativeText = "Copy Deskset to your Applications folder and open it there."
+            alert.content.configureTwoRowCard(
+                leftLabel: "Destination",
+                oldVersion: nil,
+                mainValue: destination.path,
+                rightMeta: "v\(sourceVersion)",
+                rightMetaAccent: false,
+                bottomNote: "Your skins, layouts, and settings will be kept."
+            )
+            alert.addButton(withTitle: "Install to Applications")
+        }
+        alert.content.footnote.stringValue = "Running from Disk Image"
+        alert.addButton(withTitle: "Cancel")
+        return alert
+    }
+
+    static func makeRunningConflict(sourceVersion: String = AppVersion.current, destination: URL) -> AppMaintenancePanel {
+        let running = AppMaintenancePanel()
+        running.content.badgeText = "v\(sourceVersion)"
+        running.messageText = "Quit the running copy of Deskset"
+        running.informativeText = "Another copy of Deskset is currently open."
+        running.content.configureTwoRowCard(
+            leftLabel: "Status",
+            oldVersion: nil,
+            mainValue: "Deskset is running",
+            rightMeta: destination.deletingLastPathComponent().path,
+            rightMetaAccent: false,
+            bottomNote: "Choose Quit Deskset from its menu and save any edits, then click Retry."
+        )
+        running.content.footnote.stringValue = "Running from Disk Image"
+        running.addButton(withTitle: "Retry")
+        running.addButton(withTitle: "Cancel")
+        return running
+    }
+
+    static func makeProgress(sourceVersion: String? = nil, destination: URL) -> AppMaintenancePanel {
+        let progress = AppMaintenancePanel()
+        progress.content.badgeText = ""
+        progress.messageText = sourceVersion.map { "Installing Deskset \($0)…" } ?? "Installing Deskset…"
+        progress.informativeText = "Deskset will open when installation finishes."
+        progress.content.configureProgressCard(
+            status: "Copying application and verifying signature…",
+            rightMeta: "",
+            fraction: nil,
+            bottomNote: "Your skins and settings are kept in place."
+        )
+        progress.content.footnote.stringValue = destination.path
+        progress.content.showsDisabledCancelPlaceholder = true
+        progress.allowsClosing = false
+        return progress
+    }
+
+    static func makeFailure(error: Error) -> AppMaintenancePanel {
+        let alert = AppMaintenancePanel()
         alert.alertStyle = .warning
+        alert.content.badgeText = ""
+        alert.messageText = "Couldn’t install Deskset"
+        alert.informativeText = "Your skins, layouts, and settings are kept."
+        alert.content.configureErrorCard(
+            message: error.localizedDescription,
+            bottomNote: "Reveal the installer in Finder to copy Deskset manually."
+        )
+        alert.content.footnote.stringValue = "Running from Disk Image"
         alert.addButton(withTitle: "Show Installer in Finder")
         alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([source]) }
+        return alert
+    }
+
+    static func makeLaunchFailure(error: Error, destination: URL) -> AppMaintenancePanel {
+        let alert = AppMaintenancePanel()
+        let parentPath = destination.deletingLastPathComponent().path
+        alert.content.badgeText = "Installed"
+        alert.messageText = "Deskset was installed"
+        alert.informativeText = "Open Deskset from \(parentPath)."
+        alert.content.configureErrorCard(
+            message: error.localizedDescription,
+            bottomNote: "Use Show in Finder to open the installed application."
+        )
+        alert.content.footnote.stringValue = parentPath
+        alert.addButton(withTitle: "Show in Finder")
+        alert.addButton(withTitle: "Close")
+        return alert
     }
 
     private static func quit() { NSApp.terminate(nil) }

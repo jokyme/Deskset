@@ -21,7 +21,7 @@ import DesksetCore
 enum CommandLineTools {
     /// Flags that select a mode (in none of them does audio capture start: `AudioCaptureEngine.captureAllowed`).
     static let modeFlags = ["--render", "--self-test", "--snapshot-ui", "--system-report", "--make-icon",
-                            "--cover-lookup", "--weather-report", "--verify-drawing-cache", "--benchmark"]
+                            "--cover-lookup", "--weather-report", "--verify-drawing-cache", "--benchmark", "--complete-update"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--settings-dir",
@@ -79,6 +79,8 @@ enum CommandLineTools {
                                         look a cover up online as NowPlaying does (sends the names to Apple)
                Deskset --make-icon Output.iconset
                                         write the app icon images
+               Deskset --complete-update PrivateManifest.json
+                                        reserved for the app's internal update helper
                Deskset --help            print this help
 
         Every mode gives skins a temporary #SETTINGSPATH# (removed at exit) unless --settings-dir DIR names one, so
@@ -211,6 +213,12 @@ enum CommandLineTools {
             guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count,
                   !arguments[i + 1].hasPrefix("--") else { return nil }
             return arguments[i + 1]
+        }
+        // Private helper mode: no skins, user state, or normal application lifecycle is started.
+        if arguments.contains("--complete-update") {
+            guard arguments.count == 3, let path = value(after: "--complete-update") else { return 2 }
+            Log.fileLoggingEnabled = false
+            return AppUpdateInstaller.runHelper(manifest: URL(fileURLWithPath: path))
         }
         // #SETTINGSPATH# of every skin a mode loads: the folder --settings-dir names, else a temporary one. Skins keep
         // what people type and cached icons there (the Stationery widgets' Stationery.inc), so a render must never

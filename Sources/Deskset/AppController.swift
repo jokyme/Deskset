@@ -83,6 +83,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var regionalDefaults: RegionalDefaultsObserver?
     private var regionalRecheck: DispatchWorkItem?
     private var updateAlertVisible = false
+    private var updateFlowStorage: AppUpdateFlow?
+    private var updateHandoff: AppUpdateInstaller.Handoff?
+    var updateFlow: AppUpdateFlow {
+        if let updateFlowStorage { return updateFlowStorage }
+        let flow = AppUpdateFlow(presentsWindows: presentsWindows) { [weak self] prepared in
+            self?.prepareUpdateInstallation(prepared)
+        }
+        updateFlowStorage = flow
+        return flow
+    }
     lazy var updates: AppUpdateController = {
         let controller = AppUpdateController(state: state)
         controller.onNotice = { [weak self] notice, automatic in
@@ -270,6 +280,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let other = NSRunningApplication.runningApplications(withBundleIdentifier: id).first(where: {
                   $0.processIdentifier != me.processIdentifier && !$0.isTerminated && startedEarlier($0)
                     && !($0.bundleURL.map(AppInstallation.isInstallationSource) ?? false)
+                    && !($0.bundleURL.map(AppUpdateInstaller.isHelperApplication) ?? false)
               }),
               let otherURL = other.bundleURL else { return false }
         isDuplicateInstance = true
@@ -308,8 +319,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// fails, Save / Discard / Cancel (Cancel keeps the app running).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isDuplicateInstance else { return .terminateNow }
-        if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return .terminateCancel }
-        for window in codeFileWindows where !window.canTerminate() { return .terminateCancel }
+        if let studio = StudioWindowController.window(for: self), !studio.canTerminate() {
+            cancelUpdateTermination()
+            return .terminateCancel
+        }
+        for window in codeFileWindows where !window.canTerminate() {
+            cancelUpdateTermination()
+            return .terminateCancel
+        }
+        // Authorize only after every editor has accepted quitting. The helper still waits for this process to exit,
+        // including applicationWillTerminate's state saving, before it replaces the bundle.
+        do { try updateHandoff?.commit() }
+        catch {
+            cancelUpdateTermination(error.localizedDescription)
+            return .terminateCancel
+        }
         return .terminateNow
     }
 
@@ -317,10 +341,42 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A duplicate instance never loaded anything; saving its copy of the state would overwrite the running one's.
         guard !isDuplicateInstance else { return }
         updates.stop()
+        updateFlowStorage?.cancelAndCleanUp()
         stopAllForTermination()
         SoundPlayer.stop()
         state.saveNow()
         Fonts.removePrivateCopies()
+    }
+
+    private func prepareUpdateInstallation(_ prepared: AppPreparedUpdate) {
+        guard updateHandoff == nil, let version = updateFlowStorage?.release?.version.description else { return }
+        let destination = Bundle.main.bundleURL
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result {
+                try AppUpdateInstaller.prepare(source: prepared.appURL, destination: destination, expectedVersion: version)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.updateFlowStorage?.phase == .preparing, !self.isTerminating else {
+                    if case .success(let handoff) = result { handoff.cancel() }
+                    return
+                }
+                switch result {
+                case .failure(let error): self.updateFlowStorage?.installationCancelled(error.localizedDescription)
+                case .success(let handoff):
+                    self.updateHandoff = handoff
+                    NSApp.terminate(nil)
+                    // All existing termination delegates are synchronous. A return means a save/quit was cancelled.
+                    self.cancelUpdateTermination()
+                }
+            }
+        }
+    }
+
+    private func cancelUpdateTermination(_ message: String? = nil) {
+        guard let handoff = updateHandoff else { return }
+        handoff.cancel()
+        updateHandoff = nil
+        updateFlowStorage?.installationCancelled(message ?? "Installation was paused because quitting was cancelled. You can try again when ready.")
     }
 
     /// True once the app is quitting: skins are being closed ("OnCloseAction: … when Rainmeter is closed").
@@ -1252,7 +1308,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Standard AppKit notices, also inspectable in headless tests. Automatic checks never report network failures.
+    /// Branded native notices, also inspectable in headless tests. Automatic checks never report network failures.
     @discardableResult
     func showUpdateNotice(_ notice: AppUpdateController.Notice, automatic: Bool) -> Bool {
         guard !updateAlertVisible else { return false }
@@ -1260,44 +1316,115 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if automatic, NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }) {
             return false
         }
+        let presentation = updateNoticePresentation(notice)
+        lastAlert = (presentation.title, presentation.text)
+        guard presentsWindows else { return true }
+        let alert = makeUpdateAlert(notice)
+        updateAlertVisible = true
+        defer { updateAlertVisible = false }
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if case .available(let release) = notice {
+            switch response {
+            case .alertFirstButtonReturn:
+                updateFlow.start(release)
+            case .alertSecondButtonReturn:
+                updates.skipUpdate(release)
+            default:
+                break
+            }
+        }
+        return true
+    }
+
+    struct UpdateNoticePresentation {
+        let title: String
+        let text: String
+        let style: NSAlert.Style
+        let buttons: [String]
+    }
+
+    /// Keep headless tests independent of NSAlert's system icon service.
+    func updateNoticePresentation(_ notice: AppUpdateController.Notice) -> UpdateNoticePresentation {
         let title: String
         let text: String
         var style = NSAlert.Style.informational
-        var releaseURL: URL?
+        var offersUpdate = false
         switch notice {
         case .available(let release):
-            title = "A new version of Deskset is available"
-            text = "Deskset \(release.version.description) is available. You have \(updates.currentVersion).\n\n"
-                + "View the release notes and download the update on GitHub."
-            releaseURL = release.url
+            title = "Deskset \(release.version.description) is available"
+            text = "A newer version is ready to download for this Mac. Version \(updates.currentVersion) → \(release.version.description). Asks before restart. Your skins, layouts, and settings will be kept."
+            offersUpdate = true
         case .upToDate:
-            title = "You’re up to date"
-            text = "Deskset \(updates.currentVersion) is the latest available version."
+            title = "Deskset is up to date"
+            text = "You’re running the latest release available for this Mac. Installed version \(updates.currentVersion)."
         case .noRelease:
             title = "No release available"
             text = "There is no public release available yet. Please check again later."
         case .failed(let message):
             style = .warning
             title = "Couldn’t check for updates"
-            text = message + "\n\nTry again using Check for Updates."
+            text = message + "\n\nYour installed copy (\(updates.currentVersion)) has not been changed."
         }
-        lastAlert = (title, text)
-        guard presentsWindows else { return true }
-        let alert = NSAlert()
-        alert.alertStyle = style
-        alert.messageText = title
-        alert.informativeText = text
-        alert.addButton(withTitle: releaseURL == nil ? "OK" : "View Update")
-        if releaseURL != nil { alert.addButton(withTitle: "Later") }
-        updateAlertVisible = true
-        defer { updateAlertVisible = false }
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn, let url = releaseURL {
-            if !NSWorkspace.shared.open(url) {
-                self.alert("Couldn’t open the download page", "Please visit https://github.com/jokyme/Deskset/releases.")
-            }
+        return UpdateNoticePresentation(title: title, text: text, style: style,
+                                        buttons: offersUpdate ? ["Update", "Skip This Version", "Close"] : ["Close"])
+    }
+
+    func makeUpdateAlert(_ notice: AppUpdateController.Notice) -> AppMaintenancePanel {
+        let presentation = updateNoticePresentation(notice)
+        let alert = AppMaintenancePanel()
+        alert.window.title = "Deskset Updates"
+        alert.alertStyle = presentation.style
+        alert.messageText = presentation.title
+        switch notice {
+        case .available(let release):
+            alert.content.badgeText = AppUpdateAsset.processorName
+            alert.informativeText = "A newer version is ready to download for this Mac."
+            alert.content.configureTwoRowCard(
+                leftLabel: "Version",
+                oldVersion: updates.currentVersion,
+                mainValue: "→  \(release.version.description)",
+                rightMeta: "Asks before restart",
+                rightMetaAccent: true,
+                bottomNote: "Your skins, layouts, and settings will be kept."
+            )
+            alert.content.footnote.stringValue = ""
+        case .upToDate:
+            alert.content.badgeText = ""
+            alert.informativeText = "You’re running the latest release available for this Mac."
+            alert.content.configureSingleRowCard(
+                leftLabel: "Installed version",
+                mainValue: updates.currentVersion,
+                rightMeta: AppUpdateAsset.processorName,
+                rightMetaAccent: false
+            )
+            alert.content.footnote.stringValue = updates.automaticallyChecks ? "Checked just now" : "Automatic update checks are off"
+        case .noRelease:
+            alert.content.badgeText = ""
+            alert.informativeText = "There is no public release available for this Mac yet."
+            alert.content.configureSingleRowCard(
+                leftLabel: "Installed version",
+                mainValue: updates.currentVersion,
+                rightMeta: AppUpdateAsset.processorName,
+                rightMetaAccent: false
+            )
+            alert.content.footnote.stringValue = "Please check again later"
+        case .failed(let message):
+            alert.content.badgeText = ""
+            alert.informativeText = "Your installed copy (\(updates.currentVersion)) has not been changed."
+            alert.content.configureErrorCard(
+                message: message,
+                bottomNote: "Try again later using Check for Updates."
+            )
+            alert.content.footnote.stringValue = "Installed: \(updates.currentVersion)"
         }
-        return true
+        for title in presentation.buttons { alert.addButton(withTitle: title) }
+        if alert.buttons.count == 3 {
+            alert.buttons[1].toolTip =
+                "Stop automatic reminders for this version. You can still use Check for Updates."
+            alert.buttons[2].toolTip = "Close for now. The next daily check can remind you again."
+        }
+        return alert
     }
 
     private func setUpStatusItem() {

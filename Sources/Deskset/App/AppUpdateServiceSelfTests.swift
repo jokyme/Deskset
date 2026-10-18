@@ -5,6 +5,7 @@ enum AppUpdateServiceSelfTests {
     static func run(_ t: AppTestRunner) {
         versionTests(t)
         responseTests(t)
+        assetTests(t)
         cancellationTests(t)
     }
 
@@ -138,6 +139,48 @@ enum AppUpdateServiceSelfTests {
         }
     }
 
+    private static func assetTests(_ t: AppTestRunner) {
+        t.suite("App: app update: release architecture follows the Mac instead of a Rosetta process") {
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: true, supportsARM64: true, isTranslated: false), "arm64")
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: false, supportsARM64: true, isTranslated: true), "arm64",
+                    "an Intel build running through Rosetta downloads the native Apple Silicon update")
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: false, supportsARM64: false, isTranslated: false), "x86_64")
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: true, supportsARM64: false, isTranslated: false), "arm64",
+                    "a native ARM process is sufficient when sysctl flags are unavailable")
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: false, supportsARM64: false, isTranslated: true), "arm64",
+                    "Rosetta establishes Apple Silicon even if the hardware flag is unavailable")
+            t.equal(AppUpdateAsset.resolveArchitecture(processIsARM64: false, supportsARM64: true, isTranslated: false), "arm64",
+                    "hardware support establishes Apple Silicon even if the translation flag is unavailable")
+        }
+
+        t.suite("App: app update: only verified official architecture ZIP assets are accepted") {
+            let digest = String(repeating: "ab", count: 32)
+            func asset(_ name: String = "Deskset-0.3.0-arm64.zip", url: String? = nil,
+                       checksum: String? = "sha256:" + String(repeating: "ab", count: 32), size: Int64? = 100) -> AssetBody {
+                AssetBody(name: name, browser_download_url: url ?? "https://github.com/jokyme/Deskset/releases/download/v0.3.0/\(name)",
+                          digest: checksum, size: size)
+            }
+            let invalid = [
+                asset("Deskset-0.3.0-arm64.dmg"), asset("Deskset-0.2.0-arm64.zip"), asset("Deskset-0.3.0-other.zip"),
+                asset(url: "https://example.org/Deskset-0.3.0-arm64.zip"),
+                asset(url: "https://github.com/other/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.zip"),
+                asset(url: "http://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.zip"),
+                asset(url: "https://github.com/jokyme/Deskset/releases/download/v0.3.0/Deskset-0.3.0-arm64.zip?bad=1"),
+                asset(checksum: nil), asset(checksum: "md5:" + digest), asset(checksum: "sha256:00"),
+                asset(checksum: "sha256:" + String(repeating: "g", count: 64)),
+                asset(size: nil), asset(size: 0), asset(size: -1), asset(size: AppUpdateAsset.maximumSize + 1)
+            ]
+            let valid = [asset(), asset("Deskset-0.3.0-x86_64.zip", checksum: "sha256:" + digest.uppercased())]
+            guard case .success(let release) = fetch(t, .http(200, releaseBody(assets: valid + invalid))) else {
+                return t.check(false, "valid release metadata is available even when some assets cannot be installed")
+            }
+            t.equal(release?.assets.count, 2)
+            t.equal(release?.assets.map(\.name), valid.map { $0.name! })
+            t.check(release?.assets.allSatisfy { $0.sha256 == digest && $0.size == 100 } == true)
+            t.check(["arm64", "x86_64"].contains(AppUpdateAsset.currentArchitecture))
+        }
+    }
+
     private enum Response {
         case http(Int, Data)
         case nonHTTP
@@ -145,17 +188,25 @@ enum AppUpdateServiceSelfTests {
         case hold
     }
 
+    private struct AssetBody: Encodable {
+        let name: String?
+        let browser_download_url: String?
+        let digest: String?
+        let size: Int64?
+    }
+
     private static func releaseBody(tag: String = "v0.3.0", url: String? = nil,
-                                    draft: Bool = false, prerelease: Bool = false) -> Data {
+                                    draft: Bool = false, prerelease: Bool = false, assets: [AssetBody]? = nil) -> Data {
         struct Body: Encodable {
             let tag_name: String
             let html_url: String
             let draft: Bool
             let prerelease: Bool
+            let assets: [AssetBody]?
         }
         return (try? JSONEncoder().encode(Body(tag_name: tag,
             html_url: url ?? "https://github.com/jokyme/Deskset/releases/tag/\(tag)",
-            draft: draft, prerelease: prerelease))) ?? Data()
+            draft: draft, prerelease: prerelease, assets: assets))) ?? Data()
     }
 
     private static func updateError(_ result: Result<AppRelease?, Error>?) -> AppUpdateError? {

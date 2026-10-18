@@ -61,10 +61,15 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 ### 检查更新与升级
 
 在 Deskset 菜单或 **Settings… ▸ General** 中点击 **Check for Updates…**。默认每天自动检查一次公开发布的新版，
-每个新版本只自动提示一次；可以在 General 设置中关闭自动检查，改为手动检查。离线或无法连接 GitHub 时，自动检查不会弹出错误提示。
-点击 **View Update** 会打开 GitHub 上的版本页面，从中下载适合你的 Mac 的磁盘映像。
+可以在 General 设置中关闭自动检查，改为手动检查。离线或无法连接 GitHub 时，自动检查不会弹出错误提示。
+**Close** 关闭本次提示；**Skip This Version** 停止该版本的自动提醒，手动检查仍可看到被跳过的版本。
 
-升级前，先在 Deskset 菜单中选择 **Quit Deskset** 并保存编辑，再打开新版磁盘映像。把 Deskset 拖进「应用程序」并选择
+点击 **Update** 后，Deskset 会在应用内下载并校验适合你的 Mac 的更新。完成后点击 **Install and Relaunch**，
+保存编辑、退出应用、替换并重新打开；也可以点击 **Later** 继续使用当前版本。在未保存编辑的提示中取消退出，会暂停安装。
+下载失败时可重试，或点击 **Download Manually…** 打开 GitHub 版本页面。应用本身及其所在文件夹需要可写。
+更新按 Mac 的实际芯片选择：Apple 芯片下载 `arm64`（即使 Deskset 通过 Rosetta 运行），Intel 下载 `x86_64`。
+
+手动升级时，先在 Deskset 菜单中选择 **Quit Deskset** 并保存编辑，再打开新版磁盘映像。把 Deskset 拖进「应用程序」并选择
 **替换**，或打开磁盘映像中的 Deskset，点击 **Replace and Open**。安装器会显示已安装的版本，要求先退出正在运行的副本，
 并防止用旧版覆盖新版。如果原应用不可写，请使用 Finder 替换。安装后从「应用程序」打开 Deskset，再推出磁盘映像。
 `~/Library/Application Support/Deskset` 中的皮肤与设置会保留。

@@ -1,11 +1,93 @@
-import Foundation
+import AppKit
 
-/// Uses temporary fake application bundles and injected copy/signature/running checks; never opens or quits apps.
+/// Uses temporary fake application bundles and an invisible AppKit modal; never opens or quits other apps.
 enum AppInstallationSelfTests {
     static func run(_ t: AppTestRunner) {
         detectionTests(t)
+        modalCompletionTests(t)
+        launchFailureTests(t)
+        signatureProcessTests(t)
         destinationTests(t)
         installTests(t)
+    }
+
+    private static func launchFailureTests(_ t: AppTestRunner) {
+        t.suite("App: Installation: long relaunch errors remain readable after successful installation") {
+            let text = Array(repeating: "The installed application could not be opened. Detailed system recovery information.", count: 120).joined(separator: "\n")
+            let error = NSError(domain: "DesksetTest", code: 1, userInfo: [NSLocalizedDescriptionKey: text])
+            let panel = AppInstallation.makeLaunchFailure(error: error, destination: URL(fileURLWithPath: "/Applications/Deskset.app"))
+            panel.content.fit(window: panel.window)
+            let scroll = panel.content.errorLabel.enclosingScrollView
+            t.equal(panel.content.errorLabel.stringValue, text)
+            t.check(panel.content.errorLabel.isSelectable)
+            t.check((scroll?.documentView?.frame.height ?? 0) > (scroll?.contentView.bounds.height ?? 0), "system errors scroll without overlapping actions")
+            t.check(panel.window.frame.height <= (NSScreen.main?.visibleFrame.height ?? 800))
+            t.equal(panel.buttons.map(\.title), ["Show in Finder", "Close"])
+        }
+    }
+
+    private static func signatureProcessTests(_ t: AppTestRunner) {
+        t.suite("App: Installation: signature verification is bounded and reports failures") {
+            let success = Process()
+            success.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+            try AppInstallation.runSignatureVerification(success)
+            t.equal(success.terminationStatus, 0)
+            let failure = Process()
+            failure.executableURL = URL(fileURLWithPath: "/usr/bin/false")
+            do {
+                try AppInstallation.runSignatureVerification(failure)
+                t.check(false, "nonzero verification exit must fail")
+            } catch { t.equal(error as? AppInstallation.Failure, .signature) }
+            let hanging = Process()
+            hanging.executableURL = URL(fileURLWithPath: "/bin/sleep")
+            hanging.arguments = ["30"]
+            do {
+                try AppInstallation.runSignatureVerification(hanging, timeout: 0.05)
+                t.check(false, "a stuck verification process must time out")
+            } catch { t.equal(error as? AppInstallation.Failure, .signature) }
+            t.check(!hanging.isRunning, "the timed-out child is stopped")
+        }
+    }
+
+    private static func modalCompletionTests(_ t: AppTestRunner) {
+        t.suite("App: Installation: worker completion can close the progress modal after launch") {
+            var launchReturned = false
+            var modalReturned = false
+            var completedInsideModal = false
+            var response: NSApplication.ModalResponse?
+            DispatchQueue.main.async {
+                AppInstallation.scheduleAfterLaunch {
+                    t.check(launchReturned, "startup sets its no-save guard before installation UI begins")
+                    let progress = AppInstallation.makeProgress(destination: URL(fileURLWithPath: "/Applications/Deskset.app"))
+                    let window = progress.window
+                    window.alphaValue = 0
+                    // A run-loop timer still fires if a regressed implementation blocks the main dispatch queue.
+                    // Keep the test bounded and report failure instead of hanging the entire self-test process.
+                    let watchdog = Timer(timeInterval: 3, repeats: false) { _ in
+                        NSApp.stopModal(withCode: .abort)
+                        window.orderOut(nil)
+                    }
+                    RunLoop.main.add(watchdog, forMode: .modalPanel)
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        DispatchQueue.main.async {
+                            completedInsideModal = !modalReturned
+                            if !modalReturned {
+                                NSApp.stopModal(withCode: .OK)
+                                window.orderOut(nil)
+                            }
+                        }
+                    }
+                    response = progress.runModal()
+                    modalReturned = true
+                    watchdog.invalidate()
+                    window.orderOut(nil)
+                }
+                launchReturned = true
+            }
+            t.check(CodeFollowingSelfTests.wait(5) { modalReturned }, "the installation modal returns")
+            t.check(completedInsideModal, "background completion runs while the modal is open")
+            t.equal(response, .OK, "completion closes the modal without the watchdog")
+        }
     }
 
     private static func detectionTests(_ t: AppTestRunner) {
