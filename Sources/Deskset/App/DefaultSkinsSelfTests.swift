@@ -11,6 +11,8 @@ enum DefaultSkinsSelfTests {
         stationeryFileTests(t)
         upgradeTests(t)
         shippedStateTests(t)
+        turntableTransportTests(t)
+        turntableEmptyPlayerTests(t)
     }
 
     /// A bundle's default skins in a temporary folder: `files` maps paths (`Root/Config/Skin.ini`, `FirstRun.ini`) to
@@ -234,6 +236,219 @@ enum DefaultSkinsSelfTests {
                 .section(named: "Variables")
             t.equal(variables?.value(forKey: "Tempo"), "Rest", "the Turntable's tempo")
             t.equal(variables?.value(forKey: "TempoLive"), "0")
+        }
+    }
+
+    /// A transport press must stay a click when the pointer moves a few points before release. An Image meter with
+    /// only LeftMouseUpAction starts dragging at 3 pt, so its release never reaches the player's command.
+    static func turntableTransportTests(_ t: AppTestRunner) {
+        t.suite("App: default skins: Turntable play survives pointer movement") {
+            guard let source = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let app = try app(t, source: nil)
+            try FileManager.default.copyItem(at: source.appendingPathComponent("Stationery"),
+                                             to: app.skinsDirectory.appendingPathComponent("Stationery"))
+            app.ensureStationeryFile()
+            app.rescanLibrary()
+            let backend = DemoNowPlayingBackend()
+            backend.running = []
+            let center = NowPlayingCenter(backend: backend)
+            center.interval = 3600
+            var opened: [MediaApp] = []
+            center.appControl = { command, player in if command == .open { opened.append(player) } }
+            let savedCenter = NowPlayingCenter.current, savedCache = MediaUICache.root
+            let savedPointer = SkinView.pointerLocation
+            let savedSettings = EnvironmentStore.shared.settingsPath
+            NowPlayingCenter.current = center
+            MediaUICache.root = t.temporaryDirectory("turntable-transport-covers")
+            EnvironmentStore.shared.settingsPath = app.settingsDirectory.path + "/"
+            defer {
+                app.stopAllForTermination()
+                NowPlayingCenter.current = savedCenter
+                MediaUICache.root = savedCache
+                SkinView.pointerLocation = savedPointer
+                EnvironmentStore.shared.settingsPath = savedSettings
+            }
+            MediaUITests.inline([center.worker]) {
+                guard let c = app.activate(config: "Stationery\\Turntable", file: "Large.ini"),
+                      let button = c.skin.meter(named: "MeterPlay") as? ImageMeter else {
+                    return t.check(false, "the Turntable loads")
+                }
+                // Drive the player states ourselves; the tempo's refresh would replace this controller.
+                c.pauseUpdates()
+                c.skin.execute("[!DisableMeasure MeasureNotPlaying]", from: nil)
+                for (name, state) in [("playing", 1), ("paused", 2), ("closed", 0)] {
+                    backend.running = state == 0 ? [] : [.music]
+                    backend.statuses[.music]?.state = state
+                    center.poll()
+                    c.skin.execute("[!UpdateMeasureGroup Player][!UpdateMeasure MeasureDeck][!UpdateMeter *][!Redraw]",
+                                   from: nil)
+                    let sent = backend.performed.count, openedBefore = opened.count
+                    let origin = c.window.frame.origin
+                    var pointer = NSPoint(x: 500, y: 500)
+                    SkinView.pointerLocation = { pointer }
+                    guard let down = AppSelfTest.mouseEvent(.leftMouseDown, c, x: 288, y: 322),
+                          let moved = AppSelfTest.mouseEvent(.leftMouseDragged, c, x: 292, y: 322),
+                          let up = AppSelfTest.mouseEvent(.leftMouseUp, c, x: 292, y: 322) else {
+                        t.check(false, "\(name): mouse events")
+                        continue
+                    }
+                    c.view.mouseDown(with: down)
+                    t.check(!c.view.dragAllowed, "\(name): pressing play does not start a window drag")
+                    t.check(button.imageAlpha < 255, "\(name): the press gives visual feedback")
+                    pointer.x += 4
+                    c.view.mouseDragged(with: moved)
+                    c.view.mouseUp(with: up)
+                    t.equal(c.window.frame.origin, origin, "\(name): the window stays in place")
+                    t.equal(button.imageAlpha, 255, "\(name): release restores the glyph")
+                    if state == 0 {
+                        t.equal(opened.count, openedBefore + 1, "closed: release opens the player")
+                        t.equal(backend.performed.count, sent, "closed: no playback command is sent")
+                    } else {
+                        t.equal(backend.performed.count, sent + 1, "\(name): release sends exactly one command")
+                        t.equal(backend.performed.last?.0, .playPause)
+                        t.equal(backend.statuses[.music]?.state, state == 1 ? 2 : 1, "\(name): playback changes")
+                    }
+                    c.skin.mouseMoved(x: 288, y: 322)
+                    c.skin.mouseEvent(.leftDown, x: 288, y: 322)
+                    c.skin.mouseMoved(x: 350, y: 350)
+                    c.skin.mouseEvent(.leftUp, x: 350, y: 350)
+                    t.equal(button.imageAlpha, 255, "\(name): leaving a pressed button restores the glyph")
+                }
+            }
+        }
+    }
+
+    /// The deck shows the player's current queue, never the last track saved by older Stationery skins. A pause
+    /// retains the queue; quitting the player or reopening it without a track clears both the text and the label.
+    static func turntableEmptyPlayerTests(_ t: AppTestRunner) {
+        t.suite("App: default skins: Turntable clears a closed or empty player") {
+            guard let source = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let app = try app(t, source: nil)
+            try FileManager.default.copyItem(at: source.appendingPathComponent("Stationery"),
+                                             to: app.skinsDirectory.appendingPathComponent("Stationery"))
+            app.ensureStationeryFile()
+            app.rescanLibrary()
+            let cache = t.temporaryDirectory("turntable-empty-player-covers")
+            let legacyCover = cache.appendingPathComponent("legacy.png")
+            try DemoNowPlayingBackend.demoCover().write(to: legacyCover)
+            let settings = app.settingsDirectory.appendingPathComponent("Stationery.inc")
+            try """
+                [Variables]
+                TurntableSpin=27
+                TurntableLastTitle=Legacy cached title
+                TurntableLastArtist=Legacy cached artist
+                TurntableLastCover=\(legacyCover.path)
+                """.write(to: settings, atomically: true, encoding: .utf8)
+            let backend = DemoNowPlayingBackend()
+            backend.running = []
+            let center = NowPlayingCenter(backend: backend)
+            center.forceLive = true
+            center.interval = 3600
+            let savedCenter = NowPlayingCenter.current, savedCache = MediaUICache.root
+            let savedSettings = EnvironmentStore.shared.settingsPath
+            NowPlayingCenter.current = center
+            MediaUICache.root = cache
+            EnvironmentStore.shared.settingsPath = app.settingsDirectory.path + "/"
+            defer {
+                app.stopAllForTermination()
+                NowPlayingCenter.current = savedCenter
+                MediaUICache.root = savedCache
+                EnvironmentStore.shared.settingsPath = savedSettings
+            }
+            MediaUITests.inline([center.worker]) {
+                guard var c = app.activate(config: "Stationery\\Turntable", file: "Large.ini") else {
+                    return t.check(false, "the Turntable loads")
+                }
+                func holdUpdates() {
+                    c.pauseUpdates()
+                    // Keep the same controller through the state transitions; tempo refreshes are unrelated to
+                    // metadata. The explicit refresh below exercises a new controller with the saved old values.
+                    c.skin.execute("[!DisableMeasure MeasureNotPlaying]", from: nil)
+                }
+                func update() {
+                    center.poll()
+                    c.skin.execute("[!UpdateMeasureGroup Player][!UpdateMeasure MeasureDeck][!UpdateMeter *][!Redraw]",
+                                   from: nil)
+                }
+                func title() -> String? { (c.skin.meter(named: "MeterTitle") as? StringMeter)?.text }
+                func artist() -> String? { (c.skin.meter(named: "MeterArtist") as? StringMeter)?.text }
+                func cover() -> String? { (c.skin.meter(named: "MeterLabel") as? ImageMeter)?.imagePath }
+                func checkEmpty(_ stage: String) {
+                    t.equal(title(), c.skin.variable("NowPlayingNotPlaying"), "\(stage): no previous title")
+                    t.equal(artist(), "", "\(stage): no previous artist")
+                    t.equal(cover(), nil, "\(stage): no previous cover")
+                    t.equal(c.skin.meter(named: "MeterLabelSide")?.hidden, false, "\(stage): the blank label shows")
+                }
+                holdUpdates()
+                update()
+                checkEmpty("first load with legacy settings")
+
+                backend.running = [.music]
+                update()
+                let firstCover = cover()
+                t.equal(title(), "Rain on Glass", "playing: the current title")
+                t.equal(artist(), "Deskset Ensemble", "playing: the current artist")
+                t.check(firstCover?.hasPrefix(cache.path) == true && firstCover != legacyCover.path,
+                        "playing: the current cover replaces the old settings")
+                t.equal(c.skin.meter(named: "MeterLabelSide")?.hidden, true, "playing: the blank label hides")
+
+                backend.statuses[.music]?.state = 2
+                update()
+                t.equal(title(), "Rain on Glass", "paused: the queue's title remains")
+                t.equal(artist(), "Deskset Ensemble", "paused: the queue's artist remains")
+                t.equal(cover(), firstCover, "paused: the queue's cover remains")
+                for _ in 0..<301 { c.skin.execute("[!UpdateMeasure MeasurePausedFor]", from: nil) }
+                update()
+                t.equal(c.skin.measure(named: "MeasureDeck")?.value, 0, "a long pause lets the arm rest")
+                t.equal(title(), "Rain on Glass", "a resting paused deck keeps the queue's title")
+                t.equal(cover(), firstCover, "a resting paused deck keeps the queue's cover")
+
+                backend.running = []
+                update()
+                checkEmpty("player quit")
+                guard let refreshed = app.refresh(c) else { return t.check(false, "the Turntable refreshes") }
+                c = refreshed
+                holdUpdates()
+                update()
+                checkEmpty("refresh while the player is closed")
+
+                backend.running = [.music]
+                backend.statuses[.music] = NowPlayingStatus()
+                backend.tracks[.music] = nil
+                update()
+                checkEmpty("player reopened with an empty queue")
+
+                backend.statuses[.music] = NowPlayingStatus(state: 1, trackID: "NEW")
+                backend.tracks[.music] = NowPlayingTrack(title: "New Song", artist: "New Artist", duration: 200)
+                // Different artwork too: Music's old cover for a new album is intentionally rejected as stale.
+                backend.artworkData = MediaUITests.pngData(0.9, 0.3, 0.2)
+                update()
+                t.equal(title(), "New Song", "a new queue supplies the title")
+                t.equal(artist(), "New Artist", "a new queue supplies the artist")
+                t.check(cover() != nil && cover() != firstCover && cover() != legacyCover.path,
+                        "a new queue supplies its own cover")
+
+                app.deactivate(c)
+                let saved = DefaultSkins.variables(in: settings)
+                t.equal(saved?["turntablelasttitle"], "Legacy cached title", "closing no longer saves track metadata")
+                t.equal(saved?["turntablelastartist"], "Legacy cached artist")
+                t.equal(saved?["turntablelastcover"], legacyCover.path)
+                backend.running = []
+                center.poll()
+                guard let reloaded = app.activate(config: "Stationery\\Turntable", file: "Large.ini") else {
+                    return t.check(false, "the Turntable loads again")
+                }
+                c = reloaded
+                holdUpdates()
+                update()
+                checkEmpty("fresh activation after a track was shown")
+            }
         }
     }
 

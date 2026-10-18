@@ -147,7 +147,7 @@ by the 15 tested packages.
 | --- | --- | --- |
 | ActionTimer | identical | Lists, Wait, Repeat, Execute, Stop (`!ActionTimer:Execute/Stop` too); drift-free timing on the main run loop |
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
-| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; needs a permission; `Type=MacPermission` tells a missing one |
+| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; missed playback notifications are checked once a second, listeners rebuilt after sleep; permission changes are watched from the first tap; `Type=MacPermission` tells a missing permission |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
 | DragDrop | identical | Drag and drop files or folders onto the skin or a `TargetMeter`; `FileCount`, `FileList`, `FilePath`, `FileFolder`, `FileName`, `FileExt`, `OnEnterAction`, `OnLeaveAction`, `OnDropAction` |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |

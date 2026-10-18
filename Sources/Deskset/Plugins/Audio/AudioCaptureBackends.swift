@@ -552,24 +552,26 @@ final class CoreAudioOutputActivity: AudioOutputActivity {
     private var handler: (() -> Void)?
     private var listListener: AudioListenerToken?
     /// The process objects followed, and the listeners on them (a process that cannot be listened to is still looked
-    /// at by `othersPlay` on every other change).
+    /// at by `othersPlay` on every reconciliation, which also retries its listener).
     private var followed: Set<AudioObjectID> = []
     private var listeners: [AudioObjectID: AudioListenerToken] = [:]
+    /// HAL access, replaced in tests to model a missed process-list notification or a failed listener registration.
+    var processes: () -> [AudioObjectID] = AudioProcesses.objects
+    var othersRunOutput: ([AudioObjectID]) -> Bool = { AudioProcesses.othersRunOutput(among: $0) }
+    var listen: (AudioObjectID, AudioObjectPropertyAddress, @escaping () -> Void) -> AudioListenerToken? = {
+        AudioHAL.listen($0, $1, queue: AudioHAL.queue, $2)
+    }
 
     func othersPlay() -> Bool {
-        AudioProcesses.othersRunOutput(among: handler == nil ? nil : Array(followed))
+        guard handler != nil else { return othersRunOutput(processes()) }
+        followProcesses()
+        return othersRunOutput(Array(followed))
     }
 
     func observe(_ handler: @escaping () -> Void) {
         guard #available(macOS 14.2, *) else { return }
         stopObserving()
         self.handler = handler
-        listListener = AudioHAL.listen(AudioObjectID(kAudioObjectSystemObject),
-                                       AudioHAL.address(kAudioHardwarePropertyProcessObjectList),
-                                       queue: AudioHAL.queue) { [weak self] in
-            self?.followProcesses()
-            self?.handler?()
-        }
         followProcesses()
     }
 
@@ -582,16 +584,24 @@ final class CoreAudioOutputActivity: AudioOutputActivity {
         followed = []
     }
 
-    /// Listens to the processes that exist now, and forgets the ones gone.
+    /// Refreshes even without a notification: process objects can change while asleep or a player is relaunched.
+    /// A failed registration is retried on the next reconciliation instead of leaving that process unwatched.
     private func followProcesses() {
         guard #available(macOS 14.2, *), handler != nil else { return }
-        let current = Set(AudioProcesses.objects())
+        if listListener == nil {
+            listListener = listen(AudioObjectID(kAudioObjectSystemObject),
+                                  AudioHAL.address(kAudioHardwarePropertyProcessObjectList)) { [weak self] in
+                self?.handler?()
+            }
+        }
+        let current = Set(processes())
         for object in followed.subtracting(current) {
             listeners.removeValue(forKey: object)?.remove()
         }
-        for object in current.subtracting(followed) {
-            listeners[object] = AudioHAL.listen(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput),
-                                                queue: AudioHAL.queue) { [weak self] in self?.handler?() }
+        for object in current where listeners[object] == nil {
+            listeners[object] = listen(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput)) { [weak self] in
+                self?.handler?()
+            }
         }
         followed = current
     }
