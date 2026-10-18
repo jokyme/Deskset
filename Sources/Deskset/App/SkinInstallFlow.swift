@@ -16,6 +16,7 @@ struct InstallSummary: Equatable {
     var skins: [Line]
     var layouts: [String]
     var loadAfterInstall: String?
+    var layoutToApply: String?
     var pluginWarning: String?
     var warnings: [String]
     /// Font files the installation adds to the skins' `@Resources/Fonts` folders.
@@ -63,8 +64,10 @@ struct InstallSummary: Equatable {
         }
         layouts = inspection.layouts
 
-        if m.loadType.caseInsensitiveCompare("Layout") == .orderedSame {
-            loadAfterInstall = m.load.isEmpty ? nil : "Layout “\(m.load)” (layouts can’t be applied yet)"
+        if m.loadType.caseInsensitiveCompare("Layout") == .orderedSame
+            || (m.loadType.isEmpty && !m.load.isEmpty && (m.load as NSString).pathExtension.caseInsensitiveCompare("ini") != .orderedSame) {
+            layoutToApply = m.load.isEmpty ? nil : m.load
+            loadAfterInstall = m.load.isEmpty ? nil : "Layout “\(m.load)”"
         } else if !m.load.isEmpty {
             loadAfterInstall = m.load.replacingOccurrences(of: "/", with: "\\")
         }
@@ -96,13 +99,22 @@ final class SkinInstallFlow {
     private unowned let app: AppController
     private var queue: [URL] = []
     private var busy = false
+    private var applyInstalledLayout = true
+    private var layoutBackupBeforeInstall: LayoutDocument?
+    private var layoutWaitObserver: NSObjectProtocol?
 
     init(app: AppController) {
         self.app = app
     }
 
+    deinit {
+        if let observer = layoutWaitObserver { NotificationCenter.default.removeObserver(observer) }
+    }
+
     /// Nothing queued or in progress.
     var isIdle: Bool { !busy && queue.isEmpty }
+    /// A package is being inspected, confirmed or installed. Queued packages may wait for a layout switch.
+    var isInstalling: Bool { busy }
     /// The skins of the package's root configs were stopped, and the installer waits for them to close before it
     /// replaces their files.
     private(set) var waitsForSkinsToClose = false
@@ -201,6 +213,19 @@ final class SkinInstallFlow {
 
     private func next() {
         guard !busy, !queue.isEmpty else { return }
+        guard !app.isTerminating else { queue.removeAll(); return }
+        if app.isLoadingLayout {
+            if layoutWaitObserver == nil {
+                layoutWaitObserver = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged,
+                    object: app, queue: .main) { [weak self] _ in
+                    guard let self, !self.app.isLoadingLayout else { return }
+                    if let observer = self.layoutWaitObserver { NotificationCenter.default.removeObserver(observer) }
+                    self.layoutWaitObserver = nil
+                    self.next()
+                }
+            }
+            return
+        }
         busy = true
         let url = queue.removeFirst()
         DispatchQueue.global(qos: .userInitiated).async {
@@ -211,6 +236,8 @@ final class SkinInstallFlow {
 
     private func finish() {
         busy = false
+        layoutBackupBeforeInstall = nil
+        app.layouts.installationFinished()
         next()
     }
 
@@ -222,8 +249,9 @@ final class SkinInstallFlow {
         case .success(let inspection):
             let summary = InstallSummary(inspection, packageName: url.lastPathComponent,
                                          skinsDirectory: app.skinsDirectory)
-            confirm(summary, headerImage: inspection.headerImageURL.flatMap { NSImage(contentsOf: $0) }) { ok in
+            confirm(summary, headerImage: inspection.headerImageURL.flatMap { NSImage(contentsOf: $0) }) { ok, applyLayout in
                 if ok {
+                    self.applyInstalledLayout = applyLayout && summary.layoutToApply != nil
                     self.install(inspection, packageURL: url)
                 } else {
                     inspection.cleanup()
@@ -235,20 +263,43 @@ final class SkinInstallFlow {
 
     /// Self-tests: runs right before the package's skin is loaded (a test makes that load fail).
     static var beforeLoadingPackageSkin: ((AppController) -> Void)?
+    /// Self-tests exercise the same install path with the confirmation checkbox unchecked.
+    static var applyLayoutAfterInstallForTesting: Bool?
 
     /// How long the installer waits for the skins it stopped to close before it replaces their files anyway.
     static let closeTimeout: TimeInterval = 10
 
     private func install(_ inspection: RmskinInspection, packageURL: URL) {
+        let replacesDesktop = applyInstalledLayout && !inspection.layouts.isEmpty
         // Skins running from a root config that is about to be replaced are stopped first and reloaded afterwards. Their
         // files are replaced once they have closed: an OnCloseAction may still write to them (!WriteKeyValue), on the
         // skin's thread.
         let roots = Set(inspection.rootConfigs.map { $0.lowercased() })
         let affected = app.sortedControllers
-            .filter { roots.contains(String($0.config.split(separator: "\\").first ?? "").lowercased()) }
+            .filter { replacesDesktop || roots.contains(String($0.config.split(separator: "\\").first ?? "").lowercased()) }
             .map { ($0.config, $0.file) }
-        let stopped = affected.compactMap { app.suspend(config: $0.0) }
         waitsForSkinsToClose = true
+        if replacesDesktop {
+            // An included layout replaces the whole desktop. Finish its close actions before replacing package
+            // files, then capture their settings while the old variant list is still available.
+            app.layouts.prepareInstallation { [self] backup in
+                waitsForSkinsToClose = false
+                guard let backup, !app.isTerminating else {
+                    inspection.cleanup()
+                    if !app.isTerminating {
+                        app.alert("Couldn’t install “\(packageURL.lastPathComponent)”",
+                                  "The current skins did not finish closing. No package files were replaced. "
+                                  + "Quit and reopen Deskset, then try again.", style: .warning)
+                    }
+                    finish()
+                    return
+                }
+                layoutBackupBeforeInstall = backup
+                replaceFiles(inspection, packageURL: packageURL, affected: affected)
+            }
+            return
+        }
+        let stopped = affected.compactMap { app.suspend(config: $0.0) }
         app.whenClosed(stopped, timeout: SkinInstallFlow.closeTimeout) { [self] in
             waitsForSkinsToClose = false
             replaceFiles(inspection, packageURL: packageURL, affected: affected)
@@ -280,6 +331,35 @@ final class SkinInstallFlow {
                     .appendingPathComponent("@Resources/Fonts", isDirectory: true).path
             }
             if Fonts.rescanFolders(folders) { app.fontsChanged() }
+        }
+        if case .success(let result) = result, applyInstalledLayout, let layout = result.layoutToLoad {
+            Log.write("Installed \(packageURL.lastPathComponent): \(result.installedRootConfigs.joined(separator: ", "))")
+            app.layouts.load(named: layout, backup: layoutBackupBeforeInstall, fromInstaller: true) { [self] loaded in
+                // A bad layout (or an unwritable @Backup) leaves the old desktop in place. The installer had already
+                // suspended the replaced roots; restore those that have not been restored by the layout controller.
+                if !loaded, !app.isTerminating {
+                    for (config, file) in affected where app.controller(for: config) == nil {
+                        if app.config(named: config)?.files.contains(where: {
+                            $0.caseInsensitiveCompare(file) == .orderedSame
+                        }) == true {
+                            app.inTurn { $0.activate(config: config, file: file) }
+                        }
+                    }
+                }
+                app.inTurn { [self] app in
+                    if !app.isTerminating {
+                        app.showManageWindow(selecting: nil, file: nil, tab: .layouts)
+                        let notes = result.warnings.filter { !inspection.warnings.contains($0) }
+                        if !notes.isEmpty {
+                            app.alert("“\(result.manifest.name.isEmpty ? packageURL.lastPathComponent : result.manifest.name)” was installed",
+                                      notes.joined(separator: "\n\n"), style: .informational)
+                        }
+                    }
+                    finish()
+                    return nil
+                }
+            }
+            return
         }
         // The skin the package loads is loaded once, below (reloading it here first would run its OnRefreshAction
         // and OnCloseAction for a skin that is replaced a moment later).
@@ -328,11 +408,7 @@ final class SkinInstallFlow {
                     restored = app.activate(config: previous.0, file: previous.1)
                 }
                 let newWarnings = r.warnings.filter { !inspection.warnings.contains($0) }
-                var notes = newWarnings
-                if let layout = r.layoutToLoad {
-                    notes.append("The package asks to apply the layout “\(layout)”. Deskset can’t apply layouts yet; "
-                                 + "load its skins from the Manage window.")
-                }
+                let notes = newWarnings
                 let select = loaded ?? r.installedRootConfigs.first
                 app.showManageWindow(selecting: select, file: loaded == nil ? nil : r.skinToLoadFile)
                 if !notes.isEmpty {
@@ -375,9 +451,9 @@ final class SkinInstallFlow {
 
     // MARK: Confirmation
 
-    private func confirm(_ summary: InstallSummary, headerImage: NSImage?, completion: @escaping (Bool) -> Void) {
+    private func confirm(_ summary: InstallSummary, headerImage: NSImage?, completion: @escaping (Bool, Bool) -> Void) {
         guard app.presentsWindows else {
-            completion(true)
+            completion(true, Self.applyLayoutAfterInstallForTesting ?? true)
             return
         }
         let alert = NSAlert()
@@ -386,17 +462,24 @@ final class SkinInstallFlow {
         alert.alertStyle = summary.pluginWarning == nil ? .informational : .warning
         alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
-        alert.accessoryView = SkinInstallFlow.accessoryView(summary, headerImage: headerImage)
+        let checkbox: NSButton? = summary.layoutToApply.map { name in
+            let button = NSButton(checkboxWithTitle: "Apply included layout: \(name)", target: nil, action: nil)
+            button.state = .on
+            return button
+        }
+        alert.accessoryView = SkinInstallFlow.accessoryView(summary, headerImage: headerImage,
+                                                          loadLayoutCheckbox: checkbox)
         if let window = app.visibleManageWindow {
-            alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn) }
+            alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn, checkbox?.state != .off) }
         } else {
             NSApp.activate(ignoringOtherApps: true)
-            completion(alert.runModal() == .alertFirstButtonReturn)
+            completion(alert.runModal() == .alertFirstButtonReturn, checkbox?.state != .off)
         }
     }
 
     /// The body of the confirmation: header image, skins, layouts, what loads afterwards, warnings.
-    static func accessoryView(_ summary: InstallSummary, headerImage: NSImage?) -> NSView {
+    static func accessoryView(_ summary: InstallSummary, headerImage: NSImage?,
+                              loadLayoutCheckbox: NSButton? = nil) -> NSView {
         let width: CGFloat = 400
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -438,7 +521,7 @@ final class SkinInstallFlow {
             stack.addArrangedSubview(label(text))
         }
         if !summary.layouts.isEmpty {
-            stack.addArrangedSubview(label("Layouts (saved, not applied): " + summary.layouts.joined(separator: ", "),
+            stack.addArrangedSubview(label("Layouts: " + summary.layouts.joined(separator: ", "),
                                            secondary: true))
         }
         if !summary.fonts.isEmpty {
@@ -447,7 +530,9 @@ final class SkinInstallFlow {
             let text = "Fonts included for these skins: \(shown)\(more) (not installed system-wide)"
             stack.addArrangedSubview(label(text, secondary: true))
         }
-        if let load = summary.loadAfterInstall {
+        if let checkbox = loadLayoutCheckbox {
+            stack.addArrangedSubview(checkbox)
+        } else if let load = summary.loadAfterInstall {
             stack.addArrangedSubview(label("Loads after installing: \(load)", secondary: true))
         }
         let warnings = (summary.pluginWarning.map { [$0] } ?? []) + summary.warnings

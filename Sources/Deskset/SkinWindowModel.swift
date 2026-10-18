@@ -40,6 +40,10 @@ struct SkinWindowSettings: Equatable {
     var fadeDuration: Int
     var autoSelectScreen: Bool
     var zoomFactor: Double
+    var anchorX: String
+    var anchorY: String
+    var windowX: String?
+    var windowY: String?
 
     /// The settings of a config nobody changed.
     init() {
@@ -59,6 +63,10 @@ struct SkinWindowSettings: Equatable {
         state.fadeDuration = fadeDuration
         state.autoSelectScreen = autoSelectScreen
         state.zoomFactor = zoomFactor
+        state.anchorX = anchorX
+        state.anchorY = anchorY
+        state.windowX = windowX
+        state.windowY = windowY
         return SkinWindowSettings(state.seeded(with: defaults), hidden: hidden, fadedAlpha: fadedAlpha)
     }
 
@@ -75,6 +83,10 @@ struct SkinWindowSettings: Equatable {
         fadeDuration = state.fadeDuration
         autoSelectScreen = state.autoSelectScreen
         zoomFactor = state.zoomFactor
+        anchorX = state.anchorX ?? "0"
+        anchorY = state.anchorY ?? "0"
+        windowX = state.windowX
+        windowY = state.windowY
     }
 }
 
@@ -157,7 +169,11 @@ extension SkinState {
         if let v = int("AlphaValue", 0...255) { s.alphaValue = v }
         if let v = int("OnHover", 0...3) { s.onHover = v }
         if let v = int("FadeDuration", 0...Double(SkinState.maxFadeDuration)) { s.fadeDuration = v }
-        if let v = number("ZoomFactor") { s.zoomFactor = min(max(v, 0.25), 10.0) }
+        if let v = number("ZoomFactor") { s.zoomFactor = min(max(v, 0.1), 5.0) }
+        if let v = defaults["AnchorX"] { s.anchorX = v }
+        if let v = defaults["AnchorY"] { s.anchorY = v }
+        if let v = defaults["WindowX"] { s.windowX = v }
+        if let v = defaults["WindowY"] { s.windowY = v }
         return s
     }
 }
@@ -214,6 +230,8 @@ struct SkinWindowChange {
     var model: SkinWindowModel
     /// The model's sequence number after the change.
     var sequence: Int
+    /// Issued by OnCloseAction, before its layout's closing barrier has completed.
+    var whileClosing = false
 }
 
 /// What the skin believes its window is: on the skin's executor, owned by its runtime.
@@ -241,13 +259,18 @@ struct SkinWindowModel {
         settings = facts.settings
     }
 
-    /// The skin's size changed: the window follows it with its top-left corner fixed, kept on screen when it is shown
+    /// The skin's size changed: the window follows it with its configured anchor fixed, kept on screen when it is shown
     /// with KeepOnScreen (as the main thread does).
     /// `screens` are read only when the window is to be kept on screen at its new size (a skin redraws often; its
     /// size rarely changes).
     mutating func resize(to size: CGSize, screens: @autoclosure () -> [WindowGeometry.Screen]) {
         guard let old = frame, old.size != size else { return }
         var f = CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height)
+        if let before = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: old.size),
+           let after = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: size) {
+            f.origin.x += before.x - after.x
+            f.origin.y -= before.y - after.y
+        }
         if settings.keepOnScreen && facts?.isOrderedIn == true { f = WindowGeometry.keptOnScreen(f, screens: screens()) }
         frame = f
     }
@@ -279,9 +302,13 @@ struct SkinWindowModel {
             return move(x: x, y: y, screens: screens)
         case "setwindowposition":
             // !SetWindowPosition WindowX WindowY [AnchorX AnchorY]
-            let anchor = a.count >= 4 ? (arg(2), arg(3)) : ("0", "0")
+            let anchor = a.count >= 4 ? (arg(2), arg(3)) : (settings.anchorX, settings.anchorY)
             guard let p = WindowPosition.resolve(x: arg(0), y: arg(1), anchorX: anchor.0, anchorY: anchor.1,
                                                  skinSize: currentFrame.size, screens: screens) else { return nil }
+            settings.anchorX = anchor.0
+            settings.anchorY = anchor.1
+            settings.windowX = arg(0)
+            settings.windowY = arg(1)
             return move(x: p.x, y: p.y, screens: screens)
         case "zpos":
             let value = min(max(OptionValue.int(arg(0)) ?? 0, -2), 2)
@@ -317,7 +344,7 @@ struct SkinWindowModel {
             return .fadeDuration(ms)
         case "setzoomfactor":
             guard let v = OptionValue.number(arg(0)), v.isFinite else { return nil }
-            let clamped = min(max(v, 0.25), 10.0)
+            let clamped = min(max(v, 0.1), 5.0)
             settings.zoomFactor = clamped
             return .zoomFactor(clamped)
         default:

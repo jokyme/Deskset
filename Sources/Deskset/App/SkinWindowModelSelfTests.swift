@@ -517,6 +517,14 @@ enum SkinWindowModelSelfTests {
             t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, 1.75, "group zoom updates Host50")
             t.close(app.state.skin("Model\\Peer50")?.zoomFactor ?? 0, 1.75, "group zoom updates Peer50")
 
+            for (requested, expected) in [(0.1, 0.1), (5.0, 5.0), (0.01, 0.1), (9.0, 5.0)] {
+                c.runtime.send(.execute("[!SetZoomFactor \(requested)]", section: nil))
+                t.close(c.skin.effectiveZoomFactor, expected, "native zoom range reaches the engine")
+                t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, expected,
+                        "native zoom range reaches persisted window state")
+            }
+            c.runtime.send(.execute("[!SetZoomFactor 1.75]", section: nil))
+
             // 3. Invisible update mode when hidden, plus !ForceEnableVisibleMode and !SetUpdate
             t.equal(c.skin.effectiveUpdate, 40, "visible update rate is 40ms")
             c.runtime.send(.execute("[!Hide][!SetVariable SeenVis \"[$SkinVisible]\"]", section: nil))

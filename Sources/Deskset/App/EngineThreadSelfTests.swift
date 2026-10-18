@@ -1004,13 +1004,34 @@ enum EngineThreadSelfTests {
                 let loaded = configs.compactMap { app.activate(config: $0.name, file: nil) }
                 t.equal(loaded.count, configs.count, "every window is made")
                 tracked = loaded.map(track)
-                t.check(AppSelfTest.spin(timeout: 120) { loaded.allSatisfy { $0.isStarted || $0.loadFailed } },
-                        "every widget started")
-                t.equal(loaded.filter(\.loadFailed).map(\.config), [], "none failed")
-                t.check(loaded.allSatisfy { $0.runtime.executor === app.engineThread })
-                for c in loaded { c.visibilityForTesting = true }
-                t.check(AppSelfTest.spin(timeout: 120) { loaded.allSatisfy { $0.content.state.presented >= 1 } },
-                        "every widget drew: \(loaded.filter { $0.content.state.presented == 0 }.map(\.config))")
+                let expected = loaded.map { (config: $0.config, file: $0.file) }
+                var trackedWindows = Set(loaded.map { ObjectIdentifier($0) })
+                // Turntable changes its tempo with !Refresh when playback starts. Follow that config's current copy,
+                // including a refresh before the original copy reported .started; it must still use the expected file.
+                func currentInitial() -> [SkinWindowController] {
+                    expected.compactMap { identity in
+                        guard let c = app.controller(for: identity.config), c.file == identity.file else { return nil }
+                        if trackedWindows.insert(ObjectIdentifier(c)).inserted { tracked.append(track(c)) }
+                        return c
+                    }
+                }
+                func initialStatus() -> [String] {
+                    expected.map { identity in
+                        guard let c = app.controller(for: identity.config) else { return "\(identity.config): missing" }
+                        return "\(identity.config)\\\(c.file) (expected=\(identity.file), started=\(c.isStarted), failed=\(c.loadFailed), stopped=\(c.isStopped), closed=\(c.hasClosed), frames=\(c.content.state.presented))"
+                    }
+                }
+                t.check(AppSelfTest.spin(timeout: 120) {
+                    let current = currentInitial()
+                    return current.count == expected.count && current.allSatisfy { $0.isStarted || $0.loadFailed }
+                }, "every widget started: \(initialStatus())")
+                t.equal(currentInitial().filter(\.loadFailed).map(\.config), [], "none failed")
+                t.check(currentInitial().allSatisfy { $0.runtime.executor === app.engineThread })
+                t.check(AppSelfTest.spin(timeout: 120) {
+                    let current = currentInitial()
+                    for c in current { c.visibilityForTesting = true }
+                    return current.count == expected.count && current.allSatisfy { $0.content.state.presented >= 1 }
+                }, "every widget drew: \(initialStatus())")
                 // A widget of every variant: each config's other files, one after the other, as the menus switch them.
                 for entry in configs {
                     for file in entry.files.dropFirst() {

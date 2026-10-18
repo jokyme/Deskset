@@ -5,13 +5,30 @@ import DesksetCore
 /// variants, load / unload, per-skin settings, [Metadata], compatibility notes; .rmskin files, ZIP archives and skin
 /// folders can be dropped on it.
 final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutlineViewDataSource, NSOutlineViewDelegate,
-    NSMenuDelegate {
+    NSMenuDelegate, NSTabViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    enum Tab: String { case skins, layouts }
+
     private unowned let app: AppController
     private var roots: [ManageModel.Node] = []
     private var libraryNames: [String] = []
     /// Selected config and .ini (nil file: a folder that is not a config).
     private(set) var selection: (config: String, file: String?)?
     private var issueCache: [String: (modified: Date?, issues: [String])] = [:]
+    private let tabs = NSTabView()
+    private let layoutsTable = NSTableView()
+    private var layoutNames: [String] = []
+    private var reloadingLayouts = false
+    private let layoutNameField = NSTextField()
+    private let emptyLayoutBox = NSButton(checkboxWithTitle: "Save as empty layout", target: nil, action: nil)
+    private let excludeUnloadedBox = NSButton(checkboxWithTitle: "Exclude unloaded skins", target: nil, action: nil)
+    private let includeWallpaperBox = NSButton(checkboxWithTitle: "Include current wallpaper", target: nil, action: nil)
+    private let saveLayoutButton = NSButton(title: "Save", target: nil, action: nil)
+    private let loadLayoutButton = NSButton(title: "Load", target: nil, action: nil)
+    private let deleteLayoutButton = NSButton(title: "Delete", target: nil, action: nil)
+    private let editLayoutButton = NSButton(title: "Edit", target: nil, action: nil)
+    private let layoutsStatus = NSTextField(wrappingLabelWithString: "")
+    var layoutReplacementConfirmationForTesting: ((String) -> Bool)?
+    var layoutDeletionConfirmationForTesting: ((String) -> Bool)?
 
     private let outline = NSOutlineView()
     private let detailStack = NSStackView()
@@ -179,8 +196,26 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     private func buildInterface() {
         guard let window else { return }
-        let content = DropView { [weak self] urls in self?.app.installer.open(urls) }
-        window.contentView = content
+        let root = DropView { [weak self] urls in self?.app.installer.open(urls) }
+        window.contentView = root
+        tabs.translatesAutoresizingMaskIntoConstraints = false
+        tabs.delegate = self
+        root.addSubview(tabs)
+        NSLayoutConstraint.activate([
+            tabs.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
+            tabs.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
+            tabs.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            tabs.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
+        ])
+        let content = NSView()
+        let skinsTab = NSTabViewItem(identifier: Tab.skins.rawValue)
+        skinsTab.label = "Skins"
+        skinsTab.view = content
+        tabs.addTabViewItem(skinsTab)
+        let layoutsTab = NSTabViewItem(identifier: Tab.layouts.rawValue)
+        layoutsTab.label = "Layouts"
+        layoutsTab.view = makeLayoutsView()
+        tabs.addTabViewItem(layoutsTab)
 
         // Left: skins outline.
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
@@ -289,6 +324,255 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             bar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
+    }
+
+    /// Rainmeter's Layouts tab: saving options on the left and saved layouts on the right.
+    private func makeLayoutsView() -> NSView {
+        let view = NSView()
+        let saveTitle = sectionTitle("Save new layout")
+        let nameLabel = formLabel("Name:")
+        layoutNameField.delegate = self
+        layoutNameField.setAccessibilityLabel("Layout name")
+        layoutNameField.target = self
+        layoutNameField.action = #selector(saveLayoutClicked)
+        layoutNameField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let nameRow = NSStackView(views: [nameLabel, layoutNameField])
+        nameRow.orientation = .horizontal
+        nameRow.spacing = 8
+        emptyLayoutBox.target = self
+        emptyLayoutBox.action = #selector(layoutOptionsChanged)
+        saveLayoutButton.target = self
+        saveLayoutButton.action = #selector(saveLayoutClicked)
+        let save = NSStackView(views: [saveTitle, nameRow, emptyLayoutBox, excludeUnloadedBox,
+                                      includeWallpaperBox, saveLayoutButton])
+        save.orientation = .vertical
+        save.alignment = .leading
+        save.spacing = 14
+        nameRow.widthAnchor.constraint(equalTo: save.widthAnchor).isActive = true
+        saveLayoutButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("layout"))
+        column.resizingMask = .autoresizingMask
+        layoutsTable.addTableColumn(column)
+        layoutsTable.headerView = nil
+        layoutsTable.style = .inset
+        layoutsTable.allowsMultipleSelection = false
+        layoutsTable.allowsEmptySelection = true
+        layoutsTable.dataSource = self
+        layoutsTable.delegate = self
+        layoutsTable.setAccessibilityLabel("Saved layouts")
+        let scroll = NSScrollView()
+        scroll.documentView = layoutsTable
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        for (button, action) in [(loadLayoutButton, #selector(loadLayoutClicked)),
+                                 (deleteLayoutButton, #selector(deleteLayoutClicked)),
+                                 (editLayoutButton, #selector(editLayoutClicked))] {
+            button.target = self
+            button.action = action
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
+        }
+        let buttons = NSStackView(views: [loadLayoutButton, deleteLayoutButton, editLayoutButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+        layoutsStatus.textColor = .secondaryLabelColor
+        layoutsStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let saved = NSStackView(views: [sectionTitle("Saved layouts"), scroll, layoutsStatus, buttons])
+        saved.orientation = .vertical
+        saved.alignment = .leading
+        saved.spacing = 12
+        scroll.widthAnchor.constraint(equalTo: saved.widthAnchor).isActive = true
+        layoutsStatus.widthAnchor.constraint(equalTo: saved.widthAnchor).isActive = true
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        let divider = NSBox()
+        divider.boxType = .separator
+        for child in [save, divider, saved] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(child)
+        }
+        NSLayoutConstraint.activate([
+            save.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            save.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            save.trailingAnchor.constraint(equalTo: divider.leadingAnchor, constant: -24),
+            save.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -24),
+            save.widthAnchor.constraint(equalTo: saved.widthAnchor),
+            divider.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            divider.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+            divider.widthAnchor.constraint(equalToConstant: 1),
+            saved.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            saved.leadingAnchor.constraint(equalTo: divider.trailingAnchor, constant: 24),
+            saved.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            saved.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+        ])
+        return view
+    }
+
+    var tab: Tab { (tabs.selectedTabViewItem?.identifier as? String).flatMap(Tab.init(rawValue:)) ?? .skins }
+
+    func selectTab(_ tab: Tab) {
+        tabs.selectTabViewItem(withIdentifier: tab.rawValue)
+        if tab == .layouts { reloadLayouts() }
+    }
+
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        if tab == .layouts { reloadLayouts() }
+    }
+
+    private var selectedLayout: String? {
+        let row = layoutsTable.selectedRow
+        return layoutNames.indices.contains(row) ? layoutNames[row] : nil
+    }
+
+    private func reloadLayouts(selecting requested: String? = nil) {
+        let selected = requested ?? selectedLayout
+        reloadingLayouts = true
+        defer { reloadingLayouts = false }
+        do {
+            layoutNames = try app.layoutStore.list()
+            layoutsStatus.stringValue = layoutNames.isEmpty ? "No saved layouts." : ""
+        } catch {
+            layoutNames = []
+            layoutsStatus.stringValue = "Could not read saved layouts: \(error.localizedDescription)"
+        }
+        layoutsStatus.isHidden = layoutsStatus.stringValue.isEmpty
+        layoutsTable.reloadData()
+        if let selected, let row = layoutNames.firstIndex(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) {
+            layoutsTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        } else {
+            layoutsTable.deselectAll(nil)
+        }
+        updateLayoutControls()
+    }
+
+    private func updateLayoutControls() {
+        let available = !app.isLoadingLayout
+        layoutNameField.isEnabled = available
+        emptyLayoutBox.isEnabled = available
+        excludeUnloadedBox.isEnabled = available && emptyLayoutBox.state != .on
+        includeWallpaperBox.isEnabled = available && emptyLayoutBox.state != .on
+        layoutsTable.isEnabled = available
+        let name = layoutNameField.stringValue
+        saveLayoutButton.isEnabled = available && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && name.caseInsensitiveCompare("@Backup") != .orderedSame
+        for button in [loadLayoutButton, deleteLayoutButton, editLayoutButton] {
+            button.isEnabled = available && selectedLayout != nil
+        }
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        if notification.object as? NSTextField === layoutNameField { updateLayoutControls() }
+    }
+
+    @objc private func layoutOptionsChanged() {
+        if emptyLayoutBox.state == .on {
+            excludeUnloadedBox.state = .off
+            includeWallpaperBox.state = .off
+        }
+        updateLayoutControls()
+    }
+
+    @objc private func saveLayoutClicked() {
+        guard saveLayoutButton.isEnabled else { return }
+        let name = layoutNameField.stringValue
+        let options = LayoutSaveOptions(empty: emptyLayoutBox.state == .on,
+            excludeUnloaded: excludeUnloadedBox.state == .on, includeWallpaper: includeWallpaperBox.state == .on)
+        let save = { [weak self] in
+            guard let self else { return }
+            do {
+                try self.app.saveLayout(named: name, options: options)
+                self.reloadLayouts(selecting: name)
+            } catch {
+                self.app.alert("Could not save layout", error.localizedDescription)
+            }
+        }
+        guard app.layoutStore.contains(named: name) else { save(); return }
+        if let confirm = layoutReplacementConfirmationForTesting {
+            if confirm(name) { save() }
+            return
+        }
+        guard app.presentsWindows else { save(); return }
+        let alert = NSAlert()
+        alert.messageText = "Replace layout \"\(name)\"?"
+        alert.informativeText = "A layout with this name already exists. Replace its saved settings?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        if let window {
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn { save() }
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn { save() }
+    }
+
+    @objc private func loadLayoutClicked() {
+        guard loadLayoutButton.isEnabled, let name = selectedLayout else { return }
+        app.loadLayout(named: name) { [weak self] _ in self?.reloadLayouts() }
+        updateLayoutControls()
+    }
+
+    @objc private func deleteLayoutClicked() {
+        guard deleteLayoutButton.isEnabled, let name = selectedLayout else { return }
+        let remove = { [weak self] in
+            guard let self else { return }
+            do {
+                try self.app.deleteLayout(named: name)
+                self.reloadLayouts()
+            } catch {
+                self.app.alert("Could not delete layout", error.localizedDescription)
+            }
+        }
+        if let confirm = layoutDeletionConfirmationForTesting {
+            if confirm(name) { remove() }
+            return
+        }
+        guard app.presentsWindows else { remove(); return }
+        let alert = NSAlert()
+        alert.messageText = "Delete layout \"\(name)\"?"
+        alert.informativeText = "This moves the saved layout to the Trash. Your skin files are kept."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        if let window {
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn { remove() }
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn { remove() }
+    }
+
+    @objc private func editLayoutClicked() {
+        guard editLayoutButton.isEnabled, let name = selectedLayout else { return }
+        app.editLayout(named: name)
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { layoutNames.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard layoutNames.indices.contains(row) else { return nil }
+        let identifier = NSUserInterfaceItemIdentifier("LayoutCell")
+        let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? {
+            let cell = NSTableCellView()
+            cell.identifier = identifier
+            let text = NSTextField(labelWithString: "")
+            text.lineBreakMode = .byTruncatingTail
+            text.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(text)
+            cell.textField = text
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+            return cell
+        }()
+        cell.textField?.stringValue = layoutNames[row]
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !reloadingLayouts, notification.object as? NSTableView === layoutsTable else { return }
+        if let name = selectedLayout { layoutNameField.stringValue = name }
+        updateLayoutControls()
     }
 
     private func sectionTitle(_ text: String) -> NSTextField {
@@ -475,6 +759,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     /// Rebuilds the outline when the library changed and refreshes the details.
     func reload() {
+        reloadLayouts()
         let library = app.library
         let names = library.map { "\($0.name)|\($0.files.joined(separator: "|"))" }
         if names != libraryNames {
@@ -504,6 +789,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     /// Selects a config (and file) in the outline.
     func select(config: String, file: String?) {
+        selectTab(.skins)
         let name = SkinLibrary.normalizedConfigName(config)
         let running = app.controller(for: name)
         selectNode(config: name, file: file ?? running?.file ?? app.config(named: name)?.files.first)
@@ -1032,11 +1318,18 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     // MARK: Snapshot support
 
     /// Renders the window's content off-screen (for `--snapshot-ui` and self-tests).
+    /// macOS 26 draws native tab segments and table selection in compositor layers, which AppKit's off-screen
+    /// drawing does not capture. As in Settings' toolbar snapshot, those two decorations use a stand-in here.
+    /// The visible window keeps its native controls; this bitmap is a layout preview, not a screen capture.
     func snapshot() -> NSBitmapImageRep? {
         guard let view = window?.contentView else { return nil }
         view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds),
               let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        let segments = tabs.subviews.compactMap { $0 as? NSSegmentedControl }.first
+        let segmentsWereHidden = segments?.isHidden ?? false
+        segments?.isHidden = true
+        defer { segments?.isHidden = segmentsWereHidden }
         // The window background is drawn by the window frame, not the content view: paint it first.
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
@@ -1046,11 +1339,92 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         NSGraphicsContext.restoreGraphicsState()
         view.displayIgnoringOpacity(view.bounds, in: context)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            if let segments { drawSnapshotTabs(segments, in: view) }
+            if tab == .layouts { drawSnapshotLayoutSelection(in: view) }
+        }
+        NSGraphicsContext.restoreGraphicsState()
         return rep
+    }
+
+    private func drawSnapshotTabs(_ segments: NSSegmentedControl, in view: NSView) {
+        let rect = segments.convert(segments.bounds, to: view)
+        let font = segments.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let labels = tabs.tabViewItems.map(\.label)
+        let widths = labels.map { ($0 as NSString).size(withAttributes: [.font: font]).width + 24 }
+        let total = widths.reduce(0, +)
+        guard total > 0 else { return }
+        // An opaque control background also covers the compositor's cached placeholder below the stand-in.
+        NSColor.controlBackgroundColor.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+        var x = rect.minX
+        for (index, label) in labels.enumerated() {
+            let width = rect.width * widths[index] / total
+            let segment = NSRect(x: x, y: rect.minY, width: width, height: rect.height)
+            let selected = tabs.tabViewItems[index] === tabs.selectedTabViewItem
+            if selected {
+                NSColor.controlAccentColor.setFill()
+                NSBezierPath(roundedRect: segment, xRadius: 6, yRadius: 6).fill()
+            }
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph,
+                .foregroundColor: selected ? NSColor.white : NSColor.labelColor]
+            let height = (label as NSString).size(withAttributes: attributes).height
+            (label as NSString).draw(in: NSRect(x: x, y: segment.midY - height / 2, width: width, height: height),
+                                     withAttributes: attributes)
+            x += width
+        }
+    }
+
+    private func drawSnapshotLayoutSelection(in view: NSView) {
+        let row = layoutsTable.selectedRow
+        guard layoutNames.indices.contains(row),
+              let cell = layoutsTable.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
+              let label = cell.textField else { return }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let visible = layoutsTable.convert(layoutsTable.visibleRect, to: view)
+        NSBezierPath(rect: visible).addClip()
+        let rowRect = layoutsTable.convert(layoutsTable.rect(ofRow: row), to: view).insetBy(dx: 2, dy: 1)
+        NSColor.unemphasizedSelectedContentBackgroundColor.setFill()
+        NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5).fill()
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [.font: label.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
+        (label.stringValue as NSString).draw(in: label.convert(label.bounds, to: view), withAttributes: attributes)
     }
 
     /// Loads or unloads a skin as a double-click in the outline does (self-tests).
     func testToggleLoad(config: String, file: String) { toggleLoad(config: config, file: file) }
+    var testLayoutNames: [String] { layoutNames }
+    var testSelectedLayout: String? { selectedLayout }
+    var testLayoutNameField: NSTextField { layoutNameField }
+    var testEmptyLayoutBox: NSButton { emptyLayoutBox }
+    var testExcludeUnloadedBox: NSButton { excludeUnloadedBox }
+    var testIncludeWallpaperBox: NSButton { includeWallpaperBox }
+    var testSaveLayoutButton: NSButton { saveLayoutButton }
+    var testLoadLayoutButton: NSButton { loadLayoutButton }
+    var testDeleteLayoutButton: NSButton { deleteLayoutButton }
+    var testEditLayoutButton: NSButton { editLayoutButton }
+    var testLayoutsTable: NSTableView { layoutsTable }
+    var testLayoutsStatus: String { layoutsStatus.stringValue }
+
+    /// Types a name, notifying the delegate as a real edit does.
+    func testTypeLayoutName(_ name: String) {
+        layoutNameField.stringValue = name
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: layoutNameField))
+    }
+
+    /// Selects an existing row just as the saved-layout list does.
+    func testSelectLayout(_ name: String) {
+        guard let row = layoutNames.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        layoutsTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+
     var testGridHugging: NSLayoutConstraint.Priority {
         max(settingsGrid.contentHuggingPriority(for: .horizontal), metadataGrid.contentHuggingPriority(for: .horizontal))
     }

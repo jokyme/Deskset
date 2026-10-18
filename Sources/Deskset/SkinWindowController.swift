@@ -44,6 +44,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// The mouse is over the skin window (tracked only when OnHover is set).
     private(set) var isHovering = false
     private(set) var isStopped = false
+    /// A layout permanently retired this instance. Delayed host requests may arrive after its close callbacks.
+    var retiredByLayout = false
     /// The skin is being closed (`stop`): OnCloseAction is running.
     private var isClosing = false
     /// The runtime reported `.loaded`: the window's settings apply.
@@ -147,7 +149,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     convenience init(config: String, file: String, app: AppController) throws {
         self.init(config: config, file: file, app: app, executor: MainSkinExecutor.shared)
         holdsFacts = false
-        let loaded = try runtime.load()
+        let loaded = try runtime.load(configState: app.state.skin(config))
         wireUp()
         if loaded.registeredFonts { app.fontsChanged(except: self) }
         for issue in loaded.issues { Log.write(issue, level: .warning, source: config) }
@@ -676,7 +678,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         let ph = primaryHeight
         var frame: CGRect
         var isNew = false
-        if s.savePosition, let x = s.x, let y = s.y {
+        if !s.savePosition, let p = app.sessionPositions[config.lowercased()] {
+            frame = WindowGeometry.frame(topLeftX: p.0, y: p.1, size: size, primaryHeight: ph)
+        } else if let p = layoutPosition(size: size) {
+            frame = WindowGeometry.frame(topLeftX: p.x, y: p.y, size: size, primaryHeight: ph)
+            if s.x == nil || s.y == nil {
+                app.state.update(config) { $0.x = p.x; $0.y = p.y }
+            }
+        } else if s.savePosition, let x = s.x, let y = s.y {
             frame = WindowGeometry.frame(topLeftX: x, y: y, size: size, primaryHeight: ph)
         } else if let p = app.sessionPositions[config.lowercased()] ?? s.x.flatMap({ x in s.y.map { (x, $0) } }) {
             frame = WindowGeometry.frame(topLeftX: p.0, y: p.1, size: size, primaryHeight: ph)
@@ -699,11 +708,20 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         publishFacts()
     }
 
+    /// Layout coordinates are evaluated only once the window size is known, so percentage anchors use its bounds.
+    private func layoutPosition(size: CGSize) -> (x: Double, y: Double)? {
+        let s = state
+        guard s.windowX != nil || s.windowY != nil else { return nil }
+        return WindowPosition.resolve(x: s.windowX ?? "0", y: s.windowY ?? "0",
+                                      anchorX: s.anchorX ?? "0", anchorY: s.anchorY ?? "0",
+                                      skinSize: size, screens: screens)
+    }
+
     /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
     /// a monitor that comes back) and keep it on screen, without saving the adjusted position.
     func screensChanged() {
         guard !isStopped, isStarted else { return }
-        if state.savePosition, state.x != nil, state.y != nil {
+        if state.savePosition, (state.windowX != nil || (state.x != nil && state.y != nil)) {
             placeWindow()
         } else {
             window.setFrame(constrained(window.frame), display: false)
@@ -729,10 +747,15 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         // SavePosition: "changes to the window position will be saved". A new skin's first position is always
         // stored so it does not cascade somewhere else next time.
         guard state.savePosition || force else { return }
+        let position = WindowPosition.moved(x: p.x, y: p.y, windowX: state.windowX, windowY: state.windowY,
+                                            anchorX: state.anchorX, anchorY: state.anchorY, skinSize: frame.size,
+                                            screens: screens, autoSelectScreen: state.autoSelectScreen)
         app.state.update(config) {
             $0.file = file
             $0.x = p.x
             $0.y = p.y
+            $0.windowX = position.x
+            $0.windowY = position.y
         }
     }
 
@@ -801,6 +824,13 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     /// Applies what the runtime asks of the main thread, in the order it asked.
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
+        if (retiredByLayout || runtime.isRetiredForLayout)
+            && !(runtime.acceptsLayoutCloseActions && request.isClosingAction) {
+            switch request {
+            case .closed, .failed: break
+            default: return
+            }
+        }
         switch request {
         case .loaded(let report):
             loaded(report)
@@ -821,10 +851,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             applyHostBang(bang)
         case .fadeWindow(let from, let to):
             fadeWindow(from: from, to: to)
-        case .open(let plan):
-            open(plan)
-        case .forward(let bang, let config, let hops):
-            forward(bang, toConfig: config, hops: hops)
+        case .open(let plan, let whileClosing):
+            open(plan, whileClosing: whileClosing)
+        case .forward(let bang, let config, let hops, let whileClosing):
+            forward(bang, toConfig: config, hops: hops, whileClosing: whileClosing)
         case .companion(let companion):
             companions.apply(companion)
         case .snapshotChanged(let changes):
@@ -840,19 +870,30 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if !changes.isDisjoint(with: [.issues, .metadata]) { app.skinDetailsChanged() }
     }
 
-    /// The skin's size changed: the window follows (the top-left corner stays). The frames go to the content layer
+    /// The skin's size changed: the window follows (its configured anchor stays). The frames go to the content layer
     /// from the skin's executor, which skips them while the window cannot be seen (energy: a skin hidden behind other
     /// windows, on a locked screen or ordered out is not drawn until it can be seen again; its measures keep updating).
     private func resize(to size: CGSize) {
         guard !isStopped else { return }
         let before = factsSequence
         if window.frame.size != size {
-            // Keep the top-left corner fixed.
+            // Preserve an imported layout's anchor when the skin changes size.
             let top = window.frame.maxY
             var frame = NSRect(x: window.frame.minX, y: top - size.height, width: size.width, height: size.height)
+            if let oldAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0",
+                                                            size: window.frame.size),
+                      let newAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0", size: size) {
+                // SavePosition=0 keeps a drag in this session, but resizing still uses the configured anchor.
+                frame.origin.x += oldAnchor.x - newAnchor.x
+                frame.origin.y -= oldAnchor.y - newAnchor.y
+            }
             if state.keepOnScreen && window.isVisible { frame = keptOnScreen(frame) }
             window.setFrame(frame, display: false)
             view.frame = NSRect(origin: .zero, size: size)
+            if isStarted {
+                let point = topLeftPosition
+                app.sessionPositions[config.lowercased()] = (point.x, point.y)
+            }
         }
         view.updateToolTips()
         // Different requested sizes can round to the same frame. Acknowledge that actual frame even when AppKit
@@ -861,13 +902,20 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     /// A bang the engine performed, or `*`, for other skins, sent with `hops` (the sender's).
-    private func forward(_ bang: Bang, toConfig config: String, hops: Int) {
+    private func forward(_ bang: Bang, toConfig config: String, hops: Int, whileClosing: Bool) {
+        func permitted() -> Bool {
+            (!retiredByLayout && !runtime.isRetiredForLayout)
+                || (whileClosing && runtime.acceptsLayoutCloseActions)
+        }
+        guard permitted() else { return }
         // `*`: the engine has already performed the bang on the sending skin; every other active skin follows.
         let everyone = SkinLibrary.normalizedConfigName(config) == "*"
         let sender = self.config
         if !everyone && app.isLoadPending(config) {
+            let generation = app.lifecycleGeneration
             // `[!ActivateConfig X][!SetVariable V 1 X]`: X is loaded on the next run loop turn; the bang follows it.
-            app.later { app in
+            app.later { [self] app in
+                guard permitted(), app.lifecycleGeneration == generation else { return }
                 let now = app.controllers(forConfigArgument: config, current: nil).filter { !$0.isStopped }
                 if now.isEmpty {
                     Log.write("!\(bang.name): config \"\(config)\" is not active", level: .warning, source: sender)
@@ -899,7 +947,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// per batch (`AppController.batchingWindowChanges`). A move that comes while a press may drag the window waits for
     /// the release (`endDragPress`).
     private func applyWindowChange(_ change: SkinWindowChange) {
-        guard !isStopped else { return }
+        guard !isStopped || (change.whileClosing && runtime.acceptsLayoutCloseActions) else { return }
         if case .move = change.operation, isDragPressActive {
             heldMove = change
             return
@@ -907,7 +955,17 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         appliedModelSequence = max(appliedModelSequence, change.sequence)
         switch change.operation {
         case .move(let frame):
+            app.state.update(config) {
+                // A held move carries all preceding position/anchor bangs, even when its last bang is !Move.
+                $0.anchorX = change.model.settings.anchorX
+                $0.anchorY = change.model.settings.anchorY
+                if $0.savePosition {
+                    $0.windowX = change.model.settings.windowX
+                    $0.windowY = change.model.settings.windowY
+                }
+            }
             let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
+            if isStopped, state.savePosition { app.state.update(config) { $0.x = p.x; $0.y = p.y } }
             moveTo(x: p.x, y: p.y)
         case .zPosition(let value):
             app.state.update(config) { $0.alwaysOnTop = value }
@@ -958,9 +1016,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if let held { appliedModelSequence = max(appliedModelSequence, held.sequence) }
         if moved {
             windowMoved()
-        } else if let held, case .move(let frame) = held.operation, !isStopped {
-            let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
-            moveTo(x: p.x, y: p.y)
+        } else if let held, !isStopped {
+            applyWindowChange(held)
         }
         publishFacts()
     }
@@ -1010,7 +1067,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     static var opensForTesting: ((SkinExecutePlan) -> Void)?
 
     /// `["target" arguments…]`: a web page, a file or an app opens.
-    private func open(_ plan: SkinExecutePlan) {
+    private func open(_ plan: SkinExecutePlan, whileClosing: Bool) {
+        guard (!retiredByLayout && !runtime.isRetiredForLayout)
+            || (whileClosing && runtime.acceptsLayoutCloseActions) else { return }
         if let hook = SkinWindowController.opensForTesting { return hook(plan) }
         switch plan {
         case .open(let url):

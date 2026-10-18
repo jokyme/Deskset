@@ -7,7 +7,8 @@ import DesksetCore
 /// - `manage`: the Manage window over a temporary copy of TestSkins/App and TestSkins/Deskset, the example skins of
 ///   Deskset 0.1 (or `--skins-dir`), with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus)
 ///   selected (`Config\File.ini` selects one file); `--hidden` loads the selected skin when it is not loaded and has
-///   it hide itself (`!Hide`), `--coordinates X,Y` types coordinates for it.
+///   it hide itself (`!Hide`), `--coordinates X,Y` types coordinates for it; `--pane layouts` shows saved layouts
+///   made from these temporary skins.
 /// - `install`: the .rmskin confirmation for a generated package (header image, plugin warning).
 /// - `install-zip`: the confirmation for a plain ZIP archive (no RMSKIN.ini) with fonts.
 /// - `icon`: the app icon at 1024 px.
@@ -51,7 +52,8 @@ enum UISnapshot {
             data = managePreview(select: value(after: "--select") ?? "App\\Focus", skinsDir: value(after: "--skins-dir"),
                                  size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil,
                                  hidden: arguments.contains("--hidden"),
-                                 coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil)
+                                 coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil,
+                                 pane: value(after: "--pane").flatMap(ManageWindowController.Tab.init(rawValue:)) ?? .skins)
         default:
             fputs("unknown snapshot \"\(what)\" (manage, settings, codeeditor, install, install-zip, icon, menubar)\n", stderr)
             return 2
@@ -93,7 +95,8 @@ enum UISnapshot {
     }
 
     private static func managePreview(select: String, skinsDir: String?, size: NSSize?, hidden: Bool = false,
-                                      coordinates: (x: Int, y: Int)? = nil) -> Data? {
+                                      coordinates: (x: Int, y: Int)? = nil,
+                                      pane: ManageWindowController.Tab = .skins) -> Data? {
         let root = temporaryDirectory("manage")
         let skins: URL
         if let skinsDir {
@@ -127,6 +130,18 @@ enum UISnapshot {
         }
         manage.select(config: config, file: file)
         if let coordinates { manage.testTypeCoordinates(x: coordinates.x, y: coordinates.y) }
+        if pane == .layouts {
+            // The preview writes only under its temporary root, never the user's saved layouts or wallpaper.
+            do {
+                try app.saveLayout(named: "Desktop", options: LayoutSaveOptions())
+                try app.saveLayout(named: "Empty", options: LayoutSaveOptions(empty: true))
+            } catch {
+                fputs("error: could not prepare layout preview: \(error.localizedDescription)\n", stderr)
+                return nil
+            }
+            manage.selectTab(.layouts)
+            manage.testSelectLayout("Desktop")
+        }
         let rep = manage.snapshot()
         let data = rep?.representation(using: .png, properties: [:])
         withExtendedLifetime(app) {}

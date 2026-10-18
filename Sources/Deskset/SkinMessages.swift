@@ -116,7 +116,7 @@ struct HostBang {
     var bang: Bang
     /// The hops of the work that sent it.
     var hops: Int
-    /// Sent while the skin's OnCloseAction runs: then the skin cannot reload or unload itself.
+    /// Sent while the skin's OnCloseAction runs.
     var whileClosing: Bool
 }
 
@@ -226,16 +226,27 @@ enum SkinRequest {
     /// The system: the clipboard, the desktop picture, sounds. Paths are absolute already.
     case system(HostBang)
     /// `["https://…"]`, `["file.txt"]`, `["App.app" "file"]`.
-    case open(SkinExecutePlan)
+    case open(SkinExecutePlan, whileClosing: Bool = false)
     /// A bang for another config that the skin could not hand to it itself (`SkinDirectory`): the config is loading
     /// (it follows the load), or not running. `*`: every other running skin (a runtime without a directory). With the
     /// sender's hops.
-    case forward(Bang, toConfig: String, hops: Int)
+    case forward(Bang, toConfig: String, hops: Int, whileClosing: Bool = false)
     /// A window companion: FrostedGlass's backdrop, InputText's box (`SkinWindowCompanions`).
     case companion(SkinCompanionRequest)
     /// The skin published a snapshot in which something the main thread acts on changed (`SkinSnapshotChanges`): the
     /// tooltip areas, the compatibility notes, what it wants of the mouse outside its window… Posted only then.
     case snapshotChanged(SkinSnapshotChanges)
+
+    /// Requests produced by OnCloseAction can finish while the old desktop is closing.
+    var isClosingAction: Bool {
+        switch self {
+        case .lifecycle(let host), .ui(let host), .system(let host): return host.whileClosing
+        case .window(let change): return change.whileClosing
+        case .forward(_, _, _, let whileClosing): return whileClosing
+        case .open(_, let whileClosing): return whileClosing
+        default: return false
+        }
+    }
 }
 
 /// What a window companion on the main thread is asked to do, with the values it needs (`SkinWindowCompanions`).

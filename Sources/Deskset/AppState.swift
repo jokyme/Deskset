@@ -9,6 +9,20 @@ struct SkinState: Codable, Equatable {
     /// Top-left corner in top-left-origin screen coordinates of the primary screen.
     var x: Double?
     var y: Double?
+    /// Rainmeter's saved position expressions. Kept independently of the resolved desktop coordinates so a
+    /// percentage, anchor or monitor suffix survives loading and saving a layout.
+    var windowX: String?
+    var windowY: String?
+    var anchorX: String?
+    var anchorY: String?
+    /// Config-section group overrides; nil leaves the skin's own setting in effect.
+    var group: String?
+    var dragGroup: String?
+    /// The imported Active index, retained with its raw option until activation or the variant changes.
+    /// A non-nil index also preserves an imported section whose Active key was absent.
+    var activeVariant: Int?
+    /// Original config options, including options this version does not implement.
+    var layoutOptions: [String: String] = [:]
     /// -2 on desktop, -1 bottom, 0 normal, 1 topmost, 2 stay topmost.
     /// The manual's default is 0 (Normal); on the Mac, widgets are expected to live on the desktop, so new skins
     /// start "On Desktop" (a product decision; users can change it per skin).
@@ -30,7 +44,7 @@ struct SkinState: Codable, Equatable {
     /// `AutoSelectScreen`: the monitor of the skin's built-in variables (`#SCREENAREAX#`, `#WORKAREAX#`…) follows
     /// the window instead of being the primary one.
     var autoSelectScreen: Bool = false
-    /// `ZoomFactor`: per-skin zoom multiplier (`0.25…10.0`, default `1.0`).
+    /// `ZoomFactor`: per-skin zoom multiplier (`0.1…5.0`, default `1.0`).
     var zoomFactor: Double = 1.0
     /// Keys this version does not know (written by a newer one), kept as they were and written back, so that going
     /// back to an older version and forward again loses nothing.
@@ -41,7 +55,8 @@ struct SkinState: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case file, active, x, y, alwaysOnTop, draggable, clickThrough, keepOnScreen, snapEdges, alphaValue,
+        case file, active, x, y, windowX, windowY, anchorX, anchorY, group, dragGroup, activeVariant, layoutOptions,
+             alwaysOnTop, draggable, clickThrough, keepOnScreen, snapEdges, alphaValue,
              savePosition, loadOrder, fadeDuration, onHover, startHidden, autoSelectScreen, zoomFactor
     }
 
@@ -64,6 +79,14 @@ struct SkinState: Codable, Equatable {
         // them into integers or window frames never sees absurd magnitudes.
         x = ((try? c.decodeIfPresent(Double.self, forKey: .x)) ?? nil).flatMap(SkinState.position)
         y = ((try? c.decodeIfPresent(Double.self, forKey: .y)) ?? nil).flatMap(SkinState.position)
+        windowX = try? c.decodeIfPresent(String.self, forKey: .windowX)
+        windowY = try? c.decodeIfPresent(String.self, forKey: .windowY)
+        anchorX = try? c.decodeIfPresent(String.self, forKey: .anchorX)
+        anchorY = try? c.decodeIfPresent(String.self, forKey: .anchorY)
+        group = try? c.decodeIfPresent(String.self, forKey: .group)
+        dragGroup = try? c.decodeIfPresent(String.self, forKey: .dragGroup)
+        activeVariant = try? c.decodeIfPresent(Int.self, forKey: .activeVariant)
+        layoutOptions = value(.layoutOptions, [:])
         alwaysOnTop = min(max(value(.alwaysOnTop, d.alwaysOnTop), -2), 2)
         draggable = value(.draggable, d.draggable)
         clickThrough = value(.clickThrough, d.clickThrough)
@@ -77,7 +100,7 @@ struct SkinState: Codable, Equatable {
         startHidden = value(.startHidden, d.startHidden)
         autoSelectScreen = value(.autoSelectScreen, d.autoSelectScreen)
         let rawZoom = value(.zoomFactor, d.zoomFactor)
-        zoomFactor = rawZoom.isFinite ? min(max(rawZoom, 0.25), 10.0) : 1.0
+        zoomFactor = rawZoom.isFinite ? min(max(rawZoom, 0.1), 5.0) : 1.0
     }
 
     /// The keys this version knows, then the ones it kept (`unknownKeys`).
@@ -87,6 +110,14 @@ struct SkinState: Codable, Equatable {
         try c.encode(active, forKey: .active)
         try c.encodeIfPresent(x, forKey: .x)
         try c.encodeIfPresent(y, forKey: .y)
+        try c.encodeIfPresent(windowX, forKey: .windowX)
+        try c.encodeIfPresent(windowY, forKey: .windowY)
+        try c.encodeIfPresent(anchorX, forKey: .anchorX)
+        try c.encodeIfPresent(anchorY, forKey: .anchorY)
+        try c.encodeIfPresent(group, forKey: .group)
+        try c.encodeIfPresent(dragGroup, forKey: .dragGroup)
+        try c.encodeIfPresent(activeVariant, forKey: .activeVariant)
+        if !layoutOptions.isEmpty { try c.encode(layoutOptions, forKey: .layoutOptions) }
         try c.encode(alwaysOnTop, forKey: .alwaysOnTop)
         try c.encode(draggable, forKey: .draggable)
         try c.encode(clickThrough, forKey: .clickThrough)
@@ -154,6 +185,13 @@ struct AppUpdatePreferences: Codable, Equatable {
 struct AppStateData: Codable {
     /// Keyed by config name (`Root\Sub`).
     var skins: [String: SkinState] = [:]
+    /// Rainmeter.ini section order breaks ties between equal LoadOrder values.
+    var skinOrder: [String] = []
+    /// Loading an empty layout is an intentional empty desktop, not a first launch.
+    var hasLoadedLayout = false
+    /// Native layout settings kept for INI round trips; these do not configure the Mac app's preferences.
+    var rainmeterOptions: [String: String] = [:]
+    var trayMeasureOptions: [String: String]? = nil
     var defaultSkinsInstalled: Int = 0
     /// The `[Variables]` of each bundled root config's `@Resources/Variables.inc` as the installed default skins
     /// shipped them (root config → lower-case key → value): an upgrade carries over only the values the user changed
@@ -174,7 +212,8 @@ struct AppStateData: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case skins, defaultSkinsInstalled, shippedVariables, editor, updates, settingsPane
+        case skins, skinOrder, hasLoadedLayout, rainmeterOptions, trayMeasureOptions,
+             defaultSkinsInstalled, shippedVariables, editor, updates, settingsPane
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -184,6 +223,10 @@ struct AppStateData: Codable {
             .unknownValues(besides: AppStateData.knownKeys) ?? [:]
         let c = try decoder.container(keyedBy: CodingKeys.self)
         skins = ((try? c.decodeIfPresent([String: SkinState].self, forKey: .skins)) ?? nil) ?? [:]
+        skinOrder = ((try? c.decodeIfPresent([String].self, forKey: .skinOrder)) ?? nil) ?? []
+        hasLoadedLayout = ((try? c.decodeIfPresent(Bool.self, forKey: .hasLoadedLayout)) ?? nil) ?? false
+        rainmeterOptions = ((try? c.decodeIfPresent([String: String].self, forKey: .rainmeterOptions)) ?? nil) ?? [:]
+        trayMeasureOptions = (try? c.decodeIfPresent([String: String].self, forKey: .trayMeasureOptions)) ?? nil
         defaultSkinsInstalled = ((try? c.decodeIfPresent(Int.self, forKey: .defaultSkinsInstalled)) ?? nil) ?? 0
         shippedVariables = ((try? c.decodeIfPresent([String: [String: String]].self, forKey: .shippedVariables)) ?? nil) ?? [:]
         let storedEditor = (try? c.decodeIfPresent(EditorPreferences.self, forKey: .editor)) ?? nil
@@ -196,6 +239,10 @@ struct AppStateData: Codable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(skins, forKey: .skins)
+        if !skinOrder.isEmpty { try c.encode(skinOrder, forKey: .skinOrder) }
+        if hasLoadedLayout { try c.encode(hasLoadedLayout, forKey: .hasLoadedLayout) }
+        if !rainmeterOptions.isEmpty { try c.encode(rainmeterOptions, forKey: .rainmeterOptions) }
+        try c.encodeIfPresent(trayMeasureOptions, forKey: .trayMeasureOptions)
         try c.encode(defaultSkinsInstalled, forKey: .defaultSkinsInstalled)
         if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
@@ -236,16 +283,27 @@ final class AppState {
     func update(_ config: String, _ change: (inout SkinState) -> Void) {
         let key = storedKey(for: config)
         var s = data.skins[key] ?? SkinState(file: "")
+        let previousActive = s.active
+        let previousFile = s.file
         change(&s)
+        if s.active != previousActive || s.file != previousFile {
+            s.activeVariant = nil
+            s.layoutOptions = s.layoutOptions.filter { $0.key.caseInsensitiveCompare("Active") != .orderedSame }
+        }
         s.x = s.x.flatMap(SkinState.position)
         s.y = s.y.flatMap(SkinState.position)
         s.alwaysOnTop = min(max(s.alwaysOnTop, -2), 2)
         s.alphaValue = min(max(s.alphaValue, 0), 255)
         s.fadeDuration = min(max(s.fadeDuration, 0), SkinState.maxFadeDuration)
         s.onHover = min(max(s.onHover, 0), 3)
-        s.zoomFactor = s.zoomFactor.isFinite ? min(max(s.zoomFactor, 0.25), 10.0) : 1.0
+        s.zoomFactor = s.zoomFactor.isFinite ? min(max(s.zoomFactor, 0.1), 5.0) : 1.0
         guard data.skins[key] != s else { return }
+        // Preserve the ordering of legacy state files before the first edit starts recording section order.
+        if data.skinOrder.isEmpty { data.skinOrder = data.orderedConfigs.map(\.config) }
         data.skins[key] = s
+        if !data.skinOrder.contains(where: { $0.caseInsensitiveCompare(key) == .orderedSame }) {
+            data.skinOrder.append(key)
+        }
         scheduleSave()
     }
 
@@ -311,11 +369,23 @@ final class AppState {
         scheduleSave()
     }
 
-    /// Active configs in load order ("Skins with the lowest load order are loaded first"), then by name.
+    /// Replaces layout settings and passthrough INI data. Editor, update and installation preferences remain local.
+    func replaceLayout(_ layout: LayoutState) {
+        data.skins = layout.skins
+        data.skinOrder = layout.order
+        data.rainmeterOptions = layout.rainmeterOptions
+        data.trayMeasureOptions = layout.trayMeasureOptions
+        data.hasLoadedLayout = true
+        scheduleSave()
+    }
+
+    var orderedConfigs: [(config: String, state: SkinState)] { data.orderedConfigs }
+
+    /// Active configs in LoadOrder, breaking ties by Rainmeter.ini section order.
     var activeConfigs: [(config: String, state: SkinState)] {
-        data.skins.filter { $0.value.active }
-            .sorted { ($0.value.loadOrder, $0.key) < ($1.value.loadOrder, $1.key) }
-            .map { ($0.key, $0.value) }
+        orderedConfigs.enumerated().filter { $0.element.state.active }
+            .sorted { ($0.element.state.loadOrder, $0.offset) < ($1.element.state.loadOrder, $1.offset) }
+            .map(\.element)
     }
 
     func scheduleSave() {

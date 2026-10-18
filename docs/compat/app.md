@@ -176,7 +176,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   bar), y growing downward — the same convention, in points instead of pixels. `!Move` values are clamped to ±1 000 000.
   With SavePosition off, the position is kept for the session only (a refresh keeps it). A new skin without a saved
   position or DefaultWindowX/Y is cascaded from the top-left of the visible area. AutoSelectScreen decides which
-  display the monitor variables without `@N` describe.
+  display the monitor variables without `@N` describe. Imported layout position expressions and anchors persist
+  across save/reload, movement and resizing; see [Layouts](layouts.md). `!SetAnchor` remains unsupported.
 - Why: macOS works in points (Retina).
 - Skin impact: skins positioned for a specific Windows resolution land elsewhere on a Retina Mac; KeepOnScreen keeps
   them visible.
@@ -308,7 +309,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### Main menu (the tray menu)
 - Windows (Rainmeter): the notification-area icon's menu; `!TrayMenu` opens it.
-- Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, loaded skins, Refresh All, Install Skin…, Open Skins
+- Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
   Folder, Open Log, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   the first launch shows it too. A second copy of Deskset hands its files over to the running one and quits.
@@ -406,13 +407,22 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Status: emulated
 
 ### Layouts: !LoadLayout
-- Windows (Rainmeter): layouts save and restore sets of loaded skins with their settings.
-- Mac (Deskset): layouts from packages are installed into `~/Library/Application Support/Deskset/Layouts` but cannot be
-  applied yet; `!LoadLayout` adds a compatibility note, and a package that asks to load a layout says so after
-  installing.
-- Why: not implemented yet.
-- Skin impact: suites that set themselves up through a layout must be loaded skin by skin from the Manage window.
-- Status: not supported
+- Windows (Rainmeter): [Manage → Layouts](https://docs.rainmeter.net/manual/user-interface/manage/#LayoutsTab)
+  saves config settings. A normal load preserves selected old global options and applies other target options;
+  it saves `@Backup` after close actions. Loading `@Backup` keeps it unchanged and ignores its wallpaper.
+- Mac (Deskset): Manage Save/Load/Delete/Edit and its three save options, the status-menu list, `!LoadLayout`,
+  `!Manage Layouts`, their executable command forms and installer application are implemented. The exchange format
+  is `Layouts/<name>/Rainmeter.ini`; empty layouts have zero-byte INIs and disable the other save options. Overwrite
+  requires confirmation, `@Backup` cannot be saved manually, and Delete moves the folder to the Trash. A save with
+  no new wallpaper preserves the old picture and other folder files. State.json stays internal. See [Layouts](layouts.md)
+  for close-action ordering, Active indices, section-order ties, positions/anchors and wallpaper mapping.
+- Why: per-config settings map to macOS. Raw Windows global and `[TrayMeasure]` values are preserved and merged on
+  normal loads or restored from `@Backup`; unsupported global/tray behavior remains unsupported. Local app preferences
+  stay separate and unchanged. Windows filename
+  enumeration varies by filesystem; Deskset's alphabetical order is deterministic but not a universal sorting match.
+- Skin impact: compatible suites can load their installed layouts. A layout does not contain skin files or make
+  an unsupported plugin work. The implementation has not been verified on a Windows desktop.
+- Status: emulated / partial (global settings, wallpaper and filename portability)
 
 ### Other host bangs
 - Windows (Rainmeter): `!SetClip`, `!SetWallpaper`, `!Play` / `!PlayLoop` / `!PlayStop`, `!Manage`, `!About`,
@@ -449,7 +459,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): an alert with the header image (RMSKIN.bmp), "Install “Name”?", author and version, then: for a plain
   archive or folder a note that it was not made with the Skin Packager and the skins were found automatically (a
   folder is copied, the original stays), for a legacy Rainstaller package a note saying so; the root configs with their
-  configs and whether they replace (backed up) or add to installed ones; layouts (saved, not applied); fonts the
+  configs and whether they replace (backed up) or add to installed ones; layouts and the apply-included-layout option; fonts the
   installation adds to `@Resources/Fonts` ("not installed system-wide"); what loads afterwards; the Windows plugins
   (never installed) and other warnings. Errors: "This file or folder doesn't contain any Rainmeter skins.", "It
   contains several skin packages (…). Open them one at a time (extract the archive first when it is one).", damaged
@@ -463,6 +473,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): running skins of a replaced root config are stopped first and loaded again afterwards; the fonts of the
   installed root configs are read again before any of their skins loads (skins already on screen are measured again);
   installed fonts are written to the log; the package's skin is loaded with a fade and selected in the Manage window.
+  If applying an included layout, all old skins close before files are replaced. Their post-close settings form
+  `@Backup` using the old variant list, then the shared layout coordinator applies the installed layout without a
+  process restart.
   Notes that only appear during installation are shown in a second alert.
 - Why: —
 - Skin impact: none.

@@ -219,11 +219,16 @@ Skins folder) and `.severalPackages([names])`.
 ### Layouts
 - Windows (Rainmeter): installed to the Layouts folder and optionally applied; "Remove all [Rainmeter] section options
   from layouts installed by a .rmskin" (2.5 history).
-- Mac (Deskset): installed to `Layouts/<name>` with every `[Rainmeter]` option removed; `LoadType=Layout` is reported as
-  `layoutToLoad`. The app cannot apply layouts yet and says so after installing.
-- Why: layouts (window positions of many skins) are not implemented in the app yet.
-- Skin impact: suites that arrange themselves with a layout install, but the user loads the skins by hand.
-- Status: partial
+- Mac (Deskset): installed to `Layouts/<name>` with every `[Rainmeter]` option removed. Selecting Apply included layout
+  first closes all old skins before replacing package files. Close actions run against the old files; their resulting
+  settings are captured for `@Backup` using the old variant list. The installed layout then loads through the same
+  coordinator as `!LoadLayout`. If closing exceeds the total 10-second budget, installation stops without replacing
+  package files and reports the failure. Without that selection the layout is installed only.
+- Why: the application handles the lifecycle without restarting its process; the installer continues to reject load
+  targets outside this package.
+- Skin impact: compatible suites can arrange their skins after installation. See [Layouts](layouts.md) for the native
+  INI format, global-setting differences, macOS wallpaper limits and filesystem-dependent variant ordering.
+- Status: emulated
 
 ### Loading a skin after installation
 - Windows (Rainmeter): the author may choose a skin or a layout to load; the installer never loads "a non-installed
@@ -338,7 +343,7 @@ Skins folder) and `.severalPackages([names])`.
   first `.ini` in Finder order. An empty type is inferred from the command (`.ini` → skin, else layout). Any other type
   (e.g. running a program) is reported and nothing is loaded.
 - Why: judgment call; never run programs from a package.
-- Skin impact: legacy packages load their skin; theme-based ones report the layout the app cannot apply yet.
+- Skin impact: legacy packages can load their skin or apply their converted layout when selected.
 - Status: emulated
 
 ### Themes → Layouts
@@ -349,7 +354,7 @@ Skins folder) and `.severalPackages([names])`.
   name a layout of the same package already uses is skipped with a note. Other files (wallpapers) are kept. Applies to
   every package format.
 - Why: themes are the old layouts.
-- Skin impact: see Layouts (not applied yet).
+- Skin impact: see [Layouts](layouts.md); converted layouts can be applied when selected.
 - Status: emulated
 
 ### Addons

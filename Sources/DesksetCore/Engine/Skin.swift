@@ -247,9 +247,9 @@ public final class Skin {
     public private(set) var zoomFactorOverride: Double? {
         didSet { if zoomFactorOverride != oldValue { noteSnapshotChange() } }
     }
-    /// Effective zoom factor (`zoomFactorOverride` if set, otherwise `currentEnvironment().zoomFactor`, at least 0.25).
+    /// Effective zoom factor (`zoomFactorOverride` if set, otherwise `currentEnvironment().zoomFactor`, between 0.1 and 5).
     public var effectiveZoomFactor: Double {
-        max(zoomFactorOverride ?? currentEnvironment().zoomFactor, 0.25)
+        (zoomFactorOverride ?? currentEnvironment().zoomFactor).clamped(0.1, 5.0)
     }
     /// Effective update interval in milliseconds (`-1` when stopped, e.g. `Update=-1` or `Invisible 0` while hidden).
     public var effectiveUpdate: Int {
@@ -464,6 +464,23 @@ public final class Skin {
     public var resourcesDirectory: URL { rootConfigDirectory.appendingPathComponent("@Resources", isDirectory: true) }
 
     // MARK: Loading
+
+    /// Groups from this config's Rainmeter.ini section join the groups declared by the skin itself.
+    /// The host applies these after loading and before the first update (and thus OnRefreshAction).
+    /// https://docs.rainmeter.net/manual/groups/
+    public func applyConfigGroups(group: String?, dragGroup: String?) {
+        assertOwned()
+        func joined(_ original: [String], _ additional: String?) -> [String] {
+            var result = original
+            for value in OptionValue.list(additional ?? "") where !result.contains(where: {
+                $0.caseInsensitiveCompare(value) == .orderedSame
+            }) { result.append(value) }
+            return result
+        }
+        settings.groups = joined(settings.groups, group)
+        settings.dragGroups = joined(settings.dragGroups, dragGroup).map { $0.lowercased() }
+        noteSnapshotChange()
+    }
 
     public func load() throws {
         assertOwned()
@@ -1280,7 +1297,7 @@ public final class Skin {
         beginWork()
         defer { endWork() }
         guard !closed, factor.isFinite else { return }
-        zoomFactorOverride = factor.clamped(0.25, 10.0)
+        zoomFactorOverride = factor.clamped(0.1, 5.0)
         environmentValid = false
         needsDisplay()
     }
@@ -2460,7 +2477,7 @@ public final class Skin {
                                               args: [forceEnableVisibleMode ? "1" : "0"]))
         case "setzoomfactor":
             if let f = OptionValue.number(valueArg(0, evaluatedValue)), f.isFinite {
-                zoomFactorOverride = f.clamped(0.25, 10.0)
+                zoomFactorOverride = f.clamped(0.1, 5.0)
                 environmentValid = false
                 _ = host?.skin(self, handle: Bang(name: "setzoomfactor",
                                                   args: [NumberFormatting.plain(effectiveZoomFactor, maxDecimals: 10)]))
@@ -2468,7 +2485,7 @@ public final class Skin {
             }
         case "setzoomfactorgroup":
             if let f = OptionValue.number(valueArg(0, evaluatedValue)), f.isFinite {
-                let clamped = f.clamped(0.25, 10.0)
+                let clamped = f.clamped(0.1, 5.0)
                 if isInSkinGroup(arg(1)) {
                     zoomFactorOverride = clamped
                     environmentValid = false
