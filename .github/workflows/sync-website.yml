@@ -1,0 +1,45 @@
+name: Sync website release
+
+# Merge the website's sync-release.yml workflow to main before enabling this notification.
+# Set WEBSITE_SYNC_TOKEN to a fine-grained token with Actions: write access only to
+# jokyme/ideskset-website. The website resolves the latest official release itself.
+#
+# Actions > Sync website release > Run workflow retries the notification without rebuilding.
+# Release events created by GITHUB_TOKEN do not trigger another workflow; publish the draft
+# manually, or explicitly run this workflow after an automated publication.
+
+on:
+  release:
+    types: [published, released]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sync-website-release
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Notify website
+    if: >-
+      github.repository == 'jokyme/Deskset' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.release.draft == false && github.event.release.prerelease == false))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch website release sync
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::Set WEBSITE_SYNC_TOKEN with Actions: write access to jokyme/ideskset-website."
+            exit 1
+          fi
+
+          gh api --method POST \
+            repos/jokyme/ideskset-website/actions/workflows/sync-release.yml/dispatches \
+            --field ref=main
+          echo "Website release sync requested. Check the website repository's Actions run for the result."
