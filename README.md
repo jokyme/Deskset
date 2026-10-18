@@ -24,29 +24,25 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 
 ## Features
 
-- **Runs Rainmeter skins (including 5.0).** `@Include`, `@Inherit`, variables, formulas, section variables,
-  MeterStyles, bangs, mouse actions and file drag-and-drop; every meter (String with inline styles, Image, Bar, Line,
-  Histogram, Roundline, Rotator, Shape, Button, Bitmap, SVG, TextEdit); the measures (CPU, memory, network, disk, time,
-  uptime, battery, Calc, WebParser…); Lua scripts; and Rainmeter's bundled plugins rewritten natively for macOS
-  (AudioLevel, NowPlaying for Music and Spotify, WiFiStatus, InputText, FileInfo, FolderInfo…). Double-click a `.rmskin`
-  to install it.
 - **The Stationery widget collection.** Ships with a matched set of desktop widgets — clocks, calendars, weather, system
   monitors, music controls, vinyl turntable, audio spectrum, photos, notes, to-do lists, timers and folder launchers —
   with light and dark looks, multiple sizes, and English and Chinese labels.
-- **Native macOS styling and sensors.** Swift and AppKit, drawn with Core Graphics and Core Text off the main thread —
-  no web views. Skins can use Liquid Glass (macOS 26; frosted blur on earlier systems) via `MacGlass`, SF Symbols icons
-  (`sf:<name>`), Apple system fonts (`System`, `System Rounded`, `System Mono`, `New York`), colors that follow Light
-  and Dark Mode, and Mac hardware sensors (`Plugin=MacSensors` for temperatures, fan speeds, power and clocks, with
-  automatic mapping for CoreTemp, SpeedFan and MSIAfterburner).
-- **Skin Studio.** A side-by-side code editor and live canvas preview with syntax highlighting, diagnostics, and instant
-  updates as you edit, plus one-click opening in your preferred external code editor.
-- **Weather and sun.** Deskset's own `Plugin=MacWeather` shows forecasts for any place (now, hourly, daily, with
-  SF Symbols icons) from [MET Norway](https://api.met.no/), and `Plugin=MacSun` works out sunrise, sunset and the moon
-  on your Mac. See [Weather](#weather).
-- **Honest compatibility.** Every place where a skin behaves differently than on Windows is documented in
-  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Tested against 390 real skins: no crashes, and 8 skins left with
-  compatibility notes (five use Windows-only plugin DLLs, two name the Winamp player, which has no Mac version, and one
-  reads its video memory size from the Windows registry).
+- **Runs Rainmeter skins (including 5.0).** Double-click a `.rmskin` package, or open a `.zip` or skin folder with
+  Deskset. Meters (including vector SVG graphics and interactive text inputs), measures, formulas, variables, bangs,
+  mouse actions, file drag-and-drop, Lua scripts, and built-in plugins (AudioLevel, NowPlaying for Music and Spotify,
+  WebParser, WiFiStatus, InputText, FileInfo, FolderInfo…) work natively on macOS.
+- **Native and light.** Built natively for macOS with no web views. Each widget is a lightweight desktop panel that can
+  sit on the desktop level, with normal windows, or always on top — with click-through, edge snapping, fading, and saved
+  positions.
+- **macOS styling and hardware sensors.** Widgets can use Liquid Glass on macOS 26 (frosted blur on earlier systems),
+  SF Symbols icons, Apple system fonts, and colors that follow Light and Dark Mode, and can display your Mac's
+  temperatures, fan speeds, power draw, and processor clocks (including automatic mapping for Windows CoreTemp, SpeedFan,
+  and MSI Afterburner skins).
+- **Weather and sun.** Built-in weather forecasts (current, hourly, and daily) powered by [MET Norway](https://api.met.no/),
+  plus offline sunrise, sunset, and moon phase calculation. Search for any city offline, use your Mac's time zone city,
+  or follow your current location.
+- **Skin Studio.** A side-by-side live preview and code editor with syntax highlighting, diagnostics, and instant updates
+  as you edit, plus one-click opening in your preferred external code editor.
 
 ## Requirements
 
@@ -78,35 +74,33 @@ items), open Deskset again from Applications to show the **Manage Skins** window
 - **Edit:** right-click a skin → **Edit Skin…** opens it in the Skin Studio. If you prefer your own code editor, choose
   it in **Settings… ▸ Editor**; the menu then also has **Edit in** that app. The files live in
   `~/Library/Application Support/Deskset/Skins` (**Open Skins Folder** in the menu).
-- **Compatibility:** right-click a skin → **Compatibility Notes** lists what does not work as on Windows.
+- **Compatibility:** right-click a skin → **Compatibility Notes** lists what does not work as on Windows. Full details
+  are in the [Compatibility Guide](docs/COMPATIBILITY.md).
 
 Skins are programs: they can run Lua scripts, fetch web pages and run commands. Only install skins from sources you
 trust (see [SECURITY.md](SECURITY.md)).
 
 ## Weather
 
-Skins can show weather with `Plugin=MacWeather` (a Deskset extension; Windows weather skins read web services that
-have since shut down). Forecasts are **based on data from MET Norway** (the Norwegian Meteorological Institute,
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); place names come from
-[GeoNames](https://www.geonames.org/) (CC BY 4.0) and are looked up on your Mac. Every weather skin's right-click menu
-credits MET Norway and shows when the data was updated.
+Weather forecasts are **based on data from MET Norway** (the Norwegian Meteorological Institute,
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); city names come from [GeoNames](https://www.geonames.org/)
+(CC BY 4.0) and are looked up offline on your Mac. Every weather widget's right-click menu credits MET Norway and shows
+when the data was updated.
 
-- **Privacy:** only a skin running on the desktop with a place set makes requests. MET Norway receives your IP address
-  and the place's coordinates rounded to about 1 km — nothing else. `Location=auto` asks for Location Services once;
-  that location is rounded, kept in memory only and never saved or logged. `Location=timezone` takes the city of your
-  Mac's time zone from the same offline table and asks for nothing. Sun and moon times (`Plugin=MacSun`) never use the
-  network.
+- **Privacy:** only a weather widget running on the desktop makes requests. MET Norway receives your IP address and the
+  place's coordinates rounded to about 1 km — nothing else. Using your current location asks for Location Services once;
+  that location is rounded, kept in memory only, and never saved or logged. Using your Mac's time zone city asks for no
+  permissions. Sun and moon times never use the network.
 - **Turn it off:** `defaults write app.deskset.Deskset WeatherEnabled -bool NO` (undo with
   `defaults delete app.deskset.Deskset WeatherEnabled`).
-- Options, values and details: [docs/compat/weather.md](docs/compat/weather.md).
+- Skin author options and details: [docs/compat/weather.md](docs/compat/weather.md).
 
 ## Limitations
 
 - Windows-only plugins (DLLs) and Windows programs that a skin launches cannot run on the Mac. The skin still loads,
   and its Compatibility Notes list what is missing.
-- Hardware sensors (temperatures, fans, power, clocks) are read without special permissions, but Apple does not
-  document them: values are close approximations, tested on Apple silicon (M4) only so far. Running
-  `/Applications/Deskset.app/Contents/MacOS/Deskset --system-report` in Terminal lists what your Mac reports.
+- Hardware sensor readings (temperatures, fans, power, clocks) require no special permissions, but Apple does not
+  document them: available readings vary by Mac model and are close approximations.
 - Windows fonts are replaced by similar Mac fonts, so text can be a little wider or narrower.
 - Deskset is not notarized by Apple yet (see Install).
 
@@ -125,43 +119,14 @@ run `defaults delete app.deskset.Deskset`.
 
 ## Build from source
 
-You need Xcode 26 (Swift 6.2) or later.
+Requires Xcode 26 (Swift 6.2) or later:
 
 ```bash
-swift build                         # debug build
-swift run DesksetSelfTest           # engine self-tests
-.build/debug/Deskset --self-test    # app self-tests
-bash scripts/build-app.sh           # build/Deskset.app for this Mac
+bash scripts/build-app.sh
 open build/Deskset.app
 ```
 
-Release packages for either architecture:
-
-```bash
-bash scripts/build-app.sh --arch arm64 --package    # dist/Deskset-<version>-arm64.dmg and .zip
-bash scripts/build-app.sh --arch x86_64 --package   # dist/Deskset-<version>-x86_64.dmg and .zip
-```
-
-Pushing a tag such as `v0.1.0` builds both on GitHub Actions and creates a draft release
-([.github/workflows/release.yml](.github/workflows/release.yml)).
-
-Command-line tools for development: `Deskset --render Skin.ini --out skin.png` draws a skin without a window,
-`Deskset --snapshot-ui manage --out ui.png` draws the app's windows, `Deskset --system-report` prints every system
-reading skins can use, and `Deskset --help` lists the rest.
-
-## Project layout
-
-| Path | What |
-|---|---|
-| `Sources/DesksetCore` | The skin engine: INI, `@Include`, variables, formulas, bangs, measures, meters, Lua, `.rmskin` (Foundation only) |
-| `Sources/DesksetDraw` | Core Graphics and Core Text renderers, symbol rasterizing and drawing primitives |
-| `Sources/Deskset` | The app: menu bar, skin windows, runtime, system data, plugins, Skin Studio |
-| `Sources/DesksetSelfTest` | The engine's self-tests (`swift run DesksetSelfTest`) |
-| `Sources/CLua` | Lua 5.1.5 |
-| `DefaultSkins` | The bundled Stationery widget collection shipped with the app |
-| `TestSkins` | Skins used by the tests and for checking features by eye |
-| `Data/Places` | The offline place table of the weather plugins (GeoNames, CC BY 4.0) |
-| `docs` | Compatibility documentation and design notes |
+For development setup, tests, and architecture details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 

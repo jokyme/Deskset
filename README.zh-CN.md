@@ -23,22 +23,19 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天�
 
 ## 功能
 
-- **运行 Rainmeter 皮肤（含 5.0）。** `@Include`、`@Inherit`、变量、公式、节变量、MeterStyle、Bang、鼠标动作与文件拖放；全部
-  meter（含内联样式的 String、Image、Bar、Line、Histogram、Roundline、Rotator、Shape、Button、Bitmap、SVG、TextEdit）；各类
-  measure（CPU、内存、网络、磁盘、时间、开机时长、电池、Calc、WebParser……）；Lua 脚本；Rainmeter 自带插件为 macOS 原生重写
-  （AudioLevel、接 Music / Spotify 的 NowPlaying、WiFiStatus、InputText、FileInfo、FolderInfo……）。双击 `.rmskin` 即可安装。
 - **Stationery 默认小组件套装。** 内置全套精心设计的桌面小组件——时钟、日历、天气、系统监控、音乐控制、黑胶唱片、音频频谱、照片、
   便签、待办、计时器和常用文件夹启动器——提供深浅外观、多种尺寸与中英文界面。
-- **原生 macOS 外观与硬件传感器。** Swift + AppKit，由独立引擎线程通过 Core Graphics 与 Core Text 绘制，不用网页视图。支持
-  macOS 26 的 `MacGlass` 液态玻璃（较早系统为磨砂模糊）、SF Symbols 图标（`sf:<名称>`）、苹果系统字体（`System`、`System Rounded`、
-  `System Mono`、`New York`）、随深浅色模式自动切换的颜色变量，以及免权限读取 Mac 温度、风扇转速、功耗与频率的
-  `Plugin=MacSensors`（自动兼容 CoreTemp、SpeedFan 和 MSIAfterburner 皮肤）。
+- **运行 Rainmeter 皮肤（含 5.0）。** 双击 `.rmskin` 安装包，或直接用 Deskset 打开 `.zip` 压缩包与皮肤文件夹。支持各类组件
+  （含 SVG 矢量图形与可交互文本输入框）、数据源、公式、变量、Bang、鼠标动作、文件拖放、Lua 脚本，以及为 macOS 原生重写的常用插件
+  （AudioLevel、接 Music / Spotify 的 NowPlaying、WebParser、WiFiStatus、InputText、FileInfo、FolderInfo……）。
+- **原生、轻量。** 原生 macOS 应用，不使用网页视图。每个小组件都是轻量透明的桌面面板，可放在桌面层、普通窗口层或始终置顶，支持点击穿透、
+  贴边吸附、淡入淡出和位置记忆。
+- **贴合 macOS 的外观与硬件监控。** 小组件支持 macOS 26 的 Liquid Glass 液态玻璃（较早系统为磨砂模糊）、SF Symbols 系统图标、苹果系统字体，
+  以及随系统深浅色模式自动切换的配色；支持直接显示 Mac 的温度、风扇转速、功耗与处理器频率（自动兼容 Windows 的 CoreTemp、SpeedFan
+  和 MSI Afterburner 皮肤）。
+- **天气与日出日落。** 内置实时、逐小时与多日天气预报（数据来自 [MET Norway](https://api.met.no/)），以及完全离线计算的日出、日落和月相。
+  支持离线搜索全球城市、使用 Mac 所在时区城市，或跟随当前位置。
 - **Skin Studio。** 代码编辑器与实时预览画布并排显示，支持语法高亮、诊断提示与边改边看，也可一键调用外部代码编辑器打开。
-- **天气与日出日落。** Deskset 自己的 `Plugin=MacWeather` 显示任意地点的天气预报（当前、逐小时、逐日，配 SF Symbols 图标），
-  数据来自 [MET Norway](https://api.met.no/)；`Plugin=MacSun` 在本机计算日出、日落和月相。见[天气](#天气)。
-- **如实记录兼容性。** 所有与 Windows 表现不一致的地方都写在 [docs/COMPATIBILITY.zh-CN.md](docs/COMPATIBILITY.zh-CN.md)。
-  用 390 个真实皮肤测试：没有崩溃，只剩 8 个皮肤有兼容性提示（5 个用了只有 Windows 版的插件 DLL，2 个指定了没有 Mac 版的
-  Winamp 播放器，1 个从 Windows 注册表读取显存大小）。
 
 ## 系统要求
 
@@ -65,27 +62,26 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 - **管理：** **Manage Skins…**（⇧⌘,）列出所有皮肤，可以载入、卸载，调整位置、层级和透明度。
 - **编辑：** 右键皮肤 → **Edit Skin…**，在 Skin Studio 里打开。想用自己的代码编辑器，在 **Settings… ▸ Editor** 里选择，
   右键菜单会多出 **Edit in** 该 App。皮肤文件放在 `~/Library/Application Support/Deskset/Skins`（菜单里的 **Open Skins Folder**）。
-- **兼容性：** 右键皮肤 → **Compatibility Notes** 列出与 Windows 不同的地方。
+- **兼容性：** 右键皮肤 → **Compatibility Notes** 列出与 Windows 不同的地方。完整说明见[兼容性文档](docs/COMPATIBILITY.zh-CN.md)。
 
 皮肤本质上是程序：可以运行 Lua 脚本、抓取网页、执行命令。只安装来源可信的皮肤（见 [SECURITY.md](SECURITY.md)）。
 
 ## 天气
 
-皮肤可以用 `Plugin=MacWeather` 显示天气（Deskset 扩展；Windows 天气皮肤读取的网络服务早已停止）。天气预报**基于 MET Norway
-（挪威气象研究所）的数据**，采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可；地名来自
-[GeoNames](https://www.geonames.org/)（CC BY 4.0），在本机查找。每个天气皮肤的右键菜单都会注明 MET Norway 并显示数据的更新时间。
+天气预报**基于 MET Norway（挪威气象研究所）的数据**，采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可；
+城市名来自 [GeoNames](https://www.geonames.org/)（CC BY 4.0），在本机离线查找。每个天气小组件的右键菜单都会注明 MET Norway
+并显示数据的更新时间。
 
-- **隐私：** 只有在桌面上运行、并且设置了地点的皮肤才会发出请求。MET Norway 只会收到你的 IP 地址和取整到约 1 公里的地点坐标。
-  `Location=auto` 会请求一次定位服务；得到的位置会先取整，只保存在内存中，从不写入磁盘或日志。`Location=timezone` 从同一张
-  离线表中取这台 Mac 所在时区对应的城市，不请求任何权限。日出日落和月相（`Plugin=MacSun`）从不联网。
-- **关闭：** `defaults write app.deskset.Deskset WeatherEnabled -bool NO`（恢复：`defaults delete app.deskset.Deskset WeatherEnabled`）。
-- 选项、数值和细节见 [docs/compat/weather.md](docs/compat/weather.md)（英文）。
+- **隐私：** 只有在桌面上运行的天气小组件才会发出请求。MET Norway 只会收到你的 IP 地址和取整到约 1 公里的地点坐标。
+  使用当前位置时会请求一次定位服务，位置取整后只保存在内存中，从不写入磁盘或日志；使用 Mac 所在时区城市则不请求任何权限。
+  日出日落和月相计算完全离线，从不联网。
+- **关闭联网天气：** `defaults write app.deskset.Deskset WeatherEnabled -bool NO`（恢复：`defaults delete app.deskset.Deskset WeatherEnabled`）。
+- 皮肤编写选项与细节见 [docs/compat/weather.md](docs/compat/weather.md)（英文）。
 
 ## 已知限制
 
 - 只有 Windows 版的插件（DLL）和皮肤要启动的 Windows 程序无法在 Mac 上运行。皮肤照样能载入，Compatibility Notes 会列出缺了什么。
-- 硬件传感器（温度、风扇、功耗、频率）无需特殊权限即可读取，但苹果没有公开文档：数值是近似值，目前只在 Apple 芯片（M4）上
-  测试过。在“终端”里运行 `/Applications/Deskset.app/Contents/MacOS/Deskset --system-report` 可列出你的 Mac 报告的所有传感器。
+- 硬件传感器（温度、风扇、功耗、频率）无需特殊权限即可读取，但苹果没有公开文档：可显示的读数因 Mac 型号而异，且为近似值。
 - Windows 字体会换成相近的 Mac 字体，文字宽度可能略有差别。
 - Deskset 暂未经过 Apple 公证（见「安装」）。
 
@@ -103,42 +99,14 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 
 ## 从源码构建
 
-需要 Xcode 26（Swift 6.2）或更新版本。
+需要 Xcode 26（Swift 6.2）或更新版本：
 
 ```bash
-swift build                         # 调试构建
-swift run DesksetSelfTest           # 引擎自测
-.build/debug/Deskset --self-test    # App 自测
-bash scripts/build-app.sh           # 为本机架构生成 build/Deskset.app
+bash scripts/build-app.sh
 open build/Deskset.app
 ```
 
-生成两种架构的安装包：
-
-```bash
-bash scripts/build-app.sh --arch arm64 --package    # dist/Deskset-<版本>-arm64.dmg 和 .zip
-bash scripts/build-app.sh --arch x86_64 --package   # dist/Deskset-<版本>-x86_64.dmg 和 .zip
-```
-
-推送 `v0.2.0` 这样的标签，GitHub Actions 会构建两种架构并创建一个 Release 草稿（见
-[.github/workflows/release.yml](.github/workflows/release.yml)）。
-
-开发用命令行工具：`Deskset --render Skin.ini --out skin.png` 无需窗口直接离屏渲染皮肤，`Deskset --snapshot-ui manage --out ui.png`
-渲染应用窗口快照，`Deskset --system-report` 打印皮肤可用的全部系统与传感器读数，`Deskset --help` 列出其余选项。
-
-## 项目结构
-
-| 路径 | 说明 |
-|---|---|
-| `Sources/DesksetCore` | 皮肤引擎：INI、`@Include`、变量、公式、Bang、Measure、Meter、Lua、`.rmskin`（仅依赖 Foundation） |
-| `Sources/DesksetDraw` | Core Graphics 与 Core Text 渲染器、SF Symbols 光栅化与绘制原语 |
-| `Sources/Deskset` | 应用程序：菜单栏、皮肤窗口、运行时、系统数据采集、插件、Skin Studio |
-| `Sources/DesksetSelfTest` | 引擎自测程序（`swift run DesksetSelfTest`） |
-| `Sources/CLua` | Lua 5.1.5 |
-| `DefaultSkins` | 随应用分发的 Stationery 默认小组件套装 |
-| `TestSkins` | 自测与视觉验证使用的回归测试皮肤 |
-| `Data/Places` | 天气插件的离线城市检索表（GeoNames，CC BY 4.0） |
-| `docs` | 兼容性文档与设计说明 |
+开发调试、自测与项目结构说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 参与贡献
 
