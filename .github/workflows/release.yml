@@ -39,13 +39,22 @@ jobs:
           - arch: x86_64
             runner: macos-26-intel
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    timeout-minutes: 30
     env:
+      CI: "1"
       RAW_VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
       HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-release-${{ matrix.arch }}-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            spm-release-${{ matrix.arch }}-
 
       - name: Version
         id: version
@@ -53,12 +62,6 @@ jobs:
           VERSION="${RAW_VERSION#v}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "Bad version: $RAW_VERSION"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Test
-        run: |
-          swift build
-          swift run DesksetSelfTest
-          .build/debug/Deskset --self-test
 
       - name: Import the signing certificate
         if: env.HAS_SIGNING == 'true'
@@ -83,6 +86,10 @@ jobs:
         run: |
           bash scripts/build-app.sh --arch "${{ matrix.arch }}" --version "${{ steps.version.outputs.version }}" \
             --build-number "${{ github.run_number }}"
+
+      - name: Smoke test the app
+        run: |
+          "build/${{ matrix.arch }}/Deskset.app/Contents/MacOS/Deskset" --self-test "Studio2: window"
 
       - name: Notarize the app
         if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true'

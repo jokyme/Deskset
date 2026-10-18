@@ -255,7 +255,7 @@ enum SkinRuntimeSelfTests {
             t.check(skin != nil, "the closed skin stays while its runtime does")
             runtime = nil
             // The weak reference is cleared when the skin starts to go; its measures go right after, on its thread.
-            t.check(AppSelfTest.spin(timeout: 30) { skin == nil && !released.threads.current.isEmpty }, "then goes")
+            t.check(AppSelfTest.spin(timeout: 30) { !released.threads.current.isEmpty && skin == nil }, "then goes")
             t.equal(released.threads.current, [true], "released on the skin's thread")
 
             // On the main executor, through the app: unloaded, the skin goes with its window controller.
