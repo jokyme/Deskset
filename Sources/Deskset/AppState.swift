@@ -1,6 +1,10 @@
 import DesksetCore
 import Foundation
 
+extension Notification.Name {
+    static let desksetGlobalSettingsChanged = Notification.Name("DesksetGlobalSettingsChanged")
+}
+
 /// Per-config window settings (Rainmeter keeps these in Rainmeter.ini; see
 /// https://docs.rainmeter.net/manual/settings/skin-sections/).
 struct SkinState: Codable, Equatable {
@@ -390,6 +394,28 @@ final class AppState {
         return LayoutStateCodec.configInteger(value) != 0
     }
 
+    var disableDragging: Bool { rainmeterFlag("DisableDragging") }
+    var fileLoggingEnabled: Bool { rainmeterFlag("Logging") }
+
+    func setDisableDragging(_ enabled: Bool) { setRainmeterFlag("DisableDragging", enabled: enabled) }
+    func setFileLoggingEnabled(_ enabled: Bool) { setRainmeterFlag("Logging", enabled: enabled) }
+
+    private func rainmeterFlag(_ name: String) -> Bool {
+        let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare(name) == .orderedSame }
+        return LayoutStateCodec.configInteger(key.flatMap { data.rainmeterOptions[$0] }) != 0
+    }
+
+    /// Uses the existing INI key, retaining its spelling and unrelated options.
+    private func setRainmeterFlag(_ name: String, enabled: Bool) {
+        let previous = data.rainmeterOptions
+        let key = previous.keys.sorted().first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+        data.rainmeterOptions = previous.filter { $0.key == key || $0.key.caseInsensitiveCompare(name) != .orderedSame }
+        data.rainmeterOptions[key] = enabled ? "1" : "0"
+        guard previous != data.rainmeterOptions else { return }
+        scheduleSave()
+        NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
+    }
+
     /// Changes only supplied values, preserving the original key spelling and other Rainmeter settings.
     func setDefaultZoom(percent: Int?, force: Bool?) {
         let previous = data.rainmeterOptions
@@ -465,12 +491,16 @@ final class AppState {
 
     /// Replaces layout settings and passthrough INI data. Editor, update and installation preferences remain local.
     func replaceLayout(_ layout: LayoutState) {
+        let previousFlags = (disableDragging, fileLoggingEnabled)
         data.skins = layout.skins
         data.skinOrder = layout.order
         data.rainmeterOptions = layout.rainmeterOptions
         data.trayMeasureOptions = layout.trayMeasureOptions
         data.hasLoadedLayout = true
         scheduleSave()
+        if previousFlags != (disableDragging, fileLoggingEnabled) {
+            NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
+        }
     }
 
     var orderedConfigs: [(config: String, state: SkinState)] { data.orderedConfigs }

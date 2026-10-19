@@ -202,8 +202,10 @@ enum LayoutStoreSelfTests {
             t.equal(merged.trayMeasureOptions, target.trayMeasureOptions)
 
             let emptyPrevious = LayoutState(skins: [:], order: [], rainmeterOptions: ["Language": "", "ConfigEditor": ""])
-            t.equal(target.preservingSettings(from: emptyPrevious).rainmeterOptions, target.rainmeterOptions,
-                    "empty or absent previous settings do not replace target settings")
+            var withoutLogging = target.rainmeterOptions
+            withoutLogging.removeValue(forKey: "logging")
+            t.equal(target.preservingSettings(from: emptyPrevious).rainmeterOptions, withoutLogging,
+                    "absent Logging retains the local default; other absent settings retain existing merge rules")
             t.equal(target.rainmeterOptions["language"], "target-Language", "backup decoding bypasses the ordinary merge")
             let absentTray = LayoutState(skins: [:], order: []).preservingSettings(from: previous)
             t.equal(absentTray.trayMeasureOptions, nil, "an absent target TrayMeasure is not inherited")

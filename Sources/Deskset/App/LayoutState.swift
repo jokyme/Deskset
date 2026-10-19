@@ -18,10 +18,13 @@ struct LayoutState {
         var result = self
         var target = LayoutStateCodec.section("Rainmeter", options: rainmeterOptions)
         let old = LayoutStateCodec.section("Rainmeter", options: previous.rainmeterOptions)
-        for key in ["SkinPath", "ConfigEditor", "Logging", "DisableVersionCheck", "DisableAutoUpdate", "Language",
+        for key in ["SkinPath", "ConfigEditor", "DisableVersionCheck", "DisableAutoUpdate", "Language",
                     "NormalStayDesktop", "SelectedColor", "HardwareAcceleration", "DefaultZoom", "ForceDefaultZoom"] {
             if let value = old[key], !value.isEmpty { target.setValue(value, forKey: key) }
         }
+        // Logging remains local even when its key is absent and its effective value is the default 0.
+        if let logging = old["Logging"] { target.setValue(logging, forKey: "Logging") }
+        else { target.removeValue(forKey: "Logging") }
         for key in ["TrayExecuteM", "TrayExecuteR", "TrayExecuteDM", "TrayExecuteDR"] {
             if (target[key] ?? "").isEmpty, let value = old[key], !value.isEmpty {
                 target.setValue(value, forKey: key)

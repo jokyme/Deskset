@@ -12,13 +12,23 @@ final class SkinSelectionController {
     private var generation = 0
     private var zoomGenerations: [String: Int] = [:]
     private var menuTracking = 0
+    private var globalSettingsObserver: NSObjectProtocol?
 
     init(app: AppController) {
         self.app = app
         source = app.presentsWindows ? SystemPointerEventSource() : nil
+        globalSettingsObserver = NotificationCenter.default.addObserver(forName: .desksetGlobalSettingsChanged,
+            object: app.state, queue: .main) { [weak self] _ in
+                guard let self, self.app.state.disableDragging else { return }
+                self.endDrag()
+                for controller in self.app.sortedControllers { controller.view.cancelWindowDragForGlobalSetting() }
+            }
     }
 
-    deinit { if let monitor { source?.stopWatching(monitor) } }
+    deinit {
+        if let monitor { source?.stopWatching(monitor) }
+        if let globalSettingsObserver { NotificationCenter.default.removeObserver(globalSettingsObserver) }
+    }
 
     var selectedConfigs: [String] { controllers.map(\.config) }
     private var controllers: [SkinWindowController] {
@@ -29,12 +39,7 @@ final class SkinSelectionController {
         flags.contains([.control, .option])
     }
 
-    private var draggingDisabled: Bool {
-        let raw = app.state.data.rainmeterOptions.first {
-            $0.key.caseInsensitiveCompare("DisableDragging") == .orderedSame
-        }?.value
-        return raw.flatMap(Int.init).map { $0 != 0 } ?? false
-    }
+    private var draggingDisabled: Bool { app.state.disableDragging }
 
     func toggle(_ c: SkinWindowController) {
         guard !c.isStopped else { return }
@@ -211,6 +216,7 @@ final class SkinSelectionController {
     }
 
     func drag(to screen: NSPoint, flags: NSEvent.ModifierFlags) {
+        guard !draggingDisabled else { endDrag(); return }
         guard var current = gesture, !current.source.isStopped,
               let primary = current.entries.first(where: { $0.controller === current.source }) else { return }
         let dx = screen.x - current.start.x, dy = screen.y - current.start.y

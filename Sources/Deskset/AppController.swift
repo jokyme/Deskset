@@ -75,6 +75,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Ctrl–Option selection and the selected skins' shared move / zoom gesture.
     private(set) lazy var skinSelection = SkinSelectionController(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var fileLoggingObserver: NSObjectProtocol?
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
     private var fontsGenerationSeen = Fonts.generation
@@ -132,6 +133,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         super.init()
     }
 
+    deinit {
+        if let fileLoggingObserver { NotificationCenter.default.removeObserver(fileLoggingObserver) }
+    }
+
     /// The engine thread, made the first time a skin needs it. Main thread.
     private func sharedEngineThread() -> SkinThreadExecutor {
         if let engineThread { return engineThread }
@@ -157,6 +162,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var pendingLayoutCommands: [(LayoutCommandRequest, (Bool) -> Void)] = []
 
     // MARK: Lifecycle
+
+    /// Applied only once this process owns the desktop; constructing an app fixture must not change the logger.
+    func applyFileLoggingPreference() {
+        guard !isTerminating else { return }
+        if fileLoggingObserver == nil {
+            fileLoggingObserver = NotificationCenter.default.addObserver(
+                forName: .desksetGlobalSettingsChanged, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let self, let changed = notification.object as? AppState, changed === self.state else { return }
+                self.applyFileLoggingPreference()
+            }
+        }
+        Log.fileLoggingEnabled = state.fileLoggingEnabled
+        Log.rotateIfNeeded()
+        DebugWindowController.window(for: self)?.refreshLogFileMenu()
+    }
+
+    func setFileLoggingEnabled(_ enabled: Bool) {
+        state.setFileLoggingEnabled(enabled)
+        state.saveNow()
+        applyFileLoggingPreference()
+    }
+
+    /// Deletion stops logging even when closing or removing the file fails.
+    func deleteLogFile(removeFile: ((URL) throws -> Void)? = nil) throws {
+        state.setFileLoggingEnabled(false)
+        state.saveNow()
+        defer { DebugWindowController.window(for: self)?.refreshLogFileMenu() }
+        if let removeFile { try Log.deleteFile(removeFile: removeFile) }
+        else { try Log.deleteFile() }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if presentsWindows, AppInstallation.handleLaunchIfNeeded() {
@@ -195,8 +231,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 exit(1)
             }
         }
+        if presentsWindows { applyFileLoggingPreference() }
         Paths.ensureDirectories()
-        Log.rotateIfNeeded()
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
                   + ProcessInfo.processInfo.operatingSystemVersionString
                   + "; legacy ANSI skins use code page \(TextDecoding.ansiCodePage)")
@@ -400,6 +436,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// because it was running when the app quit). Returns the skins that had not closed in time.
     @discardableResult
     func stopAllForTermination(budget: TimeInterval = AppController.terminationBudget) -> [String] {
+        if let fileLoggingObserver {
+            NotificationCenter.default.removeObserver(fileLoggingObserver)
+            self.fileLoggingObserver = nil
+        }
         skinSelection.clear()
         isTerminating = true
         let deadline = Date().addingTimeInterval(budget)

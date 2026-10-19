@@ -166,7 +166,7 @@ effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, ca
 effect.terminate	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
 effect.workspace	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
-event.notification	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
+event.notification	Sources/Deskset/AppController.swift	2	wake, appearance, screen and locale changes reach every skin; local AppState changes update primary-process file logging
 event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
 mono.systemUptime	Sources/Deskset/AppController.swift	1	config lookup rescans at most every 3 s
 random.pid	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
@@ -326,6 +326,7 @@ timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
 event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
+event.notification	Sources/Deskset/SkinSelectionController.swift	1	local AppState changes end an in-progress mouse drag when DisableDragging is enabled
 event.pointerState	Sources/Deskset/SkinSelectionController.swift	1	injectable modifierFlags closure reads the selection chord when keyboard focus changes; no global keyboard monitor
 
 effect.workspace	Sources/Deskset/SkinWindowController.swift	2	a skin opens a URL or file: a host request, recorded by RecordingSkinHost in sandboxed runs
