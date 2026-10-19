@@ -1171,6 +1171,22 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   keeps them visible. Layout anchors now remain effective when the skin changes size.
 - **Status:** emulated / partial (`!SetAnchor`)
 
+#### Position controls and Active skins
+- **Windows:** Position provides Display monitor and From right/bottom and X/Y percentage switches. Manage has a
+  Display monitor control and an Active skins list. Selecting a monitor writes `@N` and disables AutoSelectScreen;
+  Use default removes `@N` (<https://docs.rainmeter.net/manual/user-interface/manage/>,
+  <https://docs.rainmeter.net/manual/user-interface/context-menus/>).
+- **Mac:** these entry points are available. Display monitor lists the default, virtual desktop and connected
+  displays, plus automatic selection. Mode switches retain the current window position and its anchors/zoom;
+  monitor choices transfer the screen-relative offset with the existing window constraints. Formulas survive a
+  monitor-directive edit. With SavePosition off, representation edits do not commit a session-only drag.
+  Manage's Display monitor control applies only to its selected active variant; X/Y remain actual desktop point coordinates.
+  Active skins lists loaded config/INI paths, is disabled when empty, and only selects and scrolls to the file.
+- **Why:** uses the existing coordinate and persistence paths, without new layout keys.
+- **Skin impact:** display and relative-coordinate controls no longer require hand-editing a layout.
+- **Status:** partial. Exact Windows submenu labels/order, menu conversion/rounding, SavePosition-off persistence,
+  cross-screen KeepOnScreen timing and active-list sorting remain unverified; current verification is on macOS.
+
 #### Display changes (`OnDisplayMetricsChange`)
 - **Windows:** `[Rainmeter] OnDisplayMetricsChange` is an action; since Rainmeter 5.0 it runs when any display's layout,
   resolution or scaling changes.

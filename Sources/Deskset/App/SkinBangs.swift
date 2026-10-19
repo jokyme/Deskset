@@ -264,6 +264,13 @@ enum WindowPosition {
         var percent = false
         var fromEnd = false
         var screen: Int?
+
+        /// A numeric template for changing the coordinate mode before `moved` preserves the current position.
+        func expression(endLetter: Character) -> String {
+            NumberFormatting.plain(value.isFinite ? value : 0, maxDecimals: 10)
+                + (percent ? "%" : "") + (fromEnd ? String(endLetter) : "")
+                + (screen.map { "@\($0)" } ?? "")
+        }
     }
 
     static func parse(_ raw: String, endLetter: Character) -> Coordinate? {

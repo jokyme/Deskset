@@ -114,7 +114,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         Double(isZoomForced ? app.state.defaultZoomPercent : zoomOverridePercent ?? app.state.defaultZoomPercent) / 100
     }
     /// The zoom already applied to the window's frame, independent of pending settings messages.
-    private var windowZoomFactor: Double = 1
+    private(set) var windowZoomFactor: Double = 1
     /// A selection drag supplies its desired top-left point in AppKit screen coordinates.
     var zoomPositionOverride: NSPoint?
     private var selectedFlagOverrides: [SkinWindowFlag: Bool] = [:]
@@ -774,17 +774,17 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     /// After a drag or !Move.
-    func windowMoved() {
+    func windowMoved(preservingPositionExpressions: Bool = false) {
         var frame = window.frame
         if windowSettings.effectiveKeepOnScreen {
             frame = keptOnScreen(frame)
             window.setFrameOrigin(frame.origin)
         }
-        saveFrame(frame)
+        saveFrame(frame, preservingPositionExpressions: preservingPositionExpressions)
         publishFacts()
     }
 
-    private func saveFrame(_ frame: CGRect, force: Bool = false) {
+    private func saveFrame(_ frame: CGRect, force: Bool = false, preservingPositionExpressions: Bool = false) {
         let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
         app.sessionPositions[config.lowercased()] = (p.x, p.y)
         // SavePosition: "changes to the window position will be saved". A new skin's first position is always
@@ -798,8 +798,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             $0.file = file
             $0.x = p.x
             $0.y = p.y
-            $0.windowX = position.x
-            $0.windowY = position.y
+            if !preservingPositionExpressions {
+                $0.windowX = position.x
+                $0.windowY = position.y
+            }
         }
     }
 
@@ -809,13 +811,13 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         return WindowGeometry.snapped(frame, screens: screens, others: others)
     }
 
-    func moveTo(x: Double, y: Double) {
+    func moveTo(x: Double, y: Double, preservingPositionExpressions: Bool = false) {
         guard x.isFinite, y.isFinite else { return }
         let size = window.frame.size
         let frame = WindowGeometry.frame(topLeftX: min(max(x, -1e6), 1e6), y: min(max(y, -1e6), 1e6), size: size,
                                          primaryHeight: primaryHeight)
         window.setFrameOrigin(frame.origin)
-        windowMoved()
+        windowMoved(preservingPositionExpressions: preservingPositionExpressions)
     }
 
     /// Top-left of the window in skin (top-left origin) coordinates.

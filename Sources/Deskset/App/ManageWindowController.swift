@@ -69,6 +69,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var layoutDeletionConfirmationForTesting: ((String) -> Bool)?
 
     private let outline = NSOutlineView()
+    private let activeSkinsPopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let detailStack = NSStackView()
     private let emptyLabel = NSTextField(labelWithString: "Select a skin to see its details.")
 
@@ -85,6 +86,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let settingsGrid = NSGridView()
     private let settingsNote = NSTextField(labelWithString: "Load the skin to change its settings.")
     private let positionPopup = NSPopUpButton()
+    private let displayMonitorPopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let transparencySlider = NSSlider(value: 0, minValue: 0, maxValue: 90, target: nil, action: nil)
     private let transparencyLabel = NSTextField(labelWithString: "0%")
     private let hoverPopup = NSPopUpButton()
@@ -322,11 +324,21 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         left.material = .sidebar
         left.blendingMode = .behindWindow
         left.addSubview(outlineScroll)
+        activeSkinsPopup.setAccessibilityLabel("Active skins")
+        activeSkinsPopup.toolTip = "Select a loaded skin in Manage."
+        activeSkinsPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        activeSkinsPopup.translatesAutoresizingMaskIntoConstraints = false
+        activeSkinsPopup.menu?.delegate = self
+        activeSkinsPopup.menu?.autoenablesItems = false
+        left.addSubview(activeSkinsPopup)
         NSLayoutConstraint.activate([
-            outlineScroll.topAnchor.constraint(equalTo: left.topAnchor),
+            activeSkinsPopup.topAnchor.constraint(equalTo: left.topAnchor, constant: 10),
+            outlineScroll.topAnchor.constraint(equalTo: activeSkinsPopup.bottomAnchor, constant: 8),
             outlineScroll.leadingAnchor.constraint(equalTo: left.leadingAnchor),
             outlineScroll.trailingAnchor.constraint(equalTo: left.trailingAnchor),
             outlineScroll.bottomAnchor.constraint(equalTo: left.bottomAnchor),
+            activeSkinsPopup.leadingAnchor.constraint(equalTo: left.leadingAnchor, constant: 10),
+            activeSkinsPopup.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -10),
         ])
         split.addArrangedSubview(left)
         split.addArrangedSubview(detailScroll)
@@ -707,6 +719,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         positionPopup.target = self
         positionPopup.action = #selector(settingsChanged(_:))
+        displayMonitorPopup.setAccessibilityLabel("Display monitor")
+        displayMonitorPopup.toolTip = "Select the display monitor for this skin."
+        displayMonitorPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        displayMonitorPopup.menu?.delegate = self
+        displayMonitorPopup.menu?.autoenablesItems = false
+        displayMonitorPopup.addItem(withTitle: "Display monitor")
         for mode in SkinVisibility.HoverMode.allCases {
             hoverPopup.addItem(withTitle: mode.title)
             hoverPopup.lastItem?.tag = mode.rawValue
@@ -756,7 +774,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         settingsGrid.addRow(with: [formLabel("Position:"), row([positionPopup])])
         settingsGrid.addRow(with: [formLabel("Transparency:"), row([transparencySlider, transparencyLabel])])
         settingsGrid.addRow(with: [formLabel("On hover:"), row([hoverPopup, formLabel("Fade duration:"), fadeField, ms])])
-        settingsGrid.addRow(with: [formLabel("Coordinates:"), row([formLabel("X"), xField, formLabel("Y"), yField])])
+        settingsGrid.addRow(with: [formLabel("Coordinates:"),
+                                  row([formLabel("X"), xField, formLabel("Y"), yField, displayMonitorPopup])])
         coordinatesHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         coordinatesHint.textColor = .secondaryLabelColor
         coordinatesHint.preferredMaxLayoutWidth = 340
@@ -818,6 +837,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// Rebuilds the outline when the library changed and refreshes the details.
     func reload() {
         reloadLayouts()
+        updateActiveSkinsMenu()
         let library = app.library
         let names = library.map { "\($0.name)|\($0.files.joined(separator: "|"))" }
         if names != libraryNames {
@@ -843,6 +863,37 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     private func allNodes(_ node: ManageModel.Node) -> [ManageModel.Node] {
         [node] + node.children.flatMap(allNodes)
+    }
+
+    private func updateActiveSkinsMenu() {
+        guard let menu = activeSkinsPopup.menu else { return }
+        menu.removeAllItems()
+        menu.addItem(withTitle: "Active skins", action: nil, keyEquivalent: "")
+        for controller in app.controllersByName.filter({ !$0.isStopped }) {
+            let item = NSMenuItem(title: "\(controller.config)\\\(controller.file)",
+                                  action: #selector(activeSkinSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = [controller.config, controller.file]
+            menu.addItem(item)
+        }
+        activeSkinsPopup.isEnabled = menu.numberOfItems > 1
+    }
+
+    private func updateDisplayMonitorMenu() {
+        guard let menu = displayMonitorPopup.menu else { return }
+        menu.removeAllItems()
+        menu.addItem(withTitle: "Display monitor", action: nil, keyEquivalent: "")
+        guard let target = detailTarget(), target.loaded, let controller = target.running,
+              controller.isStarted, !controller.isStopped else {
+            displayMonitorPopup.isEnabled = false
+            return
+        }
+        displayMonitorPopup.isEnabled = true
+        let choices = app.displayMonitorMenu(for: controller, appliesToSelection: false)
+        for item in choices.items {
+            choices.removeItem(item)
+            menu.addItem(item)
+        }
     }
 
     /// Selects a config (and file) in the outline.
@@ -905,12 +956,14 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             : "Available when Deskset runs as an installed app."
 
         guard let target = detailTarget() else {
+            updateDisplayMonitorMenu()
             emptyLabel.isHidden = false
             skinSections.forEach { $0.isHidden = true }
             updateHiddenState()
             return
         }
         let (config, file, running, loaded) = target
+        updateDisplayMonitorMenu()
         emptyLabel.isHidden = true
         skinSections.forEach { $0.isHidden = false }
 
@@ -1128,6 +1181,17 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     }
 
     // MARK: Actions
+
+    @objc private func activeSkinSelected(_ sender: NSMenuItem) {
+        guard let values = sender.representedObject as? [String], values.count == 2 else { return }
+        app.discoverSkins()
+        guard let controller = app.controller(for: values[0]), !controller.isStopped,
+              controller.file.caseInsensitiveCompare(values[1]) == .orderedSame,
+              app.config(named: values[0])?.files.contains(where: {
+                  $0.caseInsensitiveCompare(values[1]) == .orderedSame
+              }) == true else { return }
+        select(config: controller.config, file: controller.file)
+    }
 
     private func selectedFileTarget() -> (config: SkinConfig, file: String)? {
         guard let selection, let config = app.config(named: selection.config),
@@ -1354,6 +1418,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private var testContextNode: ManageModel.Node?
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === activeSkinsPopup.menu {
+            app.discoverSkins()
+            updateActiveSkinsMenu()
+            return
+        }
+        if menu === displayMonitorPopup.menu {
+            updateDisplayMonitorMenu()
+            return
+        }
         let row = outline.clickedRow
         let clickedNode = testContextNode ?? (row >= 0 ? outline.item(atRow: row) as? ManageModel.Node : nil)
         app.discoverSkins()
@@ -1538,6 +1611,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testClickThroughBox: NSButton { clickThroughBox }
     var testKeepOnScreenBox: NSButton { keepOnScreenBox }
     var testFavoriteBox: NSButton { favoriteBox }
+    var testActiveSkinsPopup: NSPopUpButton { activeSkinsPopup }
+    var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
     var testTransparencySlider: NSSlider { transparencySlider }
     var testStatus: String { statusLabel.stringValue }
     /// The hidden notice's title and text when it shows, nil when it does not.

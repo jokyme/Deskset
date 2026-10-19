@@ -208,6 +208,26 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   them visible.
 - Status: emulated
 
+### Position menus and active-skin selection
+- Windows (Rainmeter): Settings → Position includes Display monitor, the five window levels, From right, From bottom,
+  X as percentage and Y as percentage. Manage also provides Display monitor and an Active skins pull-down
+  (<https://docs.rainmeter.net/manual/user-interface/context-menus/>,
+  <https://docs.rainmeter.net/manual/user-interface/manage/>). Selecting a monitor writes `@N` and disables
+  AutoSelectScreen; Use default removes the directive. `@0` denotes the virtual desktop.
+- Mac (Deskset): the same documented entry points are available. Display monitor lists the default, virtual desktop
+  and connected monitors, plus Auto-select based on window position. Coordinate-mode switches re-encode the position
+  without moving the window, preserving anchors and zoom. A monitor choice transfers the live screen-relative offset
+  to that display and applies the existing KeepOnScreen rules. Display directives retain formulas. With SavePosition
+  off, representation edits preserve the saved location instead of committing an unsaved drag. Group menus apply
+  common choices to selected skins; Manage's Display monitor control edits only its selected active variant. Its X/Y fields remain actual
+  desktop coordinates in points. Its Active skins list contains loaded config/INI paths, is disabled when empty,
+  and only selects and scrolls to the file; it does not load, show or raise the skin. Stale choices are ignored.
+- Why: reuses the existing coordinate parser, window constraints and layout/state persistence; no new INI keys.
+- Skin impact: display and relative-coordinate settings are accessible without editing a layout by hand.
+- Status: partial. macOS verification covers the controls and coordinate conversions. Exact Windows monitor-list
+  labels/order, coordinate conversion and rounding during menu actions, SavePosition-off persistence details,
+  cross-screen KeepOnScreen timing and Active skins sorting remain unverified.
+
 ### Display changes
 - Windows (Rainmeter): not described in the manual beyond KeepOnScreen and the monitor variables.
 - Mac (Deskset): when displays are connected, disconnected or rearranged, skins with a saved position are placed from it
