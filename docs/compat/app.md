@@ -70,7 +70,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): `Zoom` is an integer percentage from 10 to 500. `!SetZoomFactor Factor|Default [Config|*]`
   and `!SetZoomFactorGroup Factor|Default Group` set a skin or group; `DefaultZoom` and `ForceDefaultZoom` are global settings.
 - Mac (Deskset): Manage's Skins page has a Zoom field and stepper; Settings → General has Default zoom and Force.
-  Steps are one percentage point, or ten with Control. The skin menu's Settings → Zoom offers Default and
+  Steps are one percentage point, or ten with Control. The skin menu's Zoom offers Default and
   80/90/100/110/120/130/140/150%. With no overrides, only Default is checked. Otherwise a common effective percentage
   is checked, inserting a custom value in order as a non-action item; different effective values leave all items unchecked.
   Missing `Zoom` follows the global default; explicit `Zoom=100` remains an override. Default removes the override.
@@ -315,7 +315,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Skin context menu
 - Windows (Rainmeter): skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through,
   Keep on screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions.
-- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Settings → Zoom, Position, Transparency,
+- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Zoom, Position, Transparency,
   On Hover, Draggable, Click Through,
   Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes (n)" when the skin has any, Manage Skin…, Edit
   Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen in Settings ▸ Editor, Refresh Skin, Open Skin

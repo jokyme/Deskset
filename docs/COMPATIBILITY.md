@@ -1081,7 +1081,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** the `Default…` options work the same, with state.json in place of Rainmeter.ini; positions accept the WindowX /
   WindowY forms (`%`, `R` / `B`, formulas, `@N`), and anchors continue to apply during resizing. Zoom uses integer
   percentages from 10–500%. Manage has a Zoom field/stepper; Settings → General has Default zoom and Force. The skin
-  menu's Settings → Zoom contains Default and 80–150% presets at 10-point intervals, inserting a current custom value
+  menu's Zoom contains Default and 80–150% presets at 10-point intervals, inserting a current custom value
   as a checked no-op. Missing `Zoom` inherits the global default; explicit 100% is an override. Default clears it;
   Force disables per-skin controls but preserves overrides for when Force is turned off. The official 5.0
   `!SetZoomFactor Factor|Default [Config|*]` and `!SetZoomFactorGroup Factor|Default Group` use the same behavior.
@@ -1284,7 +1284,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions (`ContextTitleN` /
   `ContextActionN`, up to 25; a submenu when more than 3).
 - **Mac:** Select skin, the skin's name, its custom actions (same rules; `!SkinCustomMenu` shows only them), Variants,
-  Settings → Zoom, Position,
+  Zoom, Position,
   Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes
   (n)" when there are any, Manage Skin…, Edit Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen
   in Settings ▸ Editor, Refresh Skin, Open Skin Folder, Unload Skin.

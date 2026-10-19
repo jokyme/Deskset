@@ -974,7 +974,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   `ForceDefaultZoom`（管理窗口 → 设置）。
 - **Mac：** `Default…` 选项相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、
   公式、`@N`），锚点在尺寸变化时继续生效。缩放使用 10–500 的整数百分数。Manage 有 Zoom 输入框和步进器；设置 → General
-  有 Default zoom 和 Force。皮肤菜单 Settings → Zoom 提供 Default 与 80–150% 的预设（间隔 10 个百分点），当前自定义值会
+  有 Default zoom 和 Force。皮肤菜单 Zoom 提供 Default 与 80–150% 的预设（间隔 10 个百分点），当前自定义值会
   按序插入并勾选，点击该项不执行操作。没有 `Zoom` 时继承全局默认值；显式 100% 仍是独立覆盖。Default 清除覆盖；Force
   禁用单皮肤缩放控件，但保留原覆盖值，关闭 Force 后恢复。官方 5.0 的 `!SetZoomFactor 系数|Default [配置|*]` 和
   `!SetZoomFactorGroup 系数|Default 组` 使用同一规则。绘制、窗口尺寸、鼠标／悬停／工具提示坐标随有效缩放变化，缩放会独立
@@ -1155,7 +1155,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 皮肤上下文菜单与自定义动作
 - **Windows：** 皮肤名称、变体、设置（位置、透明度、悬停时隐藏、可拖动、点击穿透、保持在屏幕内、保存位置、吸附边缘……）、
   管理、编辑、刷新、卸载、自定义皮肤动作（`ContextTitleN` / `ContextActionN`，最多 25 个；超过 3 个时成为子菜单）。
-- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Settings → Zoom、位置、透明度、悬停、可拖动、点击穿透、
+- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Zoom、位置、透明度、悬停、可拖动、点击穿透、
   保持在屏幕内、吸附边缘、保存位置、有提示时的“兼容性提示（n）”、管理皮肤…、编辑皮肤…（Skin Studio）、在“设置 ▸ 编辑器”
   里选了代码编辑器 App 时的“用 <App> 编辑”、刷新皮肤、打开皮肤文件夹、卸载皮肤。FadeDuration 和 Load Order 在管理窗口中设置；StartHidden 和 AutoSelectScreen 只能通过 `Default…` 选项
   和 bang 设置。Zoom、位置、透明度、悬停和设置复选框会作用于所选群组；值不一致时不勾选。刷新皮肤和卸载皮肤也作用于

@@ -8,6 +8,10 @@ enum SkinZoomUISelfTests {
             guard let app = try AppSelfTest.makeApp(t),
                   let skin = app.activate(config: "App\\Focus", file: "Compact.ini"),
                   let initial = zoomMenu(app, skin) else { return t.check(false, "zoom menu") }
+            let outer = app.skinMenu(for: skin, includeCustomItems: true)
+            t.equal(outer.items.filter { ["Zoom", "Position", "Transparency"].contains($0.title) }.map(\.title),
+                    ["Zoom", "Position", "Transparency"], "Zoom is beside the existing top-level settings")
+            t.equal(outer.item(withTitle: "Settings"), nil, "Zoom has no extra Settings wrapper")
             let presets = ["80%", "90%", "100%", "110%", "120%", "130%", "140%", "150%"]
             t.equal(initial.items.map { $0.isSeparatorItem ? "separator" : $0.title },
                     ["Default", "separator"] + presets)
@@ -36,8 +40,9 @@ enum SkinZoomUISelfTests {
             t.check(entry.isEnabled && entry.action == nil, "the current custom value is an enabled no-op")
             app.setDefaultZoom(percent: 130, force: true)
             t.check(AppSelfTest.spin { skin.effectiveZoomFactor == 1.3 })
-            let zoom = app.skinMenu(for: skin, includeCustomItems: true)
-                .item(withTitle: "Settings")?.submenu?.item(withTitle: "Zoom")
+            let forced = app.skinMenu(for: skin, includeCustomItems: true)
+            forced.update()
+            let zoom = forced.item(withTitle: "Zoom")
             t.equal(zoom?.isEnabled, false, "Force disables the entire Zoom submenu")
             t.equal(skin.zoomOverridePercent, 125, "forcing a default retains the personal override")
             app.setDefaultZoom(percent: nil, force: false)
@@ -285,8 +290,7 @@ enum SkinZoomUISelfTests {
     }
 
     private static func zoomMenu(_ app: AppController, _ skin: SkinWindowController) -> NSMenu? {
-        let settings = app.skinMenu(for: skin, includeCustomItems: true).item(withTitle: "Settings")?.submenu
-        return settings?.item(withTitle: "Zoom")?.submenu
+        app.skinMenu(for: skin, includeCustomItems: true).item(withTitle: "Zoom")?.submenu
     }
 
     private static func checked(_ menu: NSMenu?) -> [String] {

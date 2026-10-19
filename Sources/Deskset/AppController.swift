@@ -1595,6 +1595,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let targets = skinMenuTargets(for: c.config)
         func allMatch<Value: Equatable>(_ key: KeyPath<SkinState, Value>, _ value: Value) -> Bool {
             !targets.isEmpty && targets.allSatisfy { $0.state[keyPath: key] == value }
@@ -1643,15 +1644,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(variantsItem)
         }
 
-        let settings = NSMenu()
-        settings.autoenablesItems = false
         let zoom = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
         zoom.submenu = skinZoomMenu(for: c)
         zoom.isEnabled = !state.forceDefaultZoom
-        settings.addItem(zoom)
-        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
-        settingsItem.submenu = settings
-        menu.addItem(settingsItem)
+        menu.addItem(zoom)
 
         let position = NSMenu()
         for (title, value) in ManageModel.positions {

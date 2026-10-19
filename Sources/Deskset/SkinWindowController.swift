@@ -913,6 +913,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     /// The skin published a snapshot in which something changed that the main thread acts on.
     private func snapshotChanged(_ changes: SkinSnapshotChanges) {
+        if changes.contains(.glass), !isStopped {
+            let snapshot = runtime.snapshot
+            glass.apply(snapshot.glass, in: contentView, below: view, zoomFactor: snapshot.zoomFactor)
+        }
         if changes.contains(.selection) { view.updateSelectionOverlay() }
         if changes.contains(.toolTips) { view.updateToolTips() }
         // Also once the skin closed: it no longer wants anything.

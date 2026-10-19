@@ -7,6 +7,7 @@ enum SkinZoomDrawingSelfTests {
         frameTests(t)
         cacheTests(t)
         glassTests(t)
+        glassControllerTests(t)
     }
 
     private static let fixture = """
@@ -91,8 +92,9 @@ enum SkinZoomDrawingSelfTests {
         }
     }
 
-    private static func snapshotDrawing(_ skin: Skin, width: Int, height: Int, scale: CGFloat) -> CGContext? {
-        guard let context = SkinBitmapDrawing.makeContext(width, height, SkinFrameProducer.sRGB) else { return nil }
+    private static func snapshotDrawing(_ skin: Skin, width: Int, height: Int, scale: CGFloat,
+                                        space: CGColorSpace = SkinFrameProducer.sRGB) -> CGContext? {
+        guard let context = SkinBitmapDrawing.makeContext(width, height, space) else { return nil }
         context.clear(CGRect(x: 0, y: 0, width: width, height: height))
         context.translateBy(x: 0, y: CGFloat(height))
         context.scaleBy(x: scale, y: -scale)
@@ -181,5 +183,174 @@ enum SkinZoomDrawingSelfTests {
                 }
             }
         }
+    }
+
+    private static let glassFixture = """
+    [Rainmeter]
+    Update=-1
+    MacGlass=Regular
+    MacGlassCornerRadius=12
+    [Extent]
+    Meter=Image
+    W=100
+    H=80
+    [Clip]
+    Meter=Shape
+    X=10
+    Y=15
+    Shape=Rectangle 0,0,20,12 | Fill Color 255,255,255,255 | StrokeWidth 0
+    [Card]
+    Meter=Image
+    X=-2
+    Y=-3
+    W=40
+    H=24
+    Container=Clip
+    MacGlass=Clear
+    MacGlassCornerRadius=6
+    MacGlassTint=20,80,160,255
+    [Ink]
+    Meter=Shape
+    Shape=Rectangle 60,40,20,10 | Fill Color 20,80,160,255 | StrokeWidth 0
+    """
+
+    /// Unlike the isolated glass-view check above, these exercise the actual runtime-to-controller publication.
+    /// The regions never change and there is no update timer to incidentally repair a stale native view.
+    private static func glassControllerTests(_ t: AppTestRunner) {
+        for threading: SkinThreading in [.main, .engine] {
+            for initialPercent in [100, 150] {
+                t.suite("App: skin zoom drawing: controller glass lifecycle on \(threading), saved \(initialPercent) percent") {
+                    guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                    let config = "ZoomGlass"
+                    let directory = app.skinsDirectory.appendingPathComponent(config)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try glassFixture.write(to: directory.appendingPathComponent("Skin.ini"), atomically: true,
+                                           encoding: .utf8)
+                    app.state.update(config) {
+                        $0.file = "Skin.ini"
+                        $0.keepOnScreen = false
+                        $0.zoomOverridePercent = initialPercent
+                    }
+                    app.state.saveNow()
+                    app.rescanLibrary()
+                    guard let c = app.activate(config: config, file: "Skin.ini") else {
+                        app.endEngineThread()
+                        return t.check(false, "the glass fixture loads")
+                    }
+                    t.atSuiteEnd {
+                        app.stopAllForTermination()
+                        t.check(AppSelfTest.spin(timeout: 30) { c.hasClosed }, "the fixture closes on its owner")
+                        let thread = app.engineThread
+                        app.endEngineThread()
+                        if let thread {
+                            t.check(AppSelfTest.spin(timeout: 30) { thread.hasExited }, "the test engine thread exits")
+                        }
+                    }
+                    t.check(AppSelfTest.spin(timeout: 30) { c.isStarted || c.loadFailed }, "the fixture starts")
+                    guard !c.loadFailed else { return t.check(false, "the fixture loaded successfully") }
+                    c.visibilityForTesting = true
+                    waitForControllerWork(c, t)
+                    let logicalRegions = c.runtime.snapshot.glass
+                    let updateCount = c.runtime.snapshot.updateCount
+                    t.equal(logicalRegions.map(\.id), [GlassRegion.skinID, "Card"])
+                    t.equal(logicalRegions.last?.rect, SkinRect(x: 8, y: 12, width: 40, height: 24),
+                            "the content coordinates are relative to its container")
+                    t.equal(logicalRegions.last?.clip, SkinRect(x: 10, y: 15, width: 20, height: 12),
+                            "the fixture has a real container clip")
+                    let pieces = c.glass.shownPieces
+                    var checkedPercent: Int?
+                    var checkedFrameCount = 0
+                    func check(_ percent: Int) {
+                        let zoom = Double(percent) / 100
+                        let snapshot = c.runtime.snapshot
+                        t.equal(snapshot.zoomFactor, zoom)
+                        t.equal(snapshot.glass, logicalRegions, "zoom leaves logical glass regions unchanged")
+                        t.equal(snapshot.updateCount, updateCount, "no periodic update is needed to apply zoom")
+                        t.equal(c.window.frame.size, CGSize(width: 100 * zoom, height: 80 * zoom))
+                        t.equal(c.contentView.bounds.size, c.window.frame.size)
+                        let scale = c.window.backingScaleFactor
+                        let width = Int((c.window.frame.width * scale).rounded(.up))
+                        let height = Int((c.window.frame.height * scale).rounded(.up))
+                        t.check(AppSelfTest.spin(timeout: 10) {
+                            guard let image = c.content.shown.image else { return false }
+                            return image.width == width && image.height == height
+                                && (checkedPercent == percent || c.content.state.presented > checkedFrameCount)
+                        }, "the normal frame producer presents the new zoom without a manual redraw")
+                        let shown = c.content.shown
+                        if let image = shown.image {
+                            t.equal(image.width, width, "the content bitmap follows the window width")
+                            t.equal(image.height, height, "the content bitmap follows the window height")
+                            t.equal(shown.scale, scale, "only backing scale is applied to the displayed bitmap")
+                            t.equal(shown.bounds.size, CGSize(width: CGFloat(width) / scale, height: CGFloat(height) / scale))
+                            t.equal(shown.bounds.size, c.window.frame.size, "glass, window and content cover the same points")
+                            let space = image.colorSpace ?? SkinFrameProducer.sRGB
+                            let screenshot: CGContext? = c.runtime.exclusive(timeout: 30) { skin in
+                                snapshotDrawing(skin, width: width, height: height, scale: scale, space: space)
+                            } ?? nil
+                            if let screenshot, let difference = SkinBitmapDrawing.difference(image, screenshot) {
+                                t.check(difference.worst <= SkinBitmapDrawing.tolerance,
+                                        "presented content and full snapshot differ by \(difference.worst) at \(percent)%")
+                            } else {
+                                t.check(false, "the controller frame can be compared with a full snapshot")
+                            }
+                        } else {
+                            t.check(false, "the controller has presented content")
+                        }
+                        checkedPercent = percent
+                        checkedFrameCount = c.content.state.presented
+                        t.equal(c.glass.regions, logicalRegions)
+                        t.equal(c.glass.shownPieces.count, logicalRegions.count)
+                        for (index, region) in logicalRegions.enumerated() {
+                            guard index < c.glass.shownPieces.count else { continue }
+                            let piece = c.glass.shownPieces[index]
+                            if index < pieces.count { t.check(piece === pieces[index], "the same native view follows the new zoom") }
+                            let frame = region.clip ?? region.rect
+                            t.close(Double(piece.frameView.frame.minX), frame.x * zoom, "\(region.id) clip x at \(percent)%")
+                            t.close(Double(piece.frameView.frame.minY), frame.y * zoom, "\(region.id) clip y at \(percent)%")
+                            t.close(Double(piece.frameView.frame.width), frame.width * zoom, "\(region.id) width at \(percent)%")
+                            t.close(Double(piece.frameView.frame.height), frame.height * zoom, "\(region.id) height at \(percent)%")
+                            t.close(Double(piece.glass.frame.minX), (region.rect.x - frame.x) * zoom)
+                            t.close(Double(piece.glass.frame.minY), (region.rect.y - frame.y) * zoom)
+                            t.close(Double(piece.glass.frame.width), region.rect.width * zoom)
+                            t.close(Double(piece.glass.frame.height), region.rect.height * zoom)
+                            t.equal(piece.frameView.layer?.masksToBounds, region.clip != nil)
+                            if #available(macOS 26.0, *), let effect = piece.glass as? NSGlassEffectView {
+                                t.close(Double(effect.cornerRadius), region.cornerRadius * zoom)
+                            } else if let effect = piece.glass as? NSVisualEffectView {
+                                t.close(Double(effect.maskImage?.capInsets.top ?? -1), region.cornerRadius * zoom)
+                            } else {
+                                t.check(false, "a supported native glass view")
+                            }
+                        }
+                    }
+                    check(initialPercent)
+                    for percent in [100, 150, 200, 100] {
+                        var completed = false
+                        c.requestZoom(percent: percent) { completed = true }
+                        waitForControllerWork(c, t)
+                        t.check(completed, "the zoom request has been acknowledged")
+                        check(percent)
+                    }
+                    if initialPercent == 100 {
+                        c.requestZoom(percent: nil)
+                        waitForControllerWork(c, t)
+                        app.setDefaultZoom(percent: 150, force: false)
+                        waitForControllerWork(c, t)
+                        check(150)
+                        c.requestZoom(percent: 200)
+                        waitForControllerWork(c, t)
+                        app.setDefaultZoom(percent: 125, force: true)
+                        waitForControllerWork(c, t)
+                        check(125)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func waitForControllerWork(_ c: SkinWindowController, _ t: AppTestRunner) {
+        var caughtUp = false
+        c.runtime.whenCaughtUp { caughtUp = true }
+        t.check(AppSelfTest.spin(timeout: 30) { caughtUp }, "runtime work and its queued main-thread requests finish")
     }
 }
