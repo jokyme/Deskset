@@ -166,46 +166,43 @@ Skins folder) and `.severalPackages([names])`.
 ## Installing
 
 ### Replacing an installed skin and backups
-- Windows (Rainmeter): "If any of the skins to be installed already exist, they will be moved to a Backup folder
-  before installation"; normally "the root config folder is backed up and removed. All files are completely replaced."
-- Mac (Deskset): the existing root config is moved to `Backups/<RootConfig>` (then `<RootConfig> (2)`, `(3)`… so older
-  backups are kept; the app always passes its Backups folder). The new folder is staged next to it and swapped in; if
-  the swap fails the old one is put back. Without a backup folder the old one is deleted permanently (not moved to the
-  Trash). Layouts of the same name are backed up to `Backups/@Layouts/`.
-- Why: the backup naming is not documented.
-- Skin impact: none; old versions can be restored from the Backups folder.
-- Status: identical
+- Windows (Rainmeter): existing skins are backed up and replaced; Advanced → Backup skins can disable the backup
+  ([Installing Skins](https://docs.rainmeter.net/manual/installing-skins/)).
+- Mac (Deskset): Advanced → Backup skins is checked by default for each package. When enabled, a replaced root config
+  is moved to `Backups/<RootConfig>` (then `(2)`, `(3)`… so older backups are kept). Turning it off skips that permanent
+  skin backup. The new folder is staged and swapped in; a failed swap restores the old folder regardless of the
+  checkbox. Existing layout backups in `Backups/@Layouts/` remain separate from the skin-backup choice.
+- Why: skin replacement and its backup selection share the existing transactional installation path.
+- Skin impact: disabling Backup skins replaces the old skin files without retaining a permanent skin backup.
+- Status: emulated. The manual does not specify whether Backup skins affects layout backups; the existing Mac layout
+  backup behavior is retained.
 
 ### Merge skins
-- Windows (Rainmeter): "The Skin Installer will not remove any existing files found in the user's Skins directory";
-  [Advanced .rmskin Options](https://docs.rainmeter.net/tips/advanced-rmskin-options/): "The root config folder is not
-  removed or backed up. Any new files in the .rmskin are added. Any changed files in the .rmskin are completely
-  replaced." Version history: "Rainstaller: Added Merge=1/0 to support addons for suites".
-- Mac (Deskset): `MergeSkins=1` (or `Merge=1`, including in `Rainstaller.cfg`) copies the package over the existing
-  folder without deleting anything. Unlike Rainmeter, a full copy of the existing folder is also kept in Backups (the
-  app always passes its Backups folder).
-- Why: judgment call — a copy costs little and lets the user undo an add-on that replaced their files.
-- Skin impact: none; an extra folder in Backups.
-- Status: emulated
+- Windows (Rainmeter): Merge skins adds or replaces package files without removing other files or backing up the
+  root config; it takes precedence over Variables files
+  ([Advanced .rmskin Options](https://docs.rainmeter.net/tips/advanced-rmskin-options/)).
+- Mac (Deskset): modern packages with an `RMSKIN.ini` manifest and `MergeSkins=1` (or its `Merge` alias) copy package
+  files over the installed folder without removing unrelated files. They do not create a skin backup or preserve
+  old variable values, regardless of the Backup skins checkbox. Legacy Rainstaller Merge retains its existing
+  compatibility behavior: it can retain a backup and apply its variable-preservation settings.
+- Why: modern installation follows the documented precedence; legacy package handling remains separate.
+- Skin impact: modern patches retain files absent from the package, while packaged files and variables replace the
+  old versions. Legacy behavior is unchanged.
+- Status: emulated (modern rules); legacy variable and merge combinations remain a compatibility difference.
 
 ### Variables files
-- Windows (Rainmeter): "Existing variables remain unchanged; non-variable lines matching the .rmskin are replaced; new
-  lines are added; removed lines not in the .rmskin are deleted." Merge skins "takes precedence and variables files
-  won't execute"; "If the user chooses to not backup the skin prior to installation, the 'Variables files' option will
-  not be executed." ([Advanced .rmskin Options](https://docs.rainmeter.net/tips/advanced-rmskin-options/))
-- Mac (Deskset): for each listed file present in both the installed skin and the package, every key of the
-  `[Variables]` section present in both keeps the user's value exactly as written (empty values too); the package file
-  keeps its layout, comments, new keys, other sections and encoding (including the user's ANSI code page — a GBK file
-  stays GBK; text the encoding cannot hold switches the file to UTF-16 LE). Entries may start with `Skins\`; entries
-  outside the package or with `..` only produce a note. `@Include…` keys are never kept from the old file: the
-  manual calls @Include an option that "may be placed in any section", not a variable, and lines "that are not
-  variables are replaced" (before the review an old `@Include` could name a file the new version no longer ships,
-  leaving the upgraded skin without its variables). Values are kept
-  even without a backup folder, and when MergeSkins is also set (with a note) — Rainmeter skips Variables files in
-  both cases.
-- Why: keeping the user's settings is never worse; the app always backs up anyway.
-- Skin impact: none in the app.
-- Status: emulated
+- Windows (Rainmeter): variables present in both versions retain their old values; other lines come from the package.
+  Variables files is skipped when Merge skins is enabled or the user disables Backup skins
+  ([Advanced .rmskin Options](https://docs.rainmeter.net/tips/advanced-rmskin-options/)).
+- Mac (Deskset): modern `RMSKIN.ini` packages preserve listed variable files only when skin backup is enabled, a backup
+  directory is provided, and Merge skins is off. Every `[Variables]` key present in both versions keeps the user's
+  exact value, including empty values. The package keeps its layout, comments, new keys and encoding; text outside
+  that encoding switches to UTF-16 LE. `@Include…` options always come from the package. Out-of-package paths and `..`
+  produce a note rather than being followed. Legacy Rainstaller `KeepVar` and variable lists retain their previous
+  behavior, including preservation without a backup or during a legacy merge.
+- Why: modern backup and merge choices control variable preservation without changing legacy package handling.
+- Skin impact: modern installs with Backup skins off, or with Merge skins on, use the package's variable values.
+- Status: emulated (modern rules); legacy preservation without backup or during merge differs from modern Rainmeter.
 
 ### Plugins
 - Windows (Rainmeter): 32/64-bit DLLs are installed to the Plugins folder (newer versions are kept) and archived in
@@ -231,14 +228,16 @@ Skins folder) and `.severalPackages([names])`.
 - Status: emulated
 
 ### Loading a skin after installation
-- Windows (Rainmeter): the author may choose a skin or a layout to load; the installer never loads "a non-installed
-  skin/layout".
-- Mac (Deskset): `LoadType=Skin` + `Load=Config\File.ini` (or a `Load` ending in `.ini` without type) is loaded when that
-  skin was installed from this package, spelled as on disk; otherwise a note explains why nothing loads. Only one skin
-  can be named.
-- Why: same rule; the manual describes a single choice.
-- Skin impact: none.
-- Status: identical
+- Windows (Rainmeter): the author can request a skin or layout to load after installation; the user can skip that
+  action ([Distributing Skins](https://docs.rainmeter.net/manual/distributing-skins/#Step2)).
+- Mac (Deskset): Load included skins is checked by default when the package requests a skin. Clearing it installs
+  the files without activating that requested target. Previously running skins from replaced roots reload their
+  previous variants when those files still exist. With the option selected, `LoadType=Skin` + `Load=Config\File.ini`
+  loads the installed target once; an invalid or external target only produces a note. Apply included layout remains
+  a separate choice for packages that request a layout. Choices reset for each package.
+- Why: installation and the author's requested post-install action are independent choices.
+- Skin impact: a package can be installed without loading its requested skin or replacing the desktop with its layout.
+- Status: emulated
 
 ### @Vault
 - Windows (Rainmeter): the `@Vault` folder holds shared resources and archived plugins.

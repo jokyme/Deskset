@@ -2903,18 +2903,16 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 - **Status:** emulated
 
 #### The confirmation and what happens after installing
-- **Windows:** the Skin Installer shows the header image, name, author, version, skins, layouts and plugins; the old
-  version is backed up and replaced, and the package's skin or layout is loaded.
-- **Mac:** an alert shows the header image, "Install “Name”?", author and version; for a plain archive or folder a
-  note that the skins were found automatically (a folder is copied, the original stays), for a legacy package a note
-  saying so; the root configs and whether they replace (backed up) or add to installed ones; layouts and the option
-  to apply an included layout; the fonts the installation adds ("not installed system-wide"); what loads afterwards; Windows plugins
-  (never installed) and other warnings. Applying an included layout closes all old skins before replacing files,
-  then saves their post-close settings for `@Backup` using the old variant list. Otherwise, running skins of a
-  replaced root config are stopped first and loaded again afterwards; the package's skin is loaded with a fade and
-  selected in the Manage window.
-- **Why:** —
-- **Skin impact:** none.
+- **Windows:** the installer lists package information and components; users can skip the requested skin or layout
+  load and change Advanced → Backup skins before installing.
+- **Mac:** the confirmation shows the header, name, author, version, configs, layouts, fonts and plugin warnings.
+  Load included skins and Apply included layout control the package's requested post-install action; Advanced →
+  Backup skins defaults to on. Choices reset for each package. Applying a layout closes old skins before replacing
+  files and captures their post-close settings for `@Backup`. Otherwise, previously running skins in replaced roots
+  reload their original variants if still present, except the config selected for the author-requested target.
+  That target loads once only when selected.
+- **Why:** package installation and post-install loading are separate choices.
+- **Skin impact:** skins can be installed without activating the author's target; other running variants restore.
 - **Status:** emulated
 
 #### Package formats (plain ZIPs, footer, wrapper folders)
@@ -2959,24 +2957,27 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 - **Status:** identical / not supported (minimum versions)
 
 #### Root configs, backups and Merge skins
-- **Windows:** one root config per package; existing skins are "moved to a Backup folder"; with Merge skins
-  "the root config folder is not removed or backed up".
-- **Mac:** every folder in `Skins/` (except `@Vault`) is installed as a root config. An existing root config is moved
-  to `Backups/<RootConfig>` (then `(2)`, `(3)`… so older backups are kept); the new folder is staged and swapped in,
-  and the old one is put back if the swap fails. With `MergeSkins=1` the package is copied over the existing folder
-  without deleting anything, and a full copy of the old folder is also kept in Backups (judgment call).
-- **Why:** hand-made and legacy packages often hold several root configs; a backup lets users undo an add-on.
-- **Skin impact:** suites split over several root configs install completely; an extra folder in Backups.
-- **Status:** emulated
+- **Windows:** one root config per package; Backup skins controls replacement backups; Merge skins does not remove
+  unrelated files or back up the root config.
+- **Mac:** every folder in `Skins/` except `@Vault` installs as a root config. With Backup skins enabled, replacement
+  moves the old folder to `Backups/<RootConfig>` (then `(2)`, `(3)`…); disabling it skips the permanent skin backup.
+  Staging and failed-swap rollback remain active. Modern `RMSKIN.ini` MergeSkins packages replace packaged files,
+  retain unrelated files and create no skin backup regardless of the checkbox. Legacy Rainstaller merge can still
+  retain a backup. Existing layout backups remain separate from the skin-backup choice.
+- **Why:** modern rules follow the installer options; legacy compatibility and multi-root packages remain supported.
+- **Skin impact:** modern merge packages no longer create an extra skin backup; replacement backups can be disabled.
+- **Status:** emulated; Windows layout-backup scope and legacy combinations remain unverified. See
+  [details](compat/installer.md#replacing-an-installed-skin-and-backups).
 
 #### Variables files
 - **Windows:** existing variable values are kept; Merge skins takes precedence; without a backup the option is skipped.
-- **Mac:** for each listed file present in both versions, every `[Variables]` key present in both keeps the user's
-  value exactly as written; the package file keeps its layout, comments, new keys and encoding; `@Include…` lines
-  always come from the new version. Values are kept even with MergeSkins or without a backup (Rainmeter skips them).
-- **Why:** keeping the user's settings is never worse.
-- **Skin impact:** none.
-- **Status:** emulated
+- **Mac:** modern `RMSKIN.ini` packages preserve listed variables only with skin backup enabled, a backup directory
+  provided and Merge skins off. Shared `[Variables]` keys keep their exact values; layout, comments, new keys, other
+  sections, encoding and `@Include…` options come from the package. Legacy Rainstaller preservation rules remain
+  unchanged, including preservation without backup or during legacy merge.
+- **Why:** modern backup and merge selections determine preservation; legacy behavior stays separate.
+- **Skin impact:** modern merge or backup-disabled installs use the package's variable values.
+- **Status:** emulated (modern rules); legacy preservation remains a compatibility difference.
 
 #### Plugins, add-ons and `@Vault`
 - **Windows:** plugin DLLs go to the Plugins folder and are archived in `@Vault`; legacy `Addons\` programs are
@@ -2990,14 +2991,14 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 - **Status:** not supported (plugins, add-ons) / partial (`@Vault`)
 
 #### Layouts and loading after installation
-- **Windows:** layouts go to the Layouts folder and can be applied; the author may choose a skin or layout to load.
-- **Mac:** layouts are installed with their `[Rainmeter]` options removed. Selecting Apply included layout first
-  closes all old skins before replacing package files, then loads the installed layout. `@Backup` captures their
-  post-close settings using the old variant list. A close timeout cancels installation before file replacement.
-  Without application, installation only saves the layout.
-  `LoadType=Skin` + `Load=Config\File.ini` still loads a skin installed by this package.
-- **Why:** installer application and `!LoadLayout` use the same layout coordinator without a Mac process restart.
-- **Skin impact:** a compatible suite can arrange itself after installation; see [layout limits](compat/layouts.md).
+- **Windows:** layouts are installed and can be applied; users can skip the author's requested skin or layout load.
+- **Mac:** layouts install with their `[Rainmeter]` options removed. Apply included layout closes old skins before
+  replacing files, then loads the installed layout; `@Backup` captures post-close settings with the old variant list.
+  A close timeout cancels installation before replacement. Clearing the checkbox installs the layout only.
+  Load included skins similarly controls `LoadType=Skin` + `Load=Config\File.ini`; clearing it restores previously
+  running variants without activating the package's requested target.
+- **Why:** post-install layout application shares the existing layout coordinator without restarting the Mac process.
+- **Skin impact:** suites can be installed without automatically loading their skin or layout.
 - **Status:** emulated
 
 #### Fonts

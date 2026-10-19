@@ -313,7 +313,8 @@ enum UISnapshot {
         let summary = InstallSummary(inspection, packageName: url.lastPathComponent,
                                      skinsDirectory: temporaryDirectory("skins"))
         let image = inspection.headerImageURL.flatMap { NSImage(contentsOf: $0) }
-        let accessory = SkinInstallFlow.accessoryView(summary, headerImage: image)
+        let options = SkinInstallFlow.OptionControls(summary: summary)
+        let accessory = SkinInstallFlow.accessoryView(summary, headerImage: image, optionControls: options)
         // A stand-in for the alert chrome: title, subtitle, accessory, buttons.
         let title = NSTextField(labelWithString: summary.title)
         title.font = .boldSystemFont(ofSize: 13)

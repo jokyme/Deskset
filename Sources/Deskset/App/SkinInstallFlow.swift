@@ -59,8 +59,11 @@ struct InstallSummary: Equatable {
             let configs = packaged.filter { $0.lowercased().hasPrefix(root.lowercased() + "\\") }
                 .map { String($0.dropFirst(root.count + 1)) }
             guard existing.contains(root.lowercased()) else { return Line(text: root, detail: nil, configs: configs) }
-            return Line(text: root, detail: m.mergeSkins ? "adds to the installed skins"
-                        : "replaces the installed version; the old one is kept in Backups", configs: configs)
+            let detail = m.mergeSkins
+                ? (m.packageFormat == .rmskin ? "adds to the installed skins; no backup or variable preservation"
+                    : "adds to the installed skins")
+                : "replaces the installed version"
+            return Line(text: root, detail: detail, configs: configs)
         }
         layouts = inspection.layouts
 
@@ -96,10 +99,68 @@ extension InstallSummary {
 /// inspect → confirm (name, author, version, header image, configs, fonts, warnings) → install → load the skin the
 /// package asks for. Packages are handled one at a time.
 final class SkinInstallFlow {
+    struct Options: Equatable {
+        var loadIncludedSkins = true
+        var applyIncludedLayout = true
+        var backupSkins = true
+    }
+
+    /// The confirmation and its previews read the same live controls.
+    final class OptionControls: NSStackView {
+        let loadSkinsCheckbox: NSButton?
+        let loadLayoutCheckbox: NSButton?
+        let advancedButton = NSPopUpButton(frame: .zero, pullsDown: true)
+        let backupSkinsItem = NSMenuItem(title: "Backup skins", action: nil, keyEquivalent: "")
+
+        var options: Options {
+            Options(loadIncludedSkins: loadSkinsCheckbox?.state != .off,
+                    applyIncludedLayout: loadLayoutCheckbox?.state != .off,
+                    backupSkins: backupSkinsItem.state == .on)
+        }
+
+        init(summary: InstallSummary, options: Options = Options()) {
+            if summary.layoutToApply == nil, summary.loadAfterInstall != nil {
+                let checkbox = NSButton(checkboxWithTitle: "Load included skins", target: nil, action: nil)
+                checkbox.state = options.loadIncludedSkins ? .on : .off
+                checkbox.toolTip = summary.loadAfterInstall
+                loadSkinsCheckbox = checkbox
+            } else { loadSkinsCheckbox = nil }
+            loadLayoutCheckbox = summary.layoutToApply.map { name in
+                let checkbox = NSButton(checkboxWithTitle: "Apply included layout: \(name)", target: nil, action: nil)
+                checkbox.state = options.applyIncludedLayout ? .on : .off
+                return checkbox
+            }
+            super.init(frame: .zero)
+            orientation = .vertical
+            alignment = .leading
+            spacing = 8
+            if let loadSkinsCheckbox { addArrangedSubview(loadSkinsCheckbox) }
+            if let loadLayoutCheckbox { addArrangedSubview(loadLayoutCheckbox) }
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            menu.addItem(withTitle: "Advanced", action: nil, keyEquivalent: "")
+            backupSkinsItem.target = self
+            backupSkinsItem.action = #selector(toggleBackupSkins(_:))
+            backupSkinsItem.state = options.backupSkins ? .on : .off
+            backupSkinsItem.toolTip = "Keep a backup when replacing installed skins."
+            menu.addItem(backupSkinsItem)
+            advancedButton.menu = menu
+            advancedButton.setAccessibilityLabel("Advanced installation options")
+            addArrangedSubview(advancedButton)
+        }
+
+        required init?(coder: NSCoder) { fatalError("not used") }
+
+        @objc private func toggleBackupSkins(_ sender: NSMenuItem) {
+            sender.state = sender.state == .on ? .off : .on
+        }
+    }
+
     private unowned let app: AppController
     private var queue: [URL] = []
     private var busy = false
     private var applyInstalledLayout = true
+    private var options = Options()
     private var layoutBackupBeforeInstall: LayoutDocument?
     private var layoutWaitObserver: NSObjectProtocol?
 
@@ -227,6 +288,7 @@ final class SkinInstallFlow {
             return
         }
         busy = true
+        options = Options()
         let url = queue.removeFirst()
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try RmskinPackage.inspect(url) }
@@ -249,9 +311,10 @@ final class SkinInstallFlow {
         case .success(let inspection):
             let summary = InstallSummary(inspection, packageName: url.lastPathComponent,
                                          skinsDirectory: app.skinsDirectory)
-            confirm(summary, headerImage: inspection.headerImageURL.flatMap { NSImage(contentsOf: $0) }) { ok, applyLayout in
+            confirm(summary, headerImage: inspection.headerImageURL.flatMap { NSImage(contentsOf: $0) }) { ok, options in
                 if ok {
-                    self.applyInstalledLayout = applyLayout && summary.layoutToApply != nil
+                    self.options = options
+                    self.applyInstalledLayout = options.applyIncludedLayout && summary.layoutToApply != nil
                     self.install(inspection, packageURL: url)
                 } else {
                     inspection.cleanup()
@@ -265,6 +328,9 @@ final class SkinInstallFlow {
     static var beforeLoadingPackageSkin: ((AppController) -> Void)?
     /// Self-tests exercise the same install path with the confirmation checkbox unchecked.
     static var applyLayoutAfterInstallForTesting: Bool?
+    /// Self-tests choose each package independently, starting from the same defaults as the confirmation controls.
+    static var optionsForTesting: ((InstallSummary, Options) -> Options)?
+    static var confirmForTesting: ((InstallSummary, Options) -> Bool)?
 
     /// How long the installer waits for the skins it stopped to close before it replaces their files anyway.
     static let closeTimeout: TimeInterval = 10
@@ -308,10 +374,11 @@ final class SkinInstallFlow {
 
     private func replaceFiles(_ inspection: RmskinInspection, packageURL: URL, affected: [(String, String)]) {
         let skins = app.skinsDirectory, layouts = app.layoutsDirectory, backups = app.backupsDirectory
+        let backupSkins = options.backupSkins
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result {
                 try RmskinInstaller.install(inspection: inspection, skinsDirectory: skins, layoutsDirectory: layouts,
-                                            backupDirectory: backups)
+                                            backupDirectory: backups, backupSkins: backupSkins)
             }
             inspection.cleanup()
             DispatchQueue.main.async {
@@ -364,7 +431,8 @@ final class SkinInstallFlow {
         // The skin the package loads is loaded once, below (reloading it here first would run its OnRefreshAction
         // and OnCloseAction for a skin that is replaced a moment later).
         let packageSkin: String? = {
-            guard case .success(let r) = result, let config = r.skinToLoadConfig else { return nil }
+            guard options.loadIncludedSkins, case .success(let r) = result,
+                  let config = r.skinToLoadConfig else { return nil }
             return SkinLibrary.normalizedConfigName(config).lowercased()
         }()
         // The skins that were running load again one after another (`AppController.inTurn`), as on the main thread: a
@@ -389,7 +457,7 @@ final class SkinInstallFlow {
             // Whether the package's skin loaded is known once its load has settled: on another thread `activate`
             // returns before the skin loaded.
             var packageWindow: SkinWindowController?
-            if let config = r.skinToLoadConfig {
+            if options.loadIncludedSkins, let config = r.skinToLoadConfig {
                 app.inTurn { app in
                     SkinInstallFlow.beforeLoadingPackageSkin?(app)
                     packageWindow = app.activate(config: config, file: r.skinToLoadFile, fade: true)
@@ -451,9 +519,13 @@ final class SkinInstallFlow {
 
     // MARK: Confirmation
 
-    private func confirm(_ summary: InstallSummary, headerImage: NSImage?, completion: @escaping (Bool, Bool) -> Void) {
+    private func confirm(_ summary: InstallSummary, headerImage: NSImage?,
+                         completion: @escaping (Bool, Options) -> Void) {
         guard app.presentsWindows else {
-            completion(true, Self.applyLayoutAfterInstallForTesting ?? true)
+            var options = Options()
+            options.applyIncludedLayout = Self.applyLayoutAfterInstallForTesting ?? true
+            options = Self.optionsForTesting?(summary, options) ?? options
+            completion(Self.confirmForTesting?(summary, options) ?? true, options)
             return
         }
         let alert = NSAlert()
@@ -462,24 +534,20 @@ final class SkinInstallFlow {
         alert.alertStyle = summary.pluginWarning == nil ? .informational : .warning
         alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
-        let checkbox: NSButton? = summary.layoutToApply.map { name in
-            let button = NSButton(checkboxWithTitle: "Apply included layout: \(name)", target: nil, action: nil)
-            button.state = .on
-            return button
-        }
+        let controls = OptionControls(summary: summary)
         alert.accessoryView = SkinInstallFlow.accessoryView(summary, headerImage: headerImage,
-                                                          loadLayoutCheckbox: checkbox)
+                                                          optionControls: controls)
         if let window = app.visibleManageWindow {
-            alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn, checkbox?.state != .off) }
+            alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn, controls.options) }
         } else {
             NSApp.activate(ignoringOtherApps: true)
-            completion(alert.runModal() == .alertFirstButtonReturn, checkbox?.state != .off)
+            completion(alert.runModal() == .alertFirstButtonReturn, controls.options)
         }
     }
 
     /// The body of the confirmation: header image, skins, layouts, what loads afterwards, warnings.
     static func accessoryView(_ summary: InstallSummary, headerImage: NSImage?,
-                              loadLayoutCheckbox: NSButton? = nil) -> NSView {
+                              optionControls: OptionControls? = nil) -> NSView {
         let width: CGFloat = 400
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -530,11 +598,7 @@ final class SkinInstallFlow {
             let text = "Fonts included for these skins: \(shown)\(more) (not installed system-wide)"
             stack.addArrangedSubview(label(text, secondary: true))
         }
-        if let checkbox = loadLayoutCheckbox {
-            stack.addArrangedSubview(checkbox)
-        } else if let load = summary.loadAfterInstall {
-            stack.addArrangedSubview(label("Loads after installing: \(load)", secondary: true))
-        }
+        stack.addArrangedSubview(optionControls ?? OptionControls(summary: summary))
         let warnings = (summary.pluginWarning.map { [$0] } ?? []) + summary.warnings
         for warning in warnings.prefix(12) {
             let icon = NSImageView(image: NSImage(systemSymbolName: "exclamationmark.triangle.fill",
