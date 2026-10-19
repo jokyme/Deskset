@@ -27,12 +27,7 @@ zone.C	Sources/CLua/loslib.c	4	Lua's own os.date and os.time and os.setlocale: r
 background.mainHop	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-event.notification	Sources/Deskset/App/AboutWindowController.swift	1	About observes loaded skin changes on the main thread; never a skin event
-timer.Timer	Sources/Deskset/App/AboutWindowController.swift	2	visible About panes poll log entries or request immutable skin snapshots; never a skin timer
-timer.runLoopAdd	Sources/Deskset/App/AboutWindowController.swift	2	About pane polling runs on the main run loop and stops when hidden or closed
-zone.implicitFormatter	Sources/Deskset/App/AboutWindowController.swift	1	About displays log timestamps in the user's local wall time; never a skin input
-zone.localizedText	Sources/Deskset/App/AboutWindowController.swift	2	localized sorting of About skin and plugin lists; never a skin input
-background.executorAsync	Sources/Deskset/App/SkinDebugState.swift	1	read-only debug snapshots are captured on the owning skin executor without updating the skin
+background.executorAsync	Sources/Deskset/App/SkinDebugState.swift	1	debug inspection and watch evaluation run on the owning executor without an implicit skin update
 
 effect.fileWrite	Sources/Deskset/App/AppIcon.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
@@ -379,7 +374,7 @@ background.queue	Sources/Deskset/Studio2/WallpaperSource.swift	*	the Studio wind
 zone.localizedText	Sources/Deskset/Studio2/WallpaperSource.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
 background.queue	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
-effect.fileWrite	Sources/Deskset/Support.swift	5	app files (state, log, caches); not a skin effect
+effect.fileWrite	Sources/Deskset/Support.swift	6	app files (state, log, caches); not a skin effect
 effect.workspace	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
 mono.systemUptime	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
 wall.Date()	Sources/Deskset/Support.swift	*	log time stamps, log file, editor lookup cache; not a skin input
@@ -394,7 +389,7 @@ mono.systemUptime	Sources/Deskset/SystemMonitor.swift	3	system data (SystemDataS
 wait.deadline	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 wall.Date()	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
 zone.TimeZone.current	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
-zone.localizedText	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+zone.localizedText	Sources/Deskset/SystemMonitor.swift	2	system data (SystemDataSource): recorded or faked in verification
 
 event.location	Sources/Deskset/Weather/WeatherCommands.swift	1	--weather-report command
 wait.runLoop	Sources/Deskset/Weather/WeatherCommands.swift	1	--weather-report command
@@ -601,3 +596,32 @@ background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.n
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
 
 mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
+background.global	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+background.mainHop	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+background.mainHop	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+background.mainHop	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+background.queue	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+effect.pasteboard	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+effect.pasteboard	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+effect.pasteboard	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+effect.workspace	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+event.notification	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+event.notification	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+mono.systemUptime	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+random.UUID	Sources/Deskset/App/DebugSkinInspectorView.swift	3	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+random.UUID	Sources/Deskset/App/DebugWatchEditorController.swift	2	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+random.UUID	Sources/Deskset/App/SkinDebugState.swift	1	Watch expression identities distinguish independent debugger requests; evaluation stays on the owning executor
+timer.Timer	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+timer.Timer	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+timer.Timer	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+timer.Timer	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+timer.asyncAfter	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+timer.runLoopAdd	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+timer.runLoopAdd	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+timer.runLoopAdd	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+timer.runLoopAdd	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+zone.implicitFormatter	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+zone.localizedText	Sources/Deskset/App/DebugSkinInspectorView.swift	2	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+zone.localizedText	Sources/Deskset/App/DebugSystemInfo.swift	1	Debug formats current macOS device facts; never a skin input
+zone.localizedText	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+random.UUID	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results

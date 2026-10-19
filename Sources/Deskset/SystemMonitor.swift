@@ -269,6 +269,54 @@ final class SystemMonitor: SystemDataSource {
     /// `bestInterface`). Newer engines ask the data source for it directly.
     func bestNetworkInterface() -> String? { resolveAdapter("Best") }
 
+    /// One interface in the Debug window. `index` is the BSD interface index, not the 1-based position used by
+    /// `Interface=N`. Unlike `networkInterfaces()`, diagnostics include inactive and virtual interfaces.
+    struct DebugNetworkInterface: Equatable {
+        var name: String
+        var index: UInt32
+        var description: String
+        var alias: String
+        var type: String
+        var status: String
+        var isVirtual: Bool
+    }
+
+    /// Local interface facts only; any thread. SystemConfiguration lookups can wait for configd, so callers showing
+    /// a window collect these away from the main thread. No addresses, traffic samples or network requests are needed.
+    func debugNetworkInterfaces() -> [DebugNetworkInterface] {
+        let snapshot = readNetwork()
+        let hardware = adapters()
+        let addresses = interfaceAddresses()
+        let names = Set(snapshot.flags.keys).union(hardware.keys).union(addresses.map(\.name))
+        return names.map { name in
+            let flags = snapshot.flags[name] ?? addresses.first(where: { $0.name == name })?.flags
+            return SystemMonitor.debugNetworkInterface(name: name, index: if_nametoindex(name), flags: flags,
+                adapter: hardware[name], mediaActive: SystemMonitor.mediaActive(name))
+        }.sorted {
+            if $0.index != $1.index { return $0.index < $1.index }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    /// Formats one reading without another system lookup, including interfaces that have no current link.
+    static func debugNetworkInterface(name: String, index: UInt32, flags: Int32?, adapter: AdapterInfo?,
+                                      mediaActive: Bool?) -> DebugNetworkInterface {
+        let loopback = flags.map { ($0 & IFF_LOOPBACK) != 0 } ?? false
+        let virtual = loopback || isVirtualInterface(name) || (adapter == nil && !name.hasPrefix("en"))
+        let status: String
+        if let flags {
+            let up = (flags & IFF_UP) != 0 && (mediaActive ?? ((flags & IFF_RUNNING) != 0))
+            status = up ? "Up" : "Down"
+        } else {
+            status = "Unavailable"
+        }
+        return DebugNetworkInterface(name: name, index: index, description: adapter?.displayName ?? name,
+                                     alias: adapter?.serviceName ?? name,
+                                     type: loopback ? "Loopback" : adapter?.isWireless == true ? "Wireless"
+                                        : adapter?.isEthernet == true ? "Ethernet" : "Other",
+                                     status: status, isVirtual: virtual)
+    }
+
     /// `interface`: nil = all physical interfaces; a BSD name (`en0`), an adapter name (`Wi-Fi`, `Ethernet`) or
     /// `Best` (the manual's default: the active interface, wired preferred over wireless).
     func networkCounters(interface: String?) -> NetworkCounters {

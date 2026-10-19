@@ -43,6 +43,13 @@ enum AppSelfTest {
         LayoutsUISelfTests.run(t)
         LayoutCommandsSelfTests.run(t)
         AboutSelfTests.run(t)
+        DebugSelfTests.run(t)
+        DebugEntryLifecycleSelfTests.run(t)
+        DebugFileRefreshSelfTests.run(t)
+        DebugRuntimeSelfTests.run(t)
+        DebugSystemInfoSelfTests.run(t)
+        DebugInfoViewSelfTests.run(t)
+        DebugSkinInspectorSelfTests.run(t)
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
@@ -793,6 +800,7 @@ enum AppSelfTest {
         for app in retainedApps {
             StudioWindowController.window(for: app)?.window?.close()
             AboutWindowController.window(for: app)?.close()
+            DebugWindowController.window(for: app)?.close()
             for c in app.sortedControllers { c.pauseUpdates() }
         }
     }

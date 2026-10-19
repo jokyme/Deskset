@@ -237,6 +237,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.showManageWindow(selecting: nil, file: nil, tab: .layouts)
             } else if case .about(let tab) = self.initialLayoutCommand {
                 self.showAbout(tab: tab)
+            } else if case .debug(let tab, let config) = self.initialLayoutCommand {
+                self.showDebug(tab: tab, config: config)
             } else if self.initialLayoutCommand == nil, firstRun, !opensFiles {
                 let manage = self.manageWindow ?? ManageWindowController(app: self)
                 self.manageWindow = manage
@@ -460,15 +462,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var reopenableWindow: NSWindow? {
         Self.reopenTarget(editor: StudioWindowController.window(for: self)?.window,
                           settings: SettingsWindowController.openWindow,
+                          debug: DebugWindowController.openWindow,
                           about: AboutWindowController.openWindow,
                           codeWindows: codeFileWindows.compactMap(\.window)) { $0.isVisible || $0.isMiniaturized }
     }
 
-    /// The skin editor, else Settings, else About, else the latest code window — the first of them that `isOpen`
+    /// The skin editor, else Settings, Debug, About or the latest code window — the first of them that `isOpen`
     /// (shown, or minimized in the Dock).
-    static func reopenTarget(editor: NSWindow?, settings: NSWindow?, about: NSWindow? = nil, codeWindows: [NSWindow],
+    static func reopenTarget(editor: NSWindow?, settings: NSWindow?, debug: NSWindow? = nil,
+                             about: NSWindow? = nil, codeWindows: [NSWindow],
                              isOpen: (NSWindow) -> Bool) -> NSWindow? {
-        ([editor, settings, about].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
+        ([editor, settings, debug, about].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -1267,8 +1271,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @discardableResult
-    func showAbout(tab: AboutWindowController.Tab = .log) -> AboutWindowController {
+    func showAbout(tab: AboutWindowController.Tab = .version) -> AboutWindowController {
         AboutWindowController.show(app: self, tab: tab)
+    }
+
+    @discardableResult
+    func showDebug(tab: DebugWindowController.Tab = .log, config: String? = nil) -> DebugWindowController {
+        let normalized = config.map(SkinLibrary.normalizedConfigName)
+        return DebugWindowController.show(app: self, tab: tab,
+                                          config: normalized?.isEmpty == false ? normalized : nil)
     }
 
     /// The last alert asked for (title, text), also in headless mode (tests).
@@ -1430,10 +1441,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = item.button {
             button.image = AppIcon.statusBarImage()
             button.toolTip = "Deskset"
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         statusMenu.delegate = self
-        item.menu = statusMenu
         statusItem = item
+    }
+
+    @objc private func statusItemClicked(_ sender: Any?) {
+        let event = NSApp.currentEvent
+        handleStatusItemClick(type: event?.type ?? .leftMouseUp, modifiers: event?.modifierFlags ?? [])
+    }
+
+    func handleStatusItemClick(type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags) {
+        if type == .rightMouseUp {
+            buildMainMenu(statusMenu)
+            guard presentsWindows, let button = statusItem?.button else { return }
+            statusMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+        } else if modifiers.contains(.control) {
+            showDebug(tab: .log)
+        } else {
+            showManageWindow(selecting: nil, file: nil)
+        }
     }
 
     func showMainMenu() {
@@ -1481,6 +1511,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Install Skin…", #selector(installSkinAction)))
         menu.addItem(item("Open Skins Folder", #selector(openSkinsFolderAction)))
         menu.addItem(item("Open Log", #selector(openLogAction)))
+        menu.addItem(item("Debug", #selector(debugAction)))
         menu.addItem(.separator())
         let login = item("Launch at Login", #selector(toggleLaunchAtLoginAction))
         login.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -1626,6 +1657,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
             let appMenu = NSMenu()
             appMenu.addItem(item("Manage", #selector(manageAction)))
+            appMenu.addItem(item("Debug", #selector(debugAction)))
             appMenu.addItem(item("About", #selector(aboutAction)))
             appMenu.addItem(.separator())
             appMenu.addItem(item("Refresh All", #selector(refreshAllAction)))
@@ -1717,6 +1749,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Edit Skin… opens the Skin Studio (its Code view is the built-in code editor). A code editor app chosen in
         // Settings ▸ Editor gets an item of its own.
         var entries: [(String, Selector)] = [("Manage Skin…", #selector(manageSkinAction(_:))),
+                                             ("Debug Skin", #selector(debugSkinAction(_:))),
                                              ("Edit Skin…", #selector(inspectSkinAction(_:)))]
         if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
                                                                   preferences: state.editor,
@@ -1890,6 +1923,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let c = args(sender).first.flatMap(controller(for:)) { showManageWindow(selecting: c.config, file: c.file) }
     }
 
+    @objc func debugSkinAction(_ sender: NSMenuItem) {
+        if let c = args(sender).first.flatMap(controller(for:)) { showDebug(tab: .skins, config: c.config) }
+    }
+
     @objc private func inspectSkinAction(_ sender: NSMenuItem) {
         if let c = args(sender).first.flatMap(controller(for:)) { showInspector(for: c) }
     }
@@ -1925,14 +1962,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Workspace.reveal(skinsDirectory)
     }
 
-    @objc func openLogAction() { showAbout(tab: .log) }
+    @objc func openLogAction() { showDebug(tab: .log) }
+
+    @objc func debugAction() { showDebug(tab: .log) }
 
     @objc func toggleLaunchAtLoginAction() {
         LaunchAtLogin.toggle(app: self)
         notifyChanged()
     }
 
-    @objc func aboutAction() { showAbout(tab: .log) }
+    @objc func aboutAction() { showAbout(tab: .version) }
 
     @objc func checkForUpdatesAction() { updates.checkManually() }
 

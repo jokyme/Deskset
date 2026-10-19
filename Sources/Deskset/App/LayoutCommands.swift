@@ -7,6 +7,7 @@ enum LayoutCommand: Equatable {
     case loadLayout(String)
     case manageLayouts
     case about(AboutWindowController.Tab)
+    case debug(DebugWindowController.Tab, config: String?)
 
     enum ParseResult: Equatable { case none, command(LayoutCommand), invalid(String) }
 
@@ -28,7 +29,14 @@ enum LayoutCommand: Equatable {
             guard args.count <= 2 else {
                 return .invalid("use Deskset '!About' [Log|Skins|Plugins|Version]")
             }
-            return .command(.about(AboutWindowController.Tab.parse(args.count == 2 ? args[1] : nil)))
+            return .command(.about(args.count == 2 ? AboutWindowController.Tab.parse(args[1]) : .version))
+        case "!debug":
+            guard args.count <= 3 else {
+                return .invalid("use Deskset '!Debug' [Log|Display|Network|Plugins|Skin] [Config]")
+            }
+            let tab = DebugWindowController.Tab.parse(args.count >= 2 ? args[1] : nil)
+            let config = args.count == 3 ? SkinLibrary.normalizedConfigName(args[2]) : nil
+            return .command(.debug(tab, config: config?.isEmpty == false ? config : nil))
         default:
             return .invalid("unsupported application command \(first)")
         }
@@ -45,6 +53,10 @@ enum LayoutCommandRequest: Equatable {
         case .command(.loadLayout(let name)): return ["kind": "load", "name": name]
         case .command(.manageLayouts): return ["kind": "manage"]
         case .command(.about(let tab)): return ["kind": "about", "tab": tab.rawValue]
+        case .command(.debug(let tab, let config)):
+            var fields = ["kind": "debug", "tab": tab.rawValue]
+            if let config { fields["config"] = config }
+            return fields
         case .reopen(let urls):
             return ["kind": "reopen", "files": urls.map(\.absoluteString).joined(separator: "\n")]
         }
@@ -59,6 +71,9 @@ enum LayoutCommandRequest: Equatable {
         case "about":
             guard let raw = fields["tab"], let tab = AboutWindowController.Tab(rawValue: raw) else { return nil }
             self = .command(.about(tab))
+        case "debug":
+            guard let raw = fields["tab"], let tab = DebugWindowController.Tab(rawValue: raw) else { return nil }
+            self = .command(.debug(tab, config: fields["config"]))
         case "reopen":
             let strings = (fields["files"] ?? "").split(separator: "\n").map(String.init)
             let urls = strings.compactMap(URL.init(string:))
@@ -286,6 +301,9 @@ extension AppController {
             completion(true)
         case .command(.about(let tab)):
             showAbout(tab: tab)
+            completion(true)
+        case .command(.debug(let tab, let config)):
+            showDebug(tab: tab, config: config)
             completion(true)
         case .reopen(let urls):
             if urls.isEmpty { _ = applicationShouldHandleReopen(NSApp, hasVisibleWindows: false) }
