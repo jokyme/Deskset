@@ -805,7 +805,8 @@ private func rmskinInstallTests(_ t: TestRunner) {
                                       in: dir)
         let skins = dir.appendingPathComponent("Skins")
         try writeTree([("Größe 時計/@Resources/Välues.inc", utf8("[Variables]\nA=mine\n"))], at: skins)
-        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                 backupDirectory: dir.appendingPathComponent("Backup"))
         t.equal(result.installedRootConfigs, ["Größe 時計"])
         t.equal(result.skinToLoadConfig, "Größe 時計\\Übersicht")
         t.equal(result.skinToLoadFile, "Größe.ini")
@@ -944,17 +945,23 @@ private func rmskinUpgradeTests(_ t: TestRunner) {
         t.equal(names, ["Clockwork"], "no staging folders left")
     }
 
-    t.suite("Rmskin: empty user value is preserved") {
+    t.suite("Rmskin: empty user value is preserved only with a skin backup") {
         let dir = t.temporaryDirectory("rmskin-emptyvar")
         defer { try? FileManager.default.removeItem(at: dir) }
         let skins = dir.appendingPathComponent("Skins")
         try writeTree([("Clockwork/@Resources/Variables.inc", utf8("[Variables]\nColor=\nSize=30\n"))], at: skins)
         let package = try makePackage(clockFiles(), in: dir)
-        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                 backupDirectory: dir.appendingPathComponent("Backup"))
         t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
                 "[Variables]\nColor=\nSize=30\n")
         t.equal(result.preservedVariableCount, 2)
-        t.equal(result.backupLocations, [], "no backup directory → old folder deleted")
+        t.equal(result.backupLocations.map(\.lastPathComponent), ["Clockwork"])
+        let withoutBackup = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
+                "[Variables]\nColor=255,255,255\nSize=12\n")
+        t.equal(withoutBackup.preservedVariableCount, 0, "no backup directory skips VariableFiles")
+        t.equal(withoutBackup.backupLocations, [], "no backup directory → old folder deleted")
         t.equal(((try? FileManager.default.contentsOfDirectory(atPath: skins.path)) ?? []), ["Clockwork"])
     }
 
@@ -974,7 +981,8 @@ private func rmskinUpgradeTests(_ t: TestRunner) {
                        ("Clockwork/Digital/Settings.inc", utf8("[Variables]\nMode=user\n")),
                        ("Clockwork/Missing.inc", utf8("[Variables]\nX=1\n"))], at: skins)
         let package = try makePackage(files, in: dir)
-        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                 backupDirectory: dir.appendingPathComponent("Backup"))
         t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
                 "[Variables]\nColor=1,2,3\nSize=12\n", "case-insensitive section/key match, package spelling kept")
         t.equal(text(skins.appendingPathComponent("Clockwork/Digital/Settings.inc")), "[Variables]\nMode=user\n")
@@ -1025,17 +1033,60 @@ private func rmskinMergeTests(_ t: TestRunner) {
         t.equal(text(skins.appendingPathComponent("Clockwork/Extra/Extra.ini")), "user extra", "existing kept")
         t.equal(text(skins.appendingPathComponent("Clockwork/New/New.ini")), "new")
         t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
-                "[Variables]\nSize=99\nAdded=1\n")
-        t.check(result.warnings.contains { $0.contains("MergeSkins") }, "incompatible options reported")
-        // The backup is a full copy of the state before merging.
-        t.equal(text(backup.appendingPathComponent("Clockwork/Digital/Digital.ini")), "old digital")
-        t.equal(text(backup.appendingPathComponent("Clockwork/Extra/Extra.ini")), "user extra")
+                "[Variables]\nSize=12\nAdded=1\n")
+        t.equal(result.preservedVariableCount, 0)
+        t.check(result.warnings.contains { $0.contains("MergeSkins is applied and VariableFiles is skipped") },
+                "incompatible options report the action taken")
+        t.equal(result.backupLocations, [], "modern MergeSkins does not back up the root config")
+        t.check(!exists(backup))
 
         // Merge into a folder that does not exist yet = plain install.
         let fresh = dir.appendingPathComponent("Fresh")
         let r2 = try RmskinInstaller.install(packageURL: package, skinsDirectory: fresh)
         t.equal(r2.backupLocations, [])
         t.equal(text(fresh.appendingPathComponent("Clockwork/New/New.ini")), "new")
+    }
+
+    t.suite("Rmskin: modern merge and Backup skins options") {
+        let dir = t.temporaryDirectory("rmskin-install-options")
+        defer { RmskinFiles.forceRemove(dir) }
+        for merge in [false, true] {
+            for backupSkins in [false, true] {
+                let folder = dir.appendingPathComponent("merge-\(merge)-backup-\(backupSkins)")
+                let skins = folder.appendingPathComponent("Skins")
+                let backup = folder.appendingPathComponent("Backup")
+                try writeTree([
+                    ("Clockwork/@Resources/Variables.inc", utf8("[Variables]\nSize=99\n")),
+                    ("Clockwork/old-only.txt", utf8("user file")),
+                ], at: skins)
+                let manifest = "[rmskin]\nName=Options\nMergeSkins=\(merge ? 1 : 0)\n"
+                    + "VariableFiles=Clockwork\\@Resources\\Variables.inc\n"
+                let package = try makePackage([
+                    ("RMSKIN.ini", utf8(manifest)),
+                    ("Skins/Clockwork/Main.ini", utf8("[Rainmeter]\n")),
+                    ("Skins/Clockwork/@Resources/Variables.inc", utf8("[Variables]\nSize=12\nAdded=1\n")),
+                ], in: folder)
+                let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                         backupDirectory: backup, backupSkins: backupSkins)
+                let preserves = !merge && backupSkins
+                t.equal(result.manifest.packageFormat, .rmskin)
+                t.equal(result.preservedVariableCount, preserves ? 1 : 0)
+                t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
+                        "[Variables]\nSize=\(preserves ? 99 : 12)\nAdded=1\n")
+                t.equal(exists(skins.appendingPathComponent("Clockwork/old-only.txt")), merge,
+                        "only merge retains files not shipped by the package")
+                t.equal(text(skins.appendingPathComponent("Clockwork/Main.ini")), "[Rainmeter]\n")
+                t.equal(result.backupLocations.map(\.lastPathComponent), preserves ? ["Clockwork"] : [])
+                t.equal(exists(backup), preserves, "disabled backups and modern merge never create a skin backup")
+                if preserves {
+                    t.equal(text(backup.appendingPathComponent("Clockwork/old-only.txt")), "user file")
+                    t.equal(text(backup.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
+                            "[Variables]\nSize=99\n")
+                }
+                t.equal(try FileManager.default.contentsOfDirectory(atPath: skins.path), ["Clockwork"],
+                        "replacement leaves no staging or temporary old folder")
+            }
+        }
     }
 }
 
@@ -1081,6 +1132,29 @@ private func rmskinLayoutTests(_ t: TestRunner) {
         t.equal(r2.installedLayouts, [])
         t.equal(r2.layoutToLoad, nil)
         t.check(r2.warnings.contains { $0.contains("not installed") })
+    }
+
+    t.suite("Rmskin: disabling skin backups retains layout backups") {
+        let dir = t.temporaryDirectory("rmskin-layout-backup-option")
+        defer { RmskinFiles.forceRemove(dir) }
+        let skins = dir.appendingPathComponent("Skins")
+        let layouts = dir.appendingPathComponent("Layouts")
+        let backup = dir.appendingPathComponent("Backup")
+        try writeTree([("Clockwork/old-only.txt", utf8("old skin"))], at: skins)
+        try writeTree([("Desk/Rainmeter.ini", utf8("[User]\nActive=1\n"))], at: layouts)
+        let package = try makePackage(clockFiles() + [
+            ("Layouts/Desk/Rainmeter.ini", utf8("[Rainmeter]\nLogging=1\n[Clockwork\\Digital]\nActive=1\n")),
+        ], in: dir)
+        let inspection = try RmskinPackage.inspect(package)
+        defer { inspection.cleanup() }
+        let result = try RmskinInstaller.install(inspection: inspection, skinsDirectory: skins,
+                                                 layoutsDirectory: layouts, backupDirectory: backup, backupSkins: false)
+        t.equal(result.backupLocations.map(\.path), [backup.appendingPathComponent("@Layouts/Desk").path])
+        t.equal(text(backup.appendingPathComponent("@Layouts/Desk/Rainmeter.ini")), "[User]\nActive=1\n")
+        t.check(!exists(backup.appendingPathComponent("Clockwork")))
+        t.check(!exists(skins.appendingPathComponent("Clockwork/old-only.txt")))
+        t.equal(text(layouts.appendingPathComponent("Desk/Rainmeter.ini")),
+                "[Rainmeter]\n[Clockwork\\Digital]\nActive=1\n")
     }
 }
 
@@ -1635,7 +1709,8 @@ private func rmskinLegacyNameTests(_ t: TestRunner) {
         defer {
             if let saved { setenv("__CF_USER_TEXT_ENCODING", saved, 1) } else { unsetenv("__CF_USER_TEXT_ENCODING") }
         }
-        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                 backupDirectory: dir.appendingPathComponent("Backup"))
         t.equal(result.installedRootConfigs, ["Größe"])
         t.equal(((try? FileManager.default.contentsOfDirectory(atPath: skins.path)) ?? []).map {
             $0.precomposedStringWithCanonicalMapping }, ["Größe"], "one root config, no escape debris")
@@ -1659,7 +1734,8 @@ private func rmskinManualConformanceTests(_ t: TestRunner) {
                         utf8("[Variables]\nColor=0,0,0\nSize=30\n[StyleText]\nFontSize=10\nFontFace=Old\n"))], at: skins)
         let package = try makePackage(clockFiles(variables:
             "[Variables]\nColor=255,255,255\nSize=12\n[StyleText]\nFontSize=12\nFontFace=New\n"), in: dir)
-        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins)
+        let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                 backupDirectory: dir.appendingPathComponent("Backup"))
         t.equal(text(skins.appendingPathComponent("Clockwork/@Resources/Variables.inc")),
                 "[Variables]\nColor=0,0,0\nSize=30\n[StyleText]\nFontSize=12\nFontFace=New\n")
         t.equal(result.preservedVariableCount, 2)

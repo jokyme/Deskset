@@ -467,9 +467,10 @@ public enum RmskinPackage {
             }
         }
 
-        if inspection.manifest.mergeSkins, !inspection.manifest.variableFiles.isEmpty {
+        if inspection.manifest.packageFormat == .rmskin,
+           inspection.manifest.mergeSkins, !inspection.manifest.variableFiles.isEmpty {
             inspection.warnings.append("The package sets both MergeSkins and VariableFiles, which the Skin Packager "
-                + "treats as incompatible; both are applied.")
+                + "treats as incompatible; MergeSkins is applied and VariableFiles is skipped.")
         }
         if inspection.manifest.packageFormat != .rmskin { completeSkinLoad(&inspection) }
         return inspection
@@ -592,14 +593,14 @@ public struct RmskinInstallResult: Equatable {
 public enum RmskinInstaller {
     /// Installs a .rmskin, a legacy Rainstaller package, a plain ZIP or a folder (see `RmskinPackage.inspect`):
     /// extract to a temp dir, copy `Skins/*` into `skinsDirectory` (backing up existing
-    /// root configs into `backupDirectory` when given, preserving `VariableFiles` values as the manual describes),
+    /// root configs into `backupDirectory` when enabled, preserving `VariableFiles` values as the manual describes),
     /// copy `Layouts/*` into `layoutsDirectory` when given, ignore `Plugins/` (flag it), clean up the temp dir.
     public static func install(packageURL: URL, skinsDirectory: URL, layoutsDirectory: URL? = nil,
-                               backupDirectory: URL? = nil) throws -> RmskinInstallResult {
+                               backupDirectory: URL? = nil, backupSkins: Bool = true) throws -> RmskinInstallResult {
         let inspection = try RmskinPackage.inspect(packageURL)
         defer { inspection.cleanup() }
         return try install(inspection: inspection, skinsDirectory: skinsDirectory,
-                           layoutsDirectory: layoutsDirectory, backupDirectory: backupDirectory)
+                           layoutsDirectory: layoutsDirectory, backupDirectory: backupDirectory, backupSkins: backupSkins)
     }
 
     /// Installs an already inspected package (see `RmskinPackage.inspect`). Does not clean the inspection up.
@@ -609,30 +610,31 @@ public enum RmskinInstaller {
     ///   replaced with the version in the skin package"; with `MergeSkins=1` "the Skin Installer will not remove any
     ///   existing files" — package files are added over the existing folder.
     /// - "If any of the skins to be installed already exist, they will be moved to a Backup folder before
-    ///   installation": with `backupDirectory` the existing root config is moved to `backupDirectory/<RootConfig>`
-    ///   (or `<RootConfig> (2)`, `(3)`… so older backups are never overwritten). With MergeSkins nothing is removed,
-    ///   so the backup is a copy. Without `backupDirectory` ("Backup skins" unchecked) the old folder is deleted.
+    ///   installation": with `backupSkins` enabled and `backupDirectory` supplied, the existing root config is moved
+    ///   to `backupDirectory/<RootConfig>` (or `<RootConfig> (2)`, `(3)`… so older backups are never overwritten).
+    ///   Modern `MergeSkins` does not back up the root config. Replacement without a skin backup deletes the old folder.
     ///   Replacement is staged: the new folder is fully prepared first and swapped in, and the old one is put back
     ///   if the swap fails.
     /// - `VariableFiles`: "the existing variable values are used instead of the defaults in the package" — for each
     ///   listed file present both in the existing install and in the package, values of keys found in both (same
     ///   section) are taken from the existing file; the package file keeps its layout, comments, new keys and
-    ///   encoding.
+    ///   encoding. Modern packages only preserve these values when the skin is backed up and `MergeSkins` is off.
     /// - `Layouts/<name>` goes to `layoutsDirectory/<name>` (existing layouts of the same name are backed up to
-    ///   `backupDirectory/@Layouts/`), with every option of its `[Rainmeter]` section removed (the installer does not
-    ///   let authors overwrite the user's global settings).
+    ///   `backupDirectory/@Layouts/`, independently of `backupSkins`), with every option of its `[Rainmeter]` section
+    ///   removed (the installer does not let authors overwrite the user's global settings).
     /// - `Plugins/` (Windows DLLs) and legacy `Addons/` are never installed; `containsPlugins` / warnings report them.
     ///   Package-level fonts (legacy `Fonts/`, loose font files) are copied into each installed root config's
     ///   `@Resources/Fonts`, and a root config's own `Fonts/` folder into its `@Resources/Fonts` — never replacing a
     ///   font already there (`installedFonts` lists what was added).
     /// - Legacy `KeepVar=1` (`manifest.keepsAllVariables`) treats every .ini / .inc file of the package's root configs
-    ///   as a variables file.
+    ///   as a variables file. Legacy variable preservation also applies without skin backups or while merging;
+    ///   legacy merge backups remain copies of the existing root config when enabled.
     /// - An inspection of a folder that is, contains or lies inside `skinsDirectory` throws `.alreadyInSkinsFolder`.
     /// - A package `@Vault` (in `Skins/` or at the top level) is merged into `skinsDirectory/@Vault` without
     ///   overwriting existing files.
     /// - `LoadType`/`Load` become `skinToLoad` / `layoutToLoad` when the target exists after installation.
     public static func install(inspection: RmskinInspection, skinsDirectory: URL, layoutsDirectory: URL? = nil,
-                               backupDirectory: URL? = nil) throws -> RmskinInstallResult {
+                               backupDirectory: URL? = nil, backupSkins: Bool = true) throws -> RmskinInstallResult {
         let fm = FileManager.default
         let manifest = inspection.manifest
         if let source = inspection.sourceFolder, RmskinPackage.folder(source, overlaps: skinsDirectory) {
@@ -662,12 +664,16 @@ public enum RmskinInstaller {
             }
         }
 
+        let modernPackage = manifest.packageFormat == .rmskin
+        let skinBackupDirectory = backupSkins && !(modernPackage && manifest.mergeSkins) ? backupDirectory : nil
+        let preserveVariables = !modernPackage || (!manifest.mergeSkins && skinBackupDirectory != nil)
+
         for rootConfig in inspection.rootConfigs {
             guard let skinsSource else { break }
+            let paths = preserveVariables ? variableFiles.filter { $0.root == rootConfig }.map(\.path) : []
             try installRootConfig(rootConfig, from: skinsSource.appendingPathComponent(rootConfig),
-                                  skinsDirectory: skinsDirectory, backupDirectory: backupDirectory,
-                                  merge: manifest.mergeSkins,
-                                  variableFiles: variableFiles.filter { $0.root == rootConfig }.map(\.path),
+                                  skinsDirectory: skinsDirectory, backupDirectory: skinBackupDirectory,
+                                  merge: manifest.mergeSkins, variableFiles: paths,
                                   result: &result)
             result.installedRootConfigs.append(rootConfig)
         }

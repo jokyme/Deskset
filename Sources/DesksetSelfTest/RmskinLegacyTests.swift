@@ -389,6 +389,42 @@ private func legacyRainstallerTests(_ t: TestRunner) {
         t.equal(lgText(skins.appendingPathComponent("Lumen/@Resources/Settings.inc")), "[Variables]\nUnit=C\nCity=Oslo\n")
     }
 
+    t.suite("RmskinLegacy: KeepVar survives merge and disabled skin backups") {
+        let dir = t.temporaryDirectory("legacy-install-options")
+        defer { RmskinFiles.forceRemove(dir) }
+        for merge in [false, true] {
+            for backupSkins in [false, true] {
+                let folder = dir.appendingPathComponent("merge-\(merge)-backup-\(backupSkins)")
+                let skins = folder.appendingPathComponent("Skins")
+                let backup = folder.appendingPathComponent("Backup")
+                try lgWriteTree([
+                    ("Lumen/Clock/Clock.ini", lgUTF8("[Rainmeter]\nUpdate=500\n[Variables]\nTint=9,9,9\n")),
+                    ("Lumen/@Resources/Settings.inc", lgUTF8("[Variables]\nUnit=F\nCity=Lima\n")),
+                    ("Lumen/Notes.txt", lgUTF8("user file")),
+                ], at: skins)
+                let cfg = "[Rainstaller]\nName=Lumen\nKeepVar=1\nMerge=\(merge ? 1 : 0)\n"
+                let package = try lgArchive(rainstallerFiles(cfg: cfg), in: folder, name: "Legacy.rmskin")
+                let result = try RmskinInstaller.install(packageURL: package, skinsDirectory: skins,
+                                                         backupDirectory: backup, backupSkins: backupSkins)
+                t.equal(result.manifest.packageFormat, .rainstaller)
+                t.equal(result.preservedVariableCount, 3, "legacy KeepVar is independent of merge and skin backups")
+                t.equal(lgText(skins.appendingPathComponent("Lumen/Clock/Clock.ini")),
+                        "[Rainmeter]\nUpdate=1000\n[Variables]\nTint=9,9,9\n")
+                t.equal(lgText(skins.appendingPathComponent("Lumen/@Resources/Settings.inc")),
+                        "[Variables]\nUnit=F\nCity=Lima\n")
+                t.equal(lgExists(skins.appendingPathComponent("Lumen/Notes.txt")), merge)
+                t.equal(result.backupLocations.map(\.lastPathComponent), backupSkins ? ["Lumen"] : [])
+                t.equal(lgExists(backup), backupSkins)
+                if backupSkins {
+                    t.equal(lgText(backup.appendingPathComponent("Lumen/Notes.txt")), "user file")
+                    t.equal(lgText(backup.appendingPathComponent("Lumen/Clock/Clock.ini")),
+                            "[Rainmeter]\nUpdate=500\n[Variables]\nTint=9,9,9\n")
+                }
+                t.equal(try FileManager.default.contentsOfDirectory(atPath: skins.path), ["Lumen"])
+            }
+        }
+    }
+
     t.suite("RmskinLegacy: kept variables stay in the user's ANSI code page") {
         // Old skins are often ANSI files in the author's Windows code page (GBK here); rewriting one to keep the
         // user's values must not turn it into Windows-1252 or UTF-16.
