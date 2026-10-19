@@ -235,6 +235,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             if self.initialLayoutCommand == .manageLayouts {
                 self.showManageWindow(selecting: nil, file: nil, tab: .layouts)
+            } else if case .about(let tab) = self.initialLayoutCommand {
+                self.showAbout(tab: tab)
             } else if self.initialLayoutCommand == nil, firstRun, !opensFiles {
                 let manage = self.manageWindow ?? ManageWindowController(app: self)
                 self.manageWindow = manage
@@ -456,15 +458,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The window a reopen brings back (nil: none is open).
     var reopenableWindow: NSWindow? {
-        Self.reopenTarget(editor: StudioWindowController.window(for: self)?.window, settings: SettingsWindowController.openWindow,
+        Self.reopenTarget(editor: StudioWindowController.window(for: self)?.window,
+                          settings: SettingsWindowController.openWindow,
+                          about: AboutWindowController.openWindow,
                           codeWindows: codeFileWindows.compactMap(\.window)) { $0.isVisible || $0.isMiniaturized }
     }
 
-    /// The skin editor, else Settings, else the latest code window — the first of them that `isOpen` (shown, or
-    /// minimized in the Dock).
-    static func reopenTarget(editor: NSWindow?, settings: NSWindow?, codeWindows: [NSWindow],
+    /// The skin editor, else Settings, else About, else the latest code window — the first of them that `isOpen`
+    /// (shown, or minimized in the Dock).
+    static func reopenTarget(editor: NSWindow?, settings: NSWindow?, about: NSWindow? = nil, codeWindows: [NSWindow],
                              isOpen: (NSWindow) -> Bool) -> NSWindow? {
-        ([editor, settings].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
+        ([editor, settings, about].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -1262,18 +1266,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return w
     }
 
-    func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        let credits = NSAttributedString(
-            string: "Desktop widgets for your Mac, compatible with Rainmeter skins.\n"
-                + "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.\n"
-                + WeatherWiring.credits,
-            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-                         .foregroundColor: NSColor.secondaryLabelColor])
-        var options: [NSApplication.AboutPanelOptionKey: Any] = [.credits: credits,
-                                                                .applicationVersion: AppVersion.current]
-        if !Paths.isAppBundle { options[.applicationIcon] = AppIcon.image(size: 256) }
-        NSApp.orderFrontStandardAboutPanel(options: options)
+    @discardableResult
+    func showAbout(tab: AboutWindowController.Tab = .log) -> AboutWindowController {
+        AboutWindowController.show(app: self, tab: tab)
     }
 
     /// The last alert asked for (title, text), also in headless mode (tests).
@@ -1629,6 +1624,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(weather)
             }
             menu.addItem(.separator())
+            let appMenu = NSMenu()
+            appMenu.addItem(item("Manage", #selector(manageAction)))
+            appMenu.addItem(item("About", #selector(aboutAction)))
+            appMenu.addItem(.separator())
+            appMenu.addItem(item("Refresh All", #selector(refreshAllAction)))
+            let appItem = NSMenuItem(title: "Deskset", action: nil, keyEquivalent: "")
+            appItem.submenu = appMenu
+            menu.addItem(appItem)
+            menu.addItem(.separator())
         }
 
         if let entry = config(named: c.config), entry.files.count > 1 {
@@ -1921,14 +1925,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Workspace.reveal(skinsDirectory)
     }
 
-    @objc private func openLogAction() { Workspace.edit(Paths.logFile) }
+    @objc func openLogAction() { showAbout(tab: .log) }
 
     @objc func toggleLaunchAtLoginAction() {
         LaunchAtLogin.toggle(app: self)
         notifyChanged()
     }
 
-    @objc func aboutAction() { showAbout() }
+    @objc func aboutAction() { showAbout(tab: .log) }
 
     @objc func checkForUpdatesAction() { updates.checkManually() }
 

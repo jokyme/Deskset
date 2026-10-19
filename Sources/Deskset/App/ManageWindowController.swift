@@ -336,11 +336,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let openFolder = NSButton(title: "Open Skins Folder", target: app,
                                   action: #selector(AppController.openSkinsFolderAction))
         let refreshAll = NSButton(title: "Refresh All", target: app, action: #selector(AppController.refreshAllAction))
+        let openLog = NSButton(title: "Open Log", target: app, action: #selector(AppController.openLogAction))
         launchAtLoginBox.target = self
         launchAtLoginBox.action = #selector(launchAtLoginChanged)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let bar = NSStackView(views: [install, openFolder, refreshAll, spacer, launchAtLoginBox])
+        let bar = NSStackView(views: [install, openFolder, refreshAll, openLog, spacer, launchAtLoginBox])
         bar.orientation = .horizontal
         bar.spacing = 8
         bar.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 12, right: 16)

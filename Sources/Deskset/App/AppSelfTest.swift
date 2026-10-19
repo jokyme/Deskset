@@ -42,6 +42,7 @@ enum AppSelfTest {
         LayoutsSelfTests.run(t)
         LayoutsUISelfTests.run(t)
         LayoutCommandsSelfTests.run(t)
+        AboutSelfTests.run(t)
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
@@ -791,6 +792,7 @@ enum AppSelfTest {
     static func closeEditors() {
         for app in retainedApps {
             StudioWindowController.window(for: app)?.window?.close()
+            AboutWindowController.window(for: app)?.close()
             for c in app.sortedControllers { c.pauseUpdates() }
         }
     }

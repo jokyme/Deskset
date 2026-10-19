@@ -29,15 +29,31 @@ enum LayoutCommandsSelfTests {
             t.equal(LayoutCommand.parse(["Deskset", "!LoadLayout", "My Desktop"]), .command(.loadLayout("My Desktop")))
             t.equal(LayoutCommand.parse(["Deskset", "!loadlayout", "@Backup"]), .command(.loadLayout("@Backup")))
             t.equal(LayoutCommand.parse(["Deskset", "!MANAGE", "layouts"]), .command(.manageLayouts))
+            t.equal(LayoutCommand.parse(["Deskset", "!About"]), .command(.about(.log)))
+            t.equal(LayoutCommand.parse(["Deskset", "!about", "Log"]), .command(.about(.log)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "Skins"]), .command(.about(.skins)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "Measures"]), .command(.about(.skins)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "Plugins"]), .command(.about(.plugins)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "Version"]), .command(.about(.version)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "UnknownTab"]), .command(.about(.log)))
             for args in [["!LoadLayout"], ["!LoadLayout", ""], ["!LoadLayout", "../outside"],
                          ["!LoadLayout", "one", "two"], ["!Manage"], ["!Manage", "Skins"],
-                         ["!Manage", "Layouts", "config"], ["!Execute", "rm -rf /"], ["!RefreshApp"]] {
+                         ["!Manage", "Layouts", "config"], ["!About", "Skins", "extra"],
+                         ["!Execute", "rm -rf /"], ["!RefreshApp"]] {
                 if case .invalid = LayoutCommand.parse(["Deskset"] + args) { t.check(true) }
                 else { t.check(false, "rejects \(args)") }
             }
-            let requests: [LayoutCommandRequest] = [.command(.loadLayout("My Desktop")), .command(.manageLayouts),
-                .reopen([]), .reopen([URL(fileURLWithPath: "/tmp/a file.rmskin"), URL(fileURLWithPath: "/tmp/line\nbreak.ini")])]
+            let requests: [LayoutCommandRequest] = [
+                .command(.loadLayout("My Desktop")), .command(.manageLayouts),
+                .command(.about(.log)), .command(.about(.skins)),
+                .command(.about(.plugins)), .command(.about(.version)),
+                .reopen([]), .reopen([URL(fileURLWithPath: "/tmp/a file.rmskin"), URL(fileURLWithPath: "/tmp/line\nbreak.ini")]),
+            ]
             for request in requests { t.equal(LayoutCommandRequest(fields: request.fields), request) }
+            for invalidTab in ["Measures", "skins", "UnknownTab", ""] {
+                t.equal(LayoutCommandRequest(fields: ["kind": "about", "tab": invalidTab]), nil)
+            }
+            t.equal(LayoutCommandRequest(fields: ["kind": "about"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "load", "name": "../outside"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "reopen", "files": "https://example.com/x.ini"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "execute", "name": "!Quit"]), nil)

@@ -1173,6 +1173,18 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
 
+#### About（Log、Skins、Plugins、Version）
+- **Windows：** About 的四个页面提供日志、活动皮肤的运行值、插件信息和版本/路径信息
+  （<https://docs.rainmeter.net/manual/user-interface/about/>）。
+- **Mac：** 四页均可从 About、Manage 的 Open Log、皮肤的 Deskset 子菜单和 `!About`（包括命令行）打开。
+  Log 初始显示最近 20 条，新消息置顶；过滤只影响后续消息，Clear 只清面板，Command-C 复制所选消息正文。
+  面板沿用现有日志的 2,000 条上限。Skins 显示实时 measure 范围、数值、字符串和用户变量，标出禁用/暂停状态；
+  长值截断显示，复制保留完整内容。Plugins 列出已注册的内置实现，版本跟随 Deskset 并标注 `(bundled)`，作者显示 `jokyme`；
+  页面说明这些实现随应用更新，目前不支持外部插件。Version 复制实际版本、构建号、二进制架构和路径；暂不提供构建日期。
+- **原因：** macOS 窗口和剪贴板惯例、现有日志上限与内置插件实现。
+- **对皮肤的影响：** 不提供 Windows DLL 元数据；未知 `!About` 页名回退到 Log，Measures 选择 Skins。
+- **状态：** 部分实现；已覆盖 macOS 本地测试，边界行为的 Windows 桌面对照仍待完成。本项不包含 Rainmeter 5.0 的独立 Debug 窗口。
+
 #### 已加载但被隐藏的皮肤（管理窗口）
 - **Windows：** 管理窗口列出已激活的皮肤及其坐标、位置、加载顺序、透明度等设置；手册没有说那里会标出被 `!Hide` 或 StartHidden
   隐藏的皮肤。`!Show` 可以让它重新显示。

@@ -50,6 +50,8 @@ enum CommandLineTools {
                Deskset '!LoadLayout' "Layout name"
                                         load a saved layout in the running app, or start Deskset with it
                Deskset '!Manage' Layouts open the Layouts page in Manage
+               Deskset '!About' [Log|Skins|Plugins|Version]
+                                        open the About window on the given tab (default Log)
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
                       [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
@@ -67,9 +69,9 @@ enum CommandLineTools {
                                         run skins without a window and print what an update and a drawing cost
                Deskset --self-test [filter]
                                         run the app's self-tests
-               Deskset --snapshot-ui manage|settings|codeeditor|install|install-zip|icon|menubar
+               Deskset --snapshot-ui manage|settings|about|codeeditor|install|install-zip|icon|menubar
                       [--out x.png] [--dark] [--select NAME] [--size WxH] [--skins-dir DIR]
-                      [--pane general|editor|skins|layouts] [--hidden] [--coordinates X,Y]
+                      [--pane general|editor|skins|layouts|log|plugins|version] [--hidden] [--coordinates X,Y]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
                Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
