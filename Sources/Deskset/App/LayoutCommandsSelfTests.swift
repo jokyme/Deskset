@@ -29,16 +29,25 @@ enum LayoutCommandsSelfTests {
             t.equal(LayoutCommand.parse(["Deskset", "!LoadLayout", "My Desktop"]), .command(.loadLayout("My Desktop")))
             t.equal(LayoutCommand.parse(["Deskset", "!loadlayout", "@Backup"]), .command(.loadLayout("@Backup")))
             t.equal(LayoutCommand.parse(["Deskset", "!MANAGE", "layouts"]), .command(.manageLayouts))
-            t.equal(LayoutCommand.parse(["Deskset", "!About"]), .command(.about(.log)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About"]), .command(.about(.version)))
             t.equal(LayoutCommand.parse(["Deskset", "!about", "Log"]), .command(.about(.log)))
             t.equal(LayoutCommand.parse(["Deskset", "!About", "Skins"]), .command(.about(.skins)))
             t.equal(LayoutCommand.parse(["Deskset", "!About", "Measures"]), .command(.about(.skins)))
             t.equal(LayoutCommand.parse(["Deskset", "!About", "Plugins"]), .command(.about(.plugins)))
             t.equal(LayoutCommand.parse(["Deskset", "!About", "Version"]), .command(.about(.version)))
-            t.equal(LayoutCommand.parse(["Deskset", "!About", "UnknownTab"]), .command(.about(.log)))
+            t.equal(LayoutCommand.parse(["Deskset", "!About", "UnknownTab"]), .command(.about(.version)))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug"]), .command(.debug(.log, config: nil)))
+            t.equal(LayoutCommand.parse(["Deskset", "!DEBUG", "display"]), .command(.debug(.display, config: nil)))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug", "Network"]), .command(.debug(.network, config: nil)))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug", "Plugins"]), .command(.debug(.plugins, config: nil)))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug", "Skin", "App/Focus/"]),
+                    .command(.debug(.skins, config: "App\\Focus")))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug", "Skin"]), .command(.debug(.skins, config: nil)))
+            t.equal(LayoutCommand.parse(["Deskset", "!Debug", "UnknownTab"]), .command(.debug(.log, config: nil)))
             for args in [["!LoadLayout"], ["!LoadLayout", ""], ["!LoadLayout", "../outside"],
                          ["!LoadLayout", "one", "two"], ["!Manage"], ["!Manage", "Skins"],
                          ["!Manage", "Layouts", "config"], ["!About", "Skins", "extra"],
+                         ["!Debug", "Skin", "App\\Focus", "extra"],
                          ["!Execute", "rm -rf /"], ["!RefreshApp"]] {
                 if case .invalid = LayoutCommand.parse(["Deskset"] + args) { t.check(true) }
                 else { t.check(false, "rejects \(args)") }
@@ -47,6 +56,9 @@ enum LayoutCommandsSelfTests {
                 .command(.loadLayout("My Desktop")), .command(.manageLayouts),
                 .command(.about(.log)), .command(.about(.skins)),
                 .command(.about(.plugins)), .command(.about(.version)),
+                .command(.debug(.log, config: nil)), .command(.debug(.display, config: nil)),
+                .command(.debug(.network, config: nil)), .command(.debug(.plugins, config: nil)),
+                .command(.debug(.skins, config: "App\\Focus")),
                 .reopen([]), .reopen([URL(fileURLWithPath: "/tmp/a file.rmskin"), URL(fileURLWithPath: "/tmp/line\nbreak.ini")]),
             ]
             for request in requests { t.equal(LayoutCommandRequest(fields: request.fields), request) }
@@ -54,6 +66,10 @@ enum LayoutCommandsSelfTests {
                 t.equal(LayoutCommandRequest(fields: ["kind": "about", "tab": invalidTab]), nil)
             }
             t.equal(LayoutCommandRequest(fields: ["kind": "about"]), nil)
+            for invalidTab in ["Skin", "skins", "UnknownTab", ""] {
+                t.equal(LayoutCommandRequest(fields: ["kind": "debug", "tab": invalidTab]), nil)
+            }
+            t.equal(LayoutCommandRequest(fields: ["kind": "debug"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "load", "name": "../outside"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "reopen", "files": "https://example.com/x.ini"]), nil)
             t.equal(LayoutCommandRequest(fields: ["kind": "execute", "name": "!Quit"]), nil)
@@ -75,6 +91,8 @@ enum LayoutCommandsSelfTests {
             t.equal(requests, [.command(.loadLayout("Desktop"))])
             t.equal(client.send(.command(.manageLayouts), to: 121, timeout: 0.01), .succeeded)
             t.equal(requests.last, .command(.manageLayouts))
+            t.equal(client.send(.command(.debug(.skins, config: "App\\Focus")), to: 121, timeout: 0.01), .succeeded)
+            t.equal(requests.last, .command(.debug(.skins, config: "App\\Focus")))
             if case .failed(let message) = client.send(.command(.loadLayout("Missing")), to: 121, timeout: 0.01) {
                 t.check(message.contains("could not complete"))
             } else { t.check(false, "reports a failed layout load") }

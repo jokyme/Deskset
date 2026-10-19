@@ -31,7 +31,7 @@ enum HostBangs {
              "hidefade", "togglefade", "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup",
              "togglefadegroup", "fadeduration", "fadedurationgroup", "setzoomfactor", "setzoomfactorgroup":
             return .window
-        case "skinmenu", "skincustommenu", "traymenu", "manage", "about", "editskin":
+        case "skinmenu", "skincustommenu", "traymenu", "manage", "about", "debug", "editskin":
             return .ui
         case "setclip", "setwallpaper", "play", "playloop", "playstop":
             return .system
@@ -162,7 +162,11 @@ extension SkinWindowController {
             app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2),
                                  tab: arg(0).caseInsensitiveCompare("Layouts") == .orderedSame ? .layouts : .skins)
         case "about":
-            app.showAbout(tab: AboutWindowController.Tab.parse(arg(0)))
+            app.showAbout(tab: arg(0).isEmpty ? .version : AboutWindowController.Tab.parse(arg(0)))
+        case "debug":
+            let tab = DebugWindowController.Tab.parse(arg(0))
+            let selectedConfig = arg(1).isEmpty ? (tab == .skins ? config : nil) : arg(1)
+            app.showDebug(tab: tab, config: selectedConfig)
         case "editskin":
             // !EditSkin [Config] [File]
             if let t = targets(0).first {

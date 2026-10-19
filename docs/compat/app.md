@@ -338,32 +338,47 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Main menu (the tray menu)
 - Windows (Rainmeter): the notification-area icon's menu; `!TrayMenu` opens it.
 - Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
-  Folder, Open Log, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
+  Folder, Open Log, Debug, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   the first launch shows it too. A second copy of Deskset hands its files over to the running one and quits.
 - Why: macOS 26 lets the user hide menu bar extras.
 - Skin impact: none.
 - Status: emulated
 
-### About (Log, Skins, Plugins, Version)
-- Windows (Rainmeter): the four-tab About dialog exposes logs, active measures and variables, installed plugins, and
-  version/path information. It opens from the tray or skin menu, Manage's Open log button, and `!About` from a skin or
-  the command line (<https://docs.rainmeter.net/manual/user-interface/about/>).
-- Mac (Deskset): the same four pages and entry points use a shared native window. `!About` accepts Log (default), Skins,
-  Plugins and Version, ignoring case; legacy Measures selects Skins. Unknown tab names fall back to Log.
-  Log starts with the latest 20 messages, newest first; filters affect new messages, Clear empties only the panel, and
-  Command-C copies selected message text. The panel retains at most 2,000 entries, using the existing log history limit.
-  Skins shows live measures and user variables without triggering an update; disabled measures are gray and paused
-  measures have a yellow background. Long values display up to 512 characters plus an ellipsis; menu copies retain the
-  complete value. Closing, unloading or switching skins cancels obsolete inspector requests.
-  Plugins lists registered built-in compatibility implementations, including aliases consolidated where known. Each
-  row shows the Deskset version marked `(bundled)` and author `jokyme`; the page explains that all listed implementations
-  update with the app and external plugins are not currently supported. Version copies the actual app version,
-  bundle build number when available, binary architecture and program/settings/skin/log paths. Build date is not supplied.
-- Why: native macOS window and clipboard conventions, bounded existing log storage, and built-in plugin implementations.
-- Skin impact: inspect runtime values and logs through About; Windows plugin metadata and build date are unavailable.
-- Status: partial. macOS behavior is covered by local tests; Windows desktop comparison, including unknown-tab fallback
-  and close/reopen filter state, remains pending. Rainmeter 5.0's separate Debug window is not implemented by this entry.
+### Debug and About
+- Windows (Rainmeter 5.0): Debug contains Log, Skins, Display, Network and Plugins. It opens from the tray menu,
+  Ctrl-clicking the tray icon, Manage's Open log button, a skin's Debug skin item, and
+  `!Debug [Log|Display|Network|Plugins|Skin] [Config]`. About contains version information separately
+  (<https://docs-v5.rainmeter.net/manual/user-interface/debug/>,
+  <https://docs-v5.rainmeter.net/manual/user-interface/about/>, <https://www.rainmeter.net/changes-5.0/>).
+- Mac (Deskset): Debug uses the same five pages in a shared native window. Left-clicking the menu bar icon opens
+  Manage; Control-left-click opens Debug, and right-click opens the menu. The window remembers its size.
+  Log starts with the latest 50 messages, newest first; Type filters affect new messages, Clear empties the panel,
+  and Command-C copies selected message text. The live panel retains the existing 2,000-entry safety bound. The Log file menu starts/stops disk logging, opens the file or deletes
+  it while stopping logging. Skins uses an active-config popup and a Name/Number/String table grouped into Measures,
+  Variables and Watch. A measure's Number tooltip exposes its unchanged range. Disabled measures are gray and paused
+  measures have a yellow background. Values display up to 512 characters plus an ellipsis; copies retain full values.
+  Filter searches measure and variable names and values; Jump to navigates the groups. Double-clicking a measure or
+  variable adds a string watch. The watch editor evaluates strings or formulas against current runtime values without
+  an implicit skin update; Execute sends a string action through the skin's existing command queue. Inline script or
+  plugin functions can perform their normal side effects. Watches live for this Debug window session, grouped by skin.
+  Refresh on file change watches the selected skin's INI, included files and loaded Lua scripts, coalesces changes,
+  ignores unchanged contents and stops repeated refresh loops. Control-R or F5 refreshes the selected skin manually.
+  A measure's context menu can open its definition in the configured editor.
+  Display shows available macOS displays, logical screen/work areas and display-local physical pixel areas; a global
+  physical-pixel virtual desktop is unavailable on macOS. Network lists local interface facts and includes virtual
+  interfaces when selected. Display and Network support copying a value or the full list.
+  Plugins lists the registered built-in implementations with known aliases consolidated, the Deskset version marked
+  `(bundled)` and author `jokyme`. All listed implementations update with the app; external plugins remain unsupported.
+  About copies app version, bundle build number when available, architecture and program/settings/skin/log paths.
+- Why: native macOS controls and device APIs, existing command execution and bounded log storage.
+- Skin impact: use `!Debug` for diagnostics. Existing `!About` command tokens remain accepted but show version details.
+  Build date and Windows plugin binaries are unavailable; network indices are BSD indices, not Windows interface IDs.
+- Status: partial. macOS tests cover runtime reads, asynchronous cancellation, menus, clipboard and file-change behavior.
+  Windows desktop comparison remains pending, including filter matching, watch persistence, legacy `!About` parameters,
+  unknown-tab/config fallback, logging/filter persistence and exact file-change storm thresholds. Public 5.0 pages still
+  contain older four-tab/20-message text; the five-page screenshots and 50-message release note take precedence.
+  Meter-definition navigation remains pending verification of its interaction; measure-definition navigation is available.
 
 ### The default skins and the first launch
 - Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed
@@ -477,7 +492,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   `!EditSkin`, `!Quit`, `!ResetStats`, `!SetAnchor`.
 - Mac (Deskset): `!SetClip` sets the pasteboard; `!SetWallpaper` sets the desktop picture of every display (Tile shows
   the picture unscaled like Center: macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage
-  window on the named config; `!About Log` opens the log; `!EditSkin` opens the file in the text editor; `!Quit` quits
+  window on the named config; `!Debug Log` opens the log; `!About` opens version information; `!EditSkin` opens the file in the text editor; `!Quit` quits
   after the current action. `!ResetStats` and `!SetAnchor` add a compatibility note.
 - Why: —
 - Skin impact: none for the supported ones.

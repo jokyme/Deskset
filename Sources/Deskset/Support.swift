@@ -85,7 +85,16 @@ enum Log {
     /// Lines longer than this are cut (a skin logging a huge string every update must not fill the disk quickly).
     static let maxLineLength = 4000
     /// Set by `--self-test` and other command-line modes that should not touch the user's log.
-    static var fileLoggingEnabled = true
+    private static var writesToFile = true
+    static var fileLoggingEnabled: Bool {
+        get { queue.sync { writesToFile } }
+        set {
+            queue.sync {
+                writesToFile = newValue
+                if !newValue { try? handle?.close(); handle = nil; bytesWritten = 0 }
+            }
+        }
+    }
     static var mirrorsToStandardError = true
 
     /// One line as the app logged it (the Studio's Log window and About Log tab read the latest ones).
@@ -119,8 +128,8 @@ enum Log {
         recentLock.unlock()
         let line = "\(formatter.string(from: Date())) [\(level.rawValue)]\(source.map { " (\($0))" } ?? "") \(text)\n"
         if mirrorsToStandardError { FileHandle.standardError.write(line.data(using: .utf8) ?? Data()) }
-        guard fileLoggingEnabled else { return }
         queue.async {
+            guard writesToFile else { return }
             if handle == nil {
                 try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 if !FileManager.default.fileExists(atPath: fileURL.path) {
@@ -138,6 +147,19 @@ enum Log {
 
     /// Waits until queued lines are written (self-tests).
     static func flush() { queue.sync {} }
+
+    /// Stops logging and deletes the file after earlier writes have drained.
+    static func deleteFile() throws {
+        try queue.sync {
+            writesToFile = false
+            try handle?.close()
+            handle = nil
+            bytesWritten = 0
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+        }
+    }
 
     /// Moves a large log aside (called at launch, before the first write).
     static func rotateIfNeeded() {

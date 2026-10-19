@@ -1026,7 +1026,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   effective zoom, and zoom changes request a redraw independently of regular updates. The zoom UI and
   Control-Option selection/DragGroup behavior are described in [App](app.md); Windows desktop comparison is pending.
   Not yet implemented from 5.0: target-first `!Skin:` bang argument order (`!Skin:Hide "Config"`), `!SendKey` media
-  keys (`MediaPlayPause` etc.), and Windows-specific UI dialogs (5-tab Debug dialog, Safe Start, Skin Packager).
+  keys (`MediaPlayPause` etc.), and Windows-specific UI dialogs (Safe Start, Skin Packager).
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
 ---
