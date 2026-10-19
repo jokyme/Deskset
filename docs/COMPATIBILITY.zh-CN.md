@@ -1052,6 +1052,20 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   布局中的锚点现在会继续影响皮肤尺寸变化。
 - **状态：** 模拟实现 / 部分支持（`!SetAnchor`）
 
+#### Position 控件与 Active skins
+- **Windows：** Position 提供 Display monitor、From right/bottom 和 X/Y 百分比开关；Manage 提供显示器控件与活动皮肤下拉。
+  选择显示器会写入 `@N` 并关闭 AutoSelectScreen；Use default 移除 `@N`
+  （<https://docs.rainmeter.net/manual/user-interface/manage/>、
+  <https://docs.rainmeter.net/manual/user-interface/context-menus/>）。
+- **Mac：** 提供上述入口。显示器菜单列出默认、虚拟桌面、已连接显示器及自动选择。坐标模式切换保留窗口位置、锚点和缩放；
+  选择显示器会把当前屏内偏移转移到该屏，并沿用已有窗口约束；修改显示器后缀时保留公式。关闭 SavePosition 时，坐标表示转换
+  不会保存本次运行中的临时拖动。Manage 的 Display monitor 控件只修改选中的活动变体，X/Y 仍显示实际桌面点坐标。Active skins 列出已加载的
+  config/INI 路径，没有活动皮肤时禁用；选择仅定位并滚动到文件，不会加载、显示或前置皮肤。
+- **原因：** 复用已有坐标与持久化路径，不新增布局键。
+- **对皮肤的影响：** 无需手工编辑布局即可使用显示器和相对坐标设置。
+- **状态：** 部分支持。Windows 子菜单的精确标签／排序、菜单转换与舍入、SavePosition 关闭时的持久化细节、跨屏
+  KeepOnScreen 时机及活动列表排序仍待对照；当前验证在 macOS 上完成。
+
 #### 显示器变化（`OnDisplayMetricsChange`）
 - **Windows：** `[Rainmeter] OnDisplayMetricsChange` 是一个动作；Rainmeter 5.0 起，任何显示器的布局、分辨率或缩放改变时都会执行。
 - **Mac：** 连接、断开或重新排列显示器，或者改变分辨率时，有保存位置的皮肤会按保存的位置重新放置（显示器回来时皮肤也会回到它

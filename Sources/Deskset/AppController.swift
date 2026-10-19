@@ -797,6 +797,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The shared config-name order used by the main menu and Manage's Active skins list.
+    var controllersByName: [SkinWindowController] {
+        sortedControllers.sorted { $0.config.localizedStandardCompare($1.config) == .orderedAscending }
+    }
+
     /// Skins a bang's optional Config argument names: empty → `current`, `*` → every active skin.
     func controllers(forConfigArgument raw: String, current: SkinWindowController?) -> [SkinWindowController] {
         let name = SkinLibrary.normalizedConfigName(raw)
@@ -1510,7 +1515,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         layoutsItem.submenu = layoutsMenu()
         menu.addItem(layoutsItem)
 
-        let active = sortedControllers.sorted { $0.config.localizedStandardCompare($1.config) == .orderedAscending }
+        let active = controllersByName
         if !active.isEmpty {
             menu.addItem(.separator())
             menu.addItem(withTitle: "Loaded Skins", action: nil, keyEquivalent: "").isEnabled = false
@@ -1721,15 +1726,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let settings = NSMenu()
         settings.autoenablesItems = false
-        let position = NSMenu()
-        for (title, value) in ManageModel.positions {
-            let i = item(title, #selector(zPositionAction(_:)))
-            i.representedObject = [c.config, String(value)]
-            i.state = allMatch(\.alwaysOnTop, value) ? .on : .off
-            position.addItem(i)
-        }
         let positionItem = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
-        positionItem.submenu = position
+        positionItem.submenu = skinPositionMenu(for: c)
         settings.addItem(positionItem)
 
         let transparency = NSMenu()
@@ -1814,6 +1812,126 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func skinMenuTargets(for config: String) -> [SkinWindowController] {
         let configs = skinSelection.contains(config) ? skinSelection.selectedConfigs : [config]
         return configs.compactMap { controller(for: $0) }.filter { !$0.isStopped }
+    }
+
+    private struct PositionMenuAction {
+        weak var controller: SkinWindowController?
+        let change: SkinPositionSettings.Change
+        let appliesToSelection: Bool
+        let screens: [WindowGeometry.Screen]
+    }
+
+    /// Manage and the Position submenu use the same monitor choices and actions.
+    func displayMonitorMenu(for controller: SkinWindowController, appliesToSelection: Bool = true) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let targets = appliesToSelection ? skinMenuTargets(for: controller.config) : [controller]
+        let canEdit = !targets.isEmpty && targets.allSatisfy { $0.isStarted && !$0.isStopped }
+        let screens = EnvironmentStore.shared.currentScreens
+        func add(_ title: String, change: SkinPositionSettings.Change, checked: (SkinState) -> Bool) {
+            let choice = item(title, #selector(positionSettingAction(_:)))
+            choice.representedObject = PositionMenuAction(controller: controller, change: change,
+                appliesToSelection: appliesToSelection, screens: screens)
+            choice.state = !targets.isEmpty && targets.allSatisfy { checked($0.state) } ? .on : .off
+            choice.isEnabled = canEdit
+            menu.addItem(choice)
+        }
+        add("Use default: Primary monitor", change: .monitor(nil)) { state in
+            WindowPosition.parse(state.windowX ?? "0", endLetter: "R")?.screen == nil
+                && WindowPosition.parse(state.windowY ?? "0", endLetter: "B")?.screen == nil
+        }
+        menu.addItem(.separator())
+        for monitor in 0...min(screens.count, 32) {
+            let title: String
+            if monitor == 0 { title = "@0: Virtual screen" }
+            else {
+                let name = screens[monitor - 1].name
+                title = "@\(monitor): " + (name.isEmpty ? "Monitor \(monitor)" : name)
+            }
+            add(title, change: .monitor(monitor)) { state in
+                let x = WindowPosition.parse(state.windowX ?? "0", endLetter: "R")?.screen
+                let y = WindowPosition.parse(state.windowY ?? "0", endLetter: "B")?.screen
+                return (x ?? y) == monitor && (y ?? x) == monitor
+            }
+        }
+        menu.addItem(.separator())
+        add("Auto-select based on window position", change: .automaticMonitor(
+            !targets.allSatisfy { $0.state.autoSelectScreen })) { $0.autoSelectScreen }
+        return menu
+    }
+
+    private func skinPositionMenu(for controller: SkinWindowController) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let targets = skinMenuTargets(for: controller.config)
+        let canEdit = !targets.isEmpty && targets.allSatisfy { $0.isStarted && !$0.isStopped }
+        let display = NSMenuItem(title: "Display monitor", action: nil, keyEquivalent: "")
+        display.submenu = displayMonitorMenu(for: controller)
+        display.isEnabled = canEdit
+        menu.addItem(display)
+        menu.addItem(.separator())
+        for (title, value) in ManageModel.positions {
+            let choice = item(title, #selector(zPositionAction(_:)))
+            choice.representedObject = [controller.config, String(value)]
+            choice.state = targets.allSatisfy { $0.state.alwaysOnTop == value } ? .on : .off
+            menu.addItem(choice)
+        }
+        menu.addItem(.separator())
+        let options: [(String, Bool, SkinPositionSettings.Change)] = [
+            ("From right", targets.allSatisfy {
+                WindowPosition.parse($0.state.windowX ?? "0", endLetter: "R")?.fromEnd == true
+            }, .fromRight(true)),
+            ("From bottom", targets.allSatisfy {
+                WindowPosition.parse($0.state.windowY ?? "0", endLetter: "B")?.fromEnd == true
+            }, .fromBottom(true)),
+            ("X as percentage", targets.allSatisfy {
+                WindowPosition.parse($0.state.windowX ?? "0", endLetter: "R")?.percent == true
+            }, .xAsPercentage(true)),
+            ("Y as percentage", targets.allSatisfy {
+                WindowPosition.parse($0.state.windowY ?? "0", endLetter: "B")?.percent == true
+            }, .yAsPercentage(true)),
+        ]
+        for (title, checked, option) in options {
+            let change: SkinPositionSettings.Change
+            switch option {
+            case .fromRight: change = .fromRight(!checked)
+            case .fromBottom: change = .fromBottom(!checked)
+            case .xAsPercentage: change = .xAsPercentage(!checked)
+            default: change = .yAsPercentage(!checked)
+            }
+            let choice = item(title, #selector(positionSettingAction(_:)))
+            choice.representedObject = PositionMenuAction(controller: controller, change: change,
+                appliesToSelection: true, screens: EnvironmentStore.shared.currentScreens)
+            choice.state = checked ? .on : .off
+            choice.isEnabled = canEdit
+            menu.addItem(choice)
+        }
+        return menu
+    }
+
+    @objc private func positionSettingAction(_ sender: NSMenuItem) {
+        guard !isTerminating, let action = sender.representedObject as? PositionMenuAction,
+              let controller = action.controller, controller.isStarted, !controller.isStopped,
+              self.controller(for: controller.config) === controller else { return }
+        let screens = EnvironmentStore.shared.currentScreens
+        // A menu built before monitors changed must not select a different display under an old number.
+        if case .monitor = action.change, action.screens != screens { return }
+        let targets = action.appliesToSelection ? skinMenuTargets(for: controller.config) : [controller]
+        guard !targets.isEmpty, targets.allSatisfy({ $0.isStarted && !$0.isStopped }) else { return }
+        for target in targets {
+            let result = SkinPositionSettings.applying(action.change, to: target.state,
+                position: target.topLeftPosition, size: target.window.frame.size, screens: screens,
+                zoomFactor: target.windowZoomFactor)
+            changeSettings(of: target) {
+                $0.windowX = result.state.windowX
+                $0.windowY = result.state.windowY
+                $0.autoSelectScreen = result.state.autoSelectScreen
+            }
+            if let destination = result.destination {
+                target.moveTo(x: destination.x, y: destination.y, preservingPositionExpressions: true)
+            }
+        }
+        skinSettingsChanged()
     }
 
     private func skinZoomMenu(for controller: SkinWindowController) -> NSMenu {

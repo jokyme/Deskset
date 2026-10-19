@@ -1308,7 +1308,12 @@ enum AudioSelfTests {
             let app = NotificationCenter()
             var calls = 0
             AudioPermissions.watchPermissionChanges(workspace: workspace, app: app) { calls += 1 }
-            RunLoop.main.run(until: Date().addingTimeInterval(0.1))   // it sets up on the main queue
+            // The next main-queue block runs after observer registration, even on a busy runner.
+            var registered = false
+            DispatchQueue.main.async { registered = true }
+            guard AppSelfTest.spin(until: { registered }) else {
+                return t.check(false, "permission observers registered")
+            }
             app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
             t.equal(calls, 1, "Deskset became active")
