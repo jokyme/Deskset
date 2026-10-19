@@ -1155,10 +1155,10 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 皮肤上下文菜单与自定义动作
 - **Windows：** 皮肤名称、变体、设置（位置、透明度、悬停时隐藏、可拖动、点击穿透、保持在屏幕内、保存位置、吸附边缘……）、
   管理、编辑、刷新、卸载、自定义皮肤动作（`ContextTitleN` / `ContextActionN`，最多 25 个；超过 3 个时成为子菜单）。
-- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Zoom、位置、透明度、悬停、可拖动、点击穿透、
-  保持在屏幕内、吸附边缘、保存位置、有提示时的“兼容性提示（n）”、管理皮肤…、编辑皮肤…（Skin Studio）、在“设置 ▸ 编辑器”
+- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Zoom、Settings（位置、透明度、悬停、可拖动、点击穿透、
+  保持在屏幕内、吸附边缘、保存位置、Favorite）、有提示时的“兼容性提示（n）”、管理皮肤…、编辑皮肤…（Skin Studio）、在“设置 ▸ 编辑器”
   里选了代码编辑器 App 时的“用 <App> 编辑”、刷新皮肤、打开皮肤文件夹、卸载皮肤。FadeDuration 和 Load Order 在管理窗口中设置；StartHidden 和 AutoSelectScreen 只能通过 `Default…` 选项
-  和 bang 设置。Zoom、位置、透明度、悬停和设置复选框会作用于所选群组；值不一致时不勾选。刷新皮肤和卸载皮肤也作用于
+  和 bang 设置。Zoom、位置、透明度、悬停和窗口设置复选框会作用于所选群组；值不一致时不勾选。刷新皮肤和卸载皮肤也作用于
   整个所选群组，实例停止时移出选择。
 - **原因：** Mac 的菜单惯例。
 - **对皮肤的影响：** 无。
@@ -1166,12 +1166,25 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### 主菜单（托盘菜单）
 - **Windows：** 通知区域图标的菜单；`!TrayMenu` 打开它。
-- **Mac：** 菜单栏图标的菜单（管理皮肤…、皮肤、布局、已加载的皮肤、全部刷新、安装皮肤…、打开皮肤文件夹、打开日志、登录时启动、
+- **Mac：** 菜单栏图标的菜单（管理皮肤…、皮肤、Favorites、布局、已加载的皮肤、全部刷新、安装皮肤…、打开皮肤文件夹、打开日志、登录时启动、
   关于、退出）；`!TrayMenu` 在指针处弹出它。macOS 可能会隐藏菜单栏图标（系统设置 → 菜单栏）：从访达、聚焦搜索或启动台再次
   打开 Deskset 会显示管理窗口，第一次启动时也会显示。再启动一个 Deskset 时，它会把要打开的文件交给正在运行的那个，然后退出。
 - **原因：** macOS 允许用户隐藏菜单栏项目。
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
+
+#### Favorites 与皮肤发现
+- **Windows：** 活动皮肤可通过 Manage 或皮肤 Settings 菜单中的 Favorite 收藏，主菜单 Favorites 提供快捷入口。
+  参见 [Manage](https://docs.rainmeter.net/manual/user-interface/manage/) 与
+  [上下文菜单](https://docs.rainmeter.net/manual/user-interface/context-menus/)。
+  [Rainmeter 5.0](https://www.rainmeter.net/changes-5.0/) 在打开菜单、切换到 Manage 和激活配置时检查皮肤目录变化。
+- **Mac：** Manage 与 Settings 为运行中的皮肤文件提供 Favorite。收藏按配置与 INI 保存，菜单位于 Skins 与 Layouts 之间，
+  标出已加载项，空列表时禁用；缺失文件不显示。卸载、重启与本地布局切换保留收藏。
+  打开菜单、进入或切回 Manage、选择其 Skins 页及激活配置时，发现新增、删除和变体变化，仅更新列表，不重载运行中的皮肤。
+- **原因：** 收藏保存在本地应用偏好中，与窗口和布局设置分开。
+- **对皮肤的影响：** 手动复制的皮肤与新增变体无需 Refresh All 即可选择。
+- **状态：** 部分支持。Windows 收藏的精确变体范围、菜单层级与顺序、空态、活动项点击和布局持久化细节尚未确认，
+  参见 [详细说明](compat/app.md#favorites-and-skin-discovery)。
 
 #### About（Log、Skins、Plugins、Version）
 - **Windows：** About 的四个页面提供日志、活动皮肤的运行值、插件信息和版本/路径信息

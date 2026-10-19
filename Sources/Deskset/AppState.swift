@@ -195,9 +195,41 @@ struct AppUpdatePreferences: Codable, Equatable {
     }
 }
 
+/// A saved skin file shortcut, independent of its currently loaded variant and window settings.
+struct SkinFavorite: Codable, Equatable {
+    let config: String
+    let file: String
+
+    init?(config: String, file: String) {
+        let name = SkinLibrary.normalizedConfigName(config)
+        let parts = name.split(separator: "\\", omittingEmptySubsequences: false)
+        guard !parts.isEmpty, parts.allSatisfy({ LayoutStore.isValidName(String($0)) }),
+              LayoutStore.isValidName(file), file.count > 4, file.lowercased().hasSuffix(".ini") else { return nil }
+        self.config = name
+        self.file = file
+    }
+
+    func matches(_ other: SkinFavorite) -> Bool {
+        config.caseInsensitiveCompare(other.config) == .orderedSame
+            && file.caseInsensitiveCompare(other.file) == .orderedSame
+    }
+
+    static func normalized(_ stored: [SkinFavorite]) -> [SkinFavorite] {
+        var result: [SkinFavorite] = []
+        for item in stored {
+            guard let favorite = SkinFavorite(config: item.config, file: item.file),
+                  !result.contains(where: { $0.matches(favorite) }) else { continue }
+            result.append(favorite)
+        }
+        return result
+    }
+}
+
 struct AppStateData: Codable {
     /// Keyed by config name (`Root\Sub`).
     var skins: [String: SkinState] = [:]
+    /// Favorites remain available after unloading a skin and are saved with local application preferences.
+    var favorites: [SkinFavorite] = []
     /// Rainmeter.ini section order breaks ties between equal LoadOrder values.
     var skinOrder: [String] = []
     /// Loading an empty layout is an intentional empty desktop, not a first launch.
@@ -225,7 +257,7 @@ struct AppStateData: Codable {
     init() {}
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case skins, skinOrder, hasLoadedLayout, rainmeterOptions, trayMeasureOptions,
+        case skins, favorites, skinOrder, hasLoadedLayout, rainmeterOptions, trayMeasureOptions,
              defaultSkinsInstalled, shippedVariables, editor, updates, settingsPane
     }
 
@@ -236,6 +268,7 @@ struct AppStateData: Codable {
             .unknownValues(besides: AppStateData.knownKeys) ?? [:]
         let c = try decoder.container(keyedBy: CodingKeys.self)
         skins = ((try? c.decodeIfPresent([String: SkinState].self, forKey: .skins)) ?? nil) ?? [:]
+        favorites = SkinFavorite.normalized(((try? c.decodeIfPresent([SkinFavorite].self, forKey: .favorites)) ?? nil) ?? [])
         skinOrder = ((try? c.decodeIfPresent([String].self, forKey: .skinOrder)) ?? nil) ?? []
         hasLoadedLayout = ((try? c.decodeIfPresent(Bool.self, forKey: .hasLoadedLayout)) ?? nil) ?? false
         rainmeterOptions = ((try? c.decodeIfPresent([String: String].self, forKey: .rainmeterOptions)) ?? nil) ?? [:]
@@ -252,6 +285,7 @@ struct AppStateData: Codable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(skins, forKey: .skins)
+        if !favorites.isEmpty { try c.encode(favorites, forKey: .favorites) }
         if !skinOrder.isEmpty { try c.encode(skinOrder, forKey: .skinOrder) }
         if hasLoadedLayout { try c.encode(hasLoadedLayout, forKey: .hasLoadedLayout) }
         if !rainmeterOptions.isEmpty { try c.encode(rainmeterOptions, forKey: .rainmeterOptions) }
@@ -293,6 +327,22 @@ final class AppState {
     func skin(_ config: String) -> SkinState? {
         if let s = data.skins[config] { return s }
         return data.skins.first { $0.key.caseInsensitiveCompare(config) == .orderedSame }?.value
+    }
+
+    var favorites: [SkinFavorite] { data.favorites }
+
+    func isFavorite(config: String, file: String) -> Bool {
+        guard let favorite = SkinFavorite(config: config, file: file) else { return false }
+        return data.favorites.contains { $0.matches(favorite) }
+    }
+
+    func setFavorite(config: String, file: String, favorite: Bool) {
+        guard let item = SkinFavorite(config: config, file: file) else { return }
+        let exists = data.favorites.contains { $0.matches(item) }
+        guard exists != favorite else { return }
+        if favorite { data.favorites.append(item) }
+        else { data.favorites.removeAll { $0.matches(item) } }
+        scheduleSave()
     }
 
     func update(_ config: String, _ change: (inout SkinState) -> Void) {

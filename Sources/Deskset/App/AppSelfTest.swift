@@ -50,6 +50,10 @@ enum AppSelfTest {
         DebugSystemInfoSelfTests.run(t)
         DebugInfoViewSelfTests.run(t)
         DebugSkinInspectorSelfTests.run(t)
+        FavoritesStateSelfTests.run(t)
+        FavoritesManageSelfTests.run(t)
+        FavoritesMenuSelfTests.run(t)
+        SkinDiscoverySelfTests.run(t)
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
@@ -1047,17 +1051,21 @@ enum AppSelfTest {
             let titles = menu.items.map(\.title)
             t.equal(titles.first, "Select skin")
             t.check(titles.contains("Focus & Fade"), "the skin's metadata title remains in its menu")
-            for expected in ["Variants", "Position", "Transparency", "On Hover", "Draggable", "Click Through",
-                             "Keep on Screen", "Snap to Edges", "Save Position", "Manage Skin…", "Edit Skin…",
+            for expected in ["Variants", "Settings", "Manage Skin…", "Edit Skin…",
                              "Refresh Skin", "Open Skin Folder", "Unload Skin"] {
                 t.check(titles.contains(expected), "skin menu has \(expected)")
+            }
+            let settings = menu.item(withTitle: "Settings")?.submenu
+            for expected in ["Position", "Transparency", "On Hover", "Draggable", "Click Through",
+                             "Keep on Screen", "Snap to Edges", "Save Position", "Favorite"] {
+                t.check(settings?.item(withTitle: expected) != nil, "skin Settings has \(expected)")
             }
             // With the built-in code editor, Edit Skin… (the Studio) is the only edit item.
             t.equal(titles.filter { $0.hasPrefix("Edit") || $0.hasPrefix("Open Skin Editor") }, ["Edit Skin…"])
             let variants = menu.items.first { $0.title == "Variants" }?.submenu?.items
             t.equal(variants?.map(\.title), ["Compact.ini", "Focus.ini"])
             t.equal(variants?.last?.state, .on)
-            let position = menu.items.first { $0.title == "Position" }?.submenu?.items
+            let position = settings?.item(withTitle: "Position")?.submenu?.items
             t.equal(position?.first { $0.state == .on }?.title, "On Desktop")
             if let controls = app.activate(config: "App\\Controls", file: nil) {
                 let menu = app.skinMenu(for: controls, includeCustomItems: true)
