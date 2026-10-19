@@ -842,8 +842,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sortedControllers.sorted { $0.config.localizedStandardCompare($1.config) == .orderedAscending }
     }
 
-    /// Skins a bang's optional Config argument names: empty → `current`, `*` → every active skin.
+    /// Skins a bang's optional Config argument names: empty → `current`, `*` → every active skin, `Group=` → matching
+    /// active skins in load order.
     func controllers(forConfigArgument raw: String, current: SkinWindowController?) -> [SkinWindowController] {
+        if let group = SkinSection.parseGroupSelector(raw) { return controllers(inGroup: group) }
         let name = SkinLibrary.normalizedConfigName(raw)
         if name.isEmpty { return current.map { [$0] } ?? [] }
         if name == "*" { return sortedControllers }

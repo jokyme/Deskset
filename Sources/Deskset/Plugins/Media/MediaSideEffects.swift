@@ -24,6 +24,41 @@ extension MediaKeyCommand {
     }
 }
 
+/// The shared sending path for MediaKey measures and `!SendKey`. Called on the skin's executor; recording skins
+/// record the key without checking permissions or touching the system.
+enum MediaKeySender {
+    static func perform(_ key: MediaKeyCommand, skin: Skin, center: NowPlayingCenter, live: Bool,
+                        permissionChanged: (Bool) -> Void, missingAccessibility: () -> Void) {
+        skin.sideEffects.perform(.mediaKey(key.manualName)) {
+            // macOS has no Stop media key: Stop always goes to the player.
+            let trusted = MediaKeyMeasure.canPostEvents()
+            let viaHID = key != .stop && trusted
+            if let sink = MediaKeyMeasure.sink {
+                sink(key, viaHID)
+                return
+            }
+            guard live else { return }
+            permissionChanged(trusted)
+            if viaHID {
+                MediaKeys.post(key)
+                return
+            }
+            if key != .stop && key != .volumeUp && key != .volumeDown && key != .volumeMute {
+                missingAccessibility()
+            }
+            switch key {
+            case .nextTrack: center.perform(.next, preferring: nil, live: true)
+            case .prevTrack: center.perform(.previous, preferring: nil, live: true)
+            case .stop: center.perform(.stop, preferring: nil, live: true)
+            case .playPause: center.perform(.playPause, preferring: nil, live: true)
+            case .volumeMute: MediaUISystemVolume.toggleMute()
+            case .volumeUp: MediaUISystemVolume.change(by: 0.02)
+            case .volumeDown: MediaUISystemVolume.change(by: -0.02)
+            }
+        }
+    }
+}
+
 extension NowPlayingCenter {
     /// Opens a player that is not running (OpenPlayer, TogglePlayer).
     static func launchPlayer(at url: URL) {

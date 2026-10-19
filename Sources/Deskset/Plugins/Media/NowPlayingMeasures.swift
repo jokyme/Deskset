@@ -379,35 +379,8 @@ final class MediaKeyMeasure: MediaUIMeasure {
             skin.log("MediaKey [\(name)]: unknown command \"\(command)\"", level: .warning)
             return
         }
-        // Through the skin's side effects: sent, or only recorded.
-        skin.sideEffects.perform(.mediaKey(key.manualName)) { send(key) }
-    }
-
-    private func send(_ key: MediaKeyCommand) {
-        // There is no Stop media key on the Mac: Stop always goes to the player.
-        let trusted = MediaKeyMeasure.canPostEvents()
-        let viaHID = key != .stop && trusted
-        if let sink = MediaKeyMeasure.sink {
-            sink(key, viaHID)
-            return
-        }
-        guard runsInApp else { return }
-        takeBackAccessibilityNote(trusted: trusted)
-        if viaHID {
-            MediaKeys.post(key)
-            return
-        }
-        if key != .stop && key != .volumeUp && key != .volumeDown && key != .volumeMute {
-            noteMissingAccessibility()
-        }
-        switch key {
-        case .nextTrack: center.perform(.next, preferring: nil, live: true)
-        case .prevTrack: center.perform(.previous, preferring: nil, live: true)
-        case .stop: center.perform(.stop, preferring: nil, live: true)
-        case .playPause: center.perform(.playPause, preferring: nil, live: true)
-        case .volumeMute: MediaUISystemVolume.toggleMute()
-        case .volumeUp: MediaUISystemVolume.change(by: 0.02)
-        case .volumeDown: MediaUISystemVolume.change(by: -0.02)
-        }
+        MediaKeySender.perform(key, skin: skin, center: center, live: runsInApp,
+                               permissionChanged: takeBackAccessibilityNote,
+                               missingAccessibility: noteMissingAccessibility)
     }
 }

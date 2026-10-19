@@ -169,7 +169,10 @@ extension SkinWindowController {
             app.showDebug(tab: tab, config: selectedConfig)
         case "editskin":
             // !EditSkin [Config] [File]
-            if let t = targets(0).first {
+            // Edit names a config, rather than selecting a skin group.
+            let selected = SkinSection.parseGroupSelector(arg(0)) == nil
+                ? targets(0).first : app.controller(for: arg(0))
+            if let t = selected {
                 let file = arg(1).isEmpty ? t.file : arg(1)
                 CodeEditorRouter.open(file: t.fileURL.deletingLastPathComponent().appendingPathComponent(file), app: app)
             } else if !arg(0).isEmpty {

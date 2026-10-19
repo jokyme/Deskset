@@ -569,4 +569,18 @@ enum MediaKeyCommand: String, CaseIterable {
         default: self.init(rawValue: text)
         }
     }
+
+    /// The seven key names accepted by `!SendKey`; MediaKey measure aliases do not apply here.
+    init?(sendKey: String) {
+        switch sendKey.muiTrimmed.lowercased() {
+        case "medianexttrack": self = .nextTrack
+        case "mediaprevtrack": self = .prevTrack
+        case "mediastop": self = .stop
+        case "mediaplaypause": self = .playPause
+        case "volumemute": self = .volumeMute
+        case "volumedown": self = .volumeDown
+        case "volumeup": self = .volumeUp
+        default: return nil
+        }
+    }
 }

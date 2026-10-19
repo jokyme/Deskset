@@ -1011,7 +1011,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   measure names and `$Skin…`/`$Display…` variables in formulas, `Group=a|b` / `Group=a&b`, 2-argument
   `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor` /
   `!SetZoomFactorGroup`, colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`, `!ActionTimer:Execute/Stop`,
-  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults/UpdateData/ResetData`,
+  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults`,
   `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
   `!WindowMessage:Send`), `Measure=DragDrop` (`Action=Path|Move|Copy|Shortcut|Delete`, `Path`, `Silent`,
   `ReplaceIfExists`, `ProcessAllFiles` / `$FileNr$`, `Parent`, `Bounds`, `OnDropAction` / `OnEnterAction` /
@@ -1025,9 +1025,29 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   `ForceDefaultZoom` applies the global value without deleting overrides. Rendering and input coordinates follow
   effective zoom, and zoom changes request a redraw independently of regular updates. The zoom UI and
   Control-Option selection/DragGroup behavior are described in [App](app.md); Windows desktop comparison is pending.
-  Not yet implemented from 5.0: target-first `!Skin:` bang argument order (`!Skin:Hide "Config"`), `!SendKey` media
-  keys (`MediaPlayPause` etc.), and Windows-specific UI dialogs (Safe Start, Skin Packager).
+  `!Skin:` commands accept an explicit skin target first; the four config aliases and the scope of omitted selectors
+  are described below. `!SendKey` uses the existing Mac media-key backend ([Media and UI](media-ui.md#sendkey-rainmeter-50)).
+  Safe Start and Skin Packager remain unimplemented.
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
+
+### Command routing (Rainmeter 5.0)
+- Windows (Rainmeter): the [5.0 command rules](https://www.rainmeter.net/changes-5.0/#bangs-and-command-line-arguments)
+  add skin aliases, target-first skin commands, compound group selectors, and omitted selectors in matching section actions.
+- Mac (Deskset): `!Skin:Load`, `Unload`, `Toggle` and `Edit` use `!ActivateConfig`, `!DeactivateConfig`,
+  `!ToggleConfig` and `!EditSkin` respectively. Toggle loads or unloads a config; the classic `!Toggle` still changes
+  visibility. Explicit target-first forms such as `[!Skin:Move "Suite\Clock" 10 20]` and
+  `[!Skin:SetVariable "Suite\Clock" Size """(1+1)"""]` use the existing commands. Classic argument order is unchanged;
+  magic-quoted values remain literal through direct, queued and group forwarding.
+  `Group=a|b` and `Group=a&b` select running skins in load order, including the sending skin once when it matches.
+  Mixed OR/AND selectors match nothing. Measure-specific namespace commands can omit their selector in an action
+  belonging to a matching measure type, including legacy plugin spellings, when the command payload has a fixed,
+  unambiguous argument count. An unrelated section never selects a lone measure automatically.
+- Why: one command path preserves the existing lifecycle, value evaluation and cross-skin ordering.
+- Skin impact: skins can use target-first commands and compound skin selectors without changing their classic actions.
+- Status: emulated. Explicit targets and complete payloads follow the public 5.0 rule; Windows desktop comparison
+  remains pending. Combinations that omit both Config and section, payloads that also name an existing measure, and
+  Config placement in measure-specific namespaces remain unverified. Use the established
+  `!CommandMeasure Measure Arguments Config` form for explicit cross-config measure commands.
 
 ---
 

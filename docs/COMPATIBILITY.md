@@ -61,7 +61,7 @@ shipped with Deskset.
 
 | Area | Overall | What works | What does not (or differs most) |
 | --- | --- | --- | --- |
-| Skin files, variables, formulas, bangs | identical | INI rules, `@Include`, `@Inherit`, `SyntaxVersion`, `#Var#` / section variables, `%Env%` / `[%Env]`, `[$Skin…]` / `[$Display…]`, bracketed and unbracketed formulas, `Group=a\|b` / `a&b`, `!SetOption` (2- and 3-arg), colon-namespaced bangs (`!Skin:…`, `!<Measure>:…`) and the other skin bangs | Exotic PCRE regex features; target-first `!Skin:` bangs; `!SendKey` media keys |
+| Skin files, variables, formulas, bangs | identical / emulated | INI rules, `@Include`, `@Inherit`, `SyntaxVersion`, `#Var#` / section variables, `%Env%` / `[%Env]`, `[$Skin…]` / `[$Display…]`, bracketed and unbracketed formulas, compound skin and section groups, `!SetOption` (2- and 3-arg), target-first `!Skin:` bangs, matching-section namespace commands and `!SendKey` | Exotic PCRE regex features; ambiguous combinations of omitted namespace arguments |
 | Layout and text | emulated | `r`/`R` positions, StringAlign (including `Justify`), window sizing, inline options, fonts in `@Resources\Fonts` | Microsoft fonts are substituted; text can be a pixel wider or narrower |
 | Meters (String, Image, Bar, Bitmap, Button, Line, Histogram, Roundline, Rotator, Shape, SVG, TextEdit) | emulated | All documented 4.x and 5.0 meter types and options | Histogram `PrimaryImageRotate` / ColorMatrix options |
 | System measures (CPU, memory, network, disk, time, uptime, SysInfo, Process, battery, DragDrop) | emulated | All of them, mapped to macOS data, plus 5.0 `NumberConversionFormat=Locale` and the new `TimeStampFormat` codes | Drive letters all mean the startup disk; Windows adapter names fall back to the active interface |
@@ -559,8 +559,12 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults`,
   `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
   `!WindowMessage:Send`); Substitute and RegExpSubstitute use PCRE.
-- **Mac:** the same syntax, with the 5.0 bangs and group selectors above (`!Skin:` bangs still take their target
-  last, see "Rainmeter 5.0 features not implemented yet"); bang names are case-insensitive; brackets inside quotes
+- **Mac:** the same syntax, with the 5.0 bangs and group selectors above. Explicit `!Skin:` targets come first;
+  classic commands retain their original argument order. The config aliases use the existing load, unload, toggle
+  and edit operations. Group selectors match running skins once in load order, and magic-quoted values remain
+  literal across direct, queued and group forwarding. Matching measure sections can omit selectors for unambiguous
+  fixed payloads; combined omissions and measure-namespace Config placement remain unverified
+  ([command routing](compat/engine.md#command-routing-rainmeter-50)). Bang names are case-insensitive; brackets inside quotes
   do not end a bang; text between bracketed bangs is ignored; `!Execute` nesting stops after 8 levels. Plain
   substitution is case-sensitive; `'a':'b'` is accepted (the manual says it fails). Regular expressions are PCRE
   patterns translated to ICU: `(?U)`,
@@ -1211,18 +1215,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### Rainmeter 5.0 features not implemented yet
-- **Windows:** Rainmeter 5.0 also adds: the new Debug dialog (Log, Skins with watches, Plugins, Display and Network tabs,
-  refresh on file change); Shift in
-  the context menus turning Exit into Restart and Refresh skin into Focus skin; `!SendKey` with media and volume keys
-  (`MediaNextTrack`, `MediaPrevTrack`, `MediaStop`, `MediaPlayPause`, `VolumeMute`, `VolumeDown`, `VolumeUp`); `!Skin:`
-  bangs with the target first (`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`, `"Group=Name"`); `Rainmeter.exe
-  [!Launch][!Bang]`; crash dumps and Safe Start; new Skin Packager features.
-- **Mac:** none of these yet. `!Skin:Load` / `Unload` / `Toggle` / `Edit` and the other `!Skin:` names work as aliases of
-  the old bangs, but their arguments are still read in the old order (target last); `!SendKey` does nothing (the
-  MediaKey measure still works); `!Debug` opens the Manage window; packaging is covered by Deskset's installer and Skin
-  Studio.
-- **Why:** not done yet; the Debug dialog, Safe Start and the packager are part of the Windows app's UI.
-- **Skin impact:** `!Skin:` bangs written target-first and `!SendKey` media keys do nothing on the Mac.
+- **Windows:** Shift changes Exit into Restart and Refresh skin into Focus skin; `Rainmeter.exe [!Launch][!Bang]`
+  can launch before executing bangs. Rainmeter also provides crash dumps, Safe Start and its Skin Packager.
+- **Mac:** these remain unimplemented. Debug and its tabs, explicit target-first skin commands, compound skin
+  selectors and the seven media-key SendKey names are implemented; see the relevant sections above and below.
+- **Why:** the remaining startup, recovery and packaging workflows are not implemented yet.
+- **Skin impact:** use the existing load and refresh operations until the remaining commands are available.
 - **Status:** not supported
 
 #### Sleep, displays asleep, other user sessions
@@ -2599,11 +2597,15 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 
 #### MediaKey
 - **Windows:** sends multimedia keys: NextTrack, PrevTrack, Stop, PlayPause, VolumeMute, VolumeDown, VolumeUp.
+  Rainmeter 5.0 also provides `!SendKey` with seven corresponding media/volume key names.
 - **Mac:** with the Accessibility permission (which Deskset never requests), real media-key events are posted, reach
   whatever app plays and show the volume HUD. Without it (the default), track keys go to Music / Spotify via
   Automation and volume keys change the default output device directly (±2 % per key, mute toggles, raising the
   volume unmutes; no HUD). Stop always goes to the player (Mac keyboards have no Stop key). Also accepted: `Next`,
   `Prev`, `Previous`, `PreviousTrack`, `Play`, `Pause`, `Mute`.
+  `!SendKey` uses the same sender without requiring a measure: MediaNextTrack, MediaPrevTrack, MediaStop,
+  MediaPlayPause, VolumeMute, VolumeDown and VolumeUp only. Unknown names or extra arguments send nothing; recording
+  produces no system effects. The extra MediaKey measure aliases do not apply to SendKey.
 - **Why:** posting keyboard events requires Accessibility on macOS.
 - **Skin impact:** without Accessibility the track keys control only Music / Spotify (not browsers).
 - **Status:** emulated
