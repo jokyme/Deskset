@@ -66,6 +66,23 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none.
 - Status: identical
 
+### Skin zoom (Rainmeter 5.0)
+- Windows (Rainmeter): `Zoom` is an integer percentage from 10 to 500. `!SetZoomFactor Factor|Default [Config|*]`
+  and `!SetZoomFactorGroup Factor|Default Group` set a skin or group; `DefaultZoom` and `ForceDefaultZoom` are global settings.
+- Mac (Deskset): Manage's Skins page has a Zoom field and stepper; Settings → General has Default zoom and Force.
+  Steps are one percentage point, or ten with Control. The skin menu's Zoom offers Default and
+  80/90/100/110/120/130/140/150%. With no overrides, only Default is checked. Otherwise a common effective percentage
+  is checked, inserting a custom value in order as a non-action item; different effective values leave all items unchecked.
+  Missing `Zoom` follows the global default; explicit `Zoom=100` remains an override. Default removes the override.
+  Force applies the global value and disables per-skin zoom controls without discarding existing overrides.
+  Rendering, window size, mouse actions, hover, tooltips and external pointer coordinates use the effective zoom;
+  zoom changes redraw independently of the skin's regular update interval. Group menus show only common values.
+- Why: window positions are macOS points; skin zoom and display backing scale are separate factors. The global
+  controls use the existing Mac Settings window. Windows desktop comparison remains pending.
+- Skin impact: turning Force off restores each skin's own override, or its inherited default. Layouts retain
+  `Zoom`, `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor`; see [Layouts](layouts.md).
+- Status: emulated / partial (platform geometry and pending Windows desktop comparison)
+
 ### Draggable, DragMargins and the CTRL override
 - Windows (Rainmeter): Draggable (default 1); "LeftMouseDownAction … disables dragging"; DragMargins limits the area a
   drag may start from; holding CTRL overrides mouse actions and Draggable.
@@ -82,10 +99,18 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### DragGroup (moving several skins together)
 - Windows (Rainmeter): skins of a DragGroup can be selected and dragged together.
-- Mac (Deskset): not supported; each skin moves on its own.
-- Why: not implemented yet.
-- Skin impact: grouped skins must be moved one by one.
-- Status: not supported
+- Mac (Deskset): Control-Option-click selects or deselects a skin; Select skin is also available in its menu.
+  Selecting a skin includes skins with a matching DragGroup. Selected skins move together and accept shared menu
+  settings. Normal skin mouse actions, hover effects and tooltips are suspended while selected; temporary drag,
+  click-through and keep-on-screen overrides do not replace stored settings. Clicking outside clears selection.
+  Dragging an edge changes each selected skin by the same percentage-point delta, clamped to 10–500%; a corner
+  drag locks to one axis after movement begins. Left/top drags shift all selected windows by the primary skin's
+  size change, following the 5.0 RC1 behavior; this does not hold the opposite edge fixed. Edge hit areas account
+  for the display backing scale separately from skin zoom.
+- Why: Control-Option is the Mac selection chord; ordinary Command-drag keeps its existing override behavior.
+- Skin impact: group position, zoom and shared settings can be edited together. A click-through skin must first
+  be selected through the menu. Windows desktop comparison remains pending.
+- Status: emulated / partial (click-through selection gesture and platform geometry)
 
 ### SnapEdges
 - Windows (Rainmeter): skins snap to screen edges and other skins (default 1; CTRL disables it temporarily).
@@ -108,10 +133,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### ClickThrough
 - Windows (Rainmeter): mouse detection off, clicks pass through; "Hold CTRL to temporarily disable".
 - Mac (Deskset): the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). The CTRL / ⌘ override
-  is **not** available: macOS does not deliver any event to a window that ignores the mouse. Turn it off from the skin's
-  submenu in the menu bar menu or from the Manage window.
+  and Control-Option selection gesture are **not** available: macOS does not deliver any event to a window that ignores
+  the mouse. Use Select skin in its menu to select it, or turn click-through off from the menu or Manage window.
 - Why: macOS window model.
-- Skin impact: a click-through skin cannot be dragged, even with ⌘.
+- Skin impact: direct dragging with ⌘ remains unavailable; menu selection temporarily permits interaction.
 - Status: partial
 
 ### Clicks on transparent pixels
@@ -290,11 +315,14 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Skin context menu
 - Windows (Rainmeter): skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through,
   Keep on screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions.
-- Mac (Deskset): the skin's name, its custom actions, Variants, Position, Transparency, On Hover, Draggable, Click Through,
+- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Zoom, Position, Transparency,
+  On Hover, Draggable, Click Through,
   Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes (n)" when the skin has any, Manage Skin…, Edit
   Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen in Settings ▸ Editor, Refresh Skin, Open Skin
   Folder, Unload Skin. FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen come
-  from the skin's Default… options and bangs only.
+  from the skin's Default… options and bangs only. Zoom, Position, Transparency, On Hover and the setting checkboxes
+  apply to the selected group when this skin belongs to it; mixed values are unchecked. Refresh Skin and Unload Skin
+  also apply to the selected group, clearing its selection as the instances stop.
 - Why: Mac menu conventions.
 - Skin impact: none.
 - Status: emulated

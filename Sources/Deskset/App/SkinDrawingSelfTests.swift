@@ -1315,8 +1315,9 @@ final class FrameTestWindow: SkinRuntimeWindow {
 
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         if !Thread.isMainThread { offMain += 1 }
-        guard case .resize(let size) = request else { return }
+        guard case .resize(let size, let zoom) = request else { return }
         resizes.append(size)
+        facts.frameZoomFactor = zoom
         let top = panel.frame.maxY
         panel.setFrame(NSRect(x: panel.frame.minX, y: top - size.height, width: size.width, height: size.height),
                        display: false)

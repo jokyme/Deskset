@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、`!SetZoomFactor`（5.0，部分）、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | 缩放菜单、拖动缩放、`DefaultZoom` 和多选皮肤尚未实现；窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup 多选操作和 Aero 模糊；`!SetAnchor` 仍不支持 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势，Aero 模糊和 `!SetAnchor` 仍不支持；缩放／选择尚待 Windows 桌面对照 |
 
 ---
 
@@ -973,13 +973,16 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   边缘或 `!SetZoomFactor 系数|Default [配置|*]` 修改；全局默认值是 Rainmeter.ini `[Rainmeter]` 中的 `DefaultZoom` /
   `ForceDefaultZoom`（管理窗口 → 设置）。
 - **Mac：** `Default…` 选项相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、
-  公式、`@N`）。锚点只在摆放皮肤时应用一次（见下面的“位置”）。缩放：`!SetZoomFactor 系数` 可用，缩放系数保存在 state.json
-  中，`[$SkinZoomFactor]` 等变量随之变化；范围为 0.1–5（10%–500%），布局使用原生 `Zoom` 百分数。`Default` 参数、右键菜单的缩放子菜单、拖动边缘
-  缩放以及 `DefaultZoom` / `ForceDefaultZoom` 尚未实现。Deskset 另外接受皮肤 `[Rainmeter]` 中的 `DefaultZoomFactor` 作为初始
-  缩放（手册中没有这个选项）和 `!SetZoomFactorGroup 系数 组`（Deskset 扩展）。
-- **原因：** 尚未完成 5.0 的缩放界面和全局设置。
-- **对皮肤的影响：** 用 bang 缩放的皮肤可用；`[!SetZoomFactor Default]` 不起作用；用户只能通过 bang 改变缩放。
-- **状态：** 部分支持
+  公式、`@N`），锚点在尺寸变化时继续生效。缩放使用 10–500 的整数百分数。Manage 有 Zoom 输入框和步进器；设置 → General
+  有 Default zoom 和 Force。皮肤菜单 Zoom 提供 Default 与 80–150% 的预设（间隔 10 个百分点），当前自定义值会
+  按序插入并勾选，点击该项不执行操作。没有 `Zoom` 时继承全局默认值；显式 100% 仍是独立覆盖。Default 清除覆盖；Force
+  禁用单皮肤缩放控件，但保留原覆盖值，关闭 Force 后恢复。官方 5.0 的 `!SetZoomFactor 系数|Default [配置|*]` 和
+  `!SetZoomFactorGroup 系数|Default 组` 使用同一规则。绘制、窗口尺寸、鼠标／悬停／工具提示坐标随有效缩放变化，缩放会独立
+  请求重绘，不等待常规更新周期。布局保留原生 `Zoom`、`DefaultZoom`、`ForceDefaultZoom` 和 `SelectedColor`。
+- **原因：** macOS 的位置使用点；皮肤缩放与显示器 backing scale 分开处理。全局控件放在现有 Mac 设置窗口中。尚未完成
+  Windows 桌面对照。
+- **对皮肤的影响：** 用户可通过菜单、Manage、选中皮肤的边缘或 bang 调整缩放；继承、多选和群组菜单规则见 [App](compat/app.md)。
+- **状态：** 模拟实现 / 部分支持（平台几何差异与待完成的 Windows 桌面对照）
 
 #### 拖动、`DragMargins` 与 Ctrl 覆盖
 - **Windows：** Draggable（默认 1）；设置了 LeftMouseDownAction 就不能拖动；DragMargins 限制可以开始拖动的区域；按住 Ctrl
@@ -993,10 +996,13 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### `DragGroup`（一起移动多个皮肤）
 - **Windows：** 同一 DragGroup 的皮肤可以一起选中并拖动。
-- **Mac：** 不支持；每个皮肤单独移动。
-- **原因：** 尚未实现。
-- **对皮肤的影响：** 分组的皮肤需要逐个移动。
-- **状态：** 不支持
+- **Mac：** Control-Option 点按或菜单 Select skin 可以选择皮肤，并包含其 DragGroup。选中的皮肤一起移动、接受共享菜单
+  设置；普通皮肤鼠标动作、悬停和工具提示暂时停用。拖边给每个皮肤增加相同的百分点变化量，并限制在 10–500%；拖角开始移动
+  后锁定一个轴。左／上边拖动时，按主皮肤的尺寸变化对整个选择应用相同位移，遵循 5.0 RC1 的行为，不是固定对边。
+  保存的交互设置与选择期间的临时覆盖分开。
+- **原因：** Mac 使用 Control-Option 选择；普通 Command 拖动规则独立保留。位置使用点，边缘命中区域另行考虑显示器 backing scale。
+- **对皮肤的影响：** 可以一起摆放和缩放分组皮肤。尚未完成 Windows 桌面对照。
+- **状态：** 模拟实现 / 部分支持（点击穿透选择手势与平台几何差异）
 
 #### SnapEdges 与 KeepOnScreen
 - **Windows：** 皮肤会吸附到屏幕边缘和其他皮肤；KeepOnScreen 让皮肤保持在屏幕范围内。
@@ -1010,9 +1016,9 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### ClickThrough（点击穿透）
 - **Windows：** 关闭鼠标检测，点击会穿透；“按住 CTRL 可暂时停用”。
 - **Mac：** 窗口完全忽略鼠标（没有点按、悬停、工具提示和滚动）。**不能**用 Ctrl / ⌘ 临时覆盖，因为 macOS 不会向这样的窗口
-  传递任何事件。请在菜单栏菜单中该皮肤的子菜单或管理窗口中关闭它。
+  传递任何事件，Control-Option 点按选择也不可用。可以从皮肤菜单使用 Select skin，或在菜单／管理窗口中关闭点击穿透。
 - **原因：** macOS 的窗口模型。
-- **对皮肤的影响：** 点击穿透的皮肤即使按住 ⌘ 也无法拖动。
+- **对皮肤的影响：** 仍不能直接按住 ⌘ 拖动；通过菜单选中后会暂时允许交互。
 - **状态：** 部分支持
 
 #### AlphaValue、OnHover 与淡入淡出
@@ -1056,7 +1062,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### Rainmeter 5.0 中尚未实现的部分
-- **Windows：** Rainmeter 5.0 还新增了：按住 Ctrl-Alt 点选多个皮肤一起移动、缩放和设置；新的“调试”窗口（日志、皮肤监视表达式、
+- **Windows：** Rainmeter 5.0 还新增了：新的“调试”窗口（日志、皮肤监视表达式、
   插件、显示器、网络标签页，修改文件后自动刷新）；按住 Shift 时右键菜单的“退出”变为“重新启动”、“刷新皮肤”变为“聚焦皮肤”；
   `!SendKey` 发送媒体键和音量键（`MediaNextTrack`、`MediaPrevTrack`、`MediaStop`、`MediaPlayPause`、`VolumeMute`、
   `VolumeDown`、`VolumeUp`）；`!Skin:` 形式的 bang 可以把目标写在最前面（`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`、
@@ -1149,10 +1155,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 皮肤上下文菜单与自定义动作
 - **Windows：** 皮肤名称、变体、设置（位置、透明度、悬停时隐藏、可拖动、点击穿透、保持在屏幕内、保存位置、吸附边缘……）、
   管理、编辑、刷新、卸载、自定义皮肤动作（`ContextTitleN` / `ContextActionN`，最多 25 个；超过 3 个时成为子菜单）。
-- **Mac：** 皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、位置、透明度、悬停、可拖动、点击穿透、
+- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Zoom、位置、透明度、悬停、可拖动、点击穿透、
   保持在屏幕内、吸附边缘、保存位置、有提示时的“兼容性提示（n）”、管理皮肤…、编辑皮肤…（Skin Studio）、在“设置 ▸ 编辑器”
   里选了代码编辑器 App 时的“用 <App> 编辑”、刷新皮肤、打开皮肤文件夹、卸载皮肤。FadeDuration 和 Load Order 在管理窗口中设置；StartHidden 和 AutoSelectScreen 只能通过 `Default…` 选项
-  和 bang 设置。
+  和 bang 设置。Zoom、位置、透明度、悬停和设置复选框会作用于所选群组；值不一致时不勾选。刷新皮肤和卸载皮肤也作用于
+  整个所选群组，实例停止时移出选择。
 - **原因：** Mac 的菜单惯例。
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
@@ -1231,7 +1238,8 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   执行本地清理及已支持的跨配置／UI／系统／打开操作。皮肤按配置名逐一关闭，之后才保存 `@Backup`；丢弃已退休实例的迟到请求。
   `!LoadLayout`、`!RefreshApp` 和 `!Quit` 按先后顺序等待当前布局完成。加载 `@Backup` 不覆盖它，也不应用其壁纸。
 - **原因：** 原始 `[Rainmeter]` 和 `[TrayMeasure]` 数据会被保留；普通加载按指定规则合并旧全局值，`@Backup` 恢复其原始值。
-  这些数据不改变本机 Mac 偏好，也不会让未支持的 Windows 全局／托盘选项生效。
+  `DefaultZoom`、`ForceDefaultZoom` 和 `SelectedColor` 会应用于缩放与选择；本机 Mac 编辑器／更新偏好保持独立，
+  未支持的 Windows 全局／托盘选项仍不产生运行时效果。
   主屏壁纸保留原始图片编码并使用 `Wallpaper.bmp` 文件名，普通加载时应用到各显示器并保留当前缩放选项；不保存动态壁纸、
   各屏不同图片和 Spaces 配置。Windows 变体枚举顺序取决于文件系统，Deskset 使用确定的字母排序，不保证所有数字／Unicode
   文件名在不同文件系统上顺序相同；跨配置停用保留现有淡出时序。尚未完成 Windows 桌面对照，详见 [Layouts](compat/layouts.md)。
@@ -2752,7 +2760,7 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
 | Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang）、`!ResetStats` | 不支持 | 模糊效果请用 FrostedGlass |
 | `!SetAnchor` | 不支持 | 布局表达式和锚点已保存并应用；该 bang 仍不支持 |
-| `DragGroup`；点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖 | 不支持 | 请在菜单或管理窗口中关闭点击穿透 |
+| 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |
 | 其他 Windows 插件 DLL | 不支持 | 数值为 0 / 空，皮肤的兼容性提示中有说明 |

@@ -324,6 +324,7 @@ timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
 event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
+event.pointerState	Sources/Deskset/SkinSelectionController.swift	1	injectable modifierFlags closure reads the selection chord when keyboard focus changes; no global keyboard monitor
 
 effect.workspace	Sources/Deskset/SkinWindowController.swift	2	a skin opens a URL or file: a host request, recorded by RecordingSkinHost in sandboxed runs
 event.pointerState	Sources/Deskset/SkinWindowController.swift	1	window dragging and hover polling read the pointer

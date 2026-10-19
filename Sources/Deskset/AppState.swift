@@ -44,8 +44,18 @@ struct SkinState: Codable, Equatable {
     /// `AutoSelectScreen`: the monitor of the skin's built-in variables (`#SCREENAREAX#`, `#WORKAREAX#`…) follows
     /// the window instead of being the primary one.
     var autoSelectScreen: Bool = false
-    /// `ZoomFactor`: per-skin zoom multiplier (`0.1…5.0`, default `1.0`).
-    var zoomFactor: Double = 1.0
+    /// `Zoom` in Rainmeter.ini: an integer percentage; nil follows the application's DefaultZoom.
+    var zoomOverridePercent: Int?
+    /// The previous state.json multiplier remains the on-disk format. Explicit 100% differs from Default.
+    var zoomFactor: Double {
+        get { Double(zoomOverridePercent ?? 100) / 100 }
+        set { zoomOverridePercent = Self.zoomPercent(factor: newValue) }
+    }
+
+    static func zoomPercent(factor: Double) -> Int {
+        guard factor.isFinite else { return 100 }
+        return Int((min(max(factor, 0.1), 5) * 100).rounded())
+    }
     /// Keys this version does not know (written by a newer one), kept as they were and written back, so that going
     /// back to an older version and forward again loses nothing.
     var unknownKeys: [String: JSONValue] = [:]
@@ -99,8 +109,8 @@ struct SkinState: Codable, Equatable {
         onHover = min(max(value(.onHover, d.onHover), 0), 3)
         startHidden = value(.startHidden, d.startHidden)
         autoSelectScreen = value(.autoSelectScreen, d.autoSelectScreen)
-        let rawZoom = value(.zoomFactor, d.zoomFactor)
-        zoomFactor = rawZoom.isFinite ? min(max(rawZoom, 0.1), 5.0) : 1.0
+        zoomOverridePercent = ((try? c.decodeIfPresent(Double.self, forKey: .zoomFactor)) ?? nil)
+            .map(Self.zoomPercent(factor:))
     }
 
     /// The keys this version knows, then the ones it kept (`unknownKeys`).
@@ -130,7 +140,7 @@ struct SkinState: Codable, Equatable {
         try c.encode(onHover, forKey: .onHover)
         try c.encode(startHidden, forKey: .startHidden)
         try c.encode(autoSelectScreen, forKey: .autoSelectScreen)
-        if zoomFactor != 1.0 { try c.encode(zoomFactor, forKey: .zoomFactor) }
+        if zoomOverridePercent != nil { try c.encode(zoomFactor, forKey: .zoomFactor) }
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: SkinState.knownKeys)
     }
@@ -192,7 +202,7 @@ struct AppStateData: Codable {
     var skinOrder: [String] = []
     /// Loading an empty layout is an intentional empty desktop, not a first launch.
     var hasLoadedLayout = false
-    /// Native layout settings kept for INI round trips; these do not configure the Mac app's preferences.
+    /// Native layout settings, including global zoom; unsupported settings are retained for INI round trips.
     var rainmeterOptions: [String: String] = [:]
     var trayMeasureOptions: [String: String]? = nil
     var defaultSkinsInstalled: Int = 0
@@ -260,6 +270,8 @@ struct AppStateData: Codable {
 final class AppState {
     private(set) var data = AppStateData()
     private var saveScheduled = false
+    /// Selection edits remain live in memory, while the persisted settings wait for deselection.
+    private var selectedSkinSnapshots: [String: SkinState] = [:]
     let fileURL: URL
 
     init(fileURL: URL = Paths.state) {
@@ -299,7 +311,7 @@ final class AppState {
         s.alphaValue = min(max(s.alphaValue, 0), 255)
         s.fadeDuration = min(max(s.fadeDuration, 0), SkinState.maxFadeDuration)
         s.onHover = min(max(s.onHover, 0), 3)
-        s.zoomFactor = s.zoomFactor.isFinite ? min(max(s.zoomFactor, 0.1), 5.0) : 1.0
+        s.zoomOverridePercent = s.zoomOverridePercent.map { min(max($0, 10), 500) }
         guard data.skins[key] != s else { return }
         // Preserve the ordering of legacy state files before the first edit starts recording section order.
         if data.skinOrder.isEmpty { data.skinOrder = data.orderedConfigs.map(\.config) }
@@ -314,6 +326,35 @@ final class AppState {
     private func storedKey(for config: String) -> String {
         if data.skins[config] != nil { return config }
         return data.skins.keys.first { $0.caseInsensitiveCompare(config) == .orderedSame } ?? config
+    }
+
+    var defaultZoomPercent: Int {
+        let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare("DefaultZoom") == .orderedSame }
+        let value = key.flatMap { data.rainmeterOptions[$0] }
+        return min(max(LayoutStateCodec.configInteger(value, fallback: 100), 10), 500)
+    }
+
+    var forceDefaultZoom: Bool {
+        let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare("ForceDefaultZoom") == .orderedSame }
+        let value = key.flatMap { data.rainmeterOptions[$0] }
+        return LayoutStateCodec.configInteger(value) != 0
+    }
+
+    /// Changes only supplied values, preserving the original key spelling and other Rainmeter settings.
+    func setDefaultZoom(percent: Int?, force: Bool?) {
+        let previous = data.rainmeterOptions
+        func set(_ key: String, _ value: String) {
+            let stored = data.rainmeterOptions.keys.sorted().first {
+                $0.caseInsensitiveCompare(key) == .orderedSame
+            } ?? key
+            data.rainmeterOptions = data.rainmeterOptions.filter {
+                $0.key == stored || $0.key.caseInsensitiveCompare(key) != .orderedSame
+            }
+            data.rainmeterOptions[stored] = value
+        }
+        if let percent { set("DefaultZoom", String(min(max(percent, 10), 500))) }
+        if let force { set("ForceDefaultZoom", force ? "1" : "0") }
+        if previous != data.rainmeterOptions { scheduleSave() }
     }
 
     func setDefaultSkinsInstalled(_ version: Int) {
@@ -391,6 +432,19 @@ final class AppState {
             .map(\.element)
     }
 
+    func beginSkinSelection(_ config: String) {
+        let key = storedKey(for: config)
+        guard selectedSkinSnapshots[key] == nil, let state = data.skins[key] else { return }
+        selectedSkinSnapshots[key] = state
+    }
+
+    func endSkinSelection(_ config: String) {
+        let key = selectedSkinSnapshots.keys.first { $0.caseInsensitiveCompare(config) == .orderedSame }
+        guard let key else { return }
+        selectedSkinSnapshots.removeValue(forKey: key)
+        scheduleSave()
+    }
+
     func scheduleSave() {
         guard !saveScheduled else { return }
         saveScheduled = true
@@ -401,7 +455,11 @@ final class AppState {
         saveScheduled = false
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let raw = try? encoder.encode(data) else { return }
+        var persisted = data
+        for key in selectedSkinSnapshots.keys.sorted() {
+            if persisted.skins[key] != nil { persisted.skins[key] = selectedSkinSnapshots[key] }
+        }
+        guard let raw = try? encoder.encode(persisted) else { return }
         try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         try? raw.write(to: fileURL, options: .atomic)

@@ -17,6 +17,16 @@ enum SkinRenderer {
         draw(skin, in: ctx, target: .capture(ctx, glass: DrawExecutor.paint(glass)))
     }
 
+    /// The desktop view's snapshot uses the same user zoom as its frame producer. Other callers keep their own
+    /// logical-coordinate transforms (for example the editor's preview and layer thumbnails).
+    static func drawZoomed(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing = .placeholder(dark: nil)) {
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        let zoom = CGFloat(skin.effectiveZoomFactor)
+        ctx.scaleBy(x: zoom, y: zoom)
+        draw(skin, in: ctx, glass: glass)
+    }
+
     /// An owned bitmap's entry point keeps the scene state explicitly established by its caller.
     static func draw(_ skin: Skin, in ctx: CGContext, target: DrawTarget) {
         let context = SkinRenderContext.of(skin)

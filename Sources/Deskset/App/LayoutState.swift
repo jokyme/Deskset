@@ -19,7 +19,7 @@ struct LayoutState {
         var target = LayoutStateCodec.section("Rainmeter", options: rainmeterOptions)
         let old = LayoutStateCodec.section("Rainmeter", options: previous.rainmeterOptions)
         for key in ["SkinPath", "ConfigEditor", "Logging", "DisableVersionCheck", "DisableAutoUpdate", "Language",
-                    "NormalStayDesktop", "SelectedColor", "HardwareAcceleration"] {
+                    "NormalStayDesktop", "SelectedColor", "HardwareAcceleration", "DefaultZoom", "ForceDefaultZoom"] {
             if let value = old[key], !value.isEmpty { target.setValue(value, forKey: key) }
         }
         for key in ["TrayExecuteM", "TrayExecuteR", "TrayExecuteDM", "TrayExecuteDR"] {
@@ -79,7 +79,11 @@ enum LayoutStateCodec {
             if let group = state.group { set("Group", group) }
             if let group = state.dragGroup { set("DragGroup", group) }
             // Zoom is the native Rainmeter 5.0 percentage. Do not invent a ZoomFactor layout key.
-            if state.zoomFactor != 1 || section["Zoom"] != nil { set("Zoom", number(state.zoomFactor * 100)) }
+            if let percent = state.zoomOverridePercent {
+                set("Zoom", String(percent))
+            } else {
+                section.entries.removeAll { $0.key.caseInsensitiveCompare("Zoom") == .orderedSame }
+            }
             result.sections.append(section)
         }
         return result
@@ -128,7 +132,9 @@ enum LayoutStateCodec {
             state.loadOrder = configInteger(section["LoadOrder"])
             state.fadeDuration = integer("FadeDuration", 250, range: 0...Double(SkinState.maxFadeDuration))
             state.onHover = integer("OnHover", 0, range: 0...3)
-            state.zoomFactor = value("Zoom").map { min(max($0 / 100, 0.1), 5) } ?? 1
+            state.zoomOverridePercent = section["Zoom"].map {
+                min(max(configInteger($0, fallback: 100), 10), 500)
+            }
             result.skins[config] = state
             result.order.append(config)
         }
@@ -149,9 +155,9 @@ enum LayoutStateCodec {
         section.entries.reduce(into: [:]) { $0[$1.key] = $1.value }
     }
 
-    /// Active and LoadOrder use a decimal integer prefix, or a parenthesized formula truncated toward zero.
-    private static func configInteger(_ value: String?) -> Int {
-        guard let value else { return 0 }
+    /// Integer settings use a decimal prefix, or a parenthesized formula truncated toward zero.
+    static func configInteger(_ value: String?, fallback: Int = 0) -> Int {
+        guard let value else { return fallback }
         let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let number: Double?
         if text.hasPrefix("(") {
@@ -161,11 +167,11 @@ enum LayoutStateCodec {
             var end = bytes.first == 0x2B || bytes.first == 0x2D ? 1 : 0
             let start = end
             while end < bytes.count, bytes[end] >= 0x30, bytes[end] <= 0x39 { end += 1 }
-            guard end > start else { return 0 }
+            guard end > start else { return fallback }
             number = Double(String(decoding: bytes[..<end], as: UTF8.self))
-            if let number, number < Double(Int32.min) || number > Double(Int32.max) { return 0 }
+            if let number, number < Double(Int32.min) || number > Double(Int32.max) { return fallback }
         }
-        guard let number, number.isFinite else { return 0 }
+        guard let number, number.isFinite else { return fallback }
         return Int(min(max(number.rounded(.towardZero), Double(Int32.min)), Double(Int32.max)))
     }
 

@@ -501,11 +501,11 @@ enum SkinWindowModelSelfTests {
                 app.deactivate(config: "Model\\Peer50")
             }
 
-            // 1. DefaultZoomFactor seeded into state and exposed via [$SkinZoomFactor]
-            t.close(app.state.skin("Model\\Host50")?.zoomFactor ?? 0, 1.5, "DefaultZoomFactor seeded")
+            // 1. A skin file does not seed per-config Zoom from DefaultZoomFactor.
+            t.equal(app.state.skin("Model\\Host50")?.zoomOverridePercent, nil, "unsupported default does not create an override")
             c.runtime.send(.execute("[!SetVariable SeenZoom \"[$SkinZoomFactor]\"][!SetVariable SeenVis \"[$SkinVisible]\"]",
                                     section: nil))
-            t.equal(c.skin.variable("SeenZoom"), "1.5", "[$SkinZoomFactor] reads seeded zoom factor")
+            t.equal(c.skin.variable("SeenZoom"), "1", "[$SkinZoomFactor] follows the application default")
             t.equal(c.skin.variable("SeenVis"), "1", "[$SkinVisible] is 1 when shown")
 
             // 2. !SetZoomFactor and !SetZoomFactorGroup update model, state, and [$SkinZoomFactor]
@@ -571,7 +571,7 @@ enum SkinWindowModelSelfTests {
     /// The window has the skin's size and the model has the window's frame and settings, with its own changes applied.
     static func agrees(_ c: SkinWindowController) -> Bool {
         let window = c.window.frame
-        let state = SkinWindowSettings(c.state, hidden: c.isHiddenByBang, fadedAlpha: nil)
+        let state = c.facts.settings
         let model = c.runtime.exclusive(timeout: 30) { _ in c.runtime.model }
         guard let model, let facts = model.facts else { return false }
         return model.frame == window && model.settings == state && facts.modelSequence == model.sequence

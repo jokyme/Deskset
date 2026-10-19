@@ -1006,7 +1006,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 ### Rainmeter 5.0 engine additions
 - Windows (Rainmeter 5.0): `[Rainmeter] SyntaxVersion` (`1` default, `2` disables legacy `%Name%` environment
   expansion) / `AppVersion`, `Update=<visible> | Invisible <invisible>` (`Invisible 0` pauses regular updates while
-  hidden), `DefaultZoomFactor`, `OnDisplayMetricsChange`, `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`,
+  hidden), `OnDisplayMetricsChange`, `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`,
   `[%EnvVar]` and (`SyntaxVersion=1`) `%EnvVar%`, `[$Skin…]`, `[$Display…]` / `[$DisplayDevice…@N]`, unbracketed
   measure names and `$Skin…`/`$Display…` variables in formulas, `Group=a|b` / `Group=a&b`, 2-argument
   `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor` /
@@ -1020,12 +1020,13 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   WebParser `JsonPointer` and `KeepOldData`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
   `[Meter:Attribute(selector, attr)]`), `Meter=TextEdit` (`[$Input]`, `[$Input:MatchN]`, `!TextEdit:*`),
   `StringAlign=Justify…`, and Shape `LineJoin`.
-- Mac (Deskset): all of the above are implemented and tested in `Sources/DesksetSelfTest/Rainmeter5SelfTests.swift`,
-  `Sources/DesksetSelfTest/EngineTests.swift`, and `Sources/Deskset/App/SkinWindowModelSelfTests.swift`. Not yet
-  implemented from 5.0: `!SetZoomFactor Default`, zoom context menu / edge-drag zoom / `DefaultZoom` /
-  `ForceDefaultZoom` config keys, target-first `!Skin:` bang argument order (`!Skin:Hide "Config"`), `!SendKey` media
-  keys (`MediaPlayPause` etc.), `CTRL-ALT` multi-skin selection, and Windows-specific UI dialogs (5-tab Debug dialog,
-  Safe Start, Skin Packager).
+- Mac (Deskset): the above are implemented. The official 5.0 `!SetZoomFactor` and `!SetZoomFactorGroup` support
+  a factor or Default; zoom uses integer percentages from 10–500%. Missing per-skin zoom inherits `DefaultZoom`;
+  `ForceDefaultZoom` applies the global value without deleting overrides. Rendering and input coordinates follow
+  effective zoom, and zoom changes request a redraw independently of regular updates. The zoom UI and
+  Control-Option selection/DragGroup behavior are described in [App](app.md); Windows desktop comparison is pending.
+  Not yet implemented from 5.0: target-first `!Skin:` bang argument order (`!Skin:Hide "Config"`), `!SendKey` media
+  keys (`MediaPlayPause` etc.), and Windows-specific UI dialogs (5-tab Debug dialog, Safe Start, Skin Packager).
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
 ---

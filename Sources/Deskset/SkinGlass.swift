@@ -47,6 +47,7 @@ final class SkinGlassViews {
         let tint: NSView?
         let isSystemGlass: Bool
         fileprivate(set) var region: GlassRegion?
+        fileprivate var zoomFactor: Double = 1
 
         init(system: Bool) {
             isSystemGlass = system
@@ -73,6 +74,7 @@ final class SkinGlassViews {
 
     /// The regions shown now, back to front.
     private(set) var regions: [GlassRegion] = []
+    private var zoomFactor: Double = 1
     private var pieces: [String: Piece] = [:]
 
     /// The pieces in `regions` order (tests).
@@ -80,9 +82,10 @@ final class SkinGlassViews {
 
     /// Shows `regions` in `container`, behind `skinView` (which stays the frontmost subview). Only what changed is
     /// touched.
-    func apply(_ regions: [GlassRegion], in container: NSView, below skinView: NSView) {
+    func apply(_ regions: [GlassRegion], in container: NSView, below skinView: NSView, zoomFactor: Double = 1) {
         dispatchPrecondition(condition: .onQueue(.main))
-        guard regions != self.regions || pieces.values.contains(where: { $0.frameView.superview !== container }) else {
+        guard regions != self.regions || zoomFactor != self.zoomFactor
+                || pieces.values.contains(where: { $0.frameView.superview !== container }) else {
             return
         }
         let system = SkinGlassViews.usesSystemGlass
@@ -96,28 +99,31 @@ final class SkinGlassViews {
                 pieces[region.id]?.frameView.removeFromSuperview()
                 piece = Piece(system: system)
             }
-            configure(piece, region)
+            configure(piece, region, zoomFactor: zoomFactor)
             kept[region.id] = piece
             ordered.append(piece.frameView)
         }
         for (id, piece) in pieces where kept[id] !== piece { piece.frameView.removeFromSuperview() }
         pieces = kept
         self.regions = regions
+        self.zoomFactor = zoomFactor
         // Glass back to front, then the skin's drawing; other subviews (none today) stay in front.
         let others = container.subviews.filter { !($0 is SkinGlassFrameView) && $0 !== skinView }
         let wanted = ordered + [skinView] + others
         if container.subviews != wanted { container.subviews = wanted }
     }
 
-    private func configure(_ piece: Piece, _ region: GlassRegion) {
-        guard piece.region != region else { return }
+    private func configure(_ piece: Piece, _ region: GlassRegion, zoomFactor: Double) {
+        guard piece.region != region || piece.zoomFactor != zoomFactor else { return }
         piece.region = region
-        let rect = region.rect.cgRect
-        let frame = region.clip.map { $0.cgRect } ?? rect
+        piece.zoomFactor = zoomFactor
+        let transform = CGAffineTransform(scaleX: zoomFactor, y: zoomFactor)
+        let rect = region.rect.cgRect.applying(transform)
+        let frame = region.clip.map { $0.cgRect.applying(transform) } ?? rect
         piece.frameView.frame = frame
         piece.frameView.layer?.masksToBounds = region.clip != nil
         piece.glass.frame = rect.offsetBy(dx: -frame.minX, dy: -frame.minY)
-        let radius = CGFloat(region.cornerRadius)
+        let radius = CGFloat(region.cornerRadius * zoomFactor)
         if piece.isSystemGlass, #available(macOS 26.0, *), let glass = piece.glass as? NSGlassEffectView {
             glass.style = region.style == .clear ? .clear : .regular
             glass.cornerRadius = radius

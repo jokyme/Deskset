@@ -263,12 +263,26 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             return true
         case .windowFacts(let facts):
             let wasHidden = model.settings.hidden
+            let oldSettings = model.settings
+            let oldZoom = model.settings.zoomFactor
             model.take(facts)
             frames.take(model.facts)
             skin.hostFactsChanged()
+            if oldSettings != model.settings {
+                skin.applyHostZoomFactor(model.settings.zoomOverridePercent.map { Double($0) / 100 },
+                                         previousEffectiveZoomFactor: oldZoom)
+            }
             if model.settings.hidden != wasHidden, skin.settings.invisibleUpdate != nil {
                 startTimer()
             }
+            return true
+        case .setZoom(let percent, let completion):
+            if !isClosed {
+                let value = percent.map { NumberFormatting.plain(Double(min(max($0, 10), 500)) / 100, maxDecimals: 2) }
+                    ?? "Default"
+                ownWindowBang(Bang(name: "setzoomfactor", args: [value]))
+            }
+            request(.zoomCompleted(completion))
             return true
         case .patch(let sources, let done):
             // Answered whatever happens: the Studio waits for it to move the window or load the widget again.
@@ -357,7 +371,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             frames.drawFirstFrame()
         case .frameWanted:
             frames.setNeedsFrame()
-        case .mirrorInput, .windowFacts, .patch:
+        case .mirrorInput, .windowFacts, .setZoom, .patch:
             break
         }
         return true
@@ -570,16 +584,17 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
     private func ownWindowBang(_ bang: Bang) {
+        let previousZoom = model.settings.zoomFactor
         guard !isClosed, var change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
         change.whileClosing = isClosing
-        if case .zoomFactor(let factor) = change.operation {
-            skin.applyHostZoomFactor(factor)
-        }
         skin.invalidateEnvironment()
         // Shown: a window that has not drawn yet (StartHidden) has its first frame before the main thread orders it
         // in, as at the start, wherever the skin runs.
         if !Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
         request(.window(change))
+        if case .zoomFactor(let percent) = change.operation {
+            skin.applyHostZoomFactor(percent.map { Double($0) / 100 }, previousEffectiveZoomFactor: previousZoom)
+        }
         if Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
         if case .hidden = change.operation, skin.settings.invisibleUpdate != nil {
             startTimer()
@@ -787,11 +802,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skinNeedsDisplay(_ skin: Skin) {
         HostCallAudit.note(self, "skinNeedsDisplay")
         guard !isClosed else { return }
-        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
-        if size != requestedSize {
+        let size = SkinRuntime.scaledWindowSize(width: skin.width, height: skin.height, zoomFactor: skin.effectiveZoomFactor)
+        if size != requestedSize || model.frameZoomFactor != skin.effectiveZoomFactor {
             requestedSize = size
-            model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
-            request(.resize(size))
+            model.resize(to: size, zoomFactor: skin.effectiveZoomFactor, screens: EnvironmentStore.shared.currentScreens)
+            request(.resize(size, zoomFactor: skin.effectiveZoomFactor))
         }
         frames.setNeedsFrame()
     }
@@ -806,6 +821,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             return min(max(CGFloat(v), 1), maxWindowSide)
         }
         return CGSize(width: side(width), height: side(height))
+    }
+
+    /// Logical skin dimensions scaled in points; the display's backing scale is applied only by the renderer.
+    static func scaledWindowSize(width: Double, height: Double, zoomFactor: Double) -> CGSize {
+        let zoom = zoomFactor.isFinite ? min(max(zoomFactor, 0.1), 5) : 1
+        return windowSize(width: width * zoom, height: height * zoom)
     }
 
     /// A bang the engine performed with another config's name, or `*` (the engine has performed it here already: every
@@ -964,9 +985,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func environment(for skin: Skin) -> SkinEnvironment {
         HostCallAudit.note(self, "environment")
         let settings = model.settings
-        let env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
+        var env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
                                                       autoSelectScreen: settings.autoSelectScreen,
                                                       visible: !settings.hidden, zoomFactor: settings.zoomFactor)
+        env.defaultZoomFactor = Double(settings.defaultZoomPercent) / 100
+        env.forceDefaultZoom = settings.forceDefaultZoom
         #if DEBUG
         if SnapshotAudit.isActive(self), let live = window?.liveEnvironment(for: skin) {
             SnapshotAudit.compare("environment", self, snapshot: env, live: live, sides: SkinRuntime.auditSides)

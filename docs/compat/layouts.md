@@ -35,11 +35,12 @@ implementation and self-tests are not evidence of a Windows parity run.
   Loading `@Backup` restores its global settings without these normal-load preservation rules.
 - Mac (Deskset): raw `[Rainmeter]` and optional `[TrayMeasure]` sections survive layout saves and application restarts.
   Normal loads merge the stored global values using the preservation rules above; `@Backup` restores its saved raw
-  values. Local editor, update, installation and other application preferences remain separate and unchanged.
+  values. `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor` also drive the supported zoom and selection behavior.
+  Local editor, update, installation and other application preferences remain separate and unchanged.
   Preserving Windows global and tray options does not implement their unsupported runtime behavior.
 - Why: the platforms have different application settings. Retaining layout metadata allows a round trip without
   treating unsupported Windows settings as working Mac preferences.
-- Skin impact: a layout that depends on changing Windows global settings needs separate configuration on macOS.
+- Skin impact: a layout that depends on unsupported Windows global settings needs separate configuration on macOS.
 - Status: partial
 
 ### Config variants, order and positions
@@ -49,8 +50,8 @@ implementation and self-tests are not evidence of a Windows parity run.
   section order. Window and anchor positions accept formulas, percentages, edge-relative values and monitor suffixes.
 - Mac (Deskset): captures active and inactive configs, `WindowX/Y`, `AnchorX/Y`, `SavePosition`, `AlwaysOnTop`,
   `Draggable`, `ClickThrough`, `KeepOnScreen`, `SnapEdges`, `StartHidden`, `AlphaValue`, `OnHover`, `FadeDuration`,
-  `LoadOrder`, `AutoSelectScreen`, `Group` and `DragGroup`. Config groups join the skin's groups; storing DragGroup does
-  not implement the still-missing group-selection UI. Layout expressions and anchors survive save/reload and apply
+  `LoadOrder`, `AutoSelectScreen`, `Group` and `DragGroup`. Config groups join the skin's groups; DragGroup participates
+  in Control-Option selection and group dragging. Layout expressions and anchors survive save/reload and apply
   when the skin size is known; anchors continue to affect resizing. A monitor suffix on just one axis applies to
   both. `SavePosition=0` keeps a session move separate from saved coordinates. An imported missing `AlwaysOnTop`
   uses the Rainmeter default `0`; the existing default for newly created Mac config state is unchanged.
@@ -58,11 +59,12 @@ implementation and self-tests are not evidence of a Windows parity run.
   variant. Variants use a fixed case-insensitive alphabetical comparison, separate from Manage's natural ordering.
   Imported `Active` text, or its absence, is retained until activation or variant changes. Saving also updates the
   index if newly discovered files shift the current variant's position in the list.
-  Rainmeter 5.0's native `Zoom` percentage maps to the existing zoom factor, constrained to 10–500%; exports do not
-  create a `ZoomFactor` layout key.
+  Rainmeter 5.0's native `Zoom` is an integer percentage constrained to 10–500%. A missing key inherits `DefaultZoom`;
+  explicit `Zoom=100` remains distinct. `ForceDefaultZoom` changes the effective zoom while retaining the per-skin
+  override. Default removes that override, and saves omit its `Zoom` key. Exports do not create a `ZoomFactor` key.
 - Why: macOS window geometry is measured in points. Deskset's deterministic alphabetical order does not promise
-  the same variant index for every Windows filesystem or Unicode filename. `!SetAnchor` and the remaining 5.0 zoom
-  UI/global settings remain outside this implementation.
+  the same variant index for every Windows filesystem or Unicode filename. Skin zoom is separate from display
+  backing scale; `!SetAnchor` remains outside this implementation. Zoom and selection details are in [App](app.md).
 - Skin impact: display sizes, font metrics and supported skin/plugin behavior can still differ across platforms.
   Unsupported original config options survive a layout round trip but do not gain functionality through persistence.
 - Status: emulated / partial

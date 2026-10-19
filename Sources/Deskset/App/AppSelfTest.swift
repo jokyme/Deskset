@@ -64,6 +64,11 @@ enum AppSelfTest {
         SkinRuntimeSelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
+        SkinZoomSelfTests.run(t)
+        SkinZoomUISelfTests.run(t)
+        SkinZoomDrawingSelfTests.run(t)
+        SkinZoomInputSelfTests.run(t)
+        SkinSelectionSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)
         EngineThreadSelfTests.run(t)
         EnginePoolSelfTests.run(t)
@@ -1030,7 +1035,8 @@ enum AppSelfTest {
             t.equal(custom?.items.map(\.title), ["Hide, then show again"])
             let menu = app.skinMenu(for: focus, includeCustomItems: true)
             let titles = menu.items.map(\.title)
-            t.equal(titles.first, "Focus & Fade")
+            t.equal(titles.first, "Select skin")
+            t.check(titles.contains("Focus & Fade"), "the skin's metadata title remains in its menu")
             for expected in ["Variants", "Position", "Transparency", "On Hover", "Draggable", "Click Through",
                              "Keep on Screen", "Snap to Edges", "Save Position", "Manage Skin…", "Edit Skin…",
                              "Refresh Skin", "Open Skin Folder", "Unload Skin"] {

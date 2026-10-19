@@ -10,8 +10,12 @@ import DesksetCore
 /// It describes the skin as of its last piece of work, which is the frame on screen (or the one about to be): a click
 /// is tested against what the user sees.
 struct SkinSnapshot {
-    /// The window size for the skin's size (points).
+    /// The displayed window size, including the user's zoom (points).
     var size = CGSize(width: 1, height: 1)
+    /// The skin's unscaled coordinates, shared by drawing commands and input hit testing.
+    var logicalSize = CGSize(width: 1, height: 1)
+    /// User zoom, independent of the window's Retina backing scale.
+    var zoomFactor: Double = 1
     /// Where the mouse finds the meters and what it does there, the `[Rainmeter]` actions, `DragMargins`, the tooltips.
     var hitMap = SkinHitMap()
     /// Where the glass goes (`MacGlass`), back to front, in skin points.
@@ -33,6 +37,9 @@ struct SkinSnapshot {
     var usesWeather = false
     /// The skin groups of `[Rainmeter]` (`Group=`), as written.
     var groups: [String] = []
+    /// Selection settings used by the desktop view without crossing into the skin's executor.
+    var dragGroups: [String] = []
+    var selectedColor: RGBA?
     /// The skin's file and the files it includes.
     var sourceFiles: [URL] = []
     /// How many `!WriteKeyValue` writes the skin made.
@@ -60,7 +67,7 @@ struct SkinSnapshot {
             next.contextItems = skin.contextMenuItems()
             rebuilt = next.contextItems != old.contextItems
         }
-        if builtGeneration != generation {
+        if builtGeneration != generation || skin.effectiveZoomFactor != old.zoomFactor {
             // Taken first: reading the skin to build the snapshot may move the generation again (a missing image noted
             // as a compatibility note), and the next one is built once more.
             builtGeneration = generation
@@ -81,7 +88,10 @@ struct SkinSnapshot {
     /// menu items are taken by the runtime after every piece of work.)
     mutating func rebuild(from skin: Skin, generation: Int) {
         hitMap = skin.makeHitMap()
-        size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        zoomFactor = skin.effectiveZoomFactor
+        logicalSize = CGSize(width: skin.width.isFinite ? max(skin.width, 1) : 1,
+                             height: skin.height.isFinite ? max(skin.height, 1) : 1)
+        size = SkinRuntime.scaledWindowSize(width: skin.width, height: skin.height, zoomFactor: zoomFactor)
         glass = skin.glassRegions
         wantsFocus = !skin.settings.onFocusAction.isEmpty || !skin.settings.onUnfocusAction.isEmpty
             || skin.meters.contains { $0 is TextEditMeter }
@@ -89,13 +99,18 @@ struct SkinSnapshot {
         metadata = skin.metadata
         usesWeather = MacWeatherMeasure.showsWeather(in: skin)
         groups = skin.settings.groups
+        dragGroups = skin.settings.dragGroups
+        selectedColor = skin.settings.selectedColor
         sourceFiles = skin.sourceFiles
         outsidePointerNeeds = skin.outsidePointerNeeds
         self.generation = generation
     }
 
-    /// The tooltip areas (skin coordinates, the view's).
-    var toolTipAreas: [CGRect] { hitMap.toolTipAreas.map(\.cgRect) }
+    /// The tooltip areas in displayed view coordinates. The hit map itself stays in logical skin coordinates.
+    var toolTipAreas: [CGRect] {
+        let transform = CGAffineTransform(scaleX: zoomFactor, y: zoomFactor)
+        return hitMap.toolTipAreas.map { $0.cgRect.applying(transform) }
+    }
 
     /// `Skin.isInSkinGroup`: in the skin group (`Group=` in `[Rainmeter]`, case-insensitive).
     func isInSkinGroup(_ group: String) -> Bool {
@@ -107,12 +122,14 @@ struct SkinSnapshot {
     /// see `SkinSnapshotChanges`.
     func changes(from old: SkinSnapshot) -> SkinSnapshotChanges {
         var changes: SkinSnapshotChanges = []
-        if size != old.size { changes.insert(.size) }
-        if hitMap.toolTipAreas != old.hitMap.toolTipAreas { changes.insert(.toolTips) }
-        if glass != old.glass { changes.insert(.glass) }
+        let zoomChanged = zoomFactor != old.zoomFactor
+        if size != old.size || zoomChanged { changes.insert(.size) }
+        if hitMap.toolTipAreas != old.hitMap.toolTipAreas || zoomChanged { changes.insert(.toolTips) }
+        if glass != old.glass || zoomChanged { changes.insert(.glass) }
         if issues != old.issues { changes.insert(.issues) }
         if metadata != old.metadata { changes.insert(.metadata) }
         if groups != old.groups { changes.insert(.groups) }
+        if dragGroups != old.dragGroups || selectedColor != old.selectedColor { changes.insert(.selection) }
         if outsidePointerNeeds != old.outsidePointerNeeds { changes.insert(.outsidePointerNeeds) }
         if wantsFocus != old.wantsFocus { changes.insert(.focus) }
         return changes
@@ -141,6 +158,8 @@ struct SkinSnapshotChanges: OptionSet {
     static let outsidePointerNeeds = SkinSnapshotChanges(rawValue: 1 << 6)
     /// Whether the skin wants focus.
     static let focus = SkinSnapshotChanges(rawValue: 1 << 7)
+    /// Selection group membership or overlay colour.
+    static let selection = SkinSnapshotChanges(rawValue: 1 << 8)
 }
 
 /// Debug builds: every answer the window takes from a snapshot is also asked of the live skin when the skin runs on the

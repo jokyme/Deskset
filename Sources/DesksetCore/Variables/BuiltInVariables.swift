@@ -60,6 +60,8 @@ public enum BuiltInVariables {
     public static let currentConfigHeight = "CURRENTCONFIGHEIGHT"
     /// `#CURRENTCONFIGZPOS#` — Z-position (front to back, the `AlwaysOnTop` level) of the current skin. Dynamic.
     public static let currentConfigZPos = "CURRENTCONFIGZPOS"
+    /// `#CURRENTCONFIGZOOM#` — effective skin zoom as an integer percentage. Dynamic.
+    public static let currentConfigZoom = "CURRENTCONFIGZOOM"
 
     // MARK: Miscellaneous variables
 
@@ -143,7 +145,7 @@ public enum BuiltInVariables {
     public static let names: [String] = [
         programDrive, programPath, settingsPath, skinsPath, pluginsPath, addonsPath,
         resources, currentPath, currentFile, rootConfigPath, rootConfig, currentConfig,
-        currentConfigX, currentConfigY, currentConfigWidth, currentConfigHeight, currentConfigZPos,
+        currentConfigX, currentConfigY, currentConfigWidth, currentConfigHeight, currentConfigZPos, currentConfigZoom,
         crlf, currentSection, configEditor,
         workAreaX, workAreaY, workAreaWidth, workAreaHeight,
         screenAreaX, screenAreaY, screenAreaWidth, screenAreaHeight,
@@ -173,7 +175,7 @@ public enum BuiltInVariables {
     /// Names the manual calls dynamic (they need `DynamicVariables=1` to reflect changes). Monitor variables,
     /// including every `@N` variant, are dynamic too.
     public static let dynamicNames: [String] = [
-        currentConfigX, currentConfigY, currentConfigWidth, currentConfigHeight, currentConfigZPos, configEditor,
+        currentConfigX, currentConfigY, currentConfigWidth, currentConfigHeight, currentConfigZPos, currentConfigZoom, configEditor,
     ]
 
     /// True when `name` (without `#`, any case) is a built-in variable, including `@N` monitor variants such as

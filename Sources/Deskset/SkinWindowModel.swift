@@ -39,7 +39,27 @@ struct SkinWindowSettings: Equatable {
     var savePosition: Bool
     var fadeDuration: Int
     var autoSelectScreen: Bool
-    var zoomFactor: Double
+    var zoomOverridePercent: Int?
+    var defaultZoomPercent: Int
+    var forceDefaultZoom: Bool
+    var isSelected: Bool
+    var selectedFlagOverrides: [SkinWindowFlag: Bool]
+    var zoomFactor: Double {
+        get { Double(forceDefaultZoom ? defaultZoomPercent : zoomOverridePercent ?? defaultZoomPercent) / 100 }
+        set { zoomOverridePercent = SkinState.zoomPercent(factor: newValue) }
+    }
+    var effectiveDraggable: Bool { isSelected ? selectedFlagOverrides[.draggable] ?? true : draggable }
+    var effectiveClickThrough: Bool { isSelected ? selectedFlagOverrides[.clickThrough] ?? false : clickThrough }
+    var effectiveKeepOnScreen: Bool { isSelected ? selectedFlagOverrides[.keepOnScreen] ?? false : keepOnScreen }
+
+    func effectiveValue(for flag: SkinWindowFlag) -> Bool {
+        switch flag {
+        case .draggable: return effectiveDraggable
+        case .clickThrough: return effectiveClickThrough
+        case .keepOnScreen: return effectiveKeepOnScreen
+        default: return self[keyPath: flag.setting]
+        }
+    }
     var anchorX: String
     var anchorY: String
     var windowX: String?
@@ -62,15 +82,19 @@ struct SkinWindowSettings: Equatable {
         state.savePosition = savePosition
         state.fadeDuration = fadeDuration
         state.autoSelectScreen = autoSelectScreen
-        state.zoomFactor = zoomFactor
+        state.zoomOverridePercent = zoomOverridePercent
         state.anchorX = anchorX
         state.anchorY = anchorY
         state.windowX = windowX
         state.windowY = windowY
-        return SkinWindowSettings(state.seeded(with: defaults), hidden: hidden, fadedAlpha: fadedAlpha)
+        return SkinWindowSettings(state.seeded(with: defaults), hidden: hidden, fadedAlpha: fadedAlpha,
+                                  defaultZoomPercent: defaultZoomPercent, forceDefaultZoom: forceDefaultZoom,
+                                  isSelected: isSelected, selectedFlagOverrides: selectedFlagOverrides)
     }
 
-    init(_ state: SkinState, hidden: Bool, fadedAlpha: SkinFadedAlpha?) {
+    init(_ state: SkinState, hidden: Bool, fadedAlpha: SkinFadedAlpha?, defaultZoomPercent: Int = 100,
+         forceDefaultZoom: Bool = false, isSelected: Bool = false,
+         selectedFlagOverrides: [SkinWindowFlag: Bool] = [:]) {
         zPosition = state.alwaysOnTop
         alphaValue = state.alphaValue
         self.fadedAlpha = fadedAlpha
@@ -82,7 +106,11 @@ struct SkinWindowSettings: Equatable {
         savePosition = state.savePosition
         fadeDuration = state.fadeDuration
         autoSelectScreen = state.autoSelectScreen
-        zoomFactor = state.zoomFactor
+        zoomOverridePercent = state.zoomOverridePercent
+        self.defaultZoomPercent = min(max(defaultZoomPercent, 10), 500)
+        self.forceDefaultZoom = forceDefaultZoom
+        self.isSelected = isSelected
+        self.selectedFlagOverrides = selectedFlagOverrides
         anchorX = state.anchorX ?? "0"
         anchorY = state.anchorY ?? "0"
         windowX = state.windowX
@@ -95,6 +123,7 @@ struct SkinWindowSettings: Equatable {
 struct SkinWindowFacts: Equatable {
     /// The window's frame (AppKit screen coordinates).
     var frame: CGRect
+    var frameZoomFactor: Double
     /// The window's screen in `NSScreen.screens`, when it has one.
     var screen: Int?
     /// That screen's display (`NSScreenNumber`): Chameleon's desktop picture is that display's.
@@ -121,8 +150,10 @@ struct SkinWindowFacts: Equatable {
     init(frame: CGRect, screen: Int? = nil, display: CGDirectDisplayID? = nil, isVisible: Bool,
          isOrderedIn: Bool = false, scale: CGFloat, colorSpace: CGColorSpace? = nil,
          appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
-         settings: SkinWindowSettings = SkinWindowSettings(), modelSequence: Int = 0, sequence: Int) {
+         settings: SkinWindowSettings = SkinWindowSettings(), frameZoomFactor: Double = 1,
+         modelSequence: Int = 0, sequence: Int) {
         self.frame = frame
+        self.frameZoomFactor = frameZoomFactor
         self.screen = screen
         self.display = display
         self.isVisible = isVisible
@@ -169,7 +200,6 @@ extension SkinState {
         if let v = int("AlphaValue", 0...255) { s.alphaValue = v }
         if let v = int("OnHover", 0...3) { s.onHover = v }
         if let v = int("FadeDuration", 0...Double(SkinState.maxFadeDuration)) { s.fadeDuration = v }
-        if let v = number("ZoomFactor") { s.zoomFactor = min(max(v, 0.1), 5.0) }
         if let v = defaults["AnchorX"] { s.anchorX = v }
         if let v = defaults["AnchorY"] { s.anchorY = v }
         if let v = defaults["WindowX"] { s.windowX = v }
@@ -179,8 +209,12 @@ extension SkinState {
 }
 
 /// A setting a flag bang switches.
-enum SkinWindowFlag: Equatable {
+enum SkinWindowFlag: Hashable {
     case draggable, clickThrough, keepOnScreen, snapEdges, autoSelectScreen
+
+    var isTemporaryWhileSelected: Bool {
+        self == .draggable || self == .clickThrough || self == .keepOnScreen
+    }
 
     var state: WritableKeyPath<SkinState, Bool> {
         switch self {
@@ -218,7 +252,7 @@ enum SkinWindowOperation: Equatable {
     /// !Show, !Hide, !Toggle (`fade`: their Fade forms).
     case hidden(Bool, fade: Bool)
     /// !SetZoomFactor, !SetZoomFactorGroup.
-    case zoomFactor(Double)
+    case zoomFactor(Int?)
 }
 
 /// One of a skin's own window changes, for the main thread (`SkinRequest.window`).
@@ -239,6 +273,7 @@ struct SkinWindowModel {
     /// The window's frame (AppKit screen coordinates); nil until the window told it (a runtime without a window: the
     /// skin's environment then has the skin's own size at 0,0, as the engine's default).
     var frame: CGRect?
+    private(set) var frameZoomFactor: Double = 1
     var settings = SkinWindowSettings()
     /// The facts last taken.
     private(set) var facts: SkinWindowFacts?
@@ -256,6 +291,7 @@ struct SkinWindowModel {
         self.facts = facts
         guard facts.modelSequence >= sequence else { return }
         frame = facts.frame
+        frameZoomFactor = facts.frameZoomFactor
         settings = facts.settings
     }
 
@@ -263,15 +299,19 @@ struct SkinWindowModel {
     /// with KeepOnScreen (as the main thread does).
     /// `screens` are read only when the window is to be kept on screen at its new size (a skin redraws often; its
     /// size rarely changes).
-    mutating func resize(to size: CGSize, screens: @autoclosure () -> [WindowGeometry.Screen]) {
-        guard let old = frame, old.size != size else { return }
+    mutating func resize(to size: CGSize, zoomFactor: Double? = nil,
+                         screens: @autoclosure () -> [WindowGeometry.Screen]) {
+        let zoom = zoomFactor ?? settings.zoomFactor
+        let oldZoom = frameZoomFactor
+        frameZoomFactor = zoom
+        guard let old = frame, old.size != size || oldZoom != zoom else { return }
         var f = CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height)
-        if let before = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: old.size),
-           let after = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: size) {
+        if let before = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: old.size, zoomFactor: oldZoom),
+           let after = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY, size: size, zoomFactor: zoom) {
             f.origin.x += before.x - after.x
             f.origin.y -= before.y - after.y
         }
-        if settings.keepOnScreen && facts?.isOrderedIn == true { f = WindowGeometry.keptOnScreen(f, screens: screens()) }
+        if settings.effectiveKeepOnScreen && facts?.isOrderedIn == true { f = WindowGeometry.keptOnScreen(f, screens: screens()) }
         frame = f
     }
 
@@ -288,8 +328,12 @@ struct SkinWindowModel {
         let a = bang.args
         func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
         func setFlag(_ flag: SkinWindowFlag) -> SkinWindowOperation {
-            let value = SkinVisibility.flag(arg(0), current: settings[keyPath: flag.setting])
-            settings[keyPath: flag.setting] = value
+            let value = SkinVisibility.flag(arg(0), current: settings.effectiveValue(for: flag))
+            if settings.isSelected && flag.isTemporaryWhileSelected {
+                settings.selectedFlagOverrides[flag] = value
+            } else {
+                settings[keyPath: flag.setting] = value
+            }
             return .flag(flag, value)
         }
         func setHidden(_ hidden: Bool, fade: Bool) -> SkinWindowOperation {
@@ -304,7 +348,7 @@ struct SkinWindowModel {
             // !SetWindowPosition WindowX WindowY [AnchorX AnchorY]
             let anchor = a.count >= 4 ? (arg(2), arg(3)) : (settings.anchorX, settings.anchorY)
             guard let p = WindowPosition.resolve(x: arg(0), y: arg(1), anchorX: anchor.0, anchorY: anchor.1,
-                                                 skinSize: currentFrame.size, screens: screens) else { return nil }
+                                                 skinSize: currentFrame.size, screens: screens, zoomFactor: settings.zoomFactor) else { return nil }
             settings.anchorX = anchor.0
             settings.anchorY = anchor.1
             settings.windowX = arg(0)
@@ -324,7 +368,7 @@ struct SkinWindowModel {
         case "keeponscreen":
             let operation = setFlag(.keepOnScreen)
             // The window is kept on screen at once.
-            if settings.keepOnScreen { frame = WindowGeometry.keptOnScreen(currentFrame, screens: screens) }
+            if settings.effectiveKeepOnScreen { frame = WindowGeometry.keptOnScreen(currentFrame, screens: screens) }
             return operation
         case "snapedges": return setFlag(.snapEdges)
         case "autoselectscreen":
@@ -343,10 +387,14 @@ struct SkinWindowModel {
             settings.fadeDuration = ms
             return .fadeDuration(ms)
         case "setzoomfactor":
-            guard let v = OptionValue.number(arg(0)), v.isFinite else { return nil }
-            let clamped = min(max(v, 0.1), 5.0)
-            settings.zoomFactor = clamped
-            return .zoomFactor(clamped)
+            if arg(0).caseInsensitiveCompare("Default") == .orderedSame {
+                settings.zoomOverridePercent = nil
+                return .zoomFactor(nil)
+            }
+            guard !settings.forceDefaultZoom, let value = OptionValue.number(arg(0)), value.isFinite else { return nil }
+            let percent = SkinState.zoomPercent(factor: value)
+            settings.zoomOverridePercent = percent
+            return .zoomFactor(percent)
         default:
             return nil
         }
@@ -362,7 +410,7 @@ struct SkinWindowModel {
         let limit = SkinState.maxPosition
         var f = WindowGeometry.frame(topLeftX: min(max(x, -limit), limit), y: min(max(y, -limit), limit),
                                      size: currentFrame.size, primaryHeight: WindowGeometry.primaryHeight(screens))
-        if settings.keepOnScreen { f = WindowGeometry.keptOnScreen(f, screens: screens) }
+        if settings.effectiveKeepOnScreen { f = WindowGeometry.keptOnScreen(f, screens: screens) }
         frame = f
         return .move(f)
     }
