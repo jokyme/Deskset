@@ -1306,6 +1306,21 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** none.
 - **Status:** emulated
 
+#### About (Log, Skins, Plugins, Version)
+- **Windows:** four About tabs for logs, active skin values, installed plugins and version/paths
+  (<https://docs.rainmeter.net/manual/user-interface/about/>).
+- **Mac:** all four pages open from About, Manage's Open Log, the skin's Deskset submenu and `!About` (also via CLI).
+  Log starts with 20 recent entries, adds new messages at the top, filters only future messages, clears only the panel
+  and copies selected message text with Command-C. The existing 2,000-entry history limit also bounds this panel.
+  Skins shows live measure ranges/numbers/strings and user variables, with disabled/paused highlighting and complete
+  clipboard copies of values truncated for display. Plugins lists registered built-in implementations with the Deskset
+  version marked `(bundled)` and author `jokyme`. All listed implementations update with the app; external plugins are
+  not currently supported. Version copies the actual version/build/architecture and paths; build date is unavailable.
+- **Why:** macOS UI and clipboard conventions, existing log limits and built-in plugin implementations.
+- **Skin impact:** Windows DLL metadata is unavailable. Unknown `!About` tabs fall back to Log; Measures selects Skins.
+- **Status:** partial; macOS tests cover these behaviors. Windows desktop comparison of edge cases remains pending;
+  Rainmeter 5.0's separate Debug window remains outside this implementation.
+
 #### A loaded skin that is hidden (Manage window)
 - **Windows:** the Manage window lists the active skins with their Coordinates, Position, Load order, Transparency and
   other settings; the manual describes no sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows

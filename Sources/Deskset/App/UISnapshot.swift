@@ -39,6 +39,13 @@ enum UISnapshot {
             data = installPreview(plainArchive: true).flatMap(png)
         case "settings":
             data = settingsPreview(pane: value(after: "--pane").flatMap(SettingsWindowController.Pane.init) ?? .editor)
+        case "about":
+            let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
+                .map { $0.isFinite ? min(max($0, 200), 3000) : 780 }
+            data = aboutPreview(pane: AboutWindowController.Tab.parse(value(after: "--pane")),
+                                select: value(after: "--select"),
+                                skinsDir: value(after: "--skins-dir"),
+                                size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil)
         case "codeeditor":
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
                 .map { $0.isFinite ? min(max($0, 200), 3000) : 760 }
@@ -55,7 +62,7 @@ enum UISnapshot {
                                  coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil,
                                  pane: value(after: "--pane").flatMap(ManageWindowController.Tab.init(rawValue:)) ?? .skins)
         default:
-            fputs("unknown snapshot \"\(what)\" (manage, settings, codeeditor, install, install-zip, icon, menubar)\n", stderr)
+            fputs("unknown snapshot \"\(what)\" (manage, settings, about, codeeditor, install, install-zip, icon, menubar)\n", stderr)
             return 2
         }
         guard let data else {
@@ -157,6 +164,54 @@ enum UISnapshot {
         let settings = SettingsWindowController(app: app)
         settings.select(pane)
         let data = settings.snapshot()?.representation(using: .png, properties: [:])
+        withExtendedLifetime(app) {}
+        return data
+    }
+
+    private static func aboutPreview(pane: AboutWindowController.Tab, select: String?, skinsDir: String?,
+                                     size: NSSize?) -> Data? {
+        let root = temporaryDirectory("about")
+        let skins: URL
+        if let skinsDir {
+            skins = URL(fileURLWithPath: skinsDir)
+        } else {
+            skins = root.appendingPathComponent("Skins")
+            try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+            if let test = Paths.repositoryFolder("TestSkins") {
+                for folder in ["App", "Deskset"] {
+                    try? FileManager.default.copyItem(at: test.appendingPathComponent(folder),
+                                                      to: skins.appendingPathComponent(folder))
+                }
+            }
+        }
+        let savedFileLogging = Log.fileLoggingEnabled
+        let savedStderr = Log.mirrorsToStandardError
+        Log.fileLoggingEnabled = false
+        Log.mirrorsToStandardError = false
+        defer {
+            Log.fileLoggingEnabled = savedFileLogging
+            Log.mirrorsToStandardError = savedStderr
+        }
+        let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                backupsDirectory: root.appendingPathComponent("Backups"),
+                                settingsDirectory: root.appendingPathComponent("Settings"),
+                                presentsWindows: false)
+        app.activate(config: "App\\Focus", file: "Focus.ini")
+        app.activate(config: "Deskset\\Clock", file: nil)
+        Log.write("Loaded skin Focus.ini", level: .notice, source: "App\\Focus")
+        Log.write("Loaded skin Clock.ini", level: .debug, source: "Deskset\\Clock")
+        let about = AboutWindowController.show(app: app, tab: pane)
+        if let size { about.window?.setContentSize(size) }
+        if let select {
+            about.selectSkin(config: SkinLibrary.normalizedConfigName(select))
+        }
+        // Wait for the asynchronous inspector to populate, rather than capturing an empty table before its reply.
+        if pane == .skins, about.selectedSkinConfig != nil {
+            for _ in 0..<20 where about.currentSkinState == nil { RenderCommand.wait(milliseconds: 25) }
+        }
+        let data = about.snapshot()?.representation(using: .png, properties: [:])
+        about.close()
         withExtendedLifetime(app) {}
         return data
     }

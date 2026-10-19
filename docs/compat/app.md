@@ -345,6 +345,26 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none.
 - Status: emulated
 
+### About (Log, Skins, Plugins, Version)
+- Windows (Rainmeter): the four-tab About dialog exposes logs, active measures and variables, installed plugins, and
+  version/path information. It opens from the tray or skin menu, Manage's Open log button, and `!About` from a skin or
+  the command line (<https://docs.rainmeter.net/manual/user-interface/about/>).
+- Mac (Deskset): the same four pages and entry points use a shared native window. `!About` accepts Log (default), Skins,
+  Plugins and Version, ignoring case; legacy Measures selects Skins. Unknown tab names fall back to Log.
+  Log starts with the latest 20 messages, newest first; filters affect new messages, Clear empties only the panel, and
+  Command-C copies selected message text. The panel retains at most 2,000 entries, using the existing log history limit.
+  Skins shows live measures and user variables without triggering an update; disabled measures are gray and paused
+  measures have a yellow background. Long values display up to 512 characters plus an ellipsis; menu copies retain the
+  complete value. Closing, unloading or switching skins cancels obsolete inspector requests.
+  Plugins lists registered built-in compatibility implementations, including aliases consolidated where known. Each
+  row shows the Deskset version marked `(bundled)` and author `jokyme`; the page explains that all listed implementations
+  update with the app and external plugins are not currently supported. Version copies the actual app version,
+  bundle build number when available, binary architecture and program/settings/skin/log paths. Build date is not supplied.
+- Why: native macOS window and clipboard conventions, bounded existing log storage, and built-in plugin implementations.
+- Skin impact: inspect runtime values and logs through About; Windows plugin metadata and build date are unavailable.
+- Status: partial. macOS behavior is covered by local tests; Windows desktop comparison, including unknown-tab fallback
+  and close/reopen filter state, remains pending. Rainmeter 5.0's separate Debug window is not implemented by this entry.
+
 ### The default skins and the first launch
 - Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed
   (<https://docs.rainmeter.net/manual/getting-started/>).

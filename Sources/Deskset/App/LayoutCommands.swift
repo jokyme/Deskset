@@ -6,6 +6,7 @@ import DesksetCore
 enum LayoutCommand: Equatable {
     case loadLayout(String)
     case manageLayouts
+    case about(AboutWindowController.Tab)
 
     enum ParseResult: Equatable { case none, command(LayoutCommand), invalid(String) }
 
@@ -23,6 +24,11 @@ enum LayoutCommand: Equatable {
                 return .invalid("the supported Manage command is Deskset '!Manage' Layouts")
             }
             return .command(.manageLayouts)
+        case "!about":
+            guard args.count <= 2 else {
+                return .invalid("use Deskset '!About' [Log|Skins|Plugins|Version]")
+            }
+            return .command(.about(AboutWindowController.Tab.parse(args.count == 2 ? args[1] : nil)))
         default:
             return .invalid("unsupported application command \(first)")
         }
@@ -38,6 +44,7 @@ enum LayoutCommandRequest: Equatable {
         switch self {
         case .command(.loadLayout(let name)): return ["kind": "load", "name": name]
         case .command(.manageLayouts): return ["kind": "manage"]
+        case .command(.about(let tab)): return ["kind": "about", "tab": tab.rawValue]
         case .reopen(let urls):
             return ["kind": "reopen", "files": urls.map(\.absoluteString).joined(separator: "\n")]
         }
@@ -49,6 +56,9 @@ enum LayoutCommandRequest: Equatable {
             guard let name = fields["name"], LayoutStore.isValidName(name) else { return nil }
             self = .command(.loadLayout(name))
         case "manage": self = .command(.manageLayouts)
+        case "about":
+            guard let raw = fields["tab"], let tab = AboutWindowController.Tab(rawValue: raw) else { return nil }
+            self = .command(.about(tab))
         case "reopen":
             let strings = (fields["files"] ?? "").split(separator: "\n").map(String.init)
             let urls = strings.compactMap(URL.init(string:))
@@ -273,6 +283,9 @@ extension AppController {
         case .command(.loadLayout(let name)): loadLayout(named: name, completion: completion)
         case .command(.manageLayouts):
             showManageWindow(selecting: nil, file: nil, tab: .layouts)
+            completion(true)
+        case .command(.about(let tab)):
+            showAbout(tab: tab)
             completion(true)
         case .reopen(let urls):
             if urls.isEmpty { _ = applicationShouldHandleReopen(NSApp, hasVisibleWindows: false) }

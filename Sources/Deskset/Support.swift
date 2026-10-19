@@ -88,8 +88,9 @@ enum Log {
     static var fileLoggingEnabled = true
     static var mirrorsToStandardError = true
 
-    /// One line as the app logged it (the Studio's Log window reads the latest ones).
+    /// One line as the app logged it (the Studio's Log window and About Log tab read the latest ones).
     struct Line {
+        var id: UInt64 = 0
         var date: Date
         var level: SkinLogLevel
         var source: String?
@@ -104,13 +105,15 @@ enum Log {
     }
     static var recentLimit = 2000
     private static let recentLock = NSLock()
+    private static var nextLineID: UInt64 = 0
     private static var recentLines: [Line] = []
 
     static func write(_ message: String, level: SkinLogLevel = .notice, source: String? = nil) {
         var text = message
         if text.count > maxLineLength { text = String(text.prefix(maxLineLength)) + "…" }
         recentLock.lock()
-        recentLines.append(Line(date: Date(), level: level, source: source, message: text))
+        nextLineID &+= 1
+        recentLines.append(Line(id: nextLineID, date: Date(), level: level, source: source, message: text))
         // Trimmed in batches: a widget that logs on every update must not pay for moving the list each time.
         if recentLines.count > recentLimit + recentLimit / 4 { recentLines.removeFirst(recentLines.count - recentLimit) }
         recentLock.unlock()

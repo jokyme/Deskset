@@ -162,7 +162,7 @@ extension SkinWindowController {
             app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2),
                                  tab: arg(0).caseInsensitiveCompare("Layouts") == .orderedSame ? .layouts : .skins)
         case "about":
-            if arg(0).lowercased() == "log" { Workspace.edit(Paths.logFile) } else { app.showAbout() }
+            app.showAbout(tab: AboutWindowController.Tab.parse(arg(0)))
         case "editskin":
             // !EditSkin [Config] [File]
             if let t = targets(0).first {
