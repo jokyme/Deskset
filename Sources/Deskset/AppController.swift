@@ -757,6 +757,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notifyChanged()
     }
 
+    /// The menu and Manage entry points discover filesystem changes without refreshing running skins.
+    @discardableResult
+    func discoverSkins() -> Bool {
+        let scanned = SkinLibrary.scan(skinsDirectory)
+        let changed = cachedLibrary != scanned
+        cachedLibrary = scanned
+        if changed { notifyChanged() }
+        return changed
+    }
+
     /// A config by name (case-insensitive). An unknown name rescans the Skins folder (new folders may have been
     /// added in Finder), at most every few seconds so a skin asking for a missing config on every update cannot
     /// keep the disk busy.
@@ -876,6 +886,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                   continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
                   thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
         guard !isTerminating, layouts.allowsLifecycleMutation else { return nil }
+        discoverSkins()
         activating += 1
         defer { activating -= 1 }
         guard let entry = config(named: rawConfig) else {
@@ -971,6 +982,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `!Refresh`, the Manage window and the menus call `activate`, which always loads.
     func activateFromBang(config rawConfig: String, file: String?, sender: String) {
         guard !isTerminating else { return }
+        discoverSkins()
         guard let entry = config(named: rawConfig) else {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
             return
@@ -1186,6 +1198,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Windows
 
     func showManageWindow(selecting config: String?, file: String?, tab: ManageWindowController.Tab = .skins) {
+        discoverSkins()
         let controller = manageWindow ?? ManageWindowController(app: self)
         manageWindow = controller
         controller.selectTab(tab)
@@ -1483,6 +1496,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func buildMainMenu(_ menu: NSMenu) {
+        discoverSkins()
         menu.removeAllItems()
         menu.addItem(item("Manage Skins…", #selector(manageAction), key: ","))
         menu.items.last?.keyEquivalentModifierMask = [.command, .shift]
@@ -1491,6 +1505,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let skinsItem = NSMenuItem(title: "Skins", action: nil, keyEquivalent: "")
         skinsItem.submenu = skinsSubmenu()
         menu.addItem(skinsItem)
+        menu.addItem(favoritesMenuItem())
         let layoutsItem = NSMenuItem(title: "Layouts", action: nil, keyEquivalent: "")
         layoutsItem.submenu = layoutsMenu()
         menu.addItem(layoutsItem)
@@ -1501,7 +1516,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(withTitle: "Loaded Skins", action: nil, keyEquivalent: "").isEnabled = false
             for c in active {
                 let item = NSMenuItem(title: c.config, action: nil, keyEquivalent: "")
-                item.submenu = skinMenu(for: c, includeCustomItems: false)
+                item.submenu = skinMenu(for: c, includeCustomItems: false, discoverLibrary: false)
                 menu.addItem(item)
             }
         }
@@ -1566,6 +1581,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return menu
     }
 
+    private func favoritesMenuItem() -> NSMenuItem {
+        let favorites = NSMenu()
+        favorites.autoenablesItems = false
+        for entry in library {
+            for file in entry.files where isFavorite(config: entry.name, file: file) {
+                let choice = item("\(entry.name)\\\(file)", #selector(favoriteSkinAction(_:)))
+                choice.representedObject = [entry.name, file]
+                choice.state = controller(for: entry.name)?.file.caseInsensitiveCompare(file) == .orderedSame ? .on : .off
+                favorites.addItem(choice)
+            }
+        }
+        let holder = NSMenuItem(title: "Favorites", action: nil, keyEquivalent: "")
+        holder.submenu = favorites
+        holder.isEnabled = !favorites.items.isEmpty
+        return holder
+    }
+
     /// Custom skin actions (https://docs.rainmeter.net/manual/skins/rainmeter-section/#ContextTitle), as the
     /// engine reads them when the menu opens (titles "are always dynamic"; separators, 30-character titles and the
     /// rules for invalid items are the engine's). Each item runs its action from `[Rainmeter]`.
@@ -1619,7 +1651,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
-    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
+    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool, discoverLibrary: Bool = true) -> NSMenu {
+        if discoverLibrary { discoverSkins() }
         let menu = NSMenu()
         menu.autoenablesItems = false
         let targets = skinMenuTargets(for: c.config)
@@ -1660,6 +1693,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             appMenu.addItem(item("Debug", #selector(debugAction)))
             appMenu.addItem(item("About", #selector(aboutAction)))
             appMenu.addItem(.separator())
+            appMenu.addItem(favoritesMenuItem())
             appMenu.addItem(item("Refresh All", #selector(refreshAllAction)))
             let appItem = NSMenuItem(title: "Deskset", action: nil, keyEquivalent: "")
             appItem.submenu = appMenu
@@ -1685,6 +1719,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         zoom.isEnabled = !state.forceDefaultZoom
         menu.addItem(zoom)
 
+        let settings = NSMenu()
+        settings.autoenablesItems = false
         let position = NSMenu()
         for (title, value) in ManageModel.positions {
             let i = item(title, #selector(zPositionAction(_:)))
@@ -1694,7 +1730,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let positionItem = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
         positionItem.submenu = position
-        menu.addItem(positionItem)
+        settings.addItem(positionItem)
 
         let transparency = NSMenu()
         for percent in stride(from: 0, through: 90, by: 10) {
@@ -1708,7 +1744,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
         transparencyItem.submenu = transparency
-        menu.addItem(transparencyItem)
+        settings.addItem(transparencyItem)
 
         let hover = NSMenu()
         for mode in SkinVisibility.HoverMode.allCases {
@@ -1719,7 +1755,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let hoverItem = NSMenuItem(title: "On Hover", action: nil, keyEquivalent: "")
         hoverItem.submenu = hover
-        menu.addItem(hoverItem)
+        settings.addItem(hoverItem)
+        settings.addItem(.separator())
 
         let flags: [(String, String, KeyPath<SkinState, Bool>)] = [
             ("Draggable", "draggable", \.draggable), ("Click Through", "clickthrough", \.clickThrough),
@@ -1730,8 +1767,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let i = item(title, #selector(toggleSettingAction(_:)))
             i.representedObject = [c.config, key]
             i.state = allMatch(path, true) ? .on : .off
-            menu.addItem(i)
+            settings.addItem(i)
         }
+        let favorite = item("Favorite", #selector(toggleFavoriteAction(_:)))
+        favorite.representedObject = [c.config, c.file]
+        favorite.state = isFavorite(config: c.config, file: c.file) ? .on : .off
+        settings.addItem(favorite)
+        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        settingsItem.submenu = settings
+        menu.addItem(settingsItem)
 
         let skinIssues = snapshot.issues
         if !skinIssues.isEmpty {
@@ -1811,6 +1855,38 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func args(_ sender: NSMenuItem) -> [String] { sender.representedObject as? [String] ?? [] }
 
     // MARK: Settings (shared by menus and the Manage window)
+
+    func isFavorite(config: String, file: String) -> Bool {
+        state.isFavorite(config: config, file: file)
+    }
+
+    func setFavorite(_ favorite: Bool, config: String, file: String) {
+        guard let running = controller(for: config), !running.isStopped,
+              running.file.caseInsensitiveCompare(file) == .orderedSame else { return }
+        guard isFavorite(config: running.config, file: running.file) != favorite else { return }
+        state.setFavorite(config: running.config, file: running.file, favorite: favorite)
+        notifyChanged()
+    }
+
+    @objc private func toggleFavoriteAction(_ sender: NSMenuItem) {
+        let parts = args(sender)
+        guard parts.count == 2 else { return }
+        setFavorite(!isFavorite(config: parts[0], file: parts[1]), config: parts[0], file: parts[1])
+    }
+
+    @objc private func favoriteSkinAction(_ sender: NSMenuItem) {
+        let parts = args(sender)
+        guard parts.count == 2 else { return }
+        discoverSkins()
+        guard let entry = config(named: parts[0]),
+              let file = entry.files.first(where: { $0.caseInsensitiveCompare(parts[1]) == .orderedSame }),
+              isFavorite(config: entry.name, file: file) else { return }
+        if controller(for: entry.name)?.file.caseInsensitiveCompare(file) == .orderedSame {
+            deactivate(config: entry.name, fade: true)
+        } else {
+            activate(config: entry.name, file: file, fade: true)
+        }
+    }
 
     /// Changes a skin's window settings and applies them.
     func changeSettings(of c: SkinWindowController, animated: Bool = false, _ change: (inout SkinState) -> Void) {

@@ -99,6 +99,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let keepOnScreenBox = NSButton(checkboxWithTitle: "Keep on screen", target: nil, action: nil)
     private let snapEdgesBox = NSButton(checkboxWithTitle: "Snap to edges", target: nil, action: nil)
     private let savePositionBox = NSButton(checkboxWithTitle: "Save position", target: nil, action: nil)
+    private let favoriteBox = NSButton(checkboxWithTitle: "Favorite", target: nil, action: nil)
     private let issuesStack = NSStackView()
     /// A loaded skin that a skin action (or StartHidden) hid: says so, with a Show button.
     private let hiddenNotice = HiddenSkinNotice()
@@ -117,6 +118,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private static let labelColumnWidth: CGFloat = 104
     /// The window had no saved frame and was centered: `placeBeside` may still move it.
     private var placedByDefault = false
+    private var interfaceReady = false
 
     init(app: AppController) {
         self.app = app
@@ -139,6 +141,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         reload()
         NotificationCenter.default.addObserver(self, selector: #selector(skinsChanged), name: .desksetSkinsChanged,
                                                object: app)
+        interfaceReady = true
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -196,6 +199,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     func windowDidResize(_ notification: Notification) {
         keepMinimumSize()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        if interfaceReady { app.discoverSkins() }
     }
 
     /// Watches for skins hiding and showing themselves only while some of the window can be seen.
@@ -452,12 +459,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var tab: Tab { (tabs.selectedTabViewItem?.identifier as? String).flatMap(Tab.init(rawValue:)) ?? .skins }
 
     func selectTab(_ tab: Tab) {
+        let alreadySelected = self.tab == tab
         tabs.selectTabViewItem(withIdentifier: tab.rawValue)
         if tab == .layouts { reloadLayouts() }
+        if interfaceReady && tab == .skins && alreadySelected { app.discoverSkins() }
     }
 
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         if tab == .layouts { reloadLayouts() }
+        if interfaceReady && tab == .skins { app.discoverSkins() }
     }
 
     private var selectedLayout: String? {
@@ -727,6 +737,9 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         keepOnScreenBox.toolTip = "Keep the whole skin inside the screen it is on."
         snapEdgesBox.toolTip = "Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override."
         savePositionBox.toolTip = "Remember where the skin is when it is moved."
+        favoriteBox.target = self
+        favoriteBox.action = #selector(favoriteChanged)
+        favoriteBox.toolTip = "Add this skin to the Favorites menu."
         hoverPopup.toolTip = "What the skin does while the pointer is over it."
 
         func row(_ views: [NSView]) -> NSStackView {
@@ -761,7 +774,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         settingsGrid.addRow(with: [formLabel("Zoom:"), row([zoomField, zoomStepper, NSTextField(labelWithString: "%")])])
         settingsGrid.addRow(with: [formLabel("Load order:"), row([loadOrderField])])
         let checks = NSGridView(views: [[draggableBox, clickThroughBox], [keepOnScreenBox, snapEdgesBox],
-                                        [savePositionBox, NSGridCell.emptyContentView]])
+                                        [savePositionBox, favoriteBox]])
         checks.rowSpacing = 6
         checks.columnSpacing = 24
         settingsGrid.addRow(with: [NSGridCell.emptyContentView, checks])
@@ -977,6 +990,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         keepOnScreenBox.state = s.keepOnScreen ? .on : .off
         snapEdgesBox.state = s.snapEdges ? .on : .off
         savePositionBox.state = s.savePosition ? .on : .off
+        favoriteBox.state = file.map { app.isFavorite(config: config.name, file: $0) } == true ? .on : .off
+        favoriteBox.isEnabled = loaded
         let storedZoom = app.state.forceDefaultZoom ? app.state.defaultZoomPercent
             : s.zoomOverridePercent ?? app.state.defaultZoomPercent
         let zoom = running.map { Int(($0.effectiveZoomFactor * 100).rounded()) } ?? storedZoom
@@ -1170,6 +1185,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         ManageWindowController.apply(control: control, of: self, to: c, app: app)
     }
 
+    @objc private func favoriteChanged() {
+        guard favoriteBox.isEnabled, let target = selectedFileTarget() else { return }
+        app.setFavorite(favoriteBox.state == .on, config: target.config.name, file: target.file)
+        updateDetail()
+    }
+
     private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinWindowController,
                               app: AppController) {
         if control === w.transparencySlider {
@@ -1333,10 +1354,14 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private var testContextNode: ManageModel.Node?
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
         let row = outline.clickedRow
-        guard let node = testContextNode ?? (row >= 0 ? outline.item(atRow: row) as? ManageModel.Node : nil)
-        else { return }
+        let clickedNode = testContextNode ?? (row >= 0 ? outline.item(atRow: row) as? ManageModel.Node : nil)
+        app.discoverSkins()
+        menu.removeAllItems()
+        guard let clickedNode, let node = roots.flatMap(allNodes).first(where: {
+            $0.kind == clickedNode.kind && $0.path.caseInsensitiveCompare(clickedNode.path) == .orderedSame
+                && $0.file?.lowercased() == clickedNode.file?.lowercased()
+        }) else { return }
         if node.kind == .file, let file = node.file {
             let loaded = app.controller(for: node.path)?.file.caseInsensitiveCompare(file) == .orderedSame
             let toggle = NSMenuItem(title: loaded ? "Unload" : "Load", action: #selector(contextToggle(_:)),
@@ -1512,6 +1537,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testZoomStepper: SkinZoomStepper { zoomStepper }
     var testClickThroughBox: NSButton { clickThroughBox }
     var testKeepOnScreenBox: NSButton { keepOnScreenBox }
+    var testFavoriteBox: NSButton { favoriteBox }
     var testTransparencySlider: NSSlider { transparencySlider }
     var testStatus: String { statusLabel.stringValue }
     /// The hidden notice's title and text when it shows, nil when it does not.

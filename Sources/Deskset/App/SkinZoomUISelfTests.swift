@@ -9,9 +9,10 @@ enum SkinZoomUISelfTests {
                   let skin = app.activate(config: "App\\Focus", file: "Compact.ini"),
                   let initial = zoomMenu(app, skin) else { return t.check(false, "zoom menu") }
             let outer = app.skinMenu(for: skin, includeCustomItems: true)
-            t.equal(outer.items.filter { ["Zoom", "Position", "Transparency"].contains($0.title) }.map(\.title),
-                    ["Zoom", "Position", "Transparency"], "Zoom is beside the existing top-level settings")
-            t.equal(outer.item(withTitle: "Settings"), nil, "Zoom has no extra Settings wrapper")
+            t.equal(outer.items.filter { ["Zoom", "Settings"].contains($0.title) }.map(\.title),
+                    ["Zoom", "Settings"], "Zoom remains a top-level sibling of Settings")
+            t.equal(outer.item(withTitle: "Settings")?.submenu?.item(withTitle: "Zoom"), nil)
+            t.check(outer.item(withTitle: "Settings")?.submenu?.item(withTitle: "Position") != nil)
             let presets = ["80%", "90%", "100%", "110%", "120%", "130%", "140%", "150%"]
             t.equal(initial.items.map { $0.isSeparatorItem ? "separator" : $0.title },
                     ["Default", "separator"] + presets)
@@ -256,7 +257,9 @@ enum SkinZoomUISelfTests {
             }
             app.skinSelection.toggle(first)
             app.skinSelection.toggle(second)
-            func menu() -> NSMenu { app.skinMenu(for: first, includeCustomItems: true) }
+            func menu() -> NSMenu {
+                app.skinMenu(for: first, includeCustomItems: true).item(withTitle: "Settings")?.submenu ?? NSMenu()
+            }
             t.equal(menu().item(withTitle: "Draggable")?.state, .off, "mixed flags are unchecked")
             for title in ["Transparency", "Position", "On Hover"] {
                 t.equal(checked(menu().item(withTitle: title)?.submenu), [], "mixed \(title) values are unchecked")

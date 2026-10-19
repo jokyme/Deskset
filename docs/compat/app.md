@@ -315,12 +315,12 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Skin context menu
 - Windows (Rainmeter): skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through,
   Keep on screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions.
-- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Zoom, Position, Transparency,
-  On Hover, Draggable, Click Through,
-  Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes (n)" when the skin has any, Manage Skin…, Edit
+- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Zoom, Settings (Position, Transparency,
+  On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, Favorite),
+  "Compatibility Notes (n)" when the skin has any, Manage Skin…, Edit
   Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen in Settings ▸ Editor, Refresh Skin, Open Skin
   Folder, Unload Skin. FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen come
-  from the skin's Default… options and bangs only. Zoom, Position, Transparency, On Hover and the setting checkboxes
+  from the skin's Default… options and bangs only. Zoom, Position, Transparency, On Hover and the window-setting checkboxes
   apply to the selected group when this skin belongs to it; mixed values are unchecked. Refresh Skin and Unload Skin
   also apply to the selected group, clearing its selection as the instances stop.
 - Why: Mac menu conventions.
@@ -337,13 +337,31 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### Main menu (the tray menu)
 - Windows (Rainmeter): the notification-area icon's menu; `!TrayMenu` opens it.
-- Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
+- Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, Favorites, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
   Folder, Open Log, Debug, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   the first launch shows it too. A second copy of Deskset hands its files over to the running one and quits.
 - Why: macOS 26 lets the user hide menu bar extras.
 - Skin impact: none.
 - Status: emulated
+
+### Favorites and skin discovery
+- Windows (Rainmeter): Favorite is available in Manage for an active skin and in the skin's Settings menu.
+  The main Favorites submenu provides shortcuts to those skins
+  (<https://docs.rainmeter.net/manual/user-interface/context-menus/>,
+  <https://docs.rainmeter.net/manual/user-interface/manage/>). Rainmeter 5.0 checks for skin-folder changes when
+  opening a context menu, switching to Manage or activating a config (<https://www.rainmeter.net/changes-5.0/>).
+- Mac (Deskset): the same Favorite entry points update saved shortcuts to individual config/INI pairs. Manage
+  disables Favorite unless the selected file is running. Favorites appears between Skins and Layouts, is disabled
+  when empty, lists available shortcuts in library order and marks the loaded file. Shortcuts survive unloading
+  and restarting; local layouts leave them unchanged. Missing files are omitted from the menu without clearing
+  their saved shortcuts. Opening menus or Manage, returning to Manage, selecting its Skins tab and activating configs
+  rescan the library; changes update lists without reloading or unloading running skins.
+- Why: local application preferences store shortcuts independently of window and layout settings.
+- Skin impact: manually copied skins and new variants become selectable without Refresh All.
+- Status: partial. The documented entry points and active-skin checkbox state are implemented. Windows comparison
+  of Favorite's variant scope, menu hierarchy and sorting, empty state, active-item click and layout persistence
+  remains pending. Favorites are local preferences and are not imported or exported with layouts.
 
 ### Debug and About
 - Windows (Rainmeter 5.0): Debug contains Log, Skins, Display, Network and Plugins. It opens from the tray menu,

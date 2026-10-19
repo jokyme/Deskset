@@ -1284,12 +1284,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions (`ContextTitleN` /
   `ContextActionN`, up to 25; a submenu when more than 3).
 - **Mac:** Select skin, the skin's name, its custom actions (same rules; `!SkinCustomMenu` shows only them), Variants,
-  Zoom, Position,
-  Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes
+  Zoom, Settings (Position,
+  Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, Favorite), "Compatibility Notes
   (n)" when there are any, Manage Skin…, Edit Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen
   in Settings ▸ Editor, Refresh Skin, Open Skin Folder, Unload Skin.
   FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen only through `Default…`
-  options and bangs. Zoom, Position, Transparency, On Hover and setting checkboxes target the selected group;
+  options and bangs. Zoom, Position, Transparency, On Hover and window-setting checkboxes target the selected group;
   mixed values are unchecked. Refresh Skin and Unload Skin also apply to that group, clearing selection as its
   instances stop.
 - **Why:** Mac menu conventions.
@@ -1298,13 +1298,28 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### Main menu (the tray menu)
 - **Windows:** the notification-area icon's menu; `!TrayMenu` opens it.
-- **Mac:** the menu bar icon's menu (Manage Skins…, Skins, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
+- **Mac:** the menu bar icon's menu (Manage Skins…, Skins, Favorites, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
   Folder, Open Log, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   so does the first launch. A second copy of Deskset hands the files it was opened with to the running one and quits.
 - **Why:** macOS lets users hide menu bar items.
 - **Skin impact:** none.
 - **Status:** emulated
+
+#### Favorites and skin discovery
+- **Windows:** Favorite is available in Manage for an active skin and in the skin's Settings menu; the main
+  Favorites submenu provides shortcuts. See [Manage](https://docs.rainmeter.net/manual/user-interface/manage/)
+  and [context menus](https://docs.rainmeter.net/manual/user-interface/context-menus/).
+  [Rainmeter 5.0](https://www.rainmeter.net/changes-5.0/) checks for changes when opening menus, switching to Manage
+  and activating configs.
+- **Mac:** Manage and Settings offer Favorite for the running skin file. Saved config/INI shortcuts appear between
+  Skins and Layouts, show their loaded state and survive unload/restart. The submenu is disabled when empty; missing
+  files are hidden. Local layouts preserve favorites. Menus, Manage entry/focus/Skins-tab selection and config
+  activation discover additions, removals and variants without reloading running skins.
+- **Why:** shortcuts use local application preferences, independently of window and layout settings.
+- **Skin impact:** copied skins and added variants become available without Refresh All.
+- **Status:** partial. Favorite's precise Windows variant scope, menu hierarchy/order, empty state, active-item
+  click and layout persistence remain unverified; see [details](compat/app.md#favorites-and-skin-discovery).
 
 #### About (Log, Skins, Plugins, Version)
 - **Windows:** four About tabs for logs, active skin values, installed plugins and version/paths

@@ -100,8 +100,13 @@ enum SkinLifecycleSelfTests {
             guard let app = try AppSelfTest.makeApp(t) else { return }
             try write(app, ["Broken": plainSkin, "BrokenMain": plainSkin])
             t.equal(app.library.filter { $0.name.hasPrefix("Life\\Broken") }.count, 2, "in the library")
-            // Deleted after the library found them: loading them fails.
-            for name in ["Broken", "BrokenMain"] { try FileManager.default.removeItem(at: file(app, name)) }
+            // Discovery lists dangling INI symlinks, but reading them still fails inside the runtime.
+            for name in ["Broken", "BrokenMain"] {
+                let url = file(app, name)
+                try FileManager.default.removeItem(at: url)
+                try FileManager.default.createSymbolicLink(at: url,
+                    withDestinationURL: url.deletingLastPathComponent().appendingPathComponent("Missing.txt"))
+            }
             let executor = SkinThreadExecutor(name: "Lifecycle broken")
             app.skinExecutor = { $0 == "Life\\Broken" ? executor as SkinExecutor : MainSkinExecutor.shared }
             // The main executor: all of it inside activate, which returns nil as it always did.
