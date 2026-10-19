@@ -112,10 +112,11 @@ struct SkinSnapshot {
         return hitMap.toolTipAreas.map { $0.cgRect.applying(transform) }
     }
 
-    /// `Skin.isInSkinGroup`: in the skin group (`Group=` in `[Rainmeter]`, case-insensitive).
+    /// `Skin.isInSkinGroup`: the same case-insensitive single-group, OR or AND selector as the live skin.
     func isInSkinGroup(_ group: String) -> Bool {
-        let g = group.trimmingCharacters(in: .whitespaces)
-        return groups.contains { $0.caseInsensitiveCompare(g) == .orderedSame }
+        let raw = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selector = SkinSection.parseGroupSelector(raw) ?? raw
+        return SkinSection.matchesGroupSelector(selector, in: groups)
     }
 
     /// What changed since `old` that the main thread acts on when it changes (rather than reading it when it needs it):

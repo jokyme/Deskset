@@ -500,6 +500,20 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ## Config and app bangs
 
+### Skin aliases and Group selectors (Rainmeter 5.0)
+- Windows (Rainmeter): the [5.0 command rules](https://www.rainmeter.net/changes-5.0/#bangs-and-command-line-arguments)
+  provide config aliases and skin selectors that can match several groups.
+- Mac (Deskset): `!Skin:Load`, `Unload`, `Toggle` and `Edit` reach the existing config and editor operations.
+  `!Skin:Unload *` unloads all running skins. Commands on loaded skins accept `Group=a|b` (either group) or
+  `Group=a&b` (both); a mixed expression matches nothing. Snapshot and live matching agree, and each selected skin
+  receives the command once in load order. A command addressed to a loading config still waits for that load;
+  retired skins cannot send late commands into a replacement layout. Window commands, variables and options share
+  these selectors, preserving magic-quoted values while forwarding.
+- Why: aliases and selectors reuse the existing lifecycle and executor boundaries.
+- Skin impact: Toggle changes activation rather than visibility; `!Toggle` retains its original meaning.
+- Status: emulated. Group loading, group toggling and group editing are not added; their Windows behavior remains
+  unverified. Existing classic command behavior is retained.
+
 ### When !Refresh, !ActivateConfig, !DeactivateConfig and !ToggleConfig happen
 - Windows (Rainmeter): the manual does not say when during an action a skin is loaded, unloaded or refreshed.
 - Mac (Deskset): they run on the next turn of the app's run loop, after the action that asked for them has finished

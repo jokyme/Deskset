@@ -435,13 +435,16 @@ enum SkinWindowBangs {
         let a = bang.args
         func configTarget(_ index: Int?) -> (Targets, Bang) {
             guard let index, index < a.count else { return (.own, bang) }
-            let member = Bang(name: bang.name, args: Array(a.prefix(index)))
+            let member = Bang(name: bang.name, args: Array(a.prefix(index)),
+                              literalArguments: bang.literalArguments.filter { $0 < index })
+            if let group = SkinSection.parseGroupSelector(a[index]) { return (.group(group), member) }
             let name = SkinLibrary.normalizedConfigName(a[index].trimmingCharacters(in: .whitespaces))
             return (name.isEmpty ? .own : .config(name), member)
         }
         func groupTarget(_ index: Int) -> (Targets, Bang) {
             let group = index < a.count ? a[index].trimmingCharacters(in: .whitespaces) : ""
-            return (.group(group), Bang(name: String(bang.name.dropLast("group".count)), args: Array(a.prefix(index))))
+            return (.group(group), Bang(name: String(bang.name.dropLast("group".count)), args: Array(a.prefix(index)),
+                                       literalArguments: bang.literalArguments.filter { $0 < index }))
         }
         switch bang.name {
         case "move":

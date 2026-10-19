@@ -58,7 +58,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 
 | 领域 | 总体 | 可用的部分 | 不可用（或差异最大）的部分 |
 | --- | --- | --- | --- |
-| 皮肤文件、变量、公式、bang | 完全一致 | INI 规则、`@Include`、`@Inherit`（5.0）、`SyntaxVersion`（5.0）、`#Var#` / 节变量、`%Env%` / `[%Env]` / `[$Skin…]` / `[$Display…]`（5.0）、公式（含 5.0 无外层括号公式）、`Group=a\|b` / `a&b`、`!SetOption`（2 参数和 3 参数）、`!CommandMeasureGroup`、`:` 命名空间 bang 及其他皮肤 bang | 冷门的 PCRE 正则特性；目标写在最前面的 `!Skin:` bang；`!SendKey` 媒体键 |
+| 皮肤文件、变量、公式、bang | 完全一致 / 模拟实现 | INI 规则、`@Include`、`@Inherit`、`SyntaxVersion`、`#Var#` / 节变量、`%Env%` / `[%Env]` / `[$Skin…]` / `[$Display…]`、公式、皮肤与节的复合组选择、`!SetOption`（2 参数和 3 参数）、目标前置的 `!Skin:`、匹配节省略 selector、`!SendKey` | 冷门的 PCRE 正则特性；同时省略多个命名空间参数时的歧义 |
 | 布局与文字 | 模拟实现 | `r`/`R` 定位、StringAlign（含 5.0 `Justify…`）、窗口尺寸、内联选项、`@Resources\Fonts` 中的字体 | 微软字体会被替换；文字宽度可能相差一两个像素 |
 | Meter（String、Image、Bar、Bitmap、Button、Line、Histogram、Roundline、Rotator、Shape、SVG、TextEdit） | 模拟实现 | 手册中的所有 meter 类型与选项（包括 5.0 的 `Meter=SVG`、`Meter=TextEdit`、Shape `LineJoin`、两端对齐文字） | Histogram 的 `PrimaryImageRotate` / ColorMatrix 选项 |
 | 系统 measure（CPU、内存、网络、磁盘、时间、开机时长、SysInfo、Process、电池、DragDrop） | 模拟实现 | 全部可用，映射到 macOS 数据（包括 5.0 的 `Measure=DragDrop`、`NumberConversionFormat=Locale` 和新的 `TimeStampFormat` 格式码） | 所有盘符都指启动磁盘；Windows 网卡名会回退到当前活动接口 |
@@ -503,7 +503,10 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `!Loop:Reset`、`!ActionTimer:Execute/Stop`、`!RunCommand:Run/Close/Kill`、
   `!WebParser:Refetch/ClearResults`、`!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`、`!Audio:…`、
   `!NowPlaying:…`、`!Mouse:StartCapture/StopCapture`、`!WindowMessage:Send`）；Substitute 和 RegExpSubstitute 使用 PCRE。
-- **Mac：** 语法相同，支持上述 5.0 bang 与组选择器（`!Skin:` bang 的目标仍需写在最后，见“Rainmeter 5.0 中尚未实现的部分”）；bang 名称不区分大小写；引号内的方括号不会结束 bang；方括号 bang 之间的
+- **Mac：** 支持上述语法。`!Skin:` 的显式目标在前，经典命令保持原参数顺序；Load、Unload、Toggle、Edit 别名复用原有配置操作。
+  皮肤组按加载顺序匹配，每个成员只执行一次；直接、排队或按组转发均保留魔术引号的文字值。匹配类型的 measure 节可为无歧义的固定参数命令省略 selector；
+  同时省略多个参数及 measure 命名空间的 Config 位置仍未确认，见[命令路由](compat/engine.md#command-routing-rainmeter-50)。
+  bang 名称不区分大小写；引号内的方括号不会结束 bang；方括号 bang 之间的
   文字被忽略；`!Execute` 嵌套最多 8 层。普通替换区分大小写；接受 `'a':'b'`（手册说这种写法会失败）。正则表达式是转换为 ICU
   的 PCRE：`(?U)`、环视
   和命名分组可用；`(?|…)` 会重新编号分组，`\K` 被去掉，条件分支变为普通的多选分支，不支持递归；`\w`、`\d` 和 `(?i)`
@@ -1087,16 +1090,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### Rainmeter 5.0 中尚未实现的部分
-- **Windows：** Rainmeter 5.0 还新增了：新的“调试”窗口（日志、皮肤监视表达式、
-  插件、显示器、网络标签页，修改文件后自动刷新）；按住 Shift 时右键菜单的“退出”变为“重新启动”、“刷新皮肤”变为“聚焦皮肤”；
-  `!SendKey` 发送媒体键和音量键（`MediaNextTrack`、`MediaPrevTrack`、`MediaStop`、`MediaPlayPause`、`VolumeMute`、
-  `VolumeDown`、`VolumeUp`）；`!Skin:` 形式的 bang 可以把目标写在最前面（`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`、
-  `"Group=名称"`）；`Rainmeter.exe [!Launch][!Bang]`；崩溃转储与“安全启动”；皮肤打包器的新功能。
-- **Mac：** 这些都还没有实现。`!Skin:Load` / `Unload` / `Toggle` / `Edit` 等作为旧 bang 的别名可用，但参数仍按旧写法的顺序读取
-  （目标在最后）；`!SendKey` 不执行（可以改用 MediaKey measure）；`!Debug` 打开管理窗口；皮肤打包由 Deskset 的安装器和
-  Skin Studio 承担。
-- **原因：** 尚未完成；“调试”窗口、安全启动和打包器属于 Windows 版的界面。
-- **对皮肤的影响：** 把目标写在最前面的 `!Skin:` bang 和 `!SendKey` 媒体键在 Mac 上不起作用。
+- **Windows：** Shift 将“退出”变为“重新启动”、“刷新皮肤”变为“聚焦皮肤”；`Rainmeter.exe [!Launch][!Bang]`
+  可以先启动再执行命令。另外还有崩溃转储、安全启动与皮肤打包器。
+- **Mac：** 这些部分仍未实现。Debug 及其标签页、显式目标前置的命令、复合皮肤组选择与七个 SendKey 媒体键名称已实现，见对应条目。
+- **原因：** 剩余的启动、恢复和打包流程尚未完成。
+- **对皮肤的影响：** 在剩余命令可用之前，继续使用现有加载和刷新操作。
 - **状态：** 不支持
 
 #### 睡眠、显示器睡眠、其他用户会话
@@ -2321,10 +2319,13 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 
 #### MediaKey
 - **Windows：** 发送多媒体键：NextTrack、PrevTrack、Stop、PlayPause、VolumeMute、VolumeDown、VolumeUp。
+  Rainmeter 5.0 另提供使用七个对应名称的 `!SendKey`。
 - **Mac：** 有辅助功能权限时（Deskset 从不主动请求），发送真实的媒体键事件，任何正在播放的 App 都能收到，并显示音量 HUD。
   没有该权限时（默认情况），切歌键通过自动化发给 Music / Spotify，音量键直接修改默认输出设备的音量（每按一次 ±2 %，静音
   切换，调高音量会取消静音；不显示 HUD）。Stop 始终发给播放器（Mac 键盘没有 Stop 键）。另外接受：`Next`、`Prev`、
   `Previous`、`PreviousTrack`、`Play`、`Pause`、`Mute`。
+  `!SendKey` 无需创建 measure，复用同一发送路径，仅接受 MediaNextTrack、MediaPrevTrack、MediaStop、MediaPlayPause、
+  VolumeMute、VolumeDown、VolumeUp。未知名称或多余参数不发送按键；录制时不产生系统副作用。旧 MediaKey measure 的额外别名不适用于 SendKey。
 - **原因：** 在 macOS 上发送键盘事件需要辅助功能权限。
 - **对皮肤的影响：** 没有辅助功能权限时，切歌键只能控制 Music / Spotify（不能控制浏览器）。
 - **状态：** 模拟实现

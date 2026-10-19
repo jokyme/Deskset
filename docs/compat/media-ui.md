@@ -369,6 +369,20 @@ does not restore its previous playback queue.
 
 ---
 
+### !SendKey (Rainmeter 5.0)
+- Windows (Rainmeter): [!SendKey](https://www.rainmeter.net/changes-5.0/#bangs-and-command-line-arguments) sends
+  MediaNextTrack, MediaPrevTrack, MediaStop, MediaPlayPause, VolumeMute, VolumeDown or VolumeUp.
+- Mac (Deskset): the seven names use the same sender as MediaKey measures, without requiring a measure in the skin.
+  Existing Accessibility, Automation, volume and Stop behavior described above applies. Unknown names and extra
+  arguments send nothing. Recording a skin records the canonical media command without sending an event, changing
+  playback or probing permissions.
+- Why: the existing native media-key path provides the same platform behavior for both command forms.
+- Skin impact: skins can use `!SendKey` directly. Arbitrary keys, keyboard shortcuts and MediaKey's extra command
+  aliases are not accepted by this bang.
+- Status: emulated; the same macOS permission and player limits as MediaKey apply.
+
+---
+
 ## WiFiStatus (`Measure=WiFiStatus`, `Plugin=WiFiStatus`)
 
 ### SSID and Location Services

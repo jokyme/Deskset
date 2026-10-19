@@ -44,6 +44,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     private var updatesPaused = false
     /// The hops of the message being handled (0 for the skin's own work): what its bangs for other skins count from.
     private var currentHops = 0
+    /// `!SendKey` added the shared media-key Accessibility note to this skin. Only the executor changes it.
+    private var notedSendKeyAccessibility = false
     /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
     /// main thread's facts after them. On the executor.
     private(set) var model = SkinWindowModel()
@@ -571,6 +573,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                     send(member, toConfig: name)
                 }
             case .group(let group):
+                guard directoryStore?.directory != nil else {
+                    request(.forward(member, toConfig: "Group=\(group)", hops: currentHops, whileClosing: isClosing))
+                    return
+                }
                 for target in groupMembers(group) {
                     if target === self {
                         ownWindowBang(member)
@@ -631,7 +637,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
              "togglemouseactionskingroup":
             // "operate on the [Rainmeter] section of a named Group of skins": !XMouseAction Rainmeter MouseActions in
             // each skin of the group.
-            let local = Bang(name: String(bang.name.dropLast("skingroup".count)), args: ["Rainmeter", a.first ?? ""])
+            let local = Bang(name: String(bang.name.dropLast("skingroup".count)), args: ["Rainmeter", a.first ?? ""],
+                             literalArguments: bang.literalArguments.contains(0) ? [1] : [])
             each(arg(1)) { .bang(local, from: sender, hops: $0) }
         case "updategroup":
             each(arg(0)) { .update(hops: $0) }
@@ -639,7 +646,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             each(arg(0)) { _ in .redraw }
         case "setvariablegroup":
             // !SetVariableGroup Variable Value Group
-            let local = Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""])
+            let local = Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""],
+                             literalArguments: bang.literalArguments.filter { $0 < 2 })
             each(arg(2)) { .bang(local, from: sender, hops: $0) }
         default:
             break
@@ -829,11 +837,20 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return windowSize(width: width * zoom, height: height * zoom)
     }
 
-    /// A bang the engine performed with another config's name, or `*` (the engine has performed it here already: every
-    /// other running skin follows, in load order).
+    /// A bang the engine forwards to another config or a `Group=` selector. `*` was performed here already, so only
+    /// the other running skins follow; a group includes this skin when it matches, once, in load order.
     func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
         HostCallAudit.note(self, "forward \(bang.name)")
         guard permitsLayoutAction else { return }
+        if let group = SkinSection.parseGroupSelector(config) {
+            guard let directory = directoryStore?.directory else {
+                return request(.forward(bang, toConfig: config, hops: currentHops, whileClosing: isClosing))
+            }
+            for target in directory.runtimes(inGroup: group) {
+                deliver(bang.name, to: target) { .bang(bang, from: self.config, hops: $0) }
+            }
+            return
+        }
         let name = SkinLibrary.normalizedConfigName(config)
         guard name == "*" else { return send(bang, toConfig: name) }
         guard let directory = directoryStore?.directory else {
@@ -855,6 +872,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             startTimer()
             return true
         }
+        if bang.name == "sendkey" {
+            sendKey(bang)
+            return true
+        }
         guard let kind = HostBangs.kind(of: bang.name) else { return false }
         switch kind {
         case .window:
@@ -873,6 +894,23 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         default: request(.system(host))
         }
         return true
+    }
+
+    /// Media-key commands run with the skin, so its side effects, permissions and issues stay on its executor.
+    private func sendKey(_ bang: Bang) {
+        guard bang.args.count == 1, let key = MediaKeyCommand(sendKey: bang.args[0]) else {
+            skin.log("!SendKey: unknown key \"\(bang.args.first ?? "")\"", level: .warning)
+            return
+        }
+        MediaKeySender.perform(key, skin: skin, center: .current, live: true, permissionChanged: { trusted in
+            if self.notedSendKeyAccessibility && trusted {
+                self.notedSendKeyAccessibility = false
+                self.skin.removeIssue(MediaKeyMeasure.accessibilityNote)
+            }
+        }, missingAccessibility: {
+            self.notedSendKeyAccessibility = true
+            self.skin.addIssue(MediaKeyMeasure.accessibilityNote)
+        })
     }
 
     /// Lua `SKIN:FadeWindow`: the saved AlphaValue stays; the window model notes what it was faded to.

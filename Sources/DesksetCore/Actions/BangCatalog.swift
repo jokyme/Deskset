@@ -49,8 +49,10 @@ public struct BangDefinition: Equatable {
         self.configParameterIndex = configParameterIndex
     }
 
-    /// Number of leading non-optional parameters.
-    public var requiredArgumentCount: Int { parameters.prefix { !$0.isOptional }.count }
+    /// Minimum payload count; the optional Config may precede required payloads in the Skin namespace.
+    public var requiredArgumentCount: Int {
+        name.hasPrefix("skin:") ? parameters.filter { !$0.isOptional }.count : parameters.prefix { !$0.isOptional }.count
+    }
     public var maximumArgumentCount: Int { parameters.count }
 
     /// Whether `count` arguments fit the documented parameter list.
@@ -63,21 +65,33 @@ public struct BangDefinition: Equatable {
     /// `!SetWindowPosition X Y [AnchorX AnchorY] [Config]`: the manual requires AnchorY whenever AnchorX is given,
     /// so three arguments mean `X Y Config` and five mean `X Y AnchorX AnchorY Config`.
     public func configArgument(in args: [String]) -> String? {
-        guard let index = configParameterIndex else { return nil }
-        let value: String?
-        if name == "setwindowposition" {
-            switch args.count {
-            case 3: value = args[2]
-            case 5...: value = args[4]
-            default: value = nil
-            }
+        let index: Int
+        if name.hasPrefix("skin:"),
+           let base = BangCatalog.definition(for: String(name.dropFirst(5))),
+           let baseIndex = base.configParameterIndex, baseIndex > 0 {
+            guard base.suppliedConfigParameterIndex(argumentCount: args.count) != nil else { return nil }
+            index = 0
         } else {
-            value = index < args.count ? args[index] : nil
+            guard let supplied = suppliedConfigParameterIndex(argumentCount: args.count) else { return nil }
+            index = supplied
         }
         // History: "Fixed an issue when the config parameter of a bang contained a leading or trailing slash", i.e.
         // `"illustro\Clock\"` names the config `illustro\Clock`.
-        guard let config = value?.trimmingCharacters(in: Self.configEdgeCharacters), !config.isEmpty else { return nil }
+        let config = args[index].trimmingCharacters(in: Self.configEdgeCharacters)
+        guard !config.isEmpty else { return nil }
         return config
+    }
+
+    func suppliedConfigParameterIndex(argumentCount count: Int) -> Int? {
+        guard let index = configParameterIndex else { return nil }
+        if name == "setwindowposition" {
+            switch count {
+            case 3: return 2
+            case 5...: return 4
+            default: return nil
+            }
+        }
+        return count > index ? index : nil
     }
 
     private static let configEdgeCharacters = CharacterSet(charactersIn: "\\/").union(.whitespaces)
@@ -103,10 +117,15 @@ public enum BangCatalog {
         if let found = namespacedByName[canonical] { return found }
         if canonical.hasPrefix("skin:") {
             let sub = String(canonical.dropFirst(5))
-            if let base = byName[sub], base.category == .skin || base.category == .skinGroup {
+            if let base = byName[sub], base.configParameterIndex != nil || base.category == .skin || base.category == .skinGroup {
+                var parameters = base.parameters
+                if let index = base.configParameterIndex, index > 0 {
+                    parameters.insert(parameters.remove(at: index), at: 0)
+                }
                 return BangDefinition(name: canonical, displayName: "!Skin:" + String(base.displayName.dropFirst()),
-                                      parameters: base.parameters, category: base.category,
-                                      isDeprecated: base.isDeprecated, configParameterIndex: nil)
+                                      parameters: parameters, category: base.category,
+                                      isDeprecated: base.isDeprecated,
+                                      configParameterIndex: base.configParameterIndex.map { _ in 0 })
             }
         }
         return nil
@@ -299,7 +318,7 @@ public enum BangCatalog {
             for display in displayNames {
                 let name = canonicalName(display)
                 map[name] = BangDefinition(name: name, displayName: display, parameters: parameters,
-                                           category: category, configParameterIndex: nil)
+                                           category: category, configParameterIndex: name.hasPrefix("skin:") ? 0 : nil)
             }
         }
 

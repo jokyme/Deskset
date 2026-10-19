@@ -2077,7 +2077,9 @@ public final class Skin {
             }
             switch parsed.action {
             case .bang(let bang):
-                let bang = Bang(name: bang.name, args: bang.args.enumerated().map { resolved($0.element, $0.offset) })
+                let literal = Set(parsed.quoting.indices.filter { parsed.quoting[$0] == .magic })
+                let bang = Bang(name: bang.name, args: bang.args.enumerated().map { resolved($0.element, $0.offset) },
+                                literalArguments: literal)
                 if let actionPolicy, !actionPolicy.skin(self, allows: bang) { continue }
                 if bang.name == "delay" {
                     // "The lowest possible value is 16 milliseconds." Judgment: the rest of the action runs later
@@ -2115,7 +2117,6 @@ public final class Skin {
                     }
                     return
                 }
-                let literal = Set(parsed.quoting.indices.filter { parsed.quoting[$0] == .magic })
                 perform(bang, from: section, literalArguments: literal)
             case .execute(let target, let arguments):
                 let target = resolved(target, 0)
@@ -2161,7 +2162,7 @@ public final class Skin {
             burstWork = 0
             environmentValid = false
         }
-        perform(bang, from: section, literalArguments: [])
+        perform(bang, from: section, literalArguments: bang.literalArguments)
         if actionDepth == 0 && !closed { layoutIfPending() }
         if actionDepth == 0 && updateDepth == 0 { refreshOutsidePointerNeeds() }
     }
@@ -2169,15 +2170,14 @@ public final class Skin {
     /// `literalArguments`: indices of arguments written in `"""magic quotes"""`, which are "treated strictly
     /// literal" — no `(formula)` evaluation for `!SetVariable` / `!WriteKeyValue` / `!SetOption` values.
     func perform(_ bang: Bang, from section: SkinSection?, literalArguments: Set<Int>) {
-        if bang.name.hasPrefix("skin:"), BangCatalog.isKnown(bang.name) {
-            let unwrapped = Bang(name: String(bang.name.dropFirst(5)), args: bang.args)
-            perform(unwrapped, from: section, literalArguments: literalArguments)
+        if let unwrapped = Skin.unwrapSkinBang(bang, literal: literalArguments) {
+            perform(unwrapped, from: section, literalArguments: unwrapped.literalArguments)
             return
         }
         if bang.name.hasPrefix("textedit:"), performTextEditBang(bang, from: section, literal: literalArguments) {
             return
         }
-        if let translated = Skin.translateNamespacedMeasureBang(bang) {
+        if let translated = translateNamespacedMeasureBang(bang, from: section) {
             let mapped = Bang(name: "commandmeasure",
                               args: [translated.target, translated.command] + (translated.configTarget.map { [$0] } ?? []))
             perform(mapped, from: section, literalArguments: [])
@@ -2197,7 +2197,8 @@ public final class Skin {
             let target = definition.configArgument(in: args)
             if args.count > configIndex { args = Array(args.prefix(configIndex)) }
             if let target, !isOwnConfig(target) {
-                let local = Bang(name: bang.name, args: args)
+                let local = Bang(name: bang.name, args: args,
+                                 literalArguments: literalArguments.filter { args.indices.contains($0) })
                 if target == "*" {
                     performLocally(local, from: section, literal: literalArguments)
                     host?.skin(self, forward: local, toConfig: "*")
@@ -2207,12 +2208,37 @@ public final class Skin {
                 return
             }
         }
-        performLocally(Bang(name: bang.name, args: args), from: section, literal: literalArguments)
+        performLocally(Bang(name: bang.name, args: args,
+                           literalArguments: literalArguments.filter { args.indices.contains($0) }),
+                       from: section, literal: literalArguments)
+    }
+
+    private static func unwrapSkinBang(_ bang: Bang, literal: Set<Int>) -> Bang? {
+        guard bang.name.hasPrefix("skin:"), BangCatalog.isKnown(bang.name) else { return nil }
+        let sub = String(bang.name.dropFirst(5))
+        let aliases = ["load": "activateconfig", "unload": "deactivateconfig", "toggle": "toggleconfig", "edit": "editskin"]
+        if let name = aliases[sub] {
+            return Bang(name: name, args: bang.args, literalArguments: literal)
+        }
+        var args = bang.args
+        var reorderedLiteral = literal
+        if let index = BangCatalog.definition(for: sub)?.suppliedConfigParameterIndex(argumentCount: args.count), index > 0 {
+            let target = args.removeFirst()
+            args.insert(target, at: index)
+            reorderedLiteral = Set(literal.compactMap { position in
+                guard bang.args.indices.contains(position) else { return nil }
+                if position == 0 { return index }
+                let payloadIndex = position - 1
+                return payloadIndex >= index ? payloadIndex + 1 : payloadIndex
+            })
+        }
+        return Bang(name: sub, args: args, literalArguments: reorderedLiteral)
     }
 
     /// Translates Rainmeter 5.0 colon-namespaced measure/plugin bangs (`!Loop:Reset`, `!WebParser:Refetch`, etc.)
     /// into `!CommandMeasure` parameters.
-    private static func translateNamespacedMeasureBang(_ bang: Bang) -> (target: String, command: String, configTarget: String?)? {
+    private func translateNamespacedMeasureBang(_ bang: Bang, from section: SkinSection?)
+        -> (target: String, command: String, configTarget: String?)? {
         guard bang.name.contains(":"), !bang.name.hasPrefix("skin:"),
               let definition = BangCatalog.definition(for: bang.name),
               definition.category == .measure else { return nil }
@@ -2223,6 +2249,11 @@ public final class Skin {
         var args = bang.args
         if let configIndex = definition.configParameterIndex, args.count > configIndex {
             args = Array(args.prefix(configIndex))
+        }
+        if let current = section as? Measure, namespace(ns, matches: current),
+           let payloadCount = Skin.namespacedPayloadCounts[bang.name], args.count == payloadCount,
+           !(args.first.map { $0 == "*" || Skin.groupTarget(in: $0) != nil || measure(named: $0) != nil } ?? false) {
+            args.insert(current.name, at: 0)
         }
         let target = args.first ?? ""
         let extra = args.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespaces)
@@ -2273,6 +2304,32 @@ public final class Skin {
         return (target, command, configTarget)
     }
 
+    private static let namespacedPayloadCounts: [String: Int] = [
+        "loop:reset": 0,
+        "actiontimer:execute": 1, "actiontimer:stop": 1,
+        "runcommand:run": 0, "runcommand:close": 0, "runcommand:kill": 0,
+        "webparser:refetch": 0, "webparser:clearresults": 0,
+        "recyclemanager:emptybin": 0, "recyclemanager:emptybinsilent": 0, "recyclemanager:openbin": 0,
+        "audio:setvolume": 1, "audio:changevolume": 1, "audio:setoutputindex": 1,
+        "audio:mute": 0, "audio:unmute": 0, "audio:togglemute": 0,
+        "nowplaying:play": 0, "nowplaying:pause": 0, "nowplaying:playpause": 0, "nowplaying:stop": 0,
+        "nowplaying:next": 0, "nowplaying:previous": 0, "nowplaying:openplayer": 0,
+        "nowplaying:closeplayer": 0, "nowplaying:toggleplayer": 0,
+        "nowplaying:setposition": 1, "nowplaying:setrating": 1, "nowplaying:setshuffle": 1,
+        "nowplaying:setrepeat": 1, "nowplaying:setvolume": 1,
+        "mouse:startcapture": 0, "mouse:stopcapture": 0,
+        "windowmessage:send": 3,
+    ]
+
+    private func namespace(_ namespace: String, matches measure: Measure) -> Bool {
+        let type = MeasureRegistry.normalizedPluginName(measure.type)
+        switch namespace {
+        case "audio": return ["audio", "win7audio", "win7audioplugin"].contains(type)
+        case "windowmessage": return ["windowmessage", "windowmessageplugin"].contains(type)
+        default: return type == namespace
+        }
+    }
+
     /// Executes `!TextEdit:` meter bangs (`Focus`, `Dismiss`, `Submit`, `Clear`, `Reset`, `SetText`, `ScrollByLine`,
     /// `ResetScroll`, `SelectAll`, `Select`). Returns true when the subcommand is a `TextEdit` meter bang.
     private func performTextEditBang(_ bang: Bang, from section: SkinSection?, literal: Set<Int>) -> Bool {
@@ -2309,9 +2366,10 @@ public final class Skin {
             if a.count >= 1 { meterName = a[0] }
             if a.count >= 2 { configTarget = a[1].trimmingCharacters(in: .whitespaces) }
             if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
-                let forwarded = Bang(name: bang.name, args: [meterName])
+                let forwarded = Bang(name: bang.name, args: [meterName],
+                                     literalArguments: literal.intersection([0]))
                 if cfg == "*" {
-                    _ = performTextEditBang(forwarded, from: section, literal: literal)
+                    _ = performTextEditBang(forwarded, from: section, literal: forwarded.literalArguments)
                     host?.skin(self, forward: forwarded, toConfig: "*")
                 } else {
                     host?.skin(self, forward: forwarded, toConfig: cfg)
@@ -2357,9 +2415,12 @@ public final class Skin {
             }
             let val = evalArg(valueIndex)
             if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
-                let forwarded = Bang(name: bang.name, args: [meterName, val])
+                var forwardedLiteral = Set<Int>()
+                if valueIndex == 1, literal.contains(0) { forwardedLiteral.insert(0) }
+                if literal.contains(valueIndex) { forwardedLiteral.insert(1) }
+                let forwarded = Bang(name: bang.name, args: [meterName, val], literalArguments: forwardedLiteral)
                 if cfg == "*" {
-                    _ = performTextEditBang(forwarded, from: section, literal: [])
+                    _ = performTextEditBang(forwarded, from: section, literal: forwarded.literalArguments)
                     host?.skin(self, forward: forwarded, toConfig: "*")
                 } else {
                     host?.skin(self, forward: forwarded, toConfig: cfg)
@@ -2405,9 +2466,13 @@ public final class Skin {
             let startStr = evalArg(startIdx)
             let lenStr = evalArg(lenIdx)
             if let cfg = configTarget, !cfg.isEmpty, !isOwnConfig(cfg) {
-                let forwarded = Bang(name: bang.name, args: [meterName, startStr, lenStr])
+                var forwardedLiteral = Set<Int>()
+                if startIdx == 1, literal.contains(0) { forwardedLiteral.insert(0) }
+                if literal.contains(startIdx) { forwardedLiteral.insert(1) }
+                if literal.contains(lenIdx) { forwardedLiteral.insert(2) }
+                let forwarded = Bang(name: bang.name, args: [meterName, startStr, lenStr], literalArguments: forwardedLiteral)
                 if cfg == "*" {
-                    _ = performTextEditBang(forwarded, from: section, literal: [])
+                    _ = performTextEditBang(forwarded, from: section, literal: forwarded.literalArguments)
                     host?.skin(self, forward: forwarded, toConfig: "*")
                 } else {
                     host?.skin(self, forward: forwarded, toConfig: cfg)

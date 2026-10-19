@@ -42,10 +42,13 @@ public struct Bang: Equatable, Sendable {
     public var name: String
     /// Arguments with quoting removed (`"a b"` → `a b`, `"""say "hi""""` → `say "hi"`).
     public var args: [String]
+    /// Arguments that must remain literal when the bang is dispatched to another skin.
+    public var literalArguments: Set<Int>
 
-    public init(name: String, args: [String] = []) {
+    public init(name: String, args: [String] = [], literalArguments: Set<Int> = []) {
         self.name = name
         self.args = args
+        self.literalArguments = literalArguments
     }
 }
 
