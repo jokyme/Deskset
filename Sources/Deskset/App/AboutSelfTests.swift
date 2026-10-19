@@ -473,7 +473,10 @@ enum AboutSelfTests {
                 return t.check(false, "About window opens")
             }
             about.selectSkin(config: "Life\\Alpha")
-            t.check(AppSelfTest.spin { about.currentSkinState?.config == "Life\\Alpha" })
+            t.check(AppSelfTest.spin {
+                about.currentSkinState?.config == "Life\\Alpha"
+                    && SkinDebugProbe.activeSlotCount == 0 && SkinDebugProbe.activeTicketCount == 0
+            })
             t.equal(SkinDebugProbe.activeSlotCount, 0)
 
             SkinDebugProbe.resetTestCounters()
@@ -488,7 +491,11 @@ enum AboutSelfTests {
             about.selectSkin(config: "Life\\Beta")
             t.check(AppSelfTest.spin { about.currentSkinState?.config == "Life\\Beta" })
             gate2.open()
-            t.check(AppSelfTest.spin { !SkinDebugProbe.testCounters(for: alphaRuntime).isQueued })
+            // Beta's polling timer may enqueue a fresh request while the main run loop drains Alpha.
+            t.check(AppSelfTest.spin {
+                !SkinDebugProbe.testCounters(for: alphaRuntime).isQueued
+                    && SkinDebugProbe.activeSlotCount == 0 && SkinDebugProbe.activeTicketCount == 0
+            })
             t.equal(about.currentSkinState?.config, "Life\\Beta", "stale Alpha callback never overwrites Beta")
             t.equal(SkinDebugProbe.activeSlotCount, 0, "no residual slots after skin switch")
 
@@ -627,8 +634,11 @@ enum AboutSelfTests {
                 for tab in AboutWindowController.Tab.allCases {
                     about.selectTab(tab)
                     if let rep = about.snapshot() {
-                        t.check(rep.pixelsWide >= 680 && rep.pixelsHigh >= 400,
-                                "snapshot for \(tab.rawValue) in \(appearance.rawValue)")
+                        let scale = about.window?.backingScaleFactor ?? 1
+                        t.equal(rep.pixelsWide, Int(680 * scale),
+                                "snapshot width for \(tab.rawValue) in \(appearance.rawValue) at \(scale)x")
+                        t.equal(rep.pixelsHigh, Int(398 * scale),
+                                "snapshot height for \(tab.rawValue) in \(appearance.rawValue) at \(scale)x")
                         t.equal(about.window?.contentView?.bounds.width, 680,
                                 "long paths do not widen the minimum-size window")
                     } else {
