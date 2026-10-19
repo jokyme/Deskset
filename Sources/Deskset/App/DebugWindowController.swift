@@ -219,14 +219,15 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
     }
     @objc private func logFileAction(_ sender: NSMenuItem) {
         switch sender.title {
-        case "Start logging": Log.fileLoggingEnabled = true
-        case "Stop logging": Log.fileLoggingEnabled = false
+        case "Start logging": app.setFileLoggingEnabled(true)
+        case "Stop logging": app.setFileLoggingEnabled(false)
         case "Show log file": Log.flush(); Workspace.edit(Log.fileURL)
         case "Delete log file":
-            do { try Log.deleteFile() }
+            do { try app.deleteLogFile() }
             catch { Log.write("Could not delete log file: \(error.localizedDescription)", level: .error) }
         default: break
         }
+        refreshLogFileMenu()
     }
     private func buildPluginsTab() -> NSView {
         let container = NSView()
@@ -522,6 +523,9 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
             menu.item(withTitle: "Delete log file")?.isEnabled = exists
         }
     }
+    func refreshLogFileMenu() {
+        if let menu = fileButton.menu { menuNeedsUpdate(menu) }
+    }
     func numberOfRows(in tableView: NSTableView) -> Int {
         tableView === logTable ? displayedLogs.count : plugins.count
     }
@@ -550,6 +554,7 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
     }
     var testLogTable: NSTableView { logTable }
     var testLogMenu: NSMenu { logMenu }
+    var testLogFileMenu: NSMenu? { fileButton.menu }
     var testPluginsTable: NSTableView { pluginsTable }
     func snapshot() -> NSBitmapImageRep? {
         guard let view = window?.contentView else { return nil }

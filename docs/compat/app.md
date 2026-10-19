@@ -97,6 +97,19 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   being dragged ends where the pointer let go of it.
 - Status: emulated
 
+### Global DisableDragging
+- Windows (Rainmeter): `DisableDragging` defaults to `0`; enabling it prevents mouse dragging of active skins
+  (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>).
+- Mac (Deskset): Settings → General provides Disable dragging. The saved global setting blocks ordinary mouse
+  drags for existing and newly loaded skins, without rewriting each skin's Draggable preference. Enabling it ends
+  an ordinary or selected-skin drag already in progress; disabling it requires a new press before dragging again.
+  Click actions, pointer notifications and programmatic moves remain available. The existing Command override
+  and selected-skin keyboard/resize rules are retained.
+- Why: the global mouse setting is applied at the input boundary, separately from persistent per-skin preferences.
+- Skin impact: a desktop can be locked against ordinary accidental dragging without changing its saved skin flags.
+- Status: partial. Public documentation does not specify the global setting's precedence against Ctrl override,
+  selected-skin keyboard movement or resizing; those Windows combinations remain unverified.
+
 ### DragGroup (moving several skins together)
 - Windows (Rainmeter): skins of a DragGroup can be selected and dragged together.
 - Mac (Deskset): Control-Option-click selects or deselects a skin; Select skin is also available in its menu.
@@ -417,6 +430,20 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   unknown-tab/config fallback, logging/filter persistence and exact file-change storm thresholds. Public 5.0 pages still
   contain older four-tab/20-message text; the five-page screenshots and 50-message release note take precedence.
   Meter-definition navigation remains pending verification of its interaction; measure-definition navigation is available.
+
+### Persistent file logging
+- Windows (Rainmeter): `Logging` defaults to `0` and settings are saved automatically. In Debug, Start logging
+  enables file output, Stop logging retains the file, and Delete log file deletes it while stopping output
+  (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#Logging>,
+  <https://docs.rainmeter.net/manual/settings/>, <https://docs-v5.rainmeter.net/manual/user-interface/debug/>).
+- Mac (Deskset): the existing Debug Log file menu saves `Logging=1` or `0` immediately. The primary instance applies
+  that value before startup messages reach a file. Disabled logging neither creates nor rotates the log; the
+  in-memory panel remains available. Stop drains earlier writes and retains the file. Delete stops output and
+  closes the handle before removal; a removal failure is reported and leaves logging disabled across restart.
+  Ordinary layouts retain local Logging, including its default-off value when no key is present.
+- Why: file output follows the same persisted global option as the controls, while retaining the existing log queue.
+- Skin impact: restarting Deskset preserves the user's file-logging choice; existing files are retained by Stop.
+- Status: emulated. Exact Windows file-error behavior and backup-layout global-setting exceptions remain unverified.
 
 ### The default skins and the first launch
 - Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed

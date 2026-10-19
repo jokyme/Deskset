@@ -186,6 +186,13 @@ final class SkinView: NSView, NSViewToolTipOwner {
         NSCursor.arrow.set()
     }
 
+    /// A global mouse lock ends the window drag, while preserving the skin's click and plugin input sequence.
+    func cancelWindowDragForGlobalSetting() {
+        guard let c = controller, !c.isStopped, c.app.state.disableDragging, !dragOverride, dragAllowed else { return }
+        dragAllowed = false
+        if c.isDragPressActive { c.endDragPress(moved: dragged) }
+    }
+
     override func layout() {
         super.layout()
         updateSelectionOverlay()
@@ -317,7 +324,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
         }
         if deliver(c, .leftDown, x: x, y: y) { handled = true }
         guard !c.isStopped else { return false }
-        return !blocksDrag && !handled && c.state.draggable && isInDragArea(c, x: x, y: y)
+        return !blocksDrag && !handled && !c.app.state.disableDragging && c.state.draggable
+            && isInDragArea(c, x: x, y: y)
     }
 
     /// Sends a mouse action at (x, y) and tells whether it was handled: the skin's own answer when the message ran at
@@ -362,6 +370,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
             c.app.skinSelection.drag(to: SkinView.pointerLocation(), flags: event.modifierFlags)
             return
         }
+        cancelWindowDragForGlobalSetting()
         guard let c = controller, !c.isStopped, reportDrag(c, event), dragAllowed,
               let start = dragOrigin, let origin = windowOrigin, let window else { return }
         let now = SkinView.pointerLocation()

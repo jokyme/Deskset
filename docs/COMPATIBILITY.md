@@ -1106,6 +1106,19 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   ends where the pointer let go of it.
 - **Status:** emulated
 
+#### Global `DisableDragging`
+- **Windows:** `DisableDragging` defaults to `0`; enabling it prevents mouse dragging of active skins
+  (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>).
+- **Mac:** Settings → General provides Disable dragging. The saved option blocks ordinary mouse drags for existing
+  and newly loaded skins without changing their Draggable preferences, and ends an ordinary or selected-skin drag
+  already in progress.
+  Disabling it requires a new press before dragging again. Click actions and programmatic moves remain available;
+  the existing Command override and selected-skin keyboard/resize rules are retained.
+- **Why:** the global mouse setting is separate from each skin's saved preferences.
+- **Skin impact:** ordinary accidental dragging can be disabled without rewriting individual skin settings.
+- **Status:** partial. Windows precedence against Ctrl override, selected-skin keyboard movement and resizing remains
+  unverified; see [details](compat/app.md#global-disabledragging).
+
 #### `DragGroup` (moving several skins together)
 - **Windows:** skins of a DragGroup can be selected and dragged together.
 - **Mac:** Control-Option-click or the menu's Select skin selects a skin, including its DragGroup. Selected skins
@@ -1352,6 +1365,21 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** partial; macOS tests cover these behaviors. Windows desktop comparison of edge cases remains pending;
   Rainmeter 5.0's separate Debug window remains outside this implementation.
 
+#### Persistent file logging
+- **Windows:** `Logging` defaults to `0` and settings are saved automatically. Start logging enables file output;
+  Stop logging retains the file; Delete log file stops output and deletes the file
+  (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#Logging>,
+  <https://docs.rainmeter.net/manual/settings/>, <https://docs-v5.rainmeter.net/manual/user-interface/debug/>).
+- **Mac:** Debug's Log file menu saves `Logging=1` or `0` immediately and applies it before startup file logging.
+  Disabled logging neither creates nor rotates the file; the in-memory log remains available. Stop drains queued
+  writes and keeps the file. Delete stops output and closes the handle before removal; a removal failure is reported
+  and leaves logging disabled across restart. Ordinary layouts retain local Logging, including default `0` when
+  the key is absent.
+- **Why:** file output follows the saved global option.
+- **Skin impact:** restarting Deskset preserves the file-logging choice; Stop retains existing logs.
+- **Status:** emulated. Windows file-error behavior and backup-layout global-setting exceptions remain unverified;
+  see [details](compat/app.md#persistent-file-logging).
+
 #### A loaded skin that is hidden (Manage window)
 - **Windows:** the Manage window lists the active skins with their Coordinates, Position, Load order, Transparency and
   other settings; the manual describes no sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows
@@ -1425,6 +1453,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   Unknown config keys and missing configs are retained; skin files are not copied. Equal LoadOrder values use INI
   section order. The status menu, `!LoadLayout`, `!Manage Layouts`, package application and their executable commands
   share the coordinator. An empty layout remains empty after restart; local application preferences stay unchanged.
+  Ordinary loads retain local `Logging`, including its effective default `0` when absent or empty.
   [OnCloseAction](https://docs.rainmeter.net/manual/skins/rainmeter-section/#OnCloseAction) cleanup and supported
   cross-config/UI/system/open actions run as skins close sequentially in config-name order, before `@Backup` is
   saved. Late retired requests are discarded; `!LoadLayout`, `!RefreshApp` and `!Quit` wait in FIFO order until the
@@ -1440,7 +1469,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   No Windows desktop parity run is claimed. Details: [Layouts](compat/layouts.md).
 - **Skin impact:** installed layouts can arrange compatible skins automatically; unsupported skins/plugins remain
   unsupported. Missing targets are rejected before closing; later load failures restore the previous skin session.
-- **Status:** emulated / partial (global settings, wallpaper and filename portability)
+- **Status:** emulated / partial (global settings, wallpaper and filename portability); Windows comparison of
+  backup-layout global-setting exceptions remains pending.
 
 #### Other host bangs
 - **Windows:** `!SetClip`, `!SetWallpaper`, `!Play` / `!PlayLoop` / `!PlayStop`, `!Manage`, `!About`, `!EditSkin`,

@@ -28,20 +28,22 @@ implementation and self-tests are not evidence of a Windows parity run.
 - Status: emulated
 
 ### Application settings
-- Windows (Rainmeter): a normal load preserves nonempty previous values of `SkinPath`, `ConfigEditor`, `Logging`,
+- Windows (Rainmeter): [ordinary layouts preserve local Logging](https://docs.rainmeter.net/manual/settings/#Layouts),
+  whose default is `0`. A normal load preserves nonempty previous values of `SkinPath`, `ConfigEditor`,
   `DisableVersionCheck`, `DisableAutoUpdate`, `Language`, `NormalStayDesktop`, `SelectedColor` and
   `HardwareAcceleration`. Nonempty previous `TrayExecuteM`, `TrayExecuteR`, `TrayExecuteDM` and `TrayExecuteDR` values
   fill empty or missing target values. Other target `[Rainmeter]` options can apply; the whole section is not ignored.
-  Loading `@Backup` restores its global settings without these normal-load preservation rules.
 - Mac (Deskset): raw `[Rainmeter]` and optional `[TrayMeasure]` sections survive layout saves and application restarts.
   Normal loads merge the stored global values using the preservation rules above; `@Backup` restores its saved raw
-  values. `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor` also drive the supported zoom and selection behavior.
+  values. An absent or empty local Logging value remains effectively off when an ordinary layout is loaded.
+  `Logging` drives the saved Debug file-output switch, and `DisableDragging` drives the global mouse-drag setting.
+  `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor` also drive the supported zoom and selection behavior.
   Local editor, update, installation and other application preferences remain separate and unchanged.
   Preserving Windows global and tray options does not implement their unsupported runtime behavior.
 - Why: the platforms have different application settings. Retaining layout metadata allows a round trip without
   treating unsupported Windows settings as working Mac preferences.
 - Skin impact: a layout that depends on unsupported Windows global settings needs separate configuration on macOS.
-- Status: partial
+- Status: partial. Windows comparison of backup-layout global-setting exceptions remains pending.
 
 ### Config variants, order and positions
 - Windows (Rainmeter): [skin sections](https://docs.rainmeter.net/manual/settings/skin-sections/) use `Active=0`

@@ -55,7 +55,7 @@ enum Paths {
     static var isAppBundle: Bool { Bundle.main.bundleURL.pathExtension.lowercased() == "app" }
 
     static func ensureDirectories() {
-        for dir in [appSupport, skins, layouts, logs] {
+        for dir in [appSupport, skins, layouts] {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
     }
@@ -84,8 +84,9 @@ enum Log {
     static var fileURL: URL { directory.appendingPathComponent("Deskset.log") }
     /// Lines longer than this are cut (a skin logging a huge string every update must not fill the disk quickly).
     static let maxLineLength = 4000
-    /// Set by `--self-test` and other command-line modes that should not touch the user's log.
-    private static var writesToFile = true
+    /// The primary application applies the saved Logging setting before its first file log. Command-line modes
+    /// and application fixtures leave file logging off unless a test explicitly redirects and enables it.
+    private static var writesToFile = false
     static var fileLoggingEnabled: Bool {
         get { queue.sync { writesToFile } }
         set {
@@ -149,14 +150,15 @@ enum Log {
     static func flush() { queue.sync {} }
 
     /// Stops logging and deletes the file after earlier writes have drained.
-    static func deleteFile() throws {
+    static func deleteFile(removeFile: (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }) throws {
         try queue.sync {
             writesToFile = false
-            try handle?.close()
+            let previousHandle = handle
             handle = nil
             bytesWritten = 0
+            try previousHandle?.close()
             if FileManager.default.fileExists(atPath: fileURL.path) {
-                try FileManager.default.removeItem(at: fileURL)
+                try removeFile(fileURL)
             }
         }
     }
@@ -164,6 +166,7 @@ enum Log {
     /// Moves a large log aside (called at launch, before the first write).
     static func rotateIfNeeded() {
         queue.sync {
+            guard writesToFile else { return }
             let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? Int ?? 0
             if size > maxLogSize { rotateLocked() }
         }

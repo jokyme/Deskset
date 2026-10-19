@@ -47,6 +47,7 @@ enum AppSelfTest {
         LayoutCommandsSelfTests.run(t)
         AboutSelfTests.run(t)
         DebugSelfTests.run(t)
+        LoggingPersistenceSelfTests.run(t)
         DebugEntryLifecycleSelfTests.run(t)
         DebugFileRefreshSelfTests.run(t)
         DebugRuntimeSelfTests.run(t)
@@ -84,6 +85,7 @@ enum AppSelfTest {
         SkinZoomDrawingSelfTests.run(t)
         SkinZoomInputSelfTests.run(t)
         SkinSelectionSelfTests.run(t)
+        GlobalDraggingSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)
         EngineThreadSelfTests.run(t)
         EnginePoolSelfTests.run(t)
@@ -359,6 +361,22 @@ enum AppSelfTest {
             t.check(FileManager.default.fileExists(atPath: dir.appendingPathComponent("broken.unreadable.json").path))
             // Missing file.
             t.check(AppState(fileURL: dir.appendingPathComponent("none.json")).data.skins.isEmpty)
+        }
+        t.suite("App: Global settings: old state flags retain numeric, case and unknown-option compatibility") {
+            let file = t.temporaryDirectory("global-settings-state").appendingPathComponent("state.json")
+            let fresh = AppState(fileURL: file)
+            t.check(!fresh.disableDragging && !fresh.fileLoggingEnabled)
+            try #"{"rainmeterOptions":{"dIsAbLeDrAgGiNg":"(2-1)","lOgGiNg":"0","FutureFlag":"kept"},"futureApp":true}"#
+                .write(to: file, atomically: true, encoding: .utf8)
+            let state = AppState(fileURL: file)
+            t.check(state.disableDragging && !state.fileLoggingEnabled)
+            state.setDisableDragging(false)
+            state.setFileLoggingEnabled(true)
+            state.saveNow()
+            let reloaded = AppState(fileURL: file)
+            t.check(!reloaded.disableDragging && reloaded.fileLoggingEnabled)
+            t.equal(reloaded.data.rainmeterOptions, ["dIsAbLeDrAgGiNg": "0", "lOgGiNg": "1", "FutureFlag": "kept"])
+            t.equal(reloaded.data.unknownKeys["futureApp"], .bool(true))
         }
     }
 

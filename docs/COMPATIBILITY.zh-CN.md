@@ -994,6 +994,17 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 说明文件中写的“按住 CTRL”在 Mac 上指 ⌘。皮肤在被拖动时移动自己，最后停在指针松开的位置。
 - **状态：** 模拟实现
 
+#### 全局 `DisableDragging`
+- **Windows：** `DisableDragging` 默认为 `0`；启用后阻止活动皮肤的鼠标拖动
+  （<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>）。
+- **Mac：** 设置 → General 提供 Disable dragging。该选项会保存，对已加载和之后加载的皮肤阻止普通鼠标拖动，
+  不改变各皮肤的 Draggable 偏好，并结束已经进行的普通或选中皮肤拖动。关闭后需要重新按下才能开始拖动。点按动作和程序移动仍然可用；
+  保留现有 Command 覆盖，以及选中皮肤的键盘移动和缩放规则。
+- **原因：** 全局鼠标设置与各皮肤保存的偏好分开。
+- **对皮肤的影响：** 可以阻止普通误拖动，无需改写各皮肤设置。
+- **状态：** 部分支持。全局设置与 Ctrl 覆盖、选中皮肤键盘移动及缩放的 Windows 优先级仍未确认，
+  见[详细说明](compat/app.md#global-disabledragging)。
+
 #### `DragGroup`（一起移动多个皮肤）
 - **Windows：** 同一 DragGroup 的皮肤可以一起选中并拖动。
 - **Mac：** Control-Option 点按或菜单 Select skin 可以选择皮肤，并包含其 DragGroup。选中的皮肤一起移动、接受共享菜单
@@ -1212,6 +1223,19 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 不提供 Windows DLL 元数据；未知 `!About` 页名回退到 Log，Measures 选择 Skins。
 - **状态：** 部分实现；已覆盖 macOS 本地测试，边界行为的 Windows 桌面对照仍待完成。本项不包含 Rainmeter 5.0 的独立 Debug 窗口。
 
+#### 文件日志持久化
+- **Windows：** `Logging` 默认为 `0`，设置会自动保存。Start logging 开启文件输出；Stop logging 保留文件；
+  Delete log file 停止输出并删除文件
+  （<https://docs.rainmeter.net/manual/settings/rainmeter-section/#Logging>、
+  <https://docs.rainmeter.net/manual/settings/>、<https://docs-v5.rainmeter.net/manual/user-interface/debug/>）。
+- **Mac：** Debug 的 Log file 菜单立即保存 `Logging=1` 或 `0`，并在启动时写入文件日志前应用。关闭时不创建或轮转日志文件，
+  内存日志仍然可用。Stop 等待之前排队的写入完成并保留文件。Delete 先停止输出、关闭文件，再删除；删除失败会报告错误，
+  重启后仍保持关闭。普通布局加载保留本地 Logging，包括键不存在时的默认 `0`。
+- **原因：** 文件输出遵循保存的全局选项。
+- **对皮肤的影响：** 重启 Deskset 后保留文件日志选择，Stop 不删除已有日志。
+- **状态：** 模拟实现。Windows 文件错误行为及备份布局的全局设置例外仍未确认，
+  见[详细说明](compat/app.md#persistent-file-logging)。
+
 #### 已加载但被隐藏的皮肤（管理窗口）
 - **Windows：** 管理窗口列出已激活的皮肤及其坐标、位置、加载顺序、透明度等设置；手册没有说那里会标出被 `!Hide` 或 StartHidden
   隐藏的皮肤。`!Show` 可以让它重新显示。
@@ -1273,6 +1297,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   同名保存需确认，不能手动保存为 `@Backup`。不包含新壁纸时保留目录里的旧壁纸及其他文件；删除会把布局目录移入废纸篓。
   保留未知配置键与缺失配置，不复制皮肤文件；相同 LoadOrder 按 INI 节顺序加载。状态栏菜单、`!LoadLayout`、`!Manage Layouts`、
   安装后应用，以及可执行文件的同名命令走同一流程。空布局重启后仍为空，本机应用偏好保持不变。
+  普通加载保留本地 `Logging`，包括键不存在或为空时有效的默认值 `0`。
   正常关闭阶段允许 [OnCloseAction](https://docs.rainmeter.net/manual/skins/rainmeter-section/#OnCloseAction)
   执行本地清理及已支持的跨配置／UI／系统／打开操作。皮肤按配置名逐一关闭，之后才保存 `@Backup`；丢弃已退休实例的迟到请求。
   `!LoadLayout`、`!RefreshApp` 和 `!Quit` 按先后顺序等待当前布局完成。加载 `@Backup` 不覆盖它，也不应用其壁纸。
@@ -1284,7 +1309,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   文件名在不同文件系统上顺序相同；跨配置停用保留现有淡出时序。尚未完成 Windows 桌面对照，详见 [Layouts](compat/layouts.md)。
 - **对皮肤的影响：** 已安装的布局可以自动排列兼容皮肤，但不改变皮肤／插件原有的支持范围。缺失目标会在关闭前拒绝，
   关闭之后发生的加载失败会恢复先前的皮肤会话。
-- **状态：** 模拟实现 / 部分支持（全局设置、壁纸及文件名跨平台差异）
+- **状态：** 模拟实现 / 部分支持（全局设置、壁纸及文件名跨平台差异）；备份布局全局设置例外的 Windows 对照仍待完成。
 
 #### 其他宿主 bang
 - **Windows：** `!SetClip`、`!SetWallpaper`、`!Play` / `!PlayLoop` / `!PlayStop`、`!Manage`、`!About`、`!EditSkin`、

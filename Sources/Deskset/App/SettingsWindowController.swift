@@ -33,6 +33,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private var observer: NSObjectProtocol?
     private var updateObserver: NSObjectProtocol?
     private var zoomObserver: NSObjectProtocol?
+    private var globalSettingsObserver: NSObjectProtocol?
 
     // Editor pane.
     let editorPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -50,6 +51,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let defaultZoomField = NSTextField()
     let defaultZoomStepper = SkinZoomStepper()
     let forceZoomBox = NSButton(checkboxWithTitle: "Force", target: nil, action: nil)
+    let disableDraggingBox = NSButton(checkboxWithTitle: "Disable dragging", target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -115,6 +117,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
                                                                  queue: .main) { [weak self] _ in self?.updateControls() }
         zoomObserver = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged, object: app,
                                                                queue: .main) { [weak self] _ in self?.updateZoomControls() }
+        globalSettingsObserver = NotificationCenter.default.addObserver(forName: .desksetGlobalSettingsChanged,
+            object: app.state, queue: .main) { [weak self] _ in self?.updateControls() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -123,6 +127,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         if let observer { NotificationCenter.default.removeObserver(observer) }
         if let updateObserver { NotificationCenter.default.removeObserver(updateObserver) }
         if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
+        if let globalSettingsObserver { NotificationCenter.default.removeObserver(globalSettingsObserver) }
     }
 
     // MARK: Toolbar
@@ -206,6 +211,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         forceZoomBox.action = #selector(forceZoomChanged)
         forceZoomBox.toolTip = "Apply the default zoom to every skin."
         forceZoomBox.setAccessibilityLabel("Force default zoom")
+        disableDraggingBox.target = self
+        disableDraggingBox.action = #selector(disableDraggingToggled)
+        disableDraggingBox.toolTip = "Prevent dragging skins with the mouse."
+        disableDraggingBox.setAccessibilityLabel("Disable dragging")
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
         automaticUpdatesBox.target = self
@@ -289,6 +298,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             [label("Skins folder:"), folder],
             [label("Default zoom:"), zoom],
             [NSGridCell.emptyContentView, forceZoomBox],
+            [NSGridCell.emptyContentView, disableDraggingBox],
             [label("Updates:"), automaticUpdatesBox],
             [NSGridCell.emptyContentView, note("Checks daily. Updates download here; you choose when to install and relaunch.")],
             [NSGridCell.emptyContentView, updateButtons],
@@ -363,6 +373,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontField.integerValue = Int(e.codeFontSize)
         fontStepper.doubleValue = e.codeFontSize
         liveReloadBox.state = e.liveReload ? .on : .off
+        disableDraggingBox.state = app.state.disableDragging ? .on : .off
         loginBox.state = LaunchAtLogin.isEnabled ? .on : .off
         loginBox.isEnabled = LaunchAtLogin.isAvailable
         automaticUpdatesBox.state = app.updates.automaticallyChecks ? .on : .off
@@ -483,6 +494,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     @objc private func forceZoomChanged() {
         app.setDefaultZoom(percent: nil, force: forceZoomBox.state == .on)
+    }
+
+    @objc private func disableDraggingToggled() {
+        app.state.setDisableDragging(disableDraggingBox.state == .on)
     }
 
     @objc private func loginToggled() {
