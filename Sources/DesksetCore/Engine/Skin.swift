@@ -247,9 +247,14 @@ public final class Skin {
     public private(set) var zoomFactorOverride: Double? {
         didSet { if zoomFactorOverride != oldValue { noteSnapshotChange() } }
     }
-    /// Effective zoom factor (`zoomFactorOverride` if set, otherwise `currentEnvironment().zoomFactor`, between 0.1 and 5).
+    /// A Default command takes effect before an asynchronous host acknowledges its saved setting.
+    private var followsDefaultZoom = false
+    /// Effective zoom factor, including the application's forced default.
     public var effectiveZoomFactor: Double {
-        (zoomFactorOverride ?? currentEnvironment().zoomFactor).clamped(0.1, 5.0)
+        let environment = currentEnvironment()
+        let value = environment.forceDefaultZoom || followsDefaultZoom
+            ? environment.defaultZoomFactor : zoomFactorOverride ?? environment.zoomFactor
+        return value.isFinite ? value.clamped(0.1, 5.0) : 1
     }
     /// Effective update interval in milliseconds (`-1` when stopped, e.g. `Update=-1` or `Invisible 0` while hidden).
     public var effectiveUpdate: Int {
@@ -495,6 +500,7 @@ public final class Skin {
         isSupportedSyntaxVersion = true
         forceEnableVisibleMode = false
         zoomFactorOverride = nil
+        followsDefaultZoom = false
         pendingDisplayMetricsAction = false
         let builtins = builtInVariables()
         var includesAppearance = false
@@ -682,7 +688,7 @@ public final class Skin {
             .filter { !$0.isEmpty }
         for name in ["WindowX", "WindowY", "AnchorX", "AnchorY", "SavePosition", "AlwaysOnTop", "Draggable",
                      "SnapEdges", "StartHidden", "AlphaValue", "OnHover", "FadeDuration", "ClickThrough",
-                     "KeepOnScreen", "AutoSelectScreen", "ZoomFactor"] {
+                     "KeepOnScreen", "AutoSelectScreen"] {
             if let v = s.option("Default" + name)?.trimmingCharacters(in: .whitespaces), !v.isEmpty {
                 st.windowDefaults[name] = v
             }
@@ -1291,15 +1297,38 @@ public final class Skin {
         }
     }
 
-    /// Updates the skin's zoom factor from the host's window model (`!SetZoomFactor`, `!SetZoomFactorGroup`).
-    public func applyHostZoomFactor(_ factor: Double) {
+    /// Synchronizes the host's saved override after its window model accepts settings. Nil follows the host.
+    public func applyHostZoomFactor(_ factor: Double?, previousEffectiveZoomFactor: Double? = nil) {
         assertOwned()
         beginWork()
         defer { endWork() }
-        guard !closed, factor.isFinite else { return }
-        zoomFactorOverride = factor.clamped(0.1, 5.0)
+        guard !closed, factor?.isFinite != false else { return }
+        let previous = previousEffectiveZoomFactor ?? effectiveZoomFactor
+        zoomFactorOverride = factor.map { ($0.clamped(0.1, 5) * 100).rounded() / 100 }
+        followsDefaultZoom = false
         environmentValid = false
-        needsDisplay()
+        if effectiveZoomFactor != previous { noteSnapshotChange(); needsDisplay() }
+    }
+
+    /// Applies a factor or Default before handing the setting to the host for persistence.
+    private func applyZoomCommand(_ value: String) -> String? {
+        let previous = effectiveZoomFactor
+        let argument: String
+        if value.caseInsensitiveCompare("Default") == .orderedSame {
+            zoomFactorOverride = nil
+            followsDefaultZoom = true
+            argument = "Default"
+        } else {
+            guard !currentEnvironment().forceDefaultZoom,
+                  let factor = OptionValue.number(value), factor.isFinite else { return nil }
+            let rounded = (factor.clamped(0.1, 5) * 100).rounded() / 100
+            zoomFactorOverride = rounded
+            followsDefaultZoom = false
+            argument = NumberFormatting.plain(rounded, maxDecimals: 2)
+        }
+        environmentValid = false
+        if effectiveZoomFactor != previous { noteSnapshotChange(); needsDisplay() }
+        return argument
     }
 
     public enum FileDragPhase: Equatable, Sendable {
@@ -1789,6 +1818,7 @@ public final class Skin {
         case "currentconfigwidth": return formatInt(env.windowFrame.width)
         case "currentconfigheight": return formatInt(env.windowFrame.height)
         case "currentconfigzpos": return String(env.zPosition)
+        case "currentconfigzoom": return String(Int((effectiveZoomFactor * 100).rounded()))
         case "configeditor": return env.configEditor
         default: return monitorVariable(key, env)
         }
@@ -1949,6 +1979,7 @@ public final class Skin {
             "crlf": BuiltInVariables.crlfValue,
             "configeditor": env.configEditor,
             "currentconfigzpos": String(env.zPosition),
+            "currentconfigzoom": String(Int((effectiveZoomFactor * 100).rounded())),
         ]
         b.merge(env.appearance.variables) { _, mac in mac }
         // Monitor values as of load time (for [Variables] and @Include); options resolve them dynamically.
@@ -2476,24 +2507,13 @@ public final class Skin {
             _ = host?.skin(self, handle: Bang(name: "forceenablevisiblemode",
                                               args: [forceEnableVisibleMode ? "1" : "0"]))
         case "setzoomfactor":
-            if let f = OptionValue.number(valueArg(0, evaluatedValue)), f.isFinite {
-                zoomFactorOverride = f.clamped(0.1, 5.0)
-                environmentValid = false
-                _ = host?.skin(self, handle: Bang(name: "setzoomfactor",
-                                                  args: [NumberFormatting.plain(effectiveZoomFactor, maxDecimals: 10)]))
-                needsDisplay()
+            if let value = applyZoomCommand(valueArg(0, evaluatedValue)) {
+                _ = host?.skin(self, handle: Bang(name: "setzoomfactor", args: [value]))
             }
         case "setzoomfactorgroup":
-            if let f = OptionValue.number(valueArg(0, evaluatedValue)), f.isFinite {
-                let clamped = f.clamped(0.1, 5.0)
-                if isInSkinGroup(arg(1)) {
-                    zoomFactorOverride = clamped
-                    environmentValid = false
-                    needsDisplay()
-                }
-                _ = host?.skin(self, handle: Bang(name: "setzoomfactorgroup",
-                                                  args: [NumberFormatting.plain(clamped, maxDecimals: 10), arg(1)]))
-            }
+            let value = valueArg(0, evaluatedValue)
+            if isInSkinGroup(arg(1)) { _ = applyZoomCommand(value) }
+            _ = host?.skin(self, handle: Bang(name: "setzoomfactorgroup", args: [value, arg(1)]))
         case "updatemeter":
             updateMetersNow(meters(matching: arg(0)))
         case "updatemetergroup":

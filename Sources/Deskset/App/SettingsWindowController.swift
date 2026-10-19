@@ -32,6 +32,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private var paneViews: [Pane: NSView] = [:]
     private var observer: NSObjectProtocol?
     private var updateObserver: NSObjectProtocol?
+    private var zoomObserver: NSObjectProtocol?
 
     // Editor pane.
     let editorPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -46,6 +47,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let checkUpdatesButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
     let viewUpdateButton = NSButton(title: "Update…", target: nil, action: nil)
     let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
+    let defaultZoomField = NSTextField()
+    let defaultZoomStepper = SkinZoomStepper()
+    let forceZoomBox = NSButton(checkboxWithTitle: "Force", target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -109,6 +113,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
                                                           queue: .main) { [weak self] _ in self?.preferencesChanged() }
         updateObserver = NotificationCenter.default.addObserver(forName: .desksetUpdatesChanged, object: app.updates,
                                                                  queue: .main) { [weak self] _ in self?.updateControls() }
+        zoomObserver = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged, object: app,
+                                                               queue: .main) { [weak self] _ in self?.updateZoomControls() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -116,6 +122,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
         if let updateObserver { NotificationCenter.default.removeObserver(updateObserver) }
+        if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
     }
 
     // MARK: Toolbar
@@ -192,6 +199,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontStepper.valueWraps = false
         fontStepper.target = self
         fontStepper.action = #selector(fontStepperChanged)
+        SkinZoomStepper.configure(field: defaultZoomField, stepper: defaultZoomStepper, target: self,
+                                  fieldAction: #selector(defaultZoomFieldChanged),
+                                  stepperAction: #selector(defaultZoomStepperChanged), label: "Default zoom")
+        forceZoomBox.target = self
+        forceZoomBox.action = #selector(forceZoomChanged)
+        forceZoomBox.toolTip = "Apply the default zoom to every skin."
+        forceZoomBox.setAccessibilityLabel("Force default zoom")
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
         automaticUpdatesBox.target = self
@@ -267,15 +281,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
                                                        : "Available when Deskset runs from the Applications folder.")
         let updateButtons = NSStackView(views: [checkUpdatesButton, viewUpdateButton])
         updateButtons.spacing = 8
+        let zoom = NSStackView(views: [defaultZoomField, defaultZoomStepper, NSTextField(labelWithString: "%")])
+        zoom.spacing = 4
         return makePane(rows: [
             [label("Startup:"), loginBox],
             [NSGridCell.emptyContentView, loginNote],
             [label("Skins folder:"), folder],
+            [label("Default zoom:"), zoom],
+            [NSGridCell.emptyContentView, forceZoomBox],
             [label("Updates:"), automaticUpdatesBox],
             [NSGridCell.emptyContentView, note("Checks daily. Updates download here; you choose when to install and relaunch.")],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
-        ], spacingAfter: [1: 8, 2: 8])
+        ], spacingAfter: [1: 8, 2: 8, 4: 8])
     }
 
     // MARK: Editor list
@@ -352,7 +370,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         checkUpdatesButton.isEnabled = !app.updates.isChecking
         viewUpdateButton.isHidden = app.updates.availableRelease == nil
         updateStatusLabel.stringValue = app.updates.statusText
+        updateZoomControls()
         if pane == .general, paneViews[.general] != nil { select(.general) }
+    }
+
+    private func updateZoomControls() {
+        defaultZoomField.integerValue = app.state.defaultZoomPercent
+        defaultZoomStepper.integerValue = app.state.defaultZoomPercent
+        forceZoomBox.state = app.state.forceDefaultZoom ? .on : .off
     }
 
     private func preferencesChanged() {
@@ -442,6 +467,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     @objc private func fontStepperChanged() {
         app.state.updateEditor { $0.codeFontSize = fontStepper.doubleValue }
         updateControls()
+    }
+
+    @objc private func defaultZoomFieldChanged() {
+        guard let percent = Int(defaultZoomField.stringValue.trimmingCharacters(in: .whitespaces)) else {
+            updateZoomControls()
+            return
+        }
+        app.setDefaultZoom(percent: min(max(percent, 10), 500), force: nil)
+    }
+
+    @objc private func defaultZoomStepperChanged() {
+        app.setDefaultZoom(percent: defaultZoomStepper.integerValue, force: nil)
+    }
+
+    @objc private func forceZoomChanged() {
+        app.setDefaultZoom(percent: nil, force: forceZoomBox.state == .on)
     }
 
     @objc private func loginToggled() {

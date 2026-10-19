@@ -1,6 +1,44 @@
 import AppKit
 import DesksetCore
 
+/// The integer zoom controls shared by Manage and General settings.
+final class SkinZoomStepper: NSStepper {
+    static func configure(field: NSTextField, stepper: SkinZoomStepper, target: AnyObject,
+                          fieldAction: Selector, stepperAction: Selector, label: String) {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.allowsFloats = false
+        field.formatter = formatter
+        field.alignment = .right
+        field.target = target
+        field.action = fieldAction
+        field.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        field.setAccessibilityLabel(label)
+        stepper.minValue = 10
+        stepper.maxValue = 500
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.target = target
+        stepper.action = stepperAction
+        stepper.setAccessibilityLabel(label)
+        stepper.toolTip = "Hold Control to change zoom by 10 percentage points."
+    }
+
+    func useIncrement(for modifiers: NSEvent.ModifierFlags) {
+        increment = modifiers.contains(.control) ? 10 : 1
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        useIncrement(for: event.modifierFlags)
+        super.mouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        useIncrement(for: event.modifierFlags)
+        super.keyDown(with: event)
+    }
+}
+
 /// The Manage window (https://docs.rainmeter.net/manual/user-interface/manage/): installed configs and their .ini
 /// variants, load / unload, per-skin settings, [Metadata], compatibility notes; .rmskin files, ZIP archives and skin
 /// folders can be dropped on it.
@@ -52,6 +90,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let hoverPopup = NSPopUpButton()
     private let fadeField = NSTextField()
     private let loadOrderField = NSTextField()
+    private let zoomField = NSTextField()
+    private let zoomStepper = SkinZoomStepper()
     private let xField = NSTextField()
     private let yField = NSTextField()
     private let draggableBox = NSButton(checkboxWithTitle: "Draggable", target: nil, action: nil)
@@ -672,6 +712,9 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         transparencyLabel.widthAnchor.constraint(equalToConstant: 40).isActive = true
         numberField(fadeField, width: 60, action: #selector(settingsChanged(_:)))
         numberField(loadOrderField, width: 60, action: #selector(settingsChanged(_:)))
+        SkinZoomStepper.configure(field: zoomField, stepper: zoomStepper, target: self,
+                                  fieldAction: #selector(zoomFieldChanged), stepperAction: #selector(zoomStepperChanged),
+                                  label: "Skin zoom")
         numberField(xField, width: 70, action: #selector(positionFieldChanged(_:)))
         numberField(yField, width: 70, action: #selector(positionFieldChanged(_:)))
         for box in [draggableBox, clickThroughBox, keepOnScreenBox, snapEdgesBox, savePositionBox] {
@@ -714,6 +757,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         coordinatesHintRow = settingsGrid.addRow(with: [NSGridCell.emptyContentView, hint])
         coordinatesHintRow?.topPadding = -4
         coordinatesHintRow?.isHidden = true
+        settingsGrid.addRow(with: [formLabel("Zoom:"), row([zoomField, zoomStepper, NSTextField(labelWithString: "%")])])
         settingsGrid.addRow(with: [formLabel("Load order:"), row([loadOrderField])])
         let checks = NSGridView(views: [[draggableBox, clickThroughBox], [keepOnScreenBox, snapEdgesBox],
                                         [savePositionBox, NSGridCell.emptyContentView]])
@@ -932,9 +976,19 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         keepOnScreenBox.state = s.keepOnScreen ? .on : .off
         snapEdgesBox.state = s.snapEdges ? .on : .off
         savePositionBox.state = s.savePosition ? .on : .off
+        let storedZoom = app.state.forceDefaultZoom ? app.state.defaultZoomPercent
+            : s.zoomOverridePercent ?? app.state.defaultZoomPercent
+        let zoom = running.map { Int(($0.effectiveZoomFactor * 100).rounded()) } ?? storedZoom
+        zoomField.integerValue = zoom
+        zoomStepper.integerValue = zoom
+        zoomField.isEnabled = editable && !app.state.forceDefaultZoom
+        zoomStepper.isEnabled = zoomField.isEnabled
         for control in [positionPopup, transparencySlider, hoverPopup, fadeField, loadOrderField, xField, yField,
                         draggableBox, clickThroughBox, keepOnScreenBox, snapEdgesBox, savePositionBox] as [NSControl] {
             control.isEnabled = editable
+        }
+        if app.skinSelection.contains(config.name) {
+            for control in [draggableBox, clickThroughBox, keepOnScreenBox] { control.isEnabled = false }
         }
         settingsNote.isHidden = editable
         settingsNote.stringValue = file == nil ? "Select a skin file to see its settings."
@@ -1151,6 +1205,20 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         // A hidden skin moves out of sight: the hint under the coordinates says it is still hidden.
         movedWhileHidden = c.isHiddenByBang ? c.config : nil
         updateDetail()
+    }
+
+    @objc private func zoomFieldChanged() {
+        guard zoomField.isEnabled, let c = selectedController else { return }
+        guard let percent = Int(zoomField.stringValue.trimmingCharacters(in: .whitespaces)) else {
+            updateDetail()
+            return
+        }
+        app.setSkinZoom(config: c.config, percent: min(max(percent, 10), 500))
+    }
+
+    @objc private func zoomStepperChanged() {
+        guard zoomStepper.isEnabled, let c = selectedController else { return }
+        app.setSkinZoom(config: c.config, percent: zoomStepper.integerValue)
     }
 
     /// Shows a loaded skin that a skin action hid, fading in over its FadeDuration as `!ShowFade` does.
@@ -1439,6 +1507,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testDetailDocument: NSView? { detailStack.superview }
     var testDraggableBox: NSButton { draggableBox }
     var testFadeField: NSTextField { fadeField }
+    var testZoomField: NSTextField { zoomField }
+    var testZoomStepper: SkinZoomStepper { zoomStepper }
+    var testClickThroughBox: NSButton { clickThroughBox }
+    var testKeepOnScreenBox: NSButton { keepOnScreenBox }
     var testTransparencySlider: NSSlider { transparencySlider }
     var testStatus: String { statusLabel.stringValue }
     /// The hidden notice's title and text when it shows, nil when it does not.

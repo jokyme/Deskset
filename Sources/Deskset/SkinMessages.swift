@@ -67,6 +67,8 @@ enum SkinMessage {
 
     /// What the main thread did with the window (`SkinWindowModel.take`). A later one waiting behind takes its place.
     case windowFacts(SkinWindowFacts)
+    /// A UI zoom request; completion returns to the main thread after its window changes have been applied.
+    case setZoom(percent: Int?, completion: (() -> Void)?)
 
     // MARK: Life
 
@@ -211,7 +213,9 @@ enum SkinRequest {
     case closed(SkinReloadTicket? = nil)
     /// The skin's size changed: the window follows (points; the top-left corner stays). Its frames go to the content
     /// provider from the skin's executor.
-    case resize(CGSize)
+    case resize(CGSize, zoomFactor: Double)
+    /// Acknowledges a UI zoom request after preceding resize and setting requests.
+    case zoomCompleted((() -> Void)?)
     /// Where the glass goes now (`MacGlass`), back to front, in skin points.
     case glass([GlassRegion])
     /// One of the skin's own window changes (position, Z position, transparency, the window flags, !Show / !Hide), made

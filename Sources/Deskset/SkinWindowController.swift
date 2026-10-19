@@ -107,6 +107,47 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     static let maxForwardDepth = SkinRuntime.maxHops
 
     var state: SkinState { app.state.skin(config) ?? SkinState(file: file) }
+    var isSelected: Bool { app.skinSelection.contains(config) }
+    var zoomOverridePercent: Int? { state.zoomOverridePercent }
+    var isZoomForced: Bool { app.state.forceDefaultZoom }
+    var effectiveZoomFactor: Double {
+        Double(isZoomForced ? app.state.defaultZoomPercent : zoomOverridePercent ?? app.state.defaultZoomPercent) / 100
+    }
+    /// The zoom already applied to the window's frame, independent of pending settings messages.
+    private var windowZoomFactor: Double = 1
+    /// A selection drag supplies its desired top-left point in AppKit screen coordinates.
+    var zoomPositionOverride: NSPoint?
+    private var selectedFlagOverrides: [SkinWindowFlag: Bool] = [:]
+
+    private var windowSettings: SkinWindowSettings {
+        SkinWindowSettings(state, hidden: isHiddenByBang,
+                           fadedAlpha: fadedAlpha.map { SkinFadedAlpha(value: $0.value, base: $0.base) },
+                           defaultZoomPercent: app.state.defaultZoomPercent, forceDefaultZoom: isZoomForced,
+                           isSelected: isSelected, selectedFlagOverrides: selectedFlagOverrides)
+    }
+
+    func requestZoom(percent: Int?, completion: (() -> Void)? = nil) {
+        guard !isStopped else { completion?(); return }
+        runtime.send(.setZoom(percent: percent, completion: { [weak self] in
+            // A selected peer at the zoom limit still follows the gesture's shared translation.
+            if let self, !self.isStopped, let point = self.zoomPositionOverride,
+               self.window.frame.minX != point.x || self.window.frame.maxY != point.y {
+                self.resize(to: self.window.frame.size, zoomFactor: self.windowZoomFactor)
+            }
+            completion?()
+        }))
+    }
+
+    func refreshZoomSettings() {
+        guard !isStopped else { return }
+        publishFacts(force: true)
+    }
+
+    func selectionDidChange() {
+        if !isSelected { selectedFlagOverrides.removeAll() }
+        applyWindowSettings()
+        view.updateSelectionOverlay()
+    }
 
     /// The skin defines OnFocusAction or OnUnfocusAction, or has a TextEditMeter (from the snapshot).
     var wantsFocus: Bool {
@@ -367,6 +408,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// frame, until that copy settles (`closeReplacedWindow`). Its InputText boxes close now.
     func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil, keepsWindow: Bool = false) {
         guard !isStopped, !isClosing else { return }
+        app.skinSelection.remove(self)
         startWaiters = []
         hoverTimer?.invalidate()
         hoverTimer = nil
@@ -470,7 +512,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     private var targetAlpha: CGFloat {
         let s = state
-        return SkinVisibility.targetAlpha(alphaValue: effectiveAlphaValue, onHover: s.onHover, hovering: isHovering,
+        return SkinVisibility.targetAlpha(alphaValue: effectiveAlphaValue, onHover: isSelected ? 0 : s.onHover, hovering: isHovering,
                                           hidden: isHiddenByBang)
     }
 
@@ -504,8 +546,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// OnHover=Hide while hovered.
     private func applyMouseHandling() {
         let s = state
-        let ignore = s.clickThrough
-            || (isHovering && SkinVisibility.passesClicksWhileHovering(onHover: s.onHover))
+        let ignore = windowSettings.effectiveClickThrough
+            || (!isSelected && isHovering && SkinVisibility.passesClicksWhileHovering(onHover: s.onHover))
         if ignore {
             if !window.ignoresMouseEvents { window.ignoresMouseEvents = true }
         } else if window.ignoresMouseEvents {
@@ -604,7 +646,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     // MARK: OnHover
 
     private func updateHoverTracking() {
-        let wanted = state.onHover != 0 && isLoaded && !isHiddenByBang && !isStopped && !updatesPaused
+        let wanted = !isSelected && state.onHover != 0 && isLoaded && !isHiddenByBang && !isStopped && !updatesPaused
         if wanted {
             guard hoverTimer == nil else { return }
             // The window may ignore the mouse (ClickThrough, or hidden by OnHover=Hide), so hover is detected by
@@ -640,8 +682,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// KeepOnScreen, or at least not lost entirely off-screen.
     private func constrained(_ frame: CGRect) -> CGRect {
         let screens = self.screens
-        return state.keepOnScreen ? WindowGeometry.keptOnScreen(frame, screens: screens)
-            : WindowGeometry.rescuedIfOffScreen(frame, screens: screens)
+        if windowSettings.effectiveKeepOnScreen { return WindowGeometry.keptOnScreen(frame, screens: screens) }
+        return isSelected ? frame : WindowGeometry.rescuedIfOffScreen(frame, screens: screens)
     }
 
     func keptOnScreen(_ frame: CGRect) -> CGRect { WindowGeometry.keptOnScreen(frame, screens: screens) }
@@ -691,7 +733,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             frame = WindowGeometry.frame(topLeftX: p.0, y: p.1, size: size, primaryHeight: ph)
         } else if let d = defaultPosition,
                   let p = WindowPosition.resolve(x: d.x, y: d.y, anchorX: d.anchorX, anchorY: d.anchorY, skinSize: size,
-                                                 screens: screens) {
+                                                 screens: screens, zoomFactor: effectiveZoomFactor) {
             frame = WindowGeometry.frame(topLeftX: p.x, y: p.y, size: size, primaryHeight: ph)
             isNew = true
         } else {
@@ -701,6 +743,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             isNew = true
         }
         frame = constrained(frame)
+        windowZoomFactor = effectiveZoomFactor
         window.setFrame(frame, display: false)
         view.frame = NSRect(origin: .zero, size: size)
         defaultPosition = nil
@@ -714,7 +757,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         guard s.windowX != nil || s.windowY != nil else { return nil }
         return WindowPosition.resolve(x: s.windowX ?? "0", y: s.windowY ?? "0",
                                       anchorX: s.anchorX ?? "0", anchorY: s.anchorY ?? "0",
-                                      skinSize: size, screens: screens)
+                                      skinSize: size, screens: screens, zoomFactor: effectiveZoomFactor)
     }
 
     /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
@@ -733,7 +776,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// After a drag or !Move.
     func windowMoved() {
         var frame = window.frame
-        if state.keepOnScreen {
+        if windowSettings.effectiveKeepOnScreen {
             frame = keptOnScreen(frame)
             window.setFrameOrigin(frame.origin)
         }
@@ -749,7 +792,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         guard state.savePosition || force else { return }
         let position = WindowPosition.moved(x: p.x, y: p.y, windowX: state.windowX, windowY: state.windowY,
                                             anchorX: state.anchorX, anchorY: state.anchorY, skinSize: frame.size,
-                                            screens: screens, autoSelectScreen: state.autoSelectScreen)
+                                            screens: screens, autoSelectScreen: state.autoSelectScreen,
+                                            zoomFactor: windowZoomFactor)
         app.state.update(config) {
             $0.file = file
             $0.x = p.x
@@ -778,6 +822,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     var topLeftPosition: (x: Double, y: Double) { WindowGeometry.topLeft(of: window.frame, primaryHeight: primaryHeight) }
 
     func showContextMenu(with event: NSEvent, in view: NSView) {
+        app.skinSelection.beginMenuTracking()
+        defer { app.skinSelection.endMenuTracking() }
         NSMenu.popUpContextMenu(app.skinMenu(for: self, includeCustomItems: true), with: event, for: view)
     }
 
@@ -791,6 +837,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func windowDidResignKey(_ notification: Notification) {
         guard !isStopped else { return }
         runtime.send(.focus(false))
+        app.skinSelection.focusDidChange(from: self)
     }
 
     /// Covered or uncovered: the runtime draws no frames while the window cannot be seen, and one when it can again.
@@ -840,11 +887,13 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             failed(error, ticket: ticket)
         case .closed(let ticket):
             closed(ticket: ticket)
-        case .resize(let size):
-            resize(to: size)
+        case .resize(let size, let zoom):
+            resize(to: size, zoomFactor: zoom)
+        case .zoomCompleted(let completion):
+            completion?()
         case .glass(let regions):
             guard !isStopped else { return }
-            glass.apply(regions, in: contentView, below: view)
+            glass.apply(regions, in: contentView, below: view, zoomFactor: runtime.snapshot.zoomFactor)
         case .window(let change):
             applyWindowChange(change)
         case .lifecycle(let bang), .ui(let bang), .system(let bang):
@@ -864,6 +913,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     /// The skin published a snapshot in which something changed that the main thread acts on.
     private func snapshotChanged(_ changes: SkinSnapshotChanges) {
+        if changes.contains(.selection) { view.updateSelectionOverlay() }
         if changes.contains(.toolTips) { view.updateToolTips() }
         // Also once the skin closed: it no longer wants anything.
         if changes.contains(.outsidePointerNeeds) { app.outsidePointer.needsChanged() }
@@ -873,21 +923,27 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// The skin's size changed: the window follows (its configured anchor stays). The frames go to the content layer
     /// from the skin's executor, which skips them while the window cannot be seen (energy: a skin hidden behind other
     /// windows, on a locked screen or ordered out is not drawn until it can be seen again; its measures keep updating).
-    private func resize(to size: CGSize) {
+    private func resize(to size: CGSize, zoomFactor: Double) {
         guard !isStopped else { return }
         let before = factsSequence
-        if window.frame.size != size {
+        if window.frame.size != size || windowZoomFactor != zoomFactor || zoomPositionOverride != nil {
             // Preserve an imported layout's anchor when the skin changes size.
             let top = window.frame.maxY
             var frame = NSRect(x: window.frame.minX, y: top - size.height, width: size.width, height: size.height)
-            if let oldAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0",
-                                                            size: window.frame.size),
-                      let newAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0", size: size) {
+            if let point = zoomPositionOverride {
+                frame.origin = NSPoint(x: point.x, y: point.y - size.height)
+            } else if let oldAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0",
+                                                            size: window.frame.size, zoomFactor: windowZoomFactor),
+                      let newAnchor = WindowPosition.anchor(x: state.anchorX ?? "0", y: state.anchorY ?? "0",
+                                                            size: size, zoomFactor: zoomFactor) {
                 // SavePosition=0 keeps a drag in this session, but resizing still uses the configured anchor.
                 frame.origin.x += oldAnchor.x - newAnchor.x
                 frame.origin.y -= oldAnchor.y - newAnchor.y
             }
-            if state.keepOnScreen && window.isVisible { frame = keptOnScreen(frame) }
+            if zoomPositionOverride == nil && windowSettings.effectiveKeepOnScreen && window.isVisible {
+                frame = keptOnScreen(frame)
+            }
+            windowZoomFactor = zoomFactor
             window.setFrame(frame, display: false)
             view.frame = NSRect(origin: .zero, size: size)
             if isStarted {
@@ -979,7 +1035,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             applyWindowSettings()
             app.windowChangesNeed(settingsChanged: true)
         case .flag(let flag, let value):
-            app.state.update(config) { $0[keyPath: flag.state] = value }
+            if change.model.settings.isSelected && flag.isTemporaryWhileSelected {
+                // A late selection bang must not become a saved setting after deselection.
+                if isSelected { selectedFlagOverrides[flag] = value }
+            } else {
+                app.state.update(config) { $0[keyPath: flag.state] = value }
+            }
             applyWindowSettings()
             app.windowChangesNeed(settingsChanged: true)
             if flag == .keepOnScreen { windowMoved() }
@@ -987,8 +1048,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             app.state.update(config) { $0.fadeDuration = milliseconds }
             applyWindowSettings()
             app.windowChangesNeed(settingsChanged: true)
-        case .zoomFactor(let factor):
-            app.state.update(config) { $0.zoomFactor = factor }
+        case .zoomFactor(let percent):
+            app.state.update(config) { $0.zoomOverridePercent = percent }
             applyWindowSettings()
             app.windowChangesNeed(settingsChanged: true)
         case .hidden(let hidden, let fade):
@@ -1005,9 +1066,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// That press ended; `moved`: it dragged the window. The window's place is saved after a drag; a move the skin made
     /// meanwhile is dropped (the drag wins) or, when the press did not drag, made now. The runtime hears where the window
     /// is either way.
-    func endDragPress(moved: Bool) {
+    func endDragPress(moved: Bool, savePosition: Bool = true) {
         guard isDragPressActive else {
-            if moved { windowMoved() }
+            if moved && savePosition { windowMoved() }
             return
         }
         isDragPressActive = false
@@ -1015,7 +1076,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         heldMove = nil
         if let held { appliedModelSequence = max(appliedModelSequence, held.sequence) }
         if moved {
-            windowMoved()
+            if savePosition { windowMoved() }
         } else if let held, !isStopped {
             applyWindowChange(held)
         }
@@ -1040,9 +1101,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
                         isOrderedIn: visibilityForTesting ?? window.isVisible,
                         scale: window.backingScaleFactor, colorSpace: window.colorSpace?.cgColorSpace,
                         appearance: view.effectiveAppearance.name.rawValue, takesPointer: takesPointer,
-                        settings: SkinWindowSettings(state, hidden: isHiddenByBang,
-                                                     fadedAlpha: fadedAlpha.map { SkinFadedAlpha(value: $0.value,
-                                                                                                 base: $0.base) }),
+                        settings: windowSettings,
+                        frameZoomFactor: windowZoomFactor,
                         // While a move of the skin's waits, its model keeps that move and what came after it.
                         modelSequence: heldMove.map { min(appliedModelSequence, $0.sequence - 1) } ?? appliedModelSequence,
                         sequence: factsSequence)
@@ -1112,7 +1172,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// top-left origin, and its scale if it had one.
     func skinPoint(fromScreen point: NSPoint) -> (x: Double, y: Double) {
         let p = view.convert(window.convertPoint(fromScreen: point), from: nil)
-        return (Double(p.x), Double(p.y))
+        let zoom = runtime.snapshot.zoomFactor
+        return (Double(p.x) / zoom, Double(p.y) / zoom)
     }
 
     /// What `[target arguments…]` does (`SkinRuntime.executePlan`).
@@ -1125,9 +1186,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// The environment of the live window (main thread): the Studio's instance of the widget reads its desktop copy's.
     var environment: SkinEnvironment {
         let s = state
-        return EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
+        var environment = EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
                                                    autoSelectScreen: s.autoSelectScreen, visible: !isHiddenByBang,
-                                                   zoomFactor: s.zoomFactor)
+                                                   zoomFactor: effectiveZoomFactor)
+        environment.defaultZoomFactor = Double(app.state.defaultZoomPercent) / 100
+        environment.forceDefaultZoom = isZoomForced
+        return environment
     }
 
     /// While a move of the skin's waits for a drag to end, the model and the window differ on purpose.

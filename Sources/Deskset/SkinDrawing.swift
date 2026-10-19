@@ -65,6 +65,7 @@ final class SkinBitmapDrawing {
         let width: Int
         let height: Int
         let scale: CGFloat
+        let zoomFactor: CGFloat
         /// Compared as color spaces (`CFEqual`), not by name: a display's own profile has none.
         let space: CGColorSpace
         let environment: EnvironmentStamp
@@ -89,28 +90,35 @@ final class SkinBitmapDrawing {
     /// Frames that differed from a full drawing (`verifies`; tests).
     private(set) var differences = 0
 
-    /// The skin as it is now, `size` points at `scale` pixels per point; nil for an empty size.
+    /// The skin as it is now, `size` displayed points at `scale` backing pixels per point. `size` already includes
+    /// user zoom; the drawing commands are transformed by that zoom here. Nil for an empty size.
     func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
         let context = SkinRenderContext.of(skin)
-        let environment = AppSceneEnvironment(scale: Double(scale),
+        let zoom = CGFloat(skin.effectiveZoomFactor)
+        let environment = AppSceneEnvironment(scale: Double(scale * zoom),
                                               appearance: skin.host?.environment(for: skin).appearance ?? .light,
                                               appearanceName: appearance)
         let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
         return picture(scene: scene, context: context, cycle: skin.updateCount, size: size, scale: scale,
-                       space: space, source: skin.config)
+                       zoomFactor: zoom, space: space, source: skin.config)
     }
 
     /// Draws and keeps only captured values. The context contains graphics caches, with no live engine objects.
     func picture(scene: WidgetScene, context: SkinRenderContext, cycle: Int, size: CGSize, scale: CGFloat,
-                 space: CGColorSpace, source: String = "") -> CGImage? {
-        guard size.width.isFinite, size.height.isFinite, scale.isFinite,
-              size.width > 0, size.height > 0, scale > 0 else { return nil }
+                 zoomFactor: CGFloat = 1, space: CGColorSpace, source: String = "") -> CGImage? {
+        guard size.width.isFinite, size.height.isFinite, scale.isFinite, zoomFactor.isFinite,
+              size.width > 0, size.height > 0, scale > 0, zoomFactor > 0,
+              (scale * zoomFactor).isFinite else { return nil }
         let pixelWidth = (size.width * scale).rounded(.up), pixelHeight = (size.height * scale).rounded(.up)
         guard pixelWidth.isFinite, pixelHeight.isFinite, pixelWidth > 0, pixelHeight > 0,
               pixelWidth <= 16384, pixelHeight <= 16384 else { return nil }
         let w = Int(pixelWidth), h = Int(pixelHeight)
-        let key = ResetKey(context: ObjectIdentifier(context), width: w, height: h, scale: scale, space: space,
+        let key = ResetKey(context: ObjectIdentifier(context), width: w, height: h, scale: scale,
+                           zoomFactor: zoomFactor, space: space,
                            environment: scene.environment)
+        // The view's size and backing scale choose the bitmap. The user's zoom transforms the drawing commands,
+        // so text and vectors are rasterized at that size instead of stretching an earlier frame.
+        let drawingScale = scale * zoomFactor
         if key != drawnFor {
             drawnFor = key
             runs = []
@@ -142,7 +150,8 @@ final class SkinBitmapDrawing {
         func drawDirectly(_ range: Range<Int>) {
             if !started { ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)) }
             started = true
-            SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: ctx, height: h, scale: scale)
+            SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: ctx, height: h,
+                                   scale: drawingScale)
             stats.drawn += range.count
         }
         func place(_ image: CGImage) {
@@ -167,7 +176,8 @@ final class SkinBitmapDrawing {
                       let picture = SkinBitmapDrawing.makeContext(w, h, space) {
                 let range = index..<end
                 let files = Images.recordingFiles {
-                    SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: picture, height: h, scale: scale)
+                    SkinBitmapDrawing.draw(items: range, drawingRuns, context: context, cycle: cycle, into: picture,
+                                           height: h, scale: drawingScale)
                 }
                 if let image = picture.makeImage() {
                     place(image)
@@ -185,7 +195,9 @@ final class SkinBitmapDrawing {
         runs = kept
         lastStats = stats
         let image = ctx.makeImage()
-        if SkinBitmapDrawing.verifies, stats.copied > 0, let image { verify(image, scene, context, cycle, w, h, scale, space, source: source) }
+        if SkinBitmapDrawing.verifies, stats.copied > 0, let image {
+            verify(image, scene, context, cycle, w, h, drawingScale, space, source: source)
+        }
         return image
     }
 
@@ -243,10 +255,11 @@ final class SkinBitmapDrawing {
     /// areas); nil when the bitmap cannot be made. Engine access ends at projection.
     static func fullDrawing(of skin: Skin, _ w: Int, _ h: Int, scale: CGFloat, space: CGColorSpace) -> CGContext? {
         let context = SkinRenderContext.of(skin)
+        let drawingScale = scale * CGFloat(skin.effectiveZoomFactor)
         let scene = context.sceneProjector.project(skin, environment: AppSceneEnvironment(
-            scale: Double(scale), appearance: skin.host?.environment(for: skin).appearance ?? .light,
+            scale: Double(drawingScale), appearance: skin.host?.environment(for: skin).appearance ?? .light,
             appearanceName: NSAppearance.currentDrawing().name.rawValue), glassSource: .published)
-        return fullDrawing(scene: scene, context: context, cycle: skin.updateCount, w, h, scale: scale, space: space)
+        return fullDrawing(scene: scene, context: context, cycle: skin.updateCount, w, h, scale: drawingScale, space: space)
     }
 
     static func fullDrawing(scene: WidgetScene, context: SkinRenderContext, cycle: Int, _ w: Int, _ h: Int,
@@ -546,7 +559,8 @@ final class SkinFrameProducer {
         guard let provider, let skin = skin() else { return }
         workActivity?.begin(.drawing)
         defer { workActivity?.end() }
-        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        let size = SkinRuntime.scaledWindowSize(width: skin.width, height: skin.height,
+                                               zoomFactor: skin.effectiveZoomFactor)
         let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
         let began = ProcessInfo.processInfo.systemUptime
         defer {

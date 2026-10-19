@@ -287,10 +287,10 @@ enum WindowPosition {
     }
 
     /// Top-left position (skin coordinates) for the given values, or nil when a value cannot be read.
-    static func anchor(x: String, y: String, size: CGSize) -> (x: Double, y: Double)? {
+    static func anchor(x: String, y: String, size: CGSize, zoomFactor: Double = 1) -> (x: Double, y: Double)? {
         guard let x = parse(x, endLetter: "R"), let y = parse(y, endLetter: "B") else { return nil }
         func offset(_ value: Coordinate, _ length: CGFloat) -> Double {
-            let amount = value.percent ? value.value / 100 * Double(length) : value.value
+            let amount = value.percent ? value.value / 100 * Double(length) : value.value * zoomFactor
             return value.fromEnd ? Double(length) - amount : amount
         }
         return (offset(x, size.width), offset(y, size.height))
@@ -298,7 +298,7 @@ enum WindowPosition {
 
     /// Resolves saved coordinates after the skin's dimensions and monitors are known.
     static func resolve(x: String, y: String, anchorX: String, anchorY: String, skinSize: CGSize,
-                        screens: [WindowGeometry.Screen]) -> (x: Double, y: Double)? {
+                        screens: [WindowGeometry.Screen], zoomFactor: Double = 1) -> (x: Double, y: Double)? {
         guard let cx = parse(x, endLetter: "R"), let cy = parse(y, endLetter: "B"),
               let ax = parse(anchorX, endLetter: "R"), let ay = parse(anchorY, endLetter: "B") else { return nil }
         let ph = WindowGeometry.primaryHeight(screens)
@@ -316,7 +316,7 @@ enum WindowPosition {
             return c.fromEnd ? Double(start + length) - offset : Double(start) + offset
         }
         func anchor(_ c: Coordinate, length: CGFloat) -> Double {
-            let offset = c.percent ? c.value / 100 * Double(length) : c.value
+            let offset = c.percent ? c.value / 100 * Double(length) : c.value * zoomFactor
             return c.fromEnd ? Double(length) - offset : offset
         }
         let xArea = area(cx.screen ?? cy.screen), yArea = area(cy.screen ?? cx.screen)
@@ -328,7 +328,8 @@ enum WindowPosition {
     /// Writes a moved position in the same coordinate system as the imported layout. A percentage / right-edge
     /// / monitor-relative position remains relative when the layout is saved and used on another screen.
     static func moved(x: Double, y: Double, windowX: String?, windowY: String?, anchorX: String?, anchorY: String?,
-                      skinSize: CGSize, screens: [WindowGeometry.Screen], autoSelectScreen: Bool) -> (x: String, y: String) {
+                      skinSize: CGSize, screens: [WindowGeometry.Screen], autoSelectScreen: Bool,
+                      zoomFactor: Double = 1) -> (x: String, y: String) {
         var cx = parse(windowX ?? "0", endLetter: "R") ?? Coordinate(value: 0)
         var cy = parse(windowY ?? "0", endLetter: "B") ?? Coordinate(value: 0)
         let ax = parse(anchorX ?? "0", endLetter: "R") ?? Coordinate(value: 0)
@@ -349,7 +350,7 @@ enum WindowPosition {
         }
         func text(_ position: Double, _ coordinate: Coordinate, _ anchor: Coordinate,
                   start: CGFloat, length: CGFloat, size: CGFloat, end: String) -> String {
-            let offset = anchor.percent ? anchor.value / 100 * Double(size) : anchor.value
+            let offset = anchor.percent ? anchor.value / 100 * Double(size) : anchor.value * zoomFactor
             let point = position + (anchor.fromEnd ? Double(size) - offset : offset)
             var value = coordinate.fromEnd ? Double(start + length) - point : point - Double(start)
             if coordinate.percent && length != 0 { value = value / Double(length) * 100 }

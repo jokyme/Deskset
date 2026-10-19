@@ -260,6 +260,9 @@ public struct SkinEnvironment: Equatable {
     public var currentScreen: Int
     /// Skin zoom factor (`[$SkinZoomFactor]` / `!SetZoomFactor`), default 1.0.
     public var zoomFactor: Double
+    /// Application default zoom and its override of per-config zoom settings.
+    public var defaultZoomFactor: Double
+    public var forceDefaultZoom: Bool
     /// Whether the skin window is currently visible on screen (`[$SkinVisible]`, `Update=… | Invisible <ms>`).
     public var visible: Bool
     /// The Mac's light / dark appearance and colors (`#MACAPPEARANCE#`… variables, Deskset extension).
@@ -290,6 +293,8 @@ public struct SkinEnvironment: Equatable {
                 configEditor: String = "/System/Applications/TextEdit.app",
                 currentScreen: Int = 0,
                 zoomFactor: Double = 1.0,
+                defaultZoomFactor: Double = 1.0,
+                forceDefaultZoom: Bool = false,
                 visible: Bool = true,
                 appearance: SkinAppearance = .light,
                 locale: Locale = .autoupdatingCurrent,
@@ -302,6 +307,8 @@ public struct SkinEnvironment: Equatable {
         self.configEditor = configEditor
         self.currentScreen = currentScreen
         self.zoomFactor = zoomFactor
+        self.defaultZoomFactor = defaultZoomFactor
+        self.forceDefaultZoom = forceDefaultZoom
         self.visible = visible
         self.appearance = appearance
         self.locale = locale

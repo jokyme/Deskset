@@ -382,7 +382,7 @@ final class RecordingWindow: SkinRuntimeWindow {
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         let place = Thread.isMainThread ? "on main" : "off main"
         switch request {
-        case .resize(let size): resizes.append(size)
+        case .resize(let size, _): resizes.append(size)
         case .snapshotChanged(let changes):
             // With nothing in it: a test's marker; else what the runtime posted.
             if changes.isEmpty { log.append("marker \(place)") } else { snapshotPosts.append(changes) }

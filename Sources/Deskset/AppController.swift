@@ -72,6 +72,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) lazy var installer = SkinInstallFlow(app: self)
     /// Watches the mouse outside the skin windows while a skin asks for it (Plugin=Slider sees clicks anywhere).
     private(set) lazy var outsidePointer = OutsidePointerMonitor(app: self)
+    /// Ctrl–Option selection and the selected skins' shared move / zoom gesture.
+    private(set) lazy var skinSelection = SkinSelectionController(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
@@ -394,6 +396,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// because it was running when the app quit). Returns the skins that had not closed in time.
     @discardableResult
     func stopAllForTermination(budget: TimeInterval = AppController.terminationBudget) -> [String] {
+        skinSelection.clear()
         isTerminating = true
         let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
@@ -1592,7 +1595,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
-        let s = c.state
+        let targets = skinMenuTargets(for: c.config)
+        func allMatch<Value: Equatable>(_ key: KeyPath<SkinState, Value>, _ value: Value) -> Bool {
+            !targets.isEmpty && targets.allSatisfy { $0.state[keyPath: key] == value }
+        }
+        let selected = item("Select skin", #selector(selectSkinAction(_:)))
+        selected.representedObject = [c.config]
+        selected.state = skinSelection.contains(c.config) ? .on : .off
+        menu.addItem(selected)
+        menu.addItem(.separator())
         // The compatibility notes from the skin's snapshot; the custom items, the name and the weather credit read when
         // the menu opens (`menuFacts`).
         let snapshot = c.runtime.snapshot
@@ -1632,11 +1643,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(variantsItem)
         }
 
+        let settings = NSMenu()
+        settings.autoenablesItems = false
+        let zoom = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
+        zoom.submenu = skinZoomMenu(for: c)
+        zoom.isEnabled = !state.forceDefaultZoom
+        settings.addItem(zoom)
+        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        settingsItem.submenu = settings
+        menu.addItem(settingsItem)
+
         let position = NSMenu()
         for (title, value) in ManageModel.positions {
             let i = item(title, #selector(zPositionAction(_:)))
             i.representedObject = [c.config, String(value)]
-            i.state = s.alwaysOnTop == value ? .on : .off
+            i.state = allMatch(\.alwaysOnTop, value) ? .on : .off
             position.addItem(i)
         }
         let positionItem = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
@@ -1648,7 +1669,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let alpha = ManageModel.alpha(forTransparencyPercent: percent)
             let i = item("\(percent)%", #selector(transparencyAction(_:)))
             i.representedObject = [c.config, String(alpha)]
-            i.state = ManageModel.transparencyPercent(forAlpha: s.alphaValue) == percent ? .on : .off
+            let commonAlpha = targets.first?.state.alphaValue
+            i.state = commonAlpha.map { allMatch(\.alphaValue, $0)
+                && ManageModel.transparencyPercent(forAlpha: $0) == percent } == true ? .on : .off
             transparency.addItem(i)
         }
         let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
@@ -1659,19 +1682,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for mode in SkinVisibility.HoverMode.allCases {
             let i = item(mode.title, #selector(hoverAction(_:)))
             i.representedObject = [c.config, String(mode.rawValue)]
-            i.state = s.onHover == mode.rawValue ? .on : .off
+            i.state = allMatch(\.onHover, mode.rawValue) ? .on : .off
             hover.addItem(i)
         }
         let hoverItem = NSMenuItem(title: "On Hover", action: nil, keyEquivalent: "")
         hoverItem.submenu = hover
         menu.addItem(hoverItem)
 
-        for (title, key, on) in [("Draggable", "draggable", s.draggable), ("Click Through", "clickthrough", s.clickThrough),
-                                 ("Keep on Screen", "keeponscreen", s.keepOnScreen), ("Snap to Edges", "snapedges", s.snapEdges),
-                                 ("Save Position", "saveposition", s.savePosition)] {
+        let flags: [(String, String, KeyPath<SkinState, Bool>)] = [
+            ("Draggable", "draggable", \.draggable), ("Click Through", "clickthrough", \.clickThrough),
+            ("Keep on Screen", "keeponscreen", \.keepOnScreen), ("Snap to Edges", "snapedges", \.snapEdges),
+            ("Save Position", "saveposition", \.savePosition)
+        ]
+        for (title, key, path) in flags {
             let i = item(title, #selector(toggleSettingAction(_:)))
             i.representedObject = [c.config, key]
-            i.state = on ? .on : .off
+            i.state = allMatch(path, true) ? .on : .off
             menu.addItem(i)
         }
 
@@ -1708,6 +1734,41 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return menu
     }
 
+    private func skinMenuTargets(for config: String) -> [SkinWindowController] {
+        let configs = skinSelection.contains(config) ? skinSelection.selectedConfigs : [config]
+        return configs.compactMap { controller(for: $0) }.filter { !$0.isStopped }
+    }
+
+    private func skinZoomMenu(for controller: SkinWindowController) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let targets = skinMenuTargets(for: controller.config)
+        let allDefault = !targets.isEmpty && targets.allSatisfy { $0.zoomOverridePercent == nil }
+        let values = targets.map { Int(($0.effectiveZoomFactor * 100).rounded()) }
+        let common = values.first.flatMap { value in values.allSatisfy { $0 == value } ? value : nil }
+        let current = allDefault ? nil : common
+        let useDefault = item("Default", #selector(skinZoomAction(_:)))
+        useDefault.representedObject = [controller.config, "Default"]
+        useDefault.state = allDefault ? .on : .off
+        useDefault.isEnabled = !state.forceDefaultZoom
+        menu.addItem(useDefault)
+        menu.addItem(.separator())
+        let presets = Array(stride(from: 80, through: 150, by: 10))
+        var percentages = presets
+        if let current, !presets.contains(current) { percentages.append(current); percentages.sort() }
+        for percent in percentages {
+            let preset = presets.contains(percent)
+            let choice = NSMenuItem(title: "\(percent)%", action: preset ? #selector(skinZoomAction(_:)) : nil,
+                                    keyEquivalent: "")
+            choice.target = preset ? self : nil
+            choice.representedObject = [controller.config, String(percent)]
+            choice.state = current == percent ? .on : .off
+            choice.isEnabled = !state.forceDefaultZoom
+            menu.addItem(choice)
+        }
+        return menu
+    }
+
     private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
         let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
         i.target = self
@@ -1735,7 +1796,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         skinSettingsChanged()
     }
 
+    /// A menu or Manage edit targets the selection when its skin belongs to that selection.
+    func setSkinZoom(config: String, percent: Int?) {
+        guard !isTerminating else { return }
+        for controller in skinMenuTargets(for: config) { controller.requestZoom(percent: percent) }
+    }
+
+    /// Default zoom is global; each live runtime resolves it without losing the skin's own override.
+    func setDefaultZoom(percent: Int?, force: Bool?) {
+        guard !isTerminating else { return }
+        state.setDefaultZoom(percent: percent, force: force)
+        for controller in sortedControllers where !controller.isStopped { controller.refreshZoomSettings() }
+        notifyChanged()
+    }
+
     // MARK: Menu actions
+
+    @objc private func selectSkinAction(_ sender: NSMenuItem) {
+        guard let config = args(sender).first, let controller = controller(for: config) else { return }
+        if skinSelection.contains(config) { skinSelection.clear() }
+        else { skinSelection.toggle(controller) }
+    }
+
+    @objc private func skinZoomAction(_ sender: NSMenuItem) {
+        let values = args(sender)
+        guard values.count == 2 else { return }
+        if values[1] == "Default" { setSkinZoom(config: values[0], percent: nil) }
+        else if let percent = Int(values[1]) { setSkinZoom(config: values[0], percent: percent) }
+    }
 
     @objc private func toggleSkinAction(_ sender: NSMenuItem) {
         let a = args(sender)
@@ -1762,36 +1850,40 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func zPositionAction(_ sender: NSMenuItem) {
         let a = args(sender)
-        guard a.count == 2, let c = controller(for: a[0]), let v = Int(a[1]) else { return }
-        changeSettings(of: c) { $0.alwaysOnTop = v }
+        guard a.count == 2, let v = Int(a[1]) else { return }
+        for c in skinMenuTargets(for: a[0]) { changeSettings(of: c) { $0.alwaysOnTop = v } }
     }
 
     @objc private func transparencyAction(_ sender: NSMenuItem) {
         let a = args(sender)
-        guard a.count == 2, let c = controller(for: a[0]), let v = Int(a[1]) else { return }
-        c.clearFadedAlpha()
-        changeSettings(of: c, animated: true) { $0.alphaValue = v }
+        guard a.count == 2, let v = Int(a[1]) else { return }
+        for c in skinMenuTargets(for: a[0]) {
+            c.clearFadedAlpha()
+            changeSettings(of: c, animated: true) { $0.alphaValue = v }
+        }
     }
 
     @objc private func hoverAction(_ sender: NSMenuItem) {
         let a = args(sender)
-        guard a.count == 2, let c = controller(for: a[0]), let v = Int(a[1]) else { return }
-        changeSettings(of: c) { $0.onHover = v }
+        guard a.count == 2, let v = Int(a[1]) else { return }
+        for c in skinMenuTargets(for: a[0]) { changeSettings(of: c) { $0.onHover = v } }
     }
 
     @objc private func toggleSettingAction(_ sender: NSMenuItem) {
         let a = args(sender)
-        guard a.count == 2, let c = controller(for: a[0]) else { return }
-        changeSettings(of: c) {
-            switch a[1] {
-            case "draggable": $0.draggable.toggle()
-            case "clickthrough": $0.clickThrough.toggle()
-            case "keeponscreen": $0.keepOnScreen.toggle()
-            case "snapedges": $0.snapEdges.toggle()
-            case "saveposition": $0.savePosition.toggle()
-            default: break
-            }
+        guard a.count == 2 else { return }
+        let key: WritableKeyPath<SkinState, Bool>
+        switch a[1] {
+        case "draggable": key = \.draggable
+        case "clickthrough": key = \.clickThrough
+        case "keeponscreen": key = \.keepOnScreen
+        case "snapedges": key = \.snapEdges
+        case "saveposition": key = \.savePosition
+        default: return
         }
+        let targets = skinMenuTargets(for: a[0])
+        let value = !targets.allSatisfy { $0.state[keyPath: key] }
+        for c in targets { changeSettings(of: c) { $0[keyPath: key] = value } }
     }
 
     @objc private func manageSkinAction(_ sender: NSMenuItem) {
@@ -1803,7 +1895,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func refreshSkinAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { refresh(c) }
+        guard let config = args(sender).first else { return }
+        let targets = skinMenuTargets(for: config)
+        for c in targets { refresh(c) }
     }
 
     @objc private func editSkinAction(_ sender: NSMenuItem) {
@@ -1815,7 +1909,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func unloadSkinAction(_ sender: NSMenuItem) {
-        if let config = args(sender).first { deactivate(config: config, fade: true) }
+        guard let config = args(sender).first else { return }
+        let targets = skinMenuTargets(for: config)
+        for c in targets { deactivate(c, fade: true) }
     }
 
     @objc func manageAction() { showManageWindow(selecting: nil, file: nil) }

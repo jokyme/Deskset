@@ -83,7 +83,11 @@ final class StudioHost: LiveSkinHost {
         var env: SkinEnvironment
         if let window = desktopWindow {
             env = EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: window.settings.zPosition,
-                                                      autoSelectScreen: window.settings.autoSelectScreen)
+                                                      autoSelectScreen: window.settings.autoSelectScreen,
+                                                      visible: !window.settings.hidden,
+                                                      zoomFactor: window.settings.zoomFactor)
+            env.defaultZoomFactor = Double(window.settings.defaultZoomPercent) / 100
+            env.forceDefaultZoom = window.settings.forceDefaultZoom
             #if DEBUG
             if let c = desktop, c.isStarted, !c.isStopped, c.heldMove == nil, SnapshotAudit.isActive(c.runtime) {
                 SnapshotAudit.compare("the Studio's environment", c.runtime, snapshot: env, live: c.environment,

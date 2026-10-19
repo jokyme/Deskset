@@ -58,6 +58,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Buttons whose press was reported to `Skin.pointerEvent` and whose release was not yet.
     private(set) var pointerPresses: Set<MouseButton> = []
     private var scrollAccumulator: CGFloat = 0
+    private var selectionPress = false
+    private var selectionLayer: CAShapeLayer?
     /// Tooltip areas (skin coordinates) currently registered with AppKit, one per meter with a tooltip.
     private(set) var toolTipRects: [CGRect] = []
     /// Cursor shown over the skin (nil: the arrow).
@@ -81,11 +83,14 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// ("focus is lost when the mouse is clicked outside the skin"), so that skin's OnUnfocusAction runs.
     override var needsPanelToBecomeKey: Bool {
         guard let c = controller else { return false }
-        if c.wantsFocus { return true }
+        if c.wantsFocus || c.isSelected || SkinSelectionController.isSelectionGesture(SkinSelectionController.modifierFlags()) { return true }
         if let key = NSApp.keyWindow as? SkinPanel, key !== window { return true }
         return false
     }
-    override var acceptsFirstResponder: Bool { controller?.wantsFocus ?? false }
+    override var acceptsFirstResponder: Bool {
+        guard let c = controller else { return false }
+        return c.wantsFocus || c.isSelected
+    }
 
     /// The manual's CTRL override (⌘ on the Mac, see `dragOverride`).
     static func isOverride(_ flags: NSEvent.ModifierFlags) -> Bool { flags.contains(.command) }
@@ -99,7 +104,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard let ctx = NSGraphicsContext.current?.cgContext, let runtime = controller?.runtime else { return }
         ctx.clear(bounds)
         // The glass itself is behind this view (`SkinGlassViews`).
-        runtime.exclusive { SkinRenderer.draw($0, in: ctx, glass: .window) }
+        runtime.exclusive { SkinRenderer.drawZoomed($0, in: ctx, glass: .window) }
     }
 
     /// A snapshot is being taken (`cacheDisplay`).
@@ -147,9 +152,67 @@ final class SkinView: NSView, NSViewToolTipOwner {
         trackingArea = area
     }
 
+    /// Input remains in the skin's logical coordinates, independently of user zoom and Retina resolution.
+    func logicalPoint(_ point: NSPoint) -> (Double, Double) {
+        let zoom = controller?.runtime.snapshot.zoomFactor ?? 1
+        return (Double(point.x) / zoom, Double(point.y) / zoom)
+    }
+
     private func point(_ event: NSEvent) -> (Double, Double) {
-        let p = convert(event.locationInWindow, from: nil)
-        return (Double(p.x), Double(p.y))
+        logicalPoint(convert(event.locationInWindow, from: nil))
+    }
+
+    /// Entering selection can happen midway through an ordinary press (or from a menu). Balance the plugin's
+    /// press and cancel Button/Slider tracking without running a LeftMouseUpAction.
+    func cancelInteractionForSelection() {
+        guard let c = controller else { return }
+        let point = c.skinPoint(fromScreen: SkinView.pointerLocation())
+        let buttons = pointerPresses
+        pointerPresses = []
+        for button in buttons { c.runtime.send(.pointer(.released(button), x: point.x, y: point.y)) }
+        c.runtime.send(.pressCancelled)
+        c.runtime.send(.exited)
+        if c.isDragPressActive { c.endDragPress(moved: dragged) }
+        heldButtons = 0
+        hoverPending = false
+        dragOrigin = nil
+        windowOrigin = nil
+        dragged = false
+        dragAllowed = false
+        dragOverride = false
+        selectionPress = false
+        rightPressHandled = false
+        cursorName = nil
+        NSCursor.arrow.set()
+    }
+
+    override func layout() {
+        super.layout()
+        updateSelectionOverlay()
+    }
+
+    func updateSelectionOverlay() {
+        guard let c = controller, c.isSelected, let layer else {
+            selectionLayer?.removeFromSuperlayer()
+            selectionLayer = nil
+            return
+        }
+        let overlay = selectionLayer ?? CAShapeLayer()
+        if selectionLayer == nil {
+            selectionLayer = overlay
+            layer.addSublayer(overlay)
+        }
+        let pixel = 1 / max(1, window?.backingScaleFactor ?? 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overlay.frame = bounds
+        overlay.path = CGPath(rect: bounds.insetBy(dx: pixel / 2, dy: pixel / 2), transform: nil)
+        overlay.fillColor = c.app.skinSelection.color(for: c).cgColor
+        overlay.strokeColor = NSColor.black.cgColor
+        overlay.lineWidth = pixel
+        overlay.lineDashPattern = [3, 3]
+        overlay.zPosition = 1
+        CATransaction.commit()
     }
 
     /// Double clicks (and quadruple…: every second click of a series) run the DoubleClick actions.
@@ -193,7 +256,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
         hoverPending = false
         let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
         if bounds.contains(p) {
-            hover(c, x: Double(p.x), y: Double(p.y))
+            let (x, y) = logicalPoint(p)
+            hover(c, x: x, y: y)
         } else {
             leave(c)
         }
@@ -203,7 +267,20 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func mouseDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped else { return }
-        // Control-click is the Mac right click: always the skin menu.
+        selectionPress = SkinSelectionController.isSelectionGesture(event.modifierFlags)
+        if selectionPress { return }
+        if c.isSelected {
+            if event.modifierFlags.contains(.control) {
+                c.showContextMenu(with: event, in: self)
+                return
+            }
+            c.window.makeFirstResponder(self)
+            c.app.skinSelection.beginDrag(c, point: convert(event.locationInWindow, from: nil),
+                                          screen: SkinView.pointerLocation())
+            return
+        }
+        c.app.skinSelection.clear()
+        // Control-click is the Mac right click, except for the selection chord above.
         if event.modifierFlags.contains(.control) {
             dragOrigin = nil
             c.showContextMenu(with: event, in: self)
@@ -280,6 +357,11 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if selectionPress { return }
+        if let c = controller, c.isSelected {
+            c.app.skinSelection.drag(to: SkinView.pointerLocation(), flags: event.modifierFlags)
+            return
+        }
         guard let c = controller, !c.isStopped, reportDrag(c, event), dragAllowed,
               let start = dragOrigin, let origin = windowOrigin, let window else { return }
         let now = SkinView.pointerLocation()
@@ -297,6 +379,15 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override func mouseUp(with event: NSEvent) {
         defer { released(0) }
         guard let c = controller, !c.isStopped else { return }
+        if selectionPress || SkinSelectionController.isSelectionGesture(event.modifierFlags) {
+            selectionPress = false
+            if SkinSelectionController.isSelectionGesture(event.modifierFlags) { c.app.skinSelection.toggle(c) }
+            return
+        }
+        if c.isSelected {
+            c.app.skinSelection.endDrag()
+            return
+        }
         guard reportRelease(c, .left, event) else {
             dragOrigin = nil
             dragged = false
@@ -328,7 +419,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     // MARK: Right / middle / extra buttons
 
     override func rightMouseDown(with event: NSEvent) {
-        guard let c = controller, !c.isStopped else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
         pressed(1)
         c.bringToFrontOnClick()
         rightPressHandled = false
@@ -339,7 +430,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func rightMouseDragged(with event: NSEvent) {
-        guard let c = controller, !c.isStopped else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
         _ = reportDrag(c, event)
     }
 
@@ -359,7 +450,12 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func rightMouseUp(with event: NSEvent) {
         defer { released(1) }
-        guard let c = controller, !c.isStopped, reportRelease(c, .right, event) else { return }
+        guard let c = controller, !c.isStopped else { return }
+        if c.isSelected {
+            c.showContextMenu(with: event, in: self)
+            return
+        }
+        guard reportRelease(c, .right, event) else { return }
         let (x, y) = point(event)
         let pressHandled = rightPressHandled
         rightPressHandled = false
@@ -382,7 +478,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func otherMouseDown(with event: NSEvent) {
-        guard let c = controller, !c.isStopped, let kinds = SkinView.otherKinds(event.buttonNumber) else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected,
+              let kinds = SkinView.otherKinds(event.buttonNumber) else { return }
         pressed(event.buttonNumber)
         c.bringToFrontOnClick()
         guard !SkinView.isOverride(event.modifierFlags) else { return }
@@ -392,13 +489,13 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func otherMouseDragged(with event: NSEvent) {
-        guard let c = controller, !c.isStopped else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
         _ = reportDrag(c, event)
     }
 
     override func otherMouseUp(with event: NSEvent) {
         defer { released(event.buttonNumber) }
-        guard let c = controller, !c.isStopped else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
         if let button = MouseButton(rawValue: event.buttonNumber), !reportRelease(c, button, event) { return }
         guard let kinds = SkinView.otherKinds(event.buttonNumber), !SkinView.isOverride(event.modifierFlags)
         else { return }
@@ -419,7 +516,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     private static let preciseScrollStep: CGFloat = 24
 
     override func scrollWheel(with event: NSEvent) {
-        guard let c = controller, !c.isStopped else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
         let (x, y) = point(event)
         // Physical direction (wheel rolled away / fingers moved up = "up"), whatever the natural-scrolling setting.
         let sign: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
@@ -450,7 +547,9 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Routes typing to an active `TextEdit` meter (`Skin.keyEvent`); otherwise swallows keys quietly so unhandled
     /// keys do not beep.
     override func keyDown(with event: NSEvent) {
-        guard let c = controller, !c.isStopped, let input = SkinView.keyInput(for: event) else { return }
+        guard let c = controller, !c.isStopped else { return }
+        if c.isSelected { _ = c.app.skinSelection.keyDown(event); return }
+        guard let input = SkinView.keyInput(for: event) else { return }
         SkinView.deliverKey(c, input)
     }
 
@@ -499,8 +598,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     private func dragPoint(_ sender: NSDraggingInfo) -> (Double, Double) {
-        let p = convert(sender.draggingLocation, from: nil)
-        return (Double(p.x), Double(p.y))
+        logicalPoint(convert(sender.draggingLocation, from: nil))
     }
 
     static func deliverFileDrag(_ c: SkinWindowController, _ phase: Skin.FileDragPhase, files: [String], x: Double, y: Double) {
@@ -509,7 +607,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let c = controller, !c.isStopped else { return [] }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return [] }
         let files = SkinView.draggedFiles(sender)
         guard !files.isEmpty else { return [] }
         let (x, y) = dragPoint(sender)
@@ -518,7 +616,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let c = controller, !c.isStopped else { return [] }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return [] }
         let files = SkinView.draggedFiles(sender)
         guard !files.isEmpty else { return [] }
         let (x, y) = dragPoint(sender)
@@ -533,7 +631,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let c = controller, !c.isStopped else { return false }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return false }
         let files = SkinView.draggedFiles(sender)
         guard !files.isEmpty else { return false }
         let (x, y) = dragPoint(sender)
@@ -544,6 +642,10 @@ final class SkinView: NSView, NSViewToolTipOwner {
     // MARK: Hover, cursor
 
     override func mouseMoved(with event: NSEvent) {
+        if let c = controller, c.isSelected {
+            c.app.skinSelection.cursor(for: c, point: convert(event.locationInWindow, from: nil)).set()
+            return
+        }
         // Moves (not drags) arrive only while no button is down: a release this view never saw (the window was
         // replaced or hidden during the press) must not keep hover updates on hold. The engine reports such a
         // release to Plugin=Mouse measures now (see `Skin.pointerEvent`).
@@ -569,7 +671,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard let c = controller, !c.isStopped, report(c, .exited, event) else { return }
+        guard let c = controller, !c.isStopped, !c.isSelected, report(c, .exited, event) else { return }
         guard heldButtons == 0 else {
             hoverPending = true
             return
@@ -578,11 +680,15 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        if let c = controller, c.isSelected {
+            c.app.skinSelection.cursor(for: c, point: convert(event.locationInWindow, from: nil)).set()
+            return
+        }
         SkinView.cursor(named: cursorName).set()
     }
 
     private func hover(_ c: SkinWindowController, x: Double, y: Double) {
-        guard !c.state.clickThrough else { return }
+        guard !c.state.clickThrough, !c.isSelected else { return }
         c.runtime.send(.hover(x: x, y: y))
         guard !c.isStopped else { return }
         let name = SkinView.cursorName(c, x: x, y: y)
@@ -634,10 +740,13 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// when the areas change.
     func updateToolTips() {
         var rects: [CGRect] = []
-        if let c = controller, !c.isStopped, !c.state.clickThrough {
+        if let c = controller, !c.isStopped, !c.isSelected, !c.state.clickThrough {
             let runtime = c.runtime
             rects = SnapshotAudit.check("tooltip areas", runtime, snapshot: runtime.snapshot.toolTipAreas,
-                                        live: { $0.toolTipAreas().map(\.cgRect) })
+                                        live: { skin in
+                let transform = CGAffineTransform(scaleX: skin.effectiveZoomFactor, y: skin.effectiveZoomFactor)
+                return skin.toolTipAreas().map { $0.cgRect.applying(transform) }
+            })
         }
         guard rects != toolTipRects else { return }
         toolTipRects = rects
@@ -647,7 +756,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     /// Tooltip text at a skin point, from the snapshot: the title on its own line above the text.
     func toolTipText(x: Double, y: Double) -> String? {
-        guard let c = controller, !c.isStopped else { return nil }
+        guard let c = controller, !c.isStopped, !c.isSelected else { return nil }
         let runtime = c.runtime
         let info = SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
                                        snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y, images: runtime),
@@ -658,6 +767,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
               userData data: UnsafeMutableRawPointer?) -> String {
-        toolTipText(x: Double(point.x), y: Double(point.y)) ?? ""
+        let (x, y) = logicalPoint(point)
+        return toolTipText(x: x, y: y) ?? ""
     }
 }

@@ -71,7 +71,7 @@ shipped with Deskset.
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, `!SetZoomFactor` (5.0, partial), visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | No zoom menu, edge-drag zoom, `DefaultZoom` or multiple skin selection yet; window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup selection or Aero blur; `!SetAnchor` remains unsupported |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins, Aero blur or `!SetAnchor`; Windows desktop comparison of zoom/selection is pending |
 
 ---
 
@@ -1079,17 +1079,19 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   (Settings → Zoom), by dragging the edges of selected skins, or with `!SetZoomFactor Factor|Default [Config|*]`; the
   global default is `DefaultZoom` / `ForceDefaultZoom` in Rainmeter.ini's `[Rainmeter]` section (Manage → Settings).
 - **Mac:** the `Default…` options work the same, with state.json in place of Rainmeter.ini; positions accept the WindowX /
-  WindowY forms (`%`, `R` / `B`, formulas, `@N`). The anchor is applied once, to place the skin (see Positions below).
-  Zoom: `!SetZoomFactor Factor` works, the factor is kept in state.json and `[$SkinZoomFactor]` and friends follow it;
-  the factor is clamped to 0.1–5 (10–500%), and layouts use the native `Zoom` percentage. The `Default` argument,
-  the skin menu's zoom items, zooming by
-  dragging edges and `DefaultZoom` / `ForceDefaultZoom` are not implemented yet. Deskset also reads `DefaultZoomFactor`
-  in a skin's `[Rainmeter]` section as the first zoom (not an option of the manual) and `!SetZoomFactorGroup Factor Group`
-  (Deskset extension).
-- **Why:** the 5.0 zoom UI and global settings are not done yet.
-- **Skin impact:** skins that zoom through the bang work; `[!SetZoomFactor Default]` does nothing; users can zoom only
-  through bangs.
-- **Status:** partial
+  WindowY forms (`%`, `R` / `B`, formulas, `@N`), and anchors continue to apply during resizing. Zoom uses integer
+  percentages from 10–500%. Manage has a Zoom field/stepper; Settings → General has Default zoom and Force. The skin
+  menu's Settings → Zoom contains Default and 80–150% presets at 10-point intervals, inserting a current custom value
+  as a checked no-op. Missing `Zoom` inherits the global default; explicit 100% is an override. Default clears it;
+  Force disables per-skin controls but preserves overrides for when Force is turned off. The official 5.0
+  `!SetZoomFactor Factor|Default [Config|*]` and `!SetZoomFactorGroup Factor|Default Group` use the same behavior.
+  Rendering, window size and mouse/hover/tooltip coordinates follow effective zoom; changes redraw independently
+  of regular update intervals. Layouts retain the native `Zoom`, `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor`.
+- **Why:** macOS positions are points; skin zoom and display backing scale remain separate. Global controls use the
+  existing Mac Settings window. Windows desktop comparison remains pending.
+- **Skin impact:** users can change zoom through menus, Manage, selection edges or bangs. See [App](compat/app.md)
+  for inheritance, selection and group-menu details.
+- **Status:** emulated / partial (platform geometry and pending Windows desktop comparison)
 
 #### Dragging, `DragMargins` and the Ctrl override
 - **Windows:** Draggable (default 1); a LeftMouseDownAction disables dragging; DragMargins limits where a drag can
@@ -1106,10 +1108,15 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### `DragGroup` (moving several skins together)
 - **Windows:** skins of a DragGroup can be selected and dragged together.
-- **Mac:** not supported; each skin moves on its own.
-- **Why:** not implemented yet.
-- **Skin impact:** grouped skins must be moved one by one.
-- **Status:** not supported
+- **Mac:** Control-Option-click or the menu's Select skin selects a skin, including its DragGroup. Selected skins
+  move together and share menu settings; normal skin mouse actions, hover and tooltips are suspended. Edge dragging
+  adds the same percentage-point change to each selected skin, clamped to 10–500%; corner drags lock to one axis.
+  Left/top drags shift the group by the primary skin's size change, following 5.0 RC1, rather than fixing the opposite
+  edge. Stored interaction settings remain separate from temporary selection overrides.
+- **Why:** Mac selection uses Control-Option; ordinary Command-drag remains separate. Positions are points and edge
+  hit targets account for display backing scale.
+- **Skin impact:** grouped skins can be positioned and scaled together. Windows desktop comparison remains pending.
+- **Status:** emulated / partial (click-through selection gesture and platform geometry)
 
 #### SnapEdges and KeepOnScreen
 - **Windows:** skins snap to screen edges and other skins; KeepOnScreen keeps a skin within the screen.
@@ -1124,10 +1131,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### ClickThrough
 - **Windows:** mouse detection off, clicks pass through; "Hold CTRL to temporarily disable".
 - **Mac:** the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). The Ctrl / ⌘ override is
-  **not** available, because macOS delivers no event to such a window. Turn it off from the skin's submenu in the menu
-  bar menu or in the Manage window.
+  **not** available, nor is Control-Option-click selection, because macOS delivers no event to such a window. Use
+  Select skin in its menu, or turn click-through off in the menu or Manage window.
 - **Why:** macOS window model.
-- **Skin impact:** a click-through skin cannot be dragged, even with ⌘.
+- **Skin impact:** direct dragging with ⌘ remains unavailable; menu selection temporarily permits interaction.
 - **Status:** partial
 
 #### AlphaValue, OnHover and fades
@@ -1175,8 +1182,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### Rainmeter 5.0 features not implemented yet
-- **Windows:** Rainmeter 5.0 also adds: selecting several skins with Ctrl-Alt-click to move, zoom and set them together;
-  the new Debug dialog (Log, Skins with watches, Plugins, Display and Network tabs, refresh on file change); Shift in
+- **Windows:** Rainmeter 5.0 also adds: the new Debug dialog (Log, Skins with watches, Plugins, Display and Network tabs,
+  refresh on file change); Shift in
   the context menus turning Exit into Restart and Refresh skin into Focus skin; `!SendKey` with media and volume keys
   (`MediaNextTrack`, `MediaPrevTrack`, `MediaStop`, `MediaPlayPause`, `VolumeMute`, `VolumeDown`, `VolumeUp`); `!Skin:`
   bangs with the target first (`[!Skin:SetZoomFactor "Illustro\Clock" 1.5]`, `"Group=Name"`); `Rainmeter.exe
@@ -1276,12 +1283,15 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through, Keep on
   screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions (`ContextTitleN` /
   `ContextActionN`, up to 25; a submenu when more than 3).
-- **Mac:** the skin's name, its custom actions (same rules; `!SkinCustomMenu` shows only them), Variants, Position,
+- **Mac:** Select skin, the skin's name, its custom actions (same rules; `!SkinCustomMenu` shows only them), Variants,
+  Settings → Zoom, Position,
   Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, "Compatibility Notes
   (n)" when there are any, Manage Skin…, Edit Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen
   in Settings ▸ Editor, Refresh Skin, Open Skin Folder, Unload Skin.
   FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen only through `Default…`
-  options and bangs.
+  options and bangs. Zoom, Position, Transparency, On Hover and setting checkboxes target the selected group;
+  mixed values are unchecked. Refresh Skin and Unload Skin also apply to that group, clearing selection as its
+  instances stop.
 - **Why:** Mac menu conventions.
 - **Skin impact:** none.
 - **Status:** emulated
@@ -1374,8 +1384,9 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   saved. Late retired requests are discarded; `!LoadLayout`, `!RefreshApp` and `!Quit` wait in FIFO order until the
   current layout finishes. Loading `@Backup` neither replaces it nor applies its wallpaper.
 - **Why:** raw `[Rainmeter]` and `[TrayMeasure]` metadata is retained. Normal loads merge the specified preserved
-  global values; `@Backup` restores its raw values. These do not change local Mac preferences or implement unsupported
-  Windows global/tray behavior.
+  global values; `@Backup` restores its raw values. `DefaultZoom`, `ForceDefaultZoom` and `SelectedColor` drive zoom
+  and selection. Local Mac editor/update preferences remain separate; unsupported Windows global/tray options have
+  no runtime effect.
   The primary display's picture keeps its original encoding under `Wallpaper.bmp`; normal loads apply it to every
   display with current scaling options. Dynamic/per-display/Spaces wallpaper settings are not serialized.
   Windows variant enumeration is filesystem-dependent; Deskset uses deterministic alphabetical order without a
@@ -3081,7 +3092,7 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
 | Aero blur (`Blur`, `BlurRegion`, blur bangs), `!ResetStats` | not supported | Use FrostedGlass for blur |
 | `!SetAnchor` | not supported | Layout expressions and anchors are persisted and applied; the bang remains unsupported |
-| `DragGroup`; the Ctrl / ⌘ override on click-through skins | not supported | Turn click-through off from the menu or the Manage window |
+| The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |
 | Other Windows plugin DLLs | not supported | Values 0 / empty, a note in the skin's Compatibility Notes |
