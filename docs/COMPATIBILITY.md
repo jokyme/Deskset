@@ -149,7 +149,7 @@ by the 15 tested packages.
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
 | AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; missed playback notifications are checked once a second, listeners rebuilt after sleep; permission changes are watched from the first tap; `Type=MacPermission` tells a missing permission |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
-| DragDrop | identical | Drag and drop files or folders onto the skin or a `TargetMeter`; `FileCount`, `FileList`, `FilePath`, `FileFolder`, `FileName`, `FileExt`, `OnEnterAction`, `OnLeaveAction`, `OnDropAction` |
+| DragDrop | emulated | `Action=Path\|Move\|Copy\|Shortcut\|Delete`, `Path`, `Bounds`, parent options, multiple files and drag actions; shortcuts are symbolic links and Delete uses the macOS Trash |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |
 | FolderInfo | emulated | Background scans; Mac hidden / system files |
 | InputText | emulated | Native text field in a non-activating panel; works even on Stay Topmost skins |
@@ -717,10 +717,22 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   String, Registry and WebParser measures (numbers read in the Windows regional format, e.g. `1.234,56` as 1234.56).
 - **Mac:** both supported (`Plugin=Drag&Drop` / `Plugin=DragDrop` too); files are dropped from Finder. `Shortcut` makes a
   symbolic link instead of a `.lnk`, `Delete` moves the item to the Trash; `FancyRenderer` is ignored with a log line.
+  Delete asks for confirmation unless `Silent=1`; cancelling leaves the files untouched. Confirmation stays above
+  desktop skins without changing their saved window position. A multi-file drop asks once
+  for the files selected by `ProcessAllFiles`. Copy, Move and Shortcut create missing destination folders and honor
+  `ReplaceIfExists`; identical items and recursive folder destinations are left untouched. Replacements preserve the
+  previous item if preparing or installing the new item fails. Hosts without a window decline deletion confirmation.
   `NumberConversionFormat=Locale` uses the number format of macOS Language & Region.
 - **Why:** the Mac has no `.lnk` shortcuts and no Windows regional settings.
-- **Skin impact:** none, except that shortcuts are symbolic links.
+- **Skin impact:** shortcuts are symbolic links; Delete with `Silent=0` waits for the user's confirmation.
 - **Status:** emulated
+
+The [DragDrop manual](https://docs-v5.rainmeter.net/manual/measures/dragdrop/) specifies the delete-confirmation switch,
+but does not specify dialog grouping or the order of confirmation and `OnDropAction`. Deskset publishes the dropped
+path and runs `OnDropAction` when the drop is accepted; moving files to the Trash waits for confirmation. Windows
+desktop comparison of those details remains pending. A directory collision with `ReplaceIfExists=1` replaces the
+destination tree as a whole; Windows directory-merging behavior remains unconfirmed. `OnOverAction` currently follows native drag updates rather
+than a separate 20 ms timer.
 
 #### Other measure details (judgment calls)
 - **Windows:** the manual does not settle these.

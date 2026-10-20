@@ -341,6 +341,9 @@ public protocol SkinHost: AnyObject {
     /// Pixel size of the image file at `path`, or nil when it cannot be loaded.
     func imageSize(atPath path: String) -> (width: Double, height: Double)?
     func environment(for skin: Skin) -> SkinEnvironment
+    /// Confirms moving dropped files to the Trash. The answer returns on the skin's executor. Hosts without a
+    /// window decline by default; a live host may discard the answer when its skin closes.
+    func skin(_ skin: Skin, confirmFileTrash paths: [String], answered: @escaping (Bool) -> Void)
     /// Lua `SKIN:FadeWindow(from, to)` (alpha 0…255): animate the window from `from` to `to` over the skin's
     /// FadeDuration without changing its saved AlphaValue. Return false when the host cannot, and the engine applies
     /// `!SetTransparency to` instead (the default).
@@ -417,6 +420,9 @@ extension SkinActionPolicy {
 }
 
 extension SkinHost {
+    public func skin(_ skin: Skin, confirmFileTrash paths: [String], answered: @escaping (Bool) -> Void) {
+        answered(false)
+    }
     public func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
                                for skin: Skin) -> TextEditLayout {
         TextEditLayout.fallback(text: text, style: style, viewport: viewport, multiline: multiline)

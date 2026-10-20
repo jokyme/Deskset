@@ -409,6 +409,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.execute(action, from: nil)
         case .inputTextAnswered(let id, let text):
             inputTextAnswers.removeValue(forKey: id)?(text)
+        case .fileTrashAnswered(let id, let confirmed):
+            fileTrashAnswers.removeValue(forKey: id)?(confirmed && !isClosing && !isRetiredForLayout)
         case .windowSettled(let id):
             windowFollowers[id]?()
         case .preview(let sections, let variables):
@@ -524,7 +526,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         default: break
         }
         if Thread.isMainThread {
-            window?.apply(request, from: self)
+            applyToWindow(request)
             return
         }
         // A load the main thread has not scheduled yet: bangs for that config wait for it (`isLoadPending`).
@@ -532,13 +534,22 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if self.permitsAfterLayoutRetirement(request) { self.window?.apply(request, from: self) }
+            if self.permitsAfterLayoutRetirement(request) { self.applyToWindow(request) }
             if let load {
                 self.loadsInFlight.access {
                     let left = ($0[load] ?? 1) - 1
                     $0[load] = left > 0 ? left : nil
                 }
             }
+        }
+    }
+
+    /// Headless runtimes cannot ask for confirmation; they deny the operation through the same reply channel.
+    private func applyToWindow(_ request: SkinRequest) {
+        if let window {
+            window.apply(request, from: self)
+        } else if case .companion(.confirmFileTrash(let id, _)) = request {
+            send(.fileTrashAnswered(id: id, confirmed: false))
         }
     }
 
@@ -848,6 +859,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         frames.stop()
         // An InputText box still open answers nobody, and the window's moves are followed for nobody.
         inputTextAnswers = [:]
+        fileTrashAnswers = [:]
         windowFollowers = [:]
         // What the skin that replaces it goes on from (its Calc Counter), whatever thread that one runs on.
         publishSnapshot()
@@ -908,6 +920,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// The InputText boxes open for the skin's measures, by id: what each measure does with the answer.
     private var inputTextAnswers: [Int: (String?) -> Void] = [:]
+    /// Pending file-trash confirmations. Answers are consumed only on this runtime's executor.
+    private var fileTrashAnswers: [Int: (Bool) -> Void] = [:]
     /// What each watch of the window's moves calls once they stopped, by id.
     private var windowFollowers: [Int: () -> Void] = [:]
     private var lastCompanionID = 0
@@ -921,6 +935,18 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     var windowDisplay: CGDirectDisplayID? { model.facts?.display }
 
     // MARK: SkinHost
+
+    func skin(_ skin: Skin, confirmFileTrash paths: [String], answered: @escaping (Bool) -> Void) {
+        HostCallAudit.note(self, "confirmFileTrash")
+        guard skin === self.skin, !isClosing, !isClosed, !isRetiredForLayout, !paths.isEmpty else {
+            answered(false)
+            return
+        }
+        lastCompanionID += 1
+        let id = lastCompanionID
+        fileTrashAnswers[id] = answered
+        request(.companion(.confirmFileTrash(id: id, paths: paths)))
+    }
 
     /// The skin redrew: a frame at the end of the turn (`frames`). A new size goes to the window model at once (the skin
     /// reads it right away) and to the main thread, which resizes the window with its top-left corner fixed; the frame

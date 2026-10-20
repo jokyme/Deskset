@@ -94,6 +94,7 @@ enum AppSelfTest {
         NetworkStatisticsUISelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
+        DragDropConfirmationSelfTests.run(t)
         SkinZoomSelfTests.run(t)
         SkinZoomUISelfTests.run(t)
         SkinZoomDrawingSelfTests.run(t)

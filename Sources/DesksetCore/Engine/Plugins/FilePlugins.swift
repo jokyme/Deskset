@@ -483,8 +483,10 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
         isHovering = false
         guard isActive, !files.isEmpty, contains(x: x, y: y) else { return false }
         let list = processAllFiles ? files : [files[0]]
+        let confirmDelete = dropAction == .delete && !silent && skin.sideEffects.isLive
+        if confirmDelete { requestTrashConfirmation(for: list) }
         for (idx, file) in list.enumerated() {
-            performFileOperation(on: file)
+            if !confirmDelete { performFileOperation(on: file) }
             lastDroppedPath = file
             rawString = file
             if let parentName, let parent = skin.measure(named: parentName) as? DragDropMeasure {
@@ -494,6 +496,19 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
             runDragAction(onDropAction, file: file, fileNr: idx + 1, x: x, y: y)
         }
         return true
+    }
+
+    private func requestTrashConfirmation(for files: [String]) {
+        var answered = false
+        skin.host?.skin(skin, confirmFileTrash: files) { [weak self] accepted in
+            guard !answered else { return }
+            answered = true
+            guard accepted, let self, self.isActive else { return }
+            for file in files {
+                guard self.isActive else { return }
+                self.performTrash(on: file)
+            }
+        }
     }
 
     private func performFileOperation(on file: String) {
@@ -511,13 +526,21 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
                 ? .renameFile(from: srcURL.path, to: dstURL.path)
                 : .writeFile(path: dstURL.path)
             skin.sideEffects.perform(effect) {
-                LiveSideEffects.performDragDropWrite(from: srcURL, to: dstURL, folder: folderURL,
-                                                     mode: action, replaceIfExists: replace)
+                if let error = LiveSideEffects.performDragDropWrite(from: srcURL, to: dstURL, folder: folderURL,
+                                                                    mode: action, replaceIfExists: replace) {
+                    skin.log("DragDrop: \(error.localizedDescription)", level: .error)
+                }
             }
         case .delete:
-            let srcURL = URL(fileURLWithPath: file)
-            skin.sideEffects.perform(.removeFile(path: srcURL.path)) {
-                LiveSideEffects.performDragDropTrash(at: srcURL)
+            performTrash(on: file)
+        }
+    }
+
+    private func performTrash(on file: String) {
+        let srcURL = URL(fileURLWithPath: file)
+        skin.sideEffects.perform(.removeFile(path: srcURL.path)) {
+            if let error = LiveSideEffects.performDragDropTrash(at: srcURL) {
+                skin.log("DragDrop: \(error.localizedDescription)", level: .error)
             }
         }
     }
