@@ -518,6 +518,7 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a d
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
 random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
+random.UUID	Sources/DesksetCore/Engine/Scene/SVGDraw.swift	1	identity for independently constructed immutable SVG payloads; no random pixel input or canonical program digest
 
 random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
 

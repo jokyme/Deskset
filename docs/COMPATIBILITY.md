@@ -857,15 +857,19 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   placeholders, password masking, input filtering, read-only; `[$Input]` and `[$Input:MatchN]` in its actions;
   `!TextEdit:Focus`, `:Dismiss`, `:Submit`, `:Select`, `:SelectAll`, `:SetText`, `:Clear`, `:Reset`, `:ScrollByLine`,
   `:ResetScroll`) and `StringAlign=Justify` (with `JustifyTop`, `JustifyCenter`, `JustifyBottom`).
-- **Mac:** all supported. `Meter=SVG` parses the common SVG elements, gradients and style rules and renders with
-  CoreGraphics, with the general image options. `Meter=TextEdit` draws and edits in the skin itself, with the macOS ⌘
+- **Mac:** `Meter=SVG` renders basic geometry, linear and radial gradients, local `defs` / `use` references,
+  `clipPath` and base64 PNG/JPEG images with CoreGraphics. Gradient transforms, units and spread methods,
+  nested clipping, group opacity and image aspect ratios are supported. `AttributeN` changes also update
+  referenced resources. See [SVG resources](compat/engine.md#svg-resources) for limits and verification status.
+  `Meter=TextEdit` draws and edits in the skin itself, with the macOS ⌘
   shortcuts (⌘A, ⌘C, ⌘X, ⌘V, ⌘Z). Caret navigation, Shift selection, pointer selection and overflow scrolling
   use the same shaped layout as drawing. ReadOnly fields retain selection, copy and scrolling; Password blocks
   copy and cut. Caret, selection and focus decorations work independently of the update interval.
   See [TextEdit editing](compat/engine.md#textedit-editing) for the remaining interaction limits.
   Justified text aligns every wrapped line but the last.
 - **Why:** CoreGraphics / CoreText drawing; ⌘ instead of Ctrl on the Mac.
-- **Skin impact:** none for typical skins; exotic SVG filters and `<text>` / `<foreignObject>` elements are not drawn.
+- **Skin impact:** SVG filters, `<text>` and `<foreignObject>` are outside the documented Windows SVG subset
+  and are not drawn. External image references are not loaded. Other embedded image codecs remain unverified.
 - **Status:** emulated
 
 #### Mouse hit areas

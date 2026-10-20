@@ -47,6 +47,8 @@ public enum DrawExecutor {
                 ImageRenderer.draw(image, in: ctx)
             case let .shape(shape):
                 ShapeRenderer.draw(shape, in: ctx, context: context)
+            case let .svg(svg):
+                SVGRenderer.draw(svg, in: ctx, context: context)
             case let .bar(bar):
                 BarRenderer.draw(bar, in: ctx)
             case let .graph(graph):

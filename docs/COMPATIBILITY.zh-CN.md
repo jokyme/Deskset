@@ -768,12 +768,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   根元素 `svg` 或 `*` 修改元素属性）和 `Meter=TextEdit`（可编辑的文本框：单行 / 多行、选择、复制粘贴、撤销、滚动、占位文字、
   密码掩码、输入过滤、只读；动作中可用 `[$Input]` 和 `[$Input:MatchN]`；`!TextEdit:Focus`、`:Dismiss`、`:Submit`、`:Select`、
   `:SelectAll`、`:SetText`、`:Clear`、`:Reset`、`:ScrollByLine`、`:ResetScroll`）。
-- **Mac：** 两者均支持。`Meter=SVG` 解析常用的 SVG 元素、渐变和样式规则并用 CoreGraphics 光栅化，支持通用图像选项；
+- **Mac：** `Meter=SVG` 用 CoreGraphics 绘制基本图形、线性与径向渐变、本地 `defs` / `use` 引用、`clipPath`
+  和 base64 PNG/JPEG 图片。支持渐变变换、坐标单位和延展方式、嵌套裁剪、组透明度和图片宽高比；
+  `AttributeN` 修改也会更新引用资源。限制与验证状态见 [SVG 资源](compat/engine.md#svg-resources)。
   `Meter=TextEdit` 直接在皮肤中绘制和编辑，使用 macOS 的 ⌘ 快捷键（⌘A、⌘C、⌘X、⌘V、⌘Z）。光标导航、Shift 扩选、
   鼠标选区和溢出滚动使用与绘制相同的文字排版。只读输入框仍能选择、复制和滚动；密码模式禁止复制和剪切。
   光标、选区和焦点装饰独立于皮肤更新间隔生效。其余交互限制见 [TextEdit 编辑](compat/engine.md#textedit-editing)。
 - **原因：** SVG 与文字用 CoreGraphics / CoreText 绘制；Mac 用 ⌘ 代替 Ctrl。
-- **对皮肤的影响：** 一般皮肤无影响；少见的 SVG 滤镜、`<text>` / `<foreignObject>` 元素不会绘制。
+- **对皮肤的影响：** SVG 滤镜、`<text>` 和 `<foreignObject>` 不在 Windows 文档规定的 SVG 子集中，不会绘制。
+  不加载外部图片引用；其他内嵌图片格式尚未确认。
 - **状态：** 模拟实现
 
 #### 鼠标点击区域
