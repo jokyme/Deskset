@@ -1099,8 +1099,10 @@ enum AppSelfTest {
             t.equal(custom?.items.map(\.title), ["Hide, then show again"])
             let menu = app.skinMenu(for: focus, includeCustomItems: true)
             let titles = menu.items.map(\.title)
-            t.equal(titles.first, "Select skin")
-            t.check(titles.contains("Focus & Fade"), "the skin's metadata title remains in its menu")
+            t.equal(titles.first, focus.config)
+            t.check(menu.items.first?.action != nil, "ConfigName opens the clicked skin's folder")
+            t.equal(titles.dropFirst().first, "Select skin")
+            t.equal(app.menuFacts(for: focus).name, "Focus & Fade", "metadata remains available independently of navigation")
             for expected in ["Variants", "Settings", "Manage Skin…", "Edit Skin…",
                              "Refresh Skin", "Open Skin Folder", "Unload Skin"] {
                 t.check(titles.contains(expected), "skin menu has \(expected)")
