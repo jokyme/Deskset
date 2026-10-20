@@ -52,8 +52,6 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天�
 2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」，再从「应用程序」打开。也可以打开磁盘映像中的 Deskset，点击
    **Install to Applications**。首次安装时若 `/Applications` 不可写，会使用 `~/Applications`。
    如果没有出现安装提示，请按上述拖拽方式安装。
-3. Deskset 暂未经过 Apple 公证，第一次打开时 macOS 会提示无法验证。打开「系统设置 → 隐私与安全性」，向下滚动，点「仍要打开」。
-   （也可以在终端执行 `xattr -dr com.apple.quarantine /Applications/Deskset.app`。）
 
 Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了（macOS 允许隐藏菜单栏项目），从「应用程序」里再次打开 Deskset，
 会弹出「Manage Skins」窗口。
@@ -101,7 +99,6 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 - 只有 Windows 版的插件（DLL）和皮肤要启动的 Windows 程序无法在 Mac 上运行。皮肤照样能载入，Compatibility Notes 会列出缺了什么。
 - 硬件传感器（温度、风扇、功耗、频率）无需特殊权限即可读取，但苹果没有公开文档：可显示的读数因 Mac 型号而异，且为近似值。
 - Windows 字体会换成相近的 Mac 字体，文字宽度可能略有差别。
-- Deskset 暂未经过 Apple 公证（见「安装」）。
 
 ## 常见问题
 

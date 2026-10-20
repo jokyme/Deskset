@@ -61,9 +61,6 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 2. Open the disk image and drag **Deskset** to **Applications**, then open it from Applications. You can also open
    Deskset in the disk image and choose **Install to Applications**. A first installation uses `~/Applications` if
    `/Applications` is not writable. If no installation prompt appears, use the drag-and-drop steps.
-3. Deskset is not notarized by Apple yet, so the first time you open it macOS says it cannot check it for malicious
-   software. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run
-   `xattr -dr com.apple.quarantine /Applications/Deskset.app` in Terminal.)
 
 Deskset lives in the menu bar and has no Dock icon. If the menu bar icon is hidden (macOS lets you hide menu bar
 items), open Deskset again from Applications to show the **Manage Skins** window.
@@ -123,7 +120,6 @@ when the data was updated.
 - Hardware sensor readings (temperatures, fans, power, clocks) require no special permissions, but Apple does not
   document them: available readings vary by Mac model and are close approximations.
 - Windows fonts are replaced by similar Mac fonts, so text can be a little wider or narrower.
-- Deskset is not notarized by Apple yet (see Install).
 
 ## Troubleshooting
 
