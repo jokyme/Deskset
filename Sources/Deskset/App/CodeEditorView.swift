@@ -497,14 +497,15 @@ final class CodeEditorView: NSView {
         }
     }
 
-    /// Re-reads every open file. Clean buffers take the disk text — the shown one by replacing only what changed,
-    /// keeping caret and scroll when `keepCaret` (otherwise the caret goes to the top); a buffer whose text changed
-    /// loses its undo history. Dirty buffers keep their edits and the bytes they are based on: when the file changed
-    /// meanwhile, their next commit asks what to keep (see `onDiskConflict`). Only their clean state is refreshed.
-    func reloadFromDisk(keepCaret: Bool = true) {
+    /// Re-reads every open file (or only `file`). Clean buffers take the disk text — the shown one by replacing only
+    /// what changed, keeping caret and scroll when `keepCaret` (otherwise the caret goes to the top); a buffer whose
+    /// text changed loses its undo history. Dirty buffers keep their edits and the bytes they are based on: when the
+    /// file changed meanwhile, their next commit asks what to keep (see `onDiskConflict`). Only their clean state is
+    /// refreshed.
+    func reloadFromDisk(keepCaret: Bool = true, only file: SourceFileID? = nil) {
         filesReadAgain += 1
         apiChange {
-            for buffer in buffers {
+            for buffer in buffers where file == nil || buffer.id == file {
                 guard let file = try? load(buffer.url) else { continue }
                 let disk = file.document
                 if buffer.isDirty {

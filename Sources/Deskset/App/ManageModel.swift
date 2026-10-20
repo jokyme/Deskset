@@ -78,17 +78,35 @@ enum ManageModel {
     /// Files larger than this are not parsed just to show metadata.
     static let maxMetadataFileSize = 8 * 1024 * 1024
 
+    /// Whether the skin file at `url` defines a `[Metadata]` section (any case, even when empty). Returns `nil` when
+    /// the file does not exist, is not a regular file, exceeds `maxMetadataFileSize`, or cannot be read.
+    static func hasMetadataSection(_ url: URL) -> Bool? {
+        guard let text = readMetadataText(url) else { return nil }
+        return IniWriter.definesSection(text, section: "Metadata")
+    }
+
     /// `[Metadata]` of a skin file that is not loaded (the section is read from the file itself; @Include files are
     /// not followed, metadata lives in the skin's own file).
     static func readMetadata(_ url: URL) -> [String: String] {
-        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
-              size <= maxMetadataFileSize,
-              let text = try? TextDecoding.readFile(at: url) else { return [:] }
+        guard let text = readMetadataText(url) else { return [:] }
         var result: [String: String] = [:]
         for e in IniDocument.parse(text).section(named: "Metadata")?.entries ?? [] where result[e.key] == nil {
             result[e.key] = e.value
         }
         return result
+    }
+
+    private static func readMetadataText(_ url: URL) -> String? {
+        let target = url.standardizedFileURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: target.path),
+              (attrs[.type] as? FileAttributeType) == .typeRegular,
+              let size = attrs[.size] as? Int,
+              size <= maxMetadataFileSize,
+              let text = try? TextDecoding.readFile(at: target) else { return nil }
+        return text
     }
 
     /// Compatibility notes for a skin that is not loaded: the skin is parsed (not run) with a headless host.

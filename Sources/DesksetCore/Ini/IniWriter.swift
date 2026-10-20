@@ -29,6 +29,44 @@ public enum IniWriterError: Error, Equatable, CustomStringConvertible {
 /// Everything else in the file is preserved byte for byte: encoding (and BOM), line endings, comments, blank lines,
 /// ordering and the spelling/spacing of the updated line's key.
 public enum IniWriter {
+    /// Standard `[Metadata]` keys inserted by Manage's "Add metadata" action, in order.
+    package static let metadataKeys = ["Name", "Author", "Information", "Version", "License"]
+
+    /// Inserts a `[Metadata]` section with the five standard empty keys (`Name`, `Author`, `Information`, `Version`,
+    /// `License`) when the file has no `[Metadata]` header at all. Returns `true` when the section was added, or
+    /// `false` without writing when `[Metadata]` is already present (even if empty, mixed-case, or repeated).
+    ///
+    /// Runs under the file's lock, preserves existing encoding, BOM, line endings and comments, and requires a
+    /// byte-exact round trip of the original bytes before writing so malformed UTF-16/UTF-32 payloads are never
+    /// rewritten silently.
+    @discardableResult
+    package static func addMetadataIfMissing(fileURL: URL) throws -> Bool {
+        let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
+        return try withFileLock(target) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue,
+                  (try? target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                throw IniWriterError.fileNotFound(fileURL.path)
+            }
+            let rawBytes = try Data(contentsOf: target)
+            let (text, encoding) = TextDecoding.decodeDetectingEncoding(rawBytes)
+            if definesSection(text, section: "Metadata") { return false }
+            guard TextDecoding.encode(text, as: encoding) == rawBytes else {
+                throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [NSFilePathErrorKey: fileURL.path])
+            }
+            var updated = text
+            for key in metadataKeys {
+                updated = try updating(updated, value: "", key: key, section: "Metadata")
+            }
+            guard let data = TextDecoding.encode(updated, as: encoding) else {
+                throw CocoaError(.fileWriteInapplicableStringEncoding, userInfo: [NSFilePathErrorKey: fileURL.path])
+            }
+            try writeAtomically(data, to: target)
+            return true
+        }
+    }
+
     /// Updates the first `key` (case-insensitive) in the first `[section]` of the file — the occurrence a reader
     /// uses, since a repeated section in the same file is ignored — or appends the key at the end of that section,
     /// or appends the section at the end of the file. Nothing is written when the text would not change.
@@ -41,7 +79,8 @@ public enum IniWriter {
         try withFileLock(target) {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory),
-                  !isDirectory.boolValue else {
+                  !isDirectory.boolValue,
+                  (try? target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
                 throw IniWriterError.fileNotFound(fileURL.path)
             }
             let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
@@ -50,8 +89,12 @@ public enum IniWriter {
             // skipped.
             if updated.utf8.elementsEqual(text.utf8) { return }
             let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-            try data.write(to: target, options: .atomic)
+            try writeAtomically(data, to: target)
         }
+    }
+
+    private static func writeAtomically(_ data: Data, to target: URL) throws {
+        try data.write(to: target, options: .atomic)
     }
 
     /// Runs `body` (a read, change and write of the file at `target`, already standardized with its links
