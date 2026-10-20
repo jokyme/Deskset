@@ -32,7 +32,7 @@ enum SkinSnapshotSelfTests {
             runtime.send(.execute("[!HideMeter MeterTip][!Redraw]", section: nil))
             t.equal(window.snapshotPosts, [.toolTips], "a tooltip area went")
             window.snapshotPosts = []
-            runtime.send(.execute("[!ResetStats]", section: nil))
+            runtime.send(.execute("[!ShowBlur]", section: nil))
             t.equal(window.snapshotPosts, [.issues], "a compatibility note")
             window.snapshotPosts = []
             runtime.send(.execute("[!DisableMouseAction MeterBox LeftMouseUpAction][!SetVariable A 1]", section: nil))
@@ -91,8 +91,8 @@ enum SkinSnapshotSelfTests {
             let token = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged, object: app,
                                                                queue: nil) { _ in notified += 1 }
             defer { NotificationCenter.default.removeObserver(token) }
-            c.runtime.send(.execute("[!ResetStats][!ResetStats]", section: nil))
-            t.check(c.runtime.snapshot.issues.contains { $0.localizedCaseInsensitiveContains("ResetStats") },
+            c.runtime.send(.execute("[!ShowBlur][!ShowBlur]", section: nil))
+            t.check(c.runtime.snapshot.issues.contains { $0.localizedCaseInsensitiveContains("ShowBlur") },
                     "\(c.runtime.snapshot.issues)")
             t.equal(notified, 0, "not in the middle of the skin's work")
             t.check(AppSelfTest.spin(timeout: 10) { notified > 0 }, "on a later turn")

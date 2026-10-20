@@ -31,7 +31,7 @@ public struct BatteryStatus: Equatable, Sendable {
 }
 
 public struct NetworkCounters: Equatable, Sendable {
-    /// Cumulative bytes since boot.
+    /// Byte counters: raw interface totals or accumulated statistics, depending on the data-source method.
     public var received: UInt64
     public var sent: UInt64
 
@@ -80,6 +80,12 @@ public protocol SystemDataSource: AnyObject {
     func networkInterfaces() -> [String]
     /// Counters for one interface, or all non-loopback interfaces when `interface` is nil.
     func networkCounters(interface: String?) -> NetworkCounters
+    /// Accumulated traffic statistics for one interface, or all interfaces when nil; independent of rate samples.
+    /// Default: the raw interface counters for sources that do not maintain persistent statistics.
+    func cumulativeNetworkCounters(interface: String?) -> NetworkCounters
+    /// Resets accumulated traffic statistics without changing the raw interface counters used for rates.
+    /// Default: no action for sources that do not maintain statistics.
+    func resetNetworkStatistics()
     /// Bytes for the volume containing `path`.
     func diskSpace(path: String) -> (total: Double, free: Double)?
     /// Finder's "available" space of the volume containing `path`, in bytes (FreeDiskSpace `MacAvailable=1`, Deskset
@@ -124,6 +130,10 @@ public protocol SystemDataSource: AnyObject {
 }
 
 extension SystemDataSource {
+    public func cumulativeNetworkCounters(interface: String?) -> NetworkCounters { networkCounters(interface: interface) }
+
+    public func resetNetworkStatistics() {}
+
     /// Default: unknown.
     public func graphicsAdapterName() -> String? { nil }
 

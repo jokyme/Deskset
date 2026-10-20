@@ -445,6 +445,27 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: restarting Deskset preserves the user's file-logging choice; existing files are retained by Stop.
 - Status: emulated. Exact Windows file-error behavior and backup-layout global-setting exceptions remain unverified.
 
+### Cumulative network statistics
+- Windows (Rainmeter): `Cumulative=1` on NetIn, NetOut and NetTotal reads saved traffic statistics. Settings provides
+  Reset statistics; `!ResetStats` clears the same statistics. After a cumulative measure has been active in the
+  current session, statistics are gathered and saved periodically, every two minutes, and saved on exit
+  (<https://docs.rainmeter.net/manual/measures/net/>, <https://docs.rainmeter.net/manual/bangs/#ResetStats>,
+  <https://docs.rainmeter.net/manual/user-interface/manage/#SettingsTab>, <https://docs.rainmeter.net/history/>).
+- Mac (Deskset): cumulative measures share per-interface totals, stored separately from layouts in
+  `network-statistics.json` in the app's settings folder. The primary desktop instance loads them before skins and
+  saves them on exit. Its two-minute collection/save task starts with the first cumulative read and continues for
+  that session after cumulative skins unload. Ordinary rate reads and Reset statistics alone do not start it.
+  Settings → General's Reset statistics and `!ResetStats` clear all totals through the same service; a following
+  measure-update bang sees the reset immediately. Raw interface counters and ordinary speed measurements remain
+  unchanged. Recording a skin does not reset live statistics.
+- Why: one shared sampler avoids counting the same traffic repeatedly when multiple measures read an interface.
+  A fresh baseline is used after startup, reset, a decreasing counter or an interface reappearing; traffic while
+  Deskset is closed is not added. Disconnected interfaces retain their accumulated totals.
+- Skin impact: cumulative counters persist between sessions and can be reset without reloading skins. The native
+  storage is not a Rainmeter statistics-file interchange format.
+- Status: emulated / partial. macOS tests cover collection, persistence, ordering and failure paths. Windows desktop
+  comparison remains pending, including initial baselines, offline traffic, interface disappearance and file errors.
+
 ### The default skins and the first launch
 - Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed
   (<https://docs.rainmeter.net/manual/getting-started/>).
@@ -572,7 +593,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): `!SetClip` sets the pasteboard; `!SetWallpaper` sets the desktop picture of every display (Tile shows
   the picture unscaled like Center: macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage
   window on the named config; `!Debug Log` opens the log; `!About` opens version information; `!EditSkin` opens the file in the text editor; `!Quit` quits
-  after the current action. `!ResetStats` and `!SetAnchor` add a compatibility note.
+  after the current action. `!ResetStats` clears cumulative network statistics on the owning executor; `!SetAnchor`
+  adds a compatibility note.
 - Why: —
 - Skin impact: none for the supported ones.
 - Status: emulated

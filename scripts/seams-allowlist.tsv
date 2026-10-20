@@ -204,6 +204,11 @@ mono.DispatchTime.now	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagno
 timer.Timer	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
 timer.runLoopAdd	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
 
+background.global	Sources/Deskset/NetworkStatistics.swift	1	shared statistics collection uses the injected repeating scheduler; the live timer runs on a utility queue
+background.queue	Sources/Deskset/NetworkStatistics.swift	1	serial statistics file writes and the final exit barrier; file operations are injected in tests
+effect.fileWrite	Sources/Deskset/NetworkStatistics.swift	2	atomic native statistics storage for the primary desktop instance; FileIO is injected in tests
+timer.dispatchSource	Sources/Deskset/NetworkStatistics.swift	1	lazy two-minute statistics collection for the active session; the repeating scheduler is injected in tests
+
 background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
 event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
 event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer

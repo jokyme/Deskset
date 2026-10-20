@@ -118,11 +118,11 @@ enum SkinRuntimeSelfTests {
 
             // What the engine asks of the host is answered on the skin's thread: supported or not.
             threadWindow.log = []
-            runtime.send(.execute("[!Move 30 40][!ResetStats][!SetClip Hello]", section: nil))
+            runtime.send(.execute("[!Move 30 40][!ShowBlur][!SetClip Hello]", section: nil))
             t.check(AppSelfTest.spin(timeout: 30) { threadWindow.log.count >= 2 }, "requests arrive")
             t.equal(threadWindow.log, ["window move on main", "system setclip on main"])
             let issues = runtime.exclusive(timeout: 30) { $0.issues } ?? []
-            t.check(issues.contains { $0.localizedCaseInsensitiveContains("ResetStats") },
+            t.check(issues.contains { $0.localizedCaseInsensitiveContains("ShowBlur") },
                     "an unsupported bang is a compatibility note: \(issues)")
             t.check(!issues.contains { $0.localizedCaseInsensitiveContains("Move") }, "a supported one is not")
             runtime.send(.close(fadeOut: false))

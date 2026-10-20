@@ -6,7 +6,7 @@ import DesksetCore
 import SystemConfiguration
 
 /// System readings for all skins. Everything is read on demand and cached briefly, so many measures in many skins
-/// share one system call and nothing runs while no skin asks (no background timers).
+/// share one system call. Cumulative network measures activate session-long statistics sampling and persistence.
 ///
 /// Any thread (docs/skin-threading.md §4.5): skins on different threads ask at the same time. Each cache group has a
 /// lock of its own (`Guarded`); the quick readings (CPU ticks, memory, the interface list, the mount list) are taken
@@ -36,7 +36,7 @@ final class SystemMonitor: SystemDataSource {
     static let minimumCPUSampleInterval: TimeInterval = 0.25
 
     private let cachedMemory = Guarded<(MemoryStatus, TimeInterval)?>(nil)
-    private let cachedNet = Guarded<(NetSnapshot, TimeInterval)?>(nil)
+    private let networkStatistics: NetworkStatistics
     private let cachedBattery = Guarded<(BatteryStatus?, TimeInterval)?>(nil)
     private let cachedProcesses = Guarded<(Set<String>, TimeInterval)?>(nil)
     private let cachedAdapters = Guarded<([String: AdapterInfo], TimeInterval)?>(nil)
@@ -53,10 +53,16 @@ final class SystemMonitor: SystemDataSource {
     /// the caches at the same time, which the caches' short lifetimes otherwise make rare.
     init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          sensors: SensorService = .shared,
-         readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:)) {
+         readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:),
+         networkSampler: NetworkStatistics.Sampler? = nil,
+         networkSchedule: @escaping NetworkStatistics.Schedule = NetworkStatistics.scheduleTimer,
+         networkFileIO: NetworkStatistics.FileIO = .live) {
         self.clock = clock
         self.sensors = sensors
         self.readAvailableSpace = readAvailableSpace
+        networkStatistics = NetworkStatistics(clock: clock,
+                                              sampler: networkSampler ?? SystemMonitor.readInterfaces(fallback:),
+                                              schedule: networkSchedule, fileIO: networkFileIO)
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
             state.lastSample = clock()
@@ -175,29 +181,31 @@ final class SystemMonitor: SystemDataSource {
 
     // MARK: Network
 
-    private struct NetSnapshot {
-        var counters: [String: NetworkCounters] = [:]
-        /// Up, physical (not loopback or virtual) interfaces that carried traffic, in interface-index order: the
-        /// numbering of `Interface=N` / `SysInfoData=N`.
-        var active: [String] = []
-        var flags: [String: Int32] = [:]
-        var baudRate: [String: UInt64] = [:]
-    }
+    private typealias NetSnapshot = NetworkStatistics.Sample
 
     /// The interface list, read with the network lock held (two sysctls): the counters of one reading are what every
     /// skin sees for half a second, and a reading builds on the previous one (see `fallback`).
     private func readNetwork() -> NetSnapshot {
-        cachedNet.access { cache in
-            if let c = cache, now() - c.1 < 0.5 { return c.0 }
-            // When the interface list cannot be read (it can grow between the size query and the read, e.g. while a
-            // VPN or AirDrop interface comes up), the last good snapshot is kept: an empty one would make every counter
-            // drop to 0 and the next reading jump by all the traffic since boot — a huge NetIn / NetOut spike that
-            // would also become the measure's automatic MaxValue.
-            let fallback = cache?.0 ?? NetSnapshot()
-            guard let snapshot = SystemMonitor.readInterfaces(fallback: fallback) else { return fallback }
-            cache = (snapshot, now())
-            return snapshot
+        networkStatistics.rawSnapshot()
+    }
+
+    /// Called only by the primary app after it owns the instance lock and has prepared its settings directory.
+    func configureNetworkStatistics(fileURL: URL) { networkStatistics.configure(fileURL: fileURL) }
+
+    @discardableResult
+    func saveNetworkStatisticsAndStop() -> Bool { networkStatistics.saveAndStop() }
+
+    func resetNetworkStatistics() { networkStatistics.reset() }
+
+    func cumulativeNetworkCounters(interface: String?) -> NetworkCounters {
+        // Name/Best resolution can call configd and read the raw cache, so it must remain outside the statistics lock.
+        guard let interface else { return networkStatistics.cumulativeCounters(interface: nil) }
+        guard let name = resolveAdapter(interface) else {
+            // Even an unavailable requested adapter activates the session's shared collection.
+            _ = networkStatistics.cumulativeCounters(interface: nil)
+            return NetworkCounters()
         }
+        return networkStatistics.cumulativeCounters(interface: name)
     }
 
     /// nil when the interface list cannot be read.
@@ -230,7 +238,9 @@ final class SystemMonitor: SystemDataSource {
                             // `netstat -ib`); the interface MIB has the full 64-bit values. Should that read fail,
                             // the previous 64-bit value is kept rather than mixing in a wrapped one (which would
                             // look like a drop followed by a jump of several GiB).
-                            let counters = SystemMonitor.interfaceCounters(index: Int32(msg.ifm_index))
+                            let fresh = SystemMonitor.interfaceCounters(index: Int32(msg.ifm_index))
+                            if fresh == nil { snapshot.unavailable.insert(name) }
+                            let counters = fresh
                                 ?? fallback.counters[name]
                                 ?? NetworkCounters(received: msg.ifm_data.ifi_ibytes, sent: msg.ifm_data.ifi_obytes)
                             snapshot.counters[name] = counters

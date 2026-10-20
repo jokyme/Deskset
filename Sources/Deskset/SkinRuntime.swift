@@ -87,7 +87,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// are drawn). Load it with `load()`, on the executor.
     init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
          content: ContentProvider? = nil, defersPeerBangs: Bool = false,
-         watchdog: SkinWorkWatchdog = .shared) {
+         watchdog: SkinWorkWatchdog = .shared, system: SystemDataSource = SystemMonitor.shared) {
         self.config = config
         self.file = file
         self.defersPeerBangs = defersPeerBangs
@@ -95,7 +95,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
         var owner: (() -> Skin?)?
         frames = SkinFrameProducer(provider: content, skin: { owner?() }, workActivity: workActivity)
-        let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
+        let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: system,
                         host: self)
         skin.executor = executor
         self.skin = skin
@@ -874,6 +874,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         }
         if bang.name == "sendkey" {
             sendKey(bang)
+            return true
+        }
+        if bang.name == "resetstats" {
+            skin.sideEffects.perform(.hostBang("!ResetStats")) {
+                skin.system.resetNetworkStatistics()
+            }
             return true
         }
         guard let kind = HostBangs.kind(of: bang.name) else { return false }

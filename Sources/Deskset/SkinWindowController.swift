@@ -174,7 +174,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         content = LayerContentProvider(in: view)
         window = SkinWindowController.makePanel()
         runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory, executor: executor,
-                              content: content, defersPeerBangs: app.threading == .pool, watchdog: app.workWatchdog)
+                              content: content, defersPeerBangs: app.threading == .pool, watchdog: app.workWatchdog,
+                              system: app.system)
         super.init()
         companions = SkinWindowCompanions(host: self, runtime: runtime)
         runtime.window = self

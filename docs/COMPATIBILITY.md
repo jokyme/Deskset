@@ -640,8 +640,10 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Windows:** bytes per second; `Interface` = Best (default), 0 = all, N or an adapter name.
 - **Mac:** Best = the active interface (wired before Wi-Fi); 0 = all active interfaces except VPN tunnels, AWDL,
   bridges and similar virtual ones (no double counting); a Windows adapter name (`Wi-Fi`, `Realtek PCIe GBE…`) or an
-  index that does not exist falls back to Best (logged once). `Cumulative=1` counts since boot; no statistics are
-  kept across restarts and `!ResetStats` is not supported.
+  index that does not exist falls back to Best (logged once). `Cumulative=1` reads shared per-interface totals kept
+  across sessions. Settings → General's Reset statistics and `!ResetStats` clear those totals without changing raw
+  speed counters. Collection/save starts with cumulative use, repeats every two minutes for that session, and saves
+  on exit. Details and remaining Windows comparison items: [Cumulative network statistics](compat/app.md#cumulative-network-statistics).
 - **Why:** macOS interface names (`en0`) differ from Windows adapter names.
 - **Skin impact:** skins that name a Windows adapter measure the active Mac interface.
 - **Status:** emulated
@@ -1476,10 +1478,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** `!SetClip` sets the pasteboard; `!SetWallpaper` sets the picture of every display (Tile is shown unscaled like
   Center — macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage window on the named config;
   `!About Log` opens the log; `!EditSkin` opens the file in the text editor; `!Quit` quits after the current action.
-  `!ResetStats` and `!SetAnchor` do nothing and add a compatibility note.
-- **Why:** network statistics are not kept across restarts; `!SetAnchor` has not been implemented.
+  `!ResetStats` clears cumulative network statistics synchronously; `!SetAnchor` adds a compatibility note.
+- **Why:** `!SetAnchor` has not been implemented.
 - **Skin impact:** none for the supported ones.
-- **Status:** emulated / not supported (`!ResetStats`, `!SetAnchor`)
+- **Status:** emulated / not supported (`!SetAnchor`)
 
 #### Running programs and opening files (`["…"]`)
 - **Windows:** `["program.exe" args]` runs a program; a URL or file opens with its default handler.
@@ -3169,7 +3171,7 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | --- | --- | --- |
 | Hardware sensors (temperatures, fans, power, clocks) | emulated | Read directly without privileges (§9.3); Apple documents none of them, the values are approximations; M1–M3 and Intel Macs untested; HWiNFO skins still read nothing |
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
-| Aero blur (`Blur`, `BlurRegion`, blur bangs), `!ResetStats` | not supported | Use FrostedGlass for blur |
+| Aero blur (`Blur`, `BlurRegion`, blur bangs) | not supported | Use FrostedGlass for blur |
 | `!SetAnchor` | not supported | Layout expressions and anchors are persisted and applied; the bang remains unsupported |
 | The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |

@@ -52,6 +52,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let defaultZoomStepper = SkinZoomStepper()
     let forceZoomBox = NSButton(checkboxWithTitle: "Force", target: nil, action: nil)
     let disableDraggingBox = NSButton(checkboxWithTitle: "Disable dragging", target: nil, action: nil)
+    let resetStatisticsButton = NSButton(title: "Reset statistics", target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -215,6 +216,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         disableDraggingBox.action = #selector(disableDraggingToggled)
         disableDraggingBox.toolTip = "Prevent dragging skins with the mouse."
         disableDraggingBox.setAccessibilityLabel("Disable dragging")
+        resetStatisticsButton.target = self
+        resetStatisticsButton.action = #selector(resetStatistics)
+        resetStatisticsButton.setAccessibilityLabel("Reset statistics")
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
         automaticUpdatesBox.target = self
@@ -299,6 +303,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             [label("Default zoom:"), zoom],
             [NSGridCell.emptyContentView, forceZoomBox],
             [NSGridCell.emptyContentView, disableDraggingBox],
+            [NSGridCell.emptyContentView, resetStatisticsButton],
             [label("Updates:"), automaticUpdatesBox],
             [NSGridCell.emptyContentView, note("Checks daily. Updates download here; you choose when to install and relaunch.")],
             [NSGridCell.emptyContentView, updateButtons],
@@ -498,6 +503,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
 
     @objc private func disableDraggingToggled() {
         app.state.setDisableDragging(disableDraggingBox.state == .on)
+    }
+
+    @objc private func resetStatistics() {
+        app.system.resetNetworkStatistics()
     }
 
     @objc private func loginToggled() {
