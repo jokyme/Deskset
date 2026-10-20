@@ -262,6 +262,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         guard !isStopped, isLoaded, !isStarted else { return }
         isStarted = true
         show(fadeIn: startFade, size: report.size)
+        focusTextEditIfNeeded()
         app.skinStarted(self)
         if let ticket = report.ticket { app.studioReload(ticket, .started, self) }
         let waiters = startWaiters
@@ -907,10 +908,24 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             glass.apply(snapshot.glass, in: contentView, below: view, zoomFactor: snapshot.zoomFactor)
         }
         if changes.contains(.selection) { view.updateSelectionOverlay() }
+        if changes.contains(.textEditFocus) { focusTextEditIfNeeded() }
         if changes.contains(.toolTips) { view.updateToolTips() }
         // Also once the skin closed: it no longer wants anything.
         if changes.contains(.outsidePointerNeeds) { app.outsidePointer.needsChanged() }
         if !changes.isDisjoint(with: [.issues, .metadata]) { app.skinDetailsChanged() }
+    }
+
+    /// A newly focused field (including !TextEdit:Focus) receives typing without activating the application.
+    /// Repeated draws and caret ticks do not take focus back from another window.
+    var willFocusTextEdit: (() -> Void)?
+
+    private func focusTextEditIfNeeded() {
+        guard isStarted, !isStopped, !isHiddenByBang, !retiredByLayout, !runtime.isRetiredForLayout,
+              runtime.snapshot.hasFocusedTextEdit else { return }
+        willFocusTextEdit?()
+        guard app.presentsWindows, window.isVisible else { return }
+        window.makeKey()
+        window.makeFirstResponder(view)
     }
 
     /// The skin's size changed: the window follows (its configured anchor stays). The frames go to the content layer

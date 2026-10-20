@@ -22,6 +22,9 @@ struct SkinSnapshot {
     var glass: [GlassRegion] = []
     /// The skin has OnFocusAction or OnUnfocusAction: its panel becomes key when clicked.
     var wantsFocus = false
+    var hasTextEdit = false
+    /// Native edit commands use an immutable focus answer, never a meter from another executor.
+    var hasFocusedTextEdit = false
     /// The custom context menu items (`ContextTitle`…), the menu's fallback while the skin is busy (it reads them
     /// afresh when it can): read again when the skin's variables or its context menu options changed
     /// (`Skin.variablesGeneration`), not after every update or layout — reading them can take longer than a small
@@ -74,8 +77,10 @@ struct SkinSnapshot {
             next.rebuild(from: skin, generation: generation)
             rebuilt = true
         }
+        next.hasFocusedTextEdit = skin.hasFocusedTextEdit
         let counted = skin.updateCount != old.updateCount || skin.counter != old.counter
             || skin.keyValueWrites != old.keyValueWrites
+            || next.hasFocusedTextEdit != old.hasFocusedTextEdit
         guard rebuilt || counted else { return nil }
         next.updateCount = skin.updateCount
         next.counter = skin.counter
@@ -95,6 +100,7 @@ struct SkinSnapshot {
         glass = skin.glassRegions
         wantsFocus = !skin.settings.onFocusAction.isEmpty || !skin.settings.onUnfocusAction.isEmpty
             || skin.meters.contains { $0 is TextEditMeter }
+        hasTextEdit = skin.meters.contains { $0 is TextEditMeter }
         issues = skin.issues
         metadata = skin.metadata
         usesWeather = MacWeatherMeasure.showsWeather(in: skin)
@@ -133,6 +139,7 @@ struct SkinSnapshot {
         if dragGroups != old.dragGroups || selectedColor != old.selectedColor { changes.insert(.selection) }
         if outsidePointerNeeds != old.outsidePointerNeeds { changes.insert(.outsidePointerNeeds) }
         if wantsFocus != old.wantsFocus { changes.insert(.focus) }
+        if hasFocusedTextEdit != old.hasFocusedTextEdit { changes.insert(.textEditFocus) }
         return changes
     }
 }
@@ -161,6 +168,7 @@ struct SkinSnapshotChanges: OptionSet {
     static let focus = SkinSnapshotChanges(rawValue: 1 << 7)
     /// Selection group membership or overlay colour.
     static let selection = SkinSnapshotChanges(rawValue: 1 << 8)
+    static let textEditFocus = SkinSnapshotChanges(rawValue: 1 << 9)
 }
 
 /// Debug builds: every answer the window takes from a snapshot is also asked of the live skin when the skin runs on the

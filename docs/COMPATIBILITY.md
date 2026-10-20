@@ -859,7 +859,11 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `:ResetScroll`) and `StringAlign=Justify` (with `JustifyTop`, `JustifyCenter`, `JustifyBottom`).
 - **Mac:** all supported. `Meter=SVG` parses the common SVG elements, gradients and style rules and renders with
   CoreGraphics, with the general image options. `Meter=TextEdit` draws and edits in the skin itself, with the macOS ⌘
-  shortcuts (⌘A, ⌘C, ⌘X, ⌘V). Justified text aligns every wrapped line but the last.
+  shortcuts (⌘A, ⌘C, ⌘X, ⌘V, ⌘Z). Caret navigation, Shift selection, pointer selection and overflow scrolling
+  use the same shaped layout as drawing. ReadOnly fields retain selection, copy and scrolling; Password blocks
+  copy and cut. Caret, selection and focus decorations work independently of the update interval.
+  See [TextEdit editing](compat/engine.md#textedit-editing) for the remaining interaction limits.
+  Justified text aligns every wrapped line but the last.
 - **Why:** CoreGraphics / CoreText drawing; ⌘ instead of Ctrl on the Mac.
 - **Skin impact:** none for typical skins; exotic SVG filters and `<text>` / `<foreignObject>` elements are not drawn.
 - **Status:** emulated

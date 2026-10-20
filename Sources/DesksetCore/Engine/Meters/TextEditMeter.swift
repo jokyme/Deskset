@@ -52,8 +52,30 @@ public final class TextEditMeter: Meter {
     public private(set) var onDismissAction = ""
 
     public private(set) var isFocused = false
-    public private(set) var selectionRange: Range<Int> = 0..<0
+    /// Caret and anchor are extended grapheme-cluster offsets in the unmasked input.
+    public private(set) var caretPosition = 0
+    public private(set) var selectionAnchor = 0
+    public var selectionRange: Range<Int> {
+        min(caretPosition, selectionAnchor)..<max(caretPosition, selectionAnchor)
+    }
     public private(set) var scrollLineOffset = 0
+    public private(set) var scrollOffset = SkinPoint()
+    public private(set) var isSelecting = false
+    public private(set) var caretVisible = true
+    public var canUndo: Bool { !readOnly && !undoHistory.isEmpty }
+
+    private struct EditingState {
+        var text: String
+        var caret: Int
+        var anchor: Int
+        var caretLine: Int?
+        var scroll: SkinPoint
+    }
+    private var undoHistory: [EditingState] = []
+    private var preferredNavigationX: Double?
+    private var caretLineAffinity: Int?
+    private var displayedBoundaries: [Int] = [0]
+    private var lastEditingLayout: TextEditLayout?
 
     public var isShowingPlaceholder: Bool {
         inputText.isEmpty && !placeholderText.isEmpty
@@ -147,8 +169,9 @@ public final class TextEditMeter: Meter {
         password = bool("Password", false)
         readOnly = bool("ReadOnly", false)
 
-        stringCase = Self.parseCase(string("StringCase", "None"))
-        inputCase = Self.parseCase(string("InputCase", "None"))
+        let configuredCase = option("StringCase")
+        stringCase = Self.parseCase(configuredCase ?? "None")
+        inputCase = configuredCase == nil ? Self.parseCase(string("InputCase", "None")) : stringCase
 
         switch string("InputFilter", "None").trimmingCharacters(in: .whitespaces).lowercased() {
         case "integer": inputFilter = .integer
@@ -166,11 +189,17 @@ public final class TextEditMeter: Meter {
         inlineRules = readInlineRules()
         baseStyle = s
 
+        let previousText = inputText
         if !initializedInitialText {
             initializedInitialText = true
             inputText = normalizedInput(readInitialText(), checkFilter: false)
         } else {
             inputText = normalizedInput(inputText, checkFilter: false)
+        }
+        if inputText != previousText {
+            clearHistory()
+            preferredNavigationX = nil
+            caretLineAffinity = nil
         }
         clampSelection()
         composeDisplayedText()
@@ -235,6 +264,7 @@ public final class TextEditMeter: Meter {
     }
 
     private func composeDisplayedText() {
+        rebuildDisplayedBoundaries()
         if isShowingPlaceholder {
             var pStyle = baseStyle
             if let c = placeholderFontColor { pStyle.color = c }
@@ -351,19 +381,20 @@ public final class TextEditMeter: Meter {
 
     private func clampSelection() {
         let count = inputText.count
-        let lower = min(max(0, selectionRange.lowerBound), count)
-        let upper = min(max(lower, selectionRange.upperBound), count)
-        selectionRange = lower..<upper
+        caretPosition = min(max(0, caretPosition), count)
+        selectionAnchor = min(max(0, selectionAnchor), count)
     }
 
     // MARK: - Bangs & Interaction
 
     public func focus() {
+        guard !isFocused else { return }
         for case let other as TextEditMeter in skin.meters where other !== self && other.isFocused {
             other.dismiss()
         }
         isFocused = true
         composeDisplayedText()
+        revealCaret()
         noteDrawChange()
         if !onFocusAction.isEmpty {
             skin.executeWithTextEditInput(from: self, action: onFocusAction)
@@ -373,7 +404,11 @@ public final class TextEditMeter: Meter {
     public func dismiss() {
         guard isFocused else { return }
         isFocused = false
-        selectionRange = 0..<0
+        caretPosition = 0
+        selectionAnchor = 0
+        isSelecting = false
+        preferredNavigationX = nil
+        caretLineAffinity = nil
         composeDisplayedText()
         noteDrawChange()
         if !onDismissAction.isEmpty {
@@ -383,7 +418,11 @@ public final class TextEditMeter: Meter {
 
     public func submit() {
         isFocused = false
-        selectionRange = 0..<0
+        caretPosition = 0
+        selectionAnchor = 0
+        isSelecting = false
+        preferredNavigationX = nil
+        caretLineAffinity = nil
         composeDisplayedText()
         noteDrawChange()
         if !onSubmitAction.isEmpty {
@@ -393,62 +432,99 @@ public final class TextEditMeter: Meter {
 
     public func clear() {
         inputText = ""
-        selectionRange = 0..<0
-        scrollLineOffset = 0
+        caretPosition = 0
+        selectionAnchor = 0
+        resetScrollState()
+        clearHistory()
         composeDisplayedText()
         noteDrawChange()
     }
 
     public func reset() {
         inputText = normalizedInput(readInitialText(), checkFilter: false)
-        selectionRange = 0..<0
-        scrollLineOffset = 0
+        caretPosition = 0
+        selectionAnchor = 0
+        resetScrollState()
+        clearHistory()
         composeDisplayedText()
         noteDrawChange()
     }
 
     public func setText(_ newText: String) {
-        inputText = normalizedInput(newText, checkFilter: true)
+        let candidate = normalizedInput(newText, checkFilter: true)
+        if candidate != inputText {
+            clearHistory()
+            preferredNavigationX = nil
+            caretLineAffinity = nil
+        }
+        inputText = candidate
         clampSelection()
         composeDisplayedText()
+        revealCaret()
         noteDrawChange()
     }
 
+    /// ScrollByLine is a multiline-only operation; a positive count moves toward the end.
     public func scrollByLine(_ delta: Int) {
-        scrollLineOffset = max(0, scrollLineOffset + delta)
+        guard multiline else { return }
+        let layout = editingLayout()
+        lastEditingLayout = layout
+        let index = layout.lineIndex(at: displayedOffset(for: caretPosition))
+        let lineHeight = layout.lines.indices.contains(index) ? layout.lines[index].bounds.height : 0
+        guard lineHeight > 0, lineHeight.isFinite else { return }
+        scrollOffset.y += Double(delta) * lineHeight
+        clampScroll(to: layout)
         noteDrawChange()
     }
 
     public func resetScroll() {
+        scrollOffset = SkinPoint()
         scrollLineOffset = 0
+        lastEditingLayout = editingLayout()
         noteDrawChange()
     }
 
     public func selectAll() {
-        selectionRange = 0..<inputText.count
+        selectionAnchor = 0
+        caretPosition = inputText.count
+        preferredNavigationX = nil
+        caretLineAffinity = nil
+        revealCaret()
         noteDrawChange()
     }
 
     public func select(start: Int, length: Int) {
         let count = inputText.count
-        let clampedStart = min(max(0, start), count)
-        let end: Int
+        selectionAnchor = min(max(0, start), count)
         if length < 0 {
-            end = count
+            caretPosition = count
         } else {
-            end = min(count, clampedStart + length)
+            // Avoid an overflow for an untrusted bang argument such as Int.max.
+            caretPosition = selectionAnchor + min(length, count - selectionAnchor)
         }
-        selectionRange = clampedStart..<max(clampedStart, end)
+        preferredNavigationX = nil
+        caretLineAffinity = nil
+        revealCaret()
         noteDrawChange()
+    }
+
+    public enum Navigation: Equatable, Sendable {
+        case left, right, wordLeft, wordRight
+        case lineStart, lineEnd, documentStart, documentEnd
+        case up, down, pageUp, pageDown
     }
 
     public enum KeyInput: Equatable, Sendable {
         case insert(String)
         case backspace
         case deleteForward
+        case deleteWordBackward
+        case deleteWordForward
         case enter
         case escape
         case selectAll
+        case move(Navigation, selecting: Bool)
+        case undo
     }
 
     @discardableResult
@@ -457,80 +533,397 @@ public final class TextEditMeter: Meter {
         switch key {
         case .escape:
             dismiss()
-            return true
         case .enter:
             if submitOnEnter {
                 submit()
             } else if multiline && !readOnly {
-                insertCharacters("\n")
+                replaceSelection(with: "\n")
             }
-            return true
         case .selectAll:
             selectAll()
-            return true
-        case .backspace:
+        case .move(let direction, let selecting):
+            moveCaret(direction, selecting: selecting)
+        case .undo:
+            undo()
+        case .backspace, .deleteForward, .deleteWordBackward, .deleteWordForward:
             guard !readOnly else { return true }
-            if !selectionRange.isEmpty {
-                replaceSelection(with: "")
-            } else if !inputText.isEmpty {
-                inputText.removeLast()
-                clampSelection()
-                composeDisplayedText()
-                noteDrawChange()
+            let before = editingState
+            if selectionRange.isEmpty {
+                let end: Int
+                switch key {
+                case .backspace: end = max(0, caretPosition - 1)
+                case .deleteForward: end = min(inputText.count, caretPosition + 1)
+                case .deleteWordBackward: end = wordBoundary(from: caretPosition, forward: false)
+                default: end = wordBoundary(from: caretPosition, forward: true)
+                }
+                selectionAnchor = end
             }
-            return true
-        case .deleteForward:
-            guard !readOnly else { return true }
-            if !selectionRange.isEmpty {
-                replaceSelection(with: "")
-            }
-            return true
+            replaceSelection(with: "", previousState: before)
         case .insert(let chars):
             guard !readOnly, !chars.isEmpty else { return true }
-            insertCharacters(chars)
-            return true
-        }
-    }
-
-    private func insertCharacters(_ chars: String) {
-        if !selectionRange.isEmpty {
             replaceSelection(with: chars)
-        } else {
-            let candidate = normalizedInput(inputText + chars, checkFilter: true)
-            if candidate != inputText {
-                inputText = candidate
-                clampSelection()
-                composeDisplayedText()
-                noteDrawChange()
-            }
         }
+        return true
     }
 
-    private func replaceSelection(with replacement: String) {
-        clampSelection()
+    /// Password fields never export their input; selection and navigation remain available.
+    public var clipboardText: String? {
+        guard !password, !selectionRange.isEmpty else { return nil }
         let chars = Array(inputText)
-        let prefix = String(chars[0..<selectionRange.lowerBound])
-        let suffix = String(chars[selectionRange.upperBound..<chars.count])
-        let candidate = normalizedInput(prefix + replacement + suffix, checkFilter: !replacement.isEmpty)
-        inputText = candidate
-        selectionRange = 0..<0
+        return String(chars[selectionRange])
+    }
+
+    /// Returns the text only when the corresponding edit is permitted and performed.
+    @discardableResult
+    public func cutSelection() -> String? {
+        guard isFocused, !readOnly, let copied = clipboardText else { return nil }
+        replaceSelection(with: "")
+        return copied
+    }
+
+    @discardableResult
+    public func paste(_ value: String) -> Bool {
+        guard isFocused else { return false }
+        guard !readOnly, !value.isEmpty else { return true }
+        replaceSelection(with: value)
+        return true
+    }
+
+    public func undo() {
+        guard isFocused, !readOnly, let previous = undoHistory.popLast() else { return }
+        restore(previous)
+    }
+
+    private var editingState: EditingState {
+        EditingState(text: inputText, caret: caretPosition, anchor: selectionAnchor,
+                     caretLine: caretLineAffinity, scroll: scrollOffset)
+    }
+
+    private func clearHistory() {
+        undoHistory.removeAll(keepingCapacity: true)
+    }
+
+    private func restore(_ state: EditingState) {
+        inputText = state.text
+        caretPosition = state.caret
+        selectionAnchor = state.anchor
+        scrollOffset = state.scroll
+        preferredNavigationX = nil
+        caretLineAffinity = state.caretLine
+        clampSelection()
         composeDisplayedText()
+        revealCaret()
         noteDrawChange()
     }
 
+    private func replaceSelection(with replacement: String, previousState: EditingState? = nil) {
+        guard !readOnly else { return }
+        clampSelection()
+        let chars = Array(inputText)
+        let range = selectionRange
+        let prefix = String(chars[..<range.lowerBound])
+        let suffix = String(chars[range.upperBound...])
+        var inserted = replacement
+        if !multiline {
+            inserted = inserted.replacingOccurrences(of: "\r\n", with: "")
+                .replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\r", with: "")
+        }
+        // Limit the insertion rather than dropping the existing suffix when pasting in the middle.
+        let retainedCount = chars.count - range.count
+        if maxLength > 0 {
+            inserted = String(inserted.prefix(max(0, maxLength - retainedCount)))
+        }
+        inserted = StringMeter.truncated(inserted, maximumUTF16: StringMeter.maximumTextLength)
+        func normalizedCandidate(_ addition: String) -> String {
+            let raw = prefix + addition + suffix
+            return inputCase.map { StringMeter.applyCase($0, to: raw, preserveLength: false) } ?? raw
+        }
+        func fits(_ candidate: String) -> Bool {
+            (maxLength == 0 || candidate.count <= maxLength)
+                && candidate.utf16.count <= StringMeter.maximumTextLength
+        }
+        var candidate = normalizedCandidate(inserted)
+        if !fits(candidate) {
+            // Case conversion can expand input. Find a bounded insertion while preserving both sides.
+            let additions = Array(inserted)
+            var low = 0, high = additions.count
+            while low < high {
+                let mid = low + (high - low + 1) / 2
+                if fits(normalizedCandidate(String(additions.prefix(mid)))) { low = mid }
+                else { high = mid - 1 }
+            }
+            inserted = String(additions.prefix(low))
+            candidate = normalizedCandidate(inserted)
+            guard fits(candidate) else { return }
+        }
+        guard replacement.isEmpty || matchesInputFilter(candidate) else { return }
+        let changedText = candidate != inputText
+        let before = previousState ?? editingState
+        inputText = candidate
+        var beforeCaret = prefix + inserted
+        if let inputCase {
+            beforeCaret = StringMeter.applyCase(inputCase, to: beforeCaret, preserveLength: false)
+        }
+        caretPosition = min(beforeCaret.count, inputText.count)
+        selectionAnchor = caretPosition
+        preferredNavigationX = nil
+        caretLineAffinity = nil
+        if changedText {
+            undoHistory.append(before)
+            // Bound retained snapshots even for skins which accept long, continuously edited input.
+            if undoHistory.count > 100 { undoHistory.removeFirst(undoHistory.count - 100) }
+        }
+        composeDisplayedText()
+        revealCaret()
+        noteDrawChange()
+    }
+
+    private func moveCaret(_ direction: Navigation, selecting: Bool) {
+        clampSelection()
+        let previous = caretPosition
+        let destination: Int
+        let vertical: Bool
+        var destinationLine: Int?
+        switch direction {
+        case .left:
+            destination = !selecting && !selectionRange.isEmpty ? selectionRange.lowerBound : max(0, previous - 1)
+            vertical = false
+        case .right:
+            destination = !selecting && !selectionRange.isEmpty ? selectionRange.upperBound : min(inputText.count, previous + 1)
+            vertical = false
+        case .wordLeft:
+            destination = wordBoundary(from: previous, forward: false)
+            vertical = false
+        case .wordRight:
+            destination = wordBoundary(from: previous, forward: true)
+            vertical = false
+        case .documentStart:
+            destination = 0
+            vertical = false
+        case .documentEnd:
+            destination = inputText.count
+            vertical = false
+        case .lineStart, .lineEnd:
+            let layout = editingLayout()
+            let line = layout.lineIndex(at: displayedOffset(for: previous), preferredLine: caretLineAffinity)
+            destinationLine = line
+            if layout.lines.indices.contains(line) {
+                let geometry = layout.lines[line]
+                let endpoint = direction == .lineStart ? geometry.range.lowerBound
+                    : (geometry.caretStops.last?.offset ?? geometry.range.upperBound)
+                destination = inputOffset(for: endpoint)
+            } else { destination = previous }
+            vertical = false
+        case .up, .down, .pageUp, .pageDown:
+            let layout = editingLayout()
+            let offset = displayedOffset(for: previous)
+            let line = layout.lineIndex(at: offset, preferredLine: caretLineAffinity)
+            let caret = layout.caretRect(at: offset, preferredLine: caretLineAffinity)
+            let x = preferredNavigationX ?? caret.x
+            preferredNavigationX = x
+            let height = max(1, caret.height)
+            let page = max(1, Int((max(0, contentFrame.height) / height).rounded(.down)))
+            let delta = direction == .up ? -1 : direction == .down ? 1 : direction == .pageUp ? -page : page
+            let targetLine = min(max(0, line + delta), max(0, layout.lines.count - 1))
+            destinationLine = targetLine
+            destination = inputOffset(for: layout.offset(onLine: targetLine, preferredX: x))
+            vertical = true
+        }
+        caretPosition = min(max(0, destination), inputText.count)
+        if !selecting { selectionAnchor = caretPosition }
+        if !vertical { preferredNavigationX = nil }
+        caretLineAffinity = destinationLine
+        revealCaret()
+        noteDrawChange()
+    }
+
+    private func wordBoundary(from position: Int, forward: Bool) -> Int {
+        let chars = Array(inputText)
+        func category(_ ch: Character) -> Int {
+            if ch.isWhitespace { return 0 }
+            if ch.isLetter || ch.isNumber || ch == "_" { return 1 }
+            return 2
+        }
+        var at = min(max(0, position), chars.count)
+        if forward {
+            if at < chars.count {
+                let kind = category(chars[at])
+                while at < chars.count && category(chars[at]) == kind { at += 1 }
+            }
+            while at < chars.count && category(chars[at]) == 0 { at += 1 }
+        } else {
+            while at > 0 && category(chars[at - 1]) == 0 { at -= 1 }
+            if at > 0 {
+                let kind = category(chars[at - 1])
+                while at > 0 && category(chars[at - 1]) == kind { at -= 1 }
+            }
+        }
+        return at
+    }
+
+    /// Pointer coordinates are skin coordinates. A captured drag may continue outside the meter.
+    public func beginSelection(at point: SkinPoint, extending: Bool = false) {
+        focus()
+        guard isFocused else { return }
+        let position = pointerPosition(at: point)
+        caretPosition = position.offset
+        if !extending { selectionAnchor = position.offset }
+        isSelecting = true
+        preferredNavigationX = nil
+        caretLineAffinity = position.line
+        revealCaret()
+        noteDrawChange()
+    }
+
+    public func extendSelection(to point: SkinPoint) {
+        guard isFocused, isSelecting else { return }
+        let position = pointerPosition(at: point)
+        caretPosition = position.offset
+        preferredNavigationX = nil
+        caretLineAffinity = position.line
+        revealCaret()
+        noteDrawChange()
+    }
+
+    public func endSelection() { isSelecting = false }
+
+    private func pointerPosition(at point: SkinPoint) -> (offset: Int, line: Int) {
+        let layout = editingLayout()
+        let local = SkinPoint(x: point.x - contentFrame.x + scrollOffset.x,
+                              y: point.y - contentFrame.y + scrollOffset.y)
+        let line = layout.lines.firstIndex { local.y < $0.bounds.maxY } ?? max(0, layout.lines.count - 1)
+        return (inputOffset(for: layout.hitTest(local)), line)
+    }
+
     public override func handleMouse(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
+        handleMouse(kind, x: x, y: y, extendingSelection: false)
+    }
+
+    public func handleMouse(_ kind: MouseEventKind, x: Double, y: Double, extendingSelection: Bool) -> Bool {
         switch kind {
         case .leftDown:
             guard hitTest(x: x, y: y) else { return false }
+            beginSelection(at: SkinPoint(x: x, y: y), extending: extendingSelection)
             return effectiveMouseAction(kind) == nil
         case .leftUp:
-            guard hitTest(x: x, y: y) else { return false }
-            focus()
-            // Allow any LeftMouseUpAction defined on the meter to run as well if present.
+            guard isSelecting || hitTest(x: x, y: y) else { return false }
+            if isSelecting { extendSelection(to: SkinPoint(x: x, y: y)) }
+            endSelection()
             return effectiveMouseAction(.leftUp) == nil
+        case .scrollUp, .scrollDown:
+            guard hitTest(x: x, y: y), effectiveMouseAction(kind) == nil else { return false }
+            scrollByLine(kind == .scrollUp ? -1 : 1)
+            return true
         default:
             return false
         }
+    }
+
+    // MARK: - Display Geometry
+
+    /// Selection/caret offsets passed to the renderer are UTF-16 offsets in displayed text.
+    public var displayedCaretOffset: Int { displayedOffset(for: caretPosition) }
+    public var displayedSelectionRange: Range<Int> {
+        displayedOffset(for: selectionRange.lowerBound)..<displayedOffset(for: selectionRange.upperBound)
+    }
+
+    private var editingText: String { inputText.isEmpty ? "" : text }
+    private var editingStyle: TextStyle { inputText.isEmpty ? baseStyle : style }
+
+    private func editingLayout() -> TextEditLayout {
+        let viewport = SkinRect(width: max(0, contentFrame.width), height: max(0, contentFrame.height))
+        return skin.host?.textEditLayout(editingText, style: editingStyle, viewport: viewport,
+                                        multiline: multiline, for: skin)
+            ?? TextEditLayout.fallback(text: editingText, style: editingStyle, viewport: viewport, multiline: multiline)
+    }
+
+    private func displayedOffset(for inputOffset: Int) -> Int {
+        let index = min(max(0, inputOffset), max(0, displayedBoundaries.count - 1))
+        return min(displayedBoundaries[index], editingText.utf16.count)
+    }
+
+    private func inputOffset(for displayOffset: Int) -> Int {
+        let target = max(0, displayOffset)
+        var low = 0, high = displayedBoundaries.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if displayedBoundaries[mid] < target { low = mid + 1 } else { high = mid }
+        }
+        guard low > 0, low < displayedBoundaries.count else {
+            return min(low, max(0, displayedBoundaries.count - 1))
+        }
+        let previous = displayedBoundaries[low - 1]
+        return target - previous < displayedBoundaries[low] - target ? low - 1 : low
+    }
+
+    private func rebuildDisplayedBoundaries() {
+        displayedBoundaries = [0]
+        displayedBoundaries.reserveCapacity(inputText.count + 1)
+        var offset = 0
+        var wordStart = true, sentenceStart = true, afterTerminator = false
+        for ch in inputText {
+            var shown = String(ch)
+            if password { shown = "\u{25CF}" }
+            else if let stringCase {
+                switch stringCase {
+                case .upper: shown = shown.uppercased()
+                case .lower: shown = shown.lowercased()
+                case .proper:
+                    if ch.isWhitespace { wordStart = true }
+                    else if ch.isLetter { shown = wordStart ? shown.uppercased() : shown.lowercased(); wordStart = false }
+                    else if ch.isNumber { wordStart = false }
+                case .sentence:
+                    if ch.isLetter {
+                        shown = sentenceStart ? shown.uppercased() : shown.lowercased()
+                        sentenceStart = false
+                        afterTerminator = false
+                    } else if ch == "." || ch == "!" || ch == "?" { afterTerminator = true }
+                    else if ch.isWhitespace { if afterTerminator { sentenceStart = true } }
+                    else { if ch.isNumber { sentenceStart = false }; afterTerminator = false }
+                }
+            }
+            offset += shown.utf16.count
+            displayedBoundaries.append(offset)
+        }
+    }
+
+    private func resetScrollState() {
+        scrollOffset = SkinPoint()
+        scrollLineOffset = 0
+        preferredNavigationX = nil
+        caretLineAffinity = nil
+    }
+
+    private func clampScroll(to layout: TextEditLayout) {
+        let width = max(0, contentFrame.width), height = max(0, contentFrame.height)
+        let maxX = max(0, layout.contentSize.width - width + 1)
+        let maxY = multiline ? max(0, layout.contentSize.height - height) : 0
+        scrollOffset.x = scrollOffset.x.isFinite ? scrollOffset.x.clamped(0, maxX) : 0
+        scrollOffset.y = scrollOffset.y.isFinite ? scrollOffset.y.clamped(0, maxY) : 0
+        scrollLineOffset = layout.lines.lastIndex(where: { $0.bounds.y <= scrollOffset.y }) ?? 0
+    }
+
+    @discardableResult
+    public func toggleCaretBlink() -> Bool {
+        guard isFocused else { return false }
+        caretVisible.toggle()
+        noteDrawChange()
+        return true
+    }
+
+    private func revealCaret(in capturedLayout: TextEditLayout? = nil) {
+        caretVisible = true
+        let layout = capturedLayout ?? editingLayout()
+        lastEditingLayout = layout
+        let caret = layout.caretRect(at: displayedCaretOffset, preferredLine: caretLineAffinity)
+        let width = max(0, contentFrame.width), height = max(0, contentFrame.height)
+        if caret.x < scrollOffset.x { scrollOffset.x = caret.x }
+        else if width > 0, caret.maxX > scrollOffset.x + width { scrollOffset.x = caret.maxX - width }
+        if multiline {
+            if caret.y < scrollOffset.y { scrollOffset.y = caret.y }
+            else if height > 0, caret.maxY > scrollOffset.y + height { scrollOffset.y = caret.maxY - height }
+        }
+        clampScroll(to: layout)
     }
 
     // MARK: - Layout & Lowering
@@ -582,7 +975,17 @@ public final class TextEditMeter: Meter {
     public func lower() -> TextDraw {
         skin.assertOwned()
         let anchor = anchorPoint
+        let layout = editingLayout()
+        if layout != lastEditingLayout, isFocused { revealCaret(in: layout) }
+        else { clampScroll(to: layout) }
+        lastEditingLayout = layout
         return TextDraw(text: text, style: style, frame: frame, contentFrame: contentFrame,
-                        anchor: SkinPoint(x: anchor.x, y: anchor.y))
+                        anchor: SkinPoint(x: anchor.x, y: anchor.y),
+                        editing: TextEditingDraw(isFocused: isFocused, caretVisible: caretVisible,
+                                                 caretOffset: displayedCaretOffset, caretLine: caretLineAffinity,
+                                                 selectionRange: displayedSelectionRange, scroll: scrollOffset,
+                                                 caretColor: caretColor, selectionColor: selectionColor,
+                                                 focusBorderWidth: focusBorderWidth, focusBorderColor: focusBorderColor,
+                                                 multiline: multiline, layoutText: editingText, layoutStyle: editingStyle))
     }
 }

@@ -839,6 +839,11 @@ final class RenderHost: SkinHost {
     func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
         SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
     }
+
+    func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                        for skin: Skin) -> TextEditLayout {
+        SkinRenderer.textEditLayout(text, style: style, viewport: viewport, multiline: multiline, for: skin)
+    }
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {
         var env = EnvironmentStore.shared.environment(windowFrame: nil)

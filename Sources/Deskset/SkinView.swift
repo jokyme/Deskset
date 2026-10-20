@@ -59,6 +59,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     private(set) var pointerPresses: Set<MouseButton> = []
     private var scrollAccumulator: CGFloat = 0
     private var selectionPress = false
+    private var textEditPress = false
     private var selectionLayer: CAShapeLayer?
     /// Tooltip areas (skin coordinates) currently registered with AppKit, one per meter with a tooltip.
     private(set) var toolTipRects: [CGRect] = []
@@ -90,6 +91,15 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override var acceptsFirstResponder: Bool {
         guard let c = controller else { return false }
         return c.wantsFocus || c.isSelected
+    }
+
+    /// A text-input skin has an accessible window surface even though its meters are drawn into a single layer.
+    override func isAccessibilityElement() -> Bool { controller?.runtime.snapshot.hasTextEdit == true }
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        controller?.runtime.snapshot.hasTextEdit == true ? .group : super.accessibilityRole()
+    }
+    override func accessibilityLabel() -> String? {
+        controller?.runtime.snapshot.hasTextEdit == true ? controller?.config : super.accessibilityLabel()
     }
 
     /// The manual's CTRL override (⌘ on the Mac, see `dragOverride`).
@@ -181,6 +191,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         dragAllowed = false
         dragOverride = false
         selectionPress = false
+        textEditPress = false
         rightPressHandled = false
         cursorName = nil
         NSCursor.arrow.set()
@@ -274,6 +285,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func mouseDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped else { return }
+        textEditPress = false
         selectionPress = SkinSelectionController.isSelectionGesture(event.modifierFlags)
         if selectionPress { return }
         if c.isSelected {
@@ -305,24 +317,33 @@ final class SkinView: NSView, NSViewToolTipOwner {
             dragAllowed = false
             return
         }
-        dragAllowed = SkinView.leftMouseDown(c, x: x, y: y, clickCount: event.clickCount, override: dragOverride)
+        textEditPress = !dragOverride && c.runtime.snapshot.hitMap.textEdit(at: x, y, images: c.runtime) != nil
+        if textEditPress { c.window.makeFirstResponder(self) }
+        dragAllowed = SkinView.leftMouseDown(c, x: x, y: y, clickCount: event.clickCount, override: dragOverride,
+                                             extendingTextSelection: event.modifierFlags.contains(.shift))
+        if textEditPress { dragAllowed = false }
         // Until the release, the skin's own moves wait: a drag wins over them.
         if dragAllowed && !c.isStopped { c.beginDragPress() }
     }
 
     /// Runs the left-button down (and double-click) actions for a press at (x, y) and returns whether the press may
     /// start a drag. With the CTRL override no click action runs and the skin can always be dragged.
-    static func leftMouseDown(_ c: SkinWindowController, x: Double, y: Double, clickCount: Int, override: Bool) -> Bool {
+    static func leftMouseDown(_ c: SkinWindowController, x: Double, y: Double, clickCount: Int, override: Bool,
+                              extendingTextSelection: Bool = false) -> Bool {
         if override { return true }
         // Decided before any action runs (an action may hide or move meters), on the frame on screen.
-        let blocksDrag = hasAction(c, .leftDown, x: x, y: y) || isOnButton(c, x: x, y: y)
+        let isTextEdit = c.runtime.snapshot.hitMap.textEdit(at: x, y, images: c.runtime) != nil
+        let blocksDrag = hasAction(c, .leftDown, x: x, y: y) || isOnButton(c, x: x, y: y) || isTextEdit
         let hasDoubleClick = hasAction(c, .leftDoubleClick, x: x, y: y)
         var handled = false
         if isDoubleClick(clickCount), hasDoubleClick {
             handled = deliver(c, .leftDoubleClick, x: x, y: y)
             guard !c.isStopped else { return false }
         }
-        if deliver(c, .leftDown, x: x, y: y) { handled = true }
+        if isTextEdit {
+            let predicted = c.runtime.snapshot.hitMap.handles(.leftDown, x: x, y: y, images: c.runtime)
+            if c.runtime.send(.textEditMouseDown(x: x, y: y, extending: extendingTextSelection)) ?? predicted { handled = true }
+        } else if deliver(c, .leftDown, x: x, y: y) { handled = true }
         guard !c.isStopped else { return false }
         return !blocksDrag && !handled && !c.app.state.disableDragging && c.state.draggable
             && isInDragArea(c, x: x, y: y)
@@ -370,6 +391,12 @@ final class SkinView: NSView, NSViewToolTipOwner {
             c.app.skinSelection.drag(to: SkinView.pointerLocation(), flags: event.modifierFlags)
             return
         }
+        if textEditPress, let c = controller, !c.isStopped {
+            guard reportDrag(c, event) else { return }
+            let (x, y) = point(event)
+            c.runtime.send(.textEditSelection(.dragged, x: x, y: y))
+            return
+        }
         cancelWindowDragForGlobalSetting()
         guard let c = controller, !c.isStopped, reportDrag(c, event), dragAllowed,
               let start = dragOrigin, let origin = windowOrigin, let window else { return }
@@ -386,7 +413,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer { released(0) }
+        defer { released(0); textEditPress = false }
         guard let c = controller, !c.isStopped else { return }
         if selectionPress || SkinSelectionController.isSelectionGesture(event.modifierFlags) {
             selectionPress = false
@@ -398,12 +425,20 @@ final class SkinView: NSView, NSViewToolTipOwner {
             return
         }
         guard reportRelease(c, .left, event) else {
+            if textEditPress {
+                let (x, y) = point(event)
+                c.runtime.send(.textEditSelection(.ended, x: x, y: y))
+            }
             dragOrigin = nil
             dragged = false
             c.endDragPress(moved: false)
             return
         }
         let (x, y) = point(event)
+        if textEditPress {
+            c.runtime.send(.textEditSelection(.dragged, x: x, y: y))
+            c.runtime.send(.textEditSelection(.ended, x: x, y: y))
+        }
         if dragged {
             dragged = false
             // The window's place is saved; a move the skin made meanwhile is dropped.
@@ -558,6 +593,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override func keyDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped else { return }
         if c.isSelected { _ = c.app.skinSelection.keyDown(event); return }
+        if performTextEditClipboardKey(event) { return }
         guard let input = SkinView.keyInput(for: event) else { return }
         SkinView.deliverKey(c, input)
     }
@@ -568,15 +604,26 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     static func keyInput(for event: NSEvent) -> TextEditMeter.KeyInput? {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
         if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "a" {
             return .selectAll
         }
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "z" { return .undo }
+        let selecting = flags.contains(.shift)
+        let command = flags.contains(.command), option = flags.contains(.option)
         switch event.keyCode {
+        case 123: return .move(command ? .lineStart : (option ? .wordLeft : .left), selecting: selecting)
+        case 124: return .move(command ? .lineEnd : (option ? .wordRight : .right), selecting: selecting)
+        case 125: return .move(command ? .documentEnd : .down, selecting: selecting)
+        case 126: return .move(command ? .documentStart : .up, selecting: selecting)
+        case 115: return .move(command ? .documentStart : .lineStart, selecting: selecting)
+        case 119: return .move(command ? .documentEnd : .lineEnd, selecting: selecting)
+        case 116: return .move(.pageUp, selecting: selecting)
+        case 121: return .move(.pageDown, selecting: selecting)
         case 36, 76: return .enter
         case 53: return .escape
-        case 51: return .backspace
-        case 117: return .deleteForward
+        case 51: return option ? .deleteWordBackward : .backspace
+        case 117: return option ? .deleteWordForward : .deleteForward
         default: break
         }
         if let raw = event.charactersIgnoringModifiers {
@@ -595,6 +642,71 @@ final class SkinView: NSView, NSViewToolTipOwner {
             $0.value >= 0x20 && $0.value != 0x7F && !(0xF700...0xF8FF).contains($0.value)
         })
         return printable.isEmpty ? nil : .insert(printable)
+    }
+
+    /// Standard Edit menu actions and key equivalents reach the same executor messages as typing.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard let c = controller, !c.isStopped, !c.isSelected, c.runtime.snapshot.hasTextEdit,
+              c.window.firstResponder === self else {
+            return super.performKeyEquivalent(with: event)
+        }
+        if performTextEditClipboardKey(event) { return true }
+        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if flags == .command, let input = SkinView.keyInput(for: event),
+           event.charactersIgnoringModifiers?.lowercased() == "a" || event.charactersIgnoringModifiers?.lowercased() == "z" {
+            SkinView.deliverKey(c, input)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func performTextEditClipboardKey(_ event: NSEvent) -> Bool {
+        guard let c = controller, !c.isStopped, !c.isSelected, c.runtime.snapshot.hasTextEdit,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command else { return false }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "c": copy(nil)
+        case "x": cut(nil)
+        case "v": paste(nil)
+        default: return false
+        }
+        return true
+    }
+
+    /// Main-thread seams let self-tests check clipboard ordering without altering the user's clipboard.
+    static var readTextEditClipboard: () -> String? = { NSPasteboard.general.string(forType: .string) }
+    static var writeTextEditClipboard: (String) -> Void = {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString($0, forType: .string)
+    }
+
+    @objc func copy(_ sender: Any?) { copyTextEdit(cut: false) }
+    @objc func cut(_ sender: Any?) { copyTextEdit(cut: true) }
+    @objc func paste(_ sender: Any?) {
+        guard let c = controller, !c.isStopped, !c.runtime.isRetiredForLayout, !c.isSelected,
+              c.runtime.snapshot.hasTextEdit else { return }
+        c.runtime.send(.textEditPastePending(SkinTextClipboard.shared.read()))
+    }
+    override func selectAll(_ sender: Any?) {
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
+        SkinView.deliverKey(c, .selectAll)
+    }
+    @objc func undo(_ sender: Any?) {
+        guard let c = controller, !c.isStopped, !c.isSelected else { return }
+        SkinView.deliverKey(c, .undo)
+    }
+
+    private func copyTextEdit(cut: Bool) {
+        guard let c = controller, !c.isStopped, !c.isSelected, !c.runtime.isRetiredForLayout,
+              c.runtime.snapshot.hasTextEdit else { return }
+        let complete = SkinTextClipboard.shared.beginCopy()
+        c.runtime.send(.textEditClipboard(cut: cut) { [weak self, weak c] value in
+            let finish = {
+                guard let self, let c, self.controller === c, !c.isStopped,
+                      !c.runtime.isRetiredForLayout else { complete(nil); return }
+                complete(value)
+            }
+            if Thread.isMainThread { finish() } else { DispatchQueue.main.async(execute: finish) }
+        })
     }
 
     // MARK: File drag-and-drop (Measure=DragDrop)

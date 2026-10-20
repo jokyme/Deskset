@@ -8,6 +8,12 @@ typealias TextLayout = DesksetDraw.TextLayout
 extension SkinRenderer {
     // MARK: String
 
+    static func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                               for skin: Skin) -> TextEditLayout {
+        SkinRenderContext.of(skin).drawing.textEditLayout(text, style: style, viewport: viewport,
+                                                        multiline: multiline, cycle: skin.updateCount)
+    }
+
     /// The host's `SkinHost.textSize`: measured with `skin`'s own text layouts, the ones `drawString` then draws. Only
     /// the skin's owner may call this.
     static func textSize(_ text: String, style: TextStyle, wrapWidth: Double?,

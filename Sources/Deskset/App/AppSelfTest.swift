@@ -98,6 +98,8 @@ enum AppSelfTest {
         SkinZoomUISelfTests.run(t)
         SkinZoomDrawingSelfTests.run(t)
         SkinZoomInputSelfTests.run(t)
+        TextEditInputSelfTests.run(t)
+        TextEditDrawSelfTests.run(t)
         SkinSelectionSelfTests.run(t)
         GlobalDraggingSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)

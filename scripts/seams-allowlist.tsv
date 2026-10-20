@@ -348,10 +348,12 @@ timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be 
 background.executorAsync	Sources/Deskset/SkinRuntime.swift	3	the runtime's messages and its skin's release go to the skin's executor (skin threading §15: the executor seam itself)
 background.mainHop	Sources/Deskset/SkinRuntime.swift	3	the runtime's requests to the main thread, which owns the window (skin threading §15); not a skin input
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)
-timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the executor
+timer.executorTimer	Sources/Deskset/SkinRuntime.swift	2	the update and focused TextEdit caret timers, on the executor; both cancel on pause and close
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
 event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
+background.mainHop	Sources/Deskset/SkinView.swift	1	TextEdit clipboard answers return to the main-thread UI after owner-ordered editing
+effect.pasteboard	Sources/Deskset/SkinView.swift	1	user TextEdit copy/cut writes through replaceable main-thread clipboard closures
 event.notification	Sources/Deskset/SkinSelectionController.swift	1	local AppState changes end an in-progress mouse drag when DisableDragging is enabled
 event.pointerState	Sources/Deskset/SkinSelectionController.swift	1	injectable modifierFlags closure reads the selection chord when keyboard focus changes; no global keyboard monitor
 

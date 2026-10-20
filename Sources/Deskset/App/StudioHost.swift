@@ -75,6 +75,11 @@ final class StudioHost: LiveSkinHost {
         SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
     }
 
+    func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                        for skin: Skin) -> TextEditLayout {
+        SkinRenderer.textEditLayout(text, style: style, viewport: viewport, multiline: multiline, for: skin)
+    }
+
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
 
     /// The desktop copy's screens and window place (`#CURRENTCONFIGX#`, `#WORKAREAWIDTH#`…), with this instance's size.
