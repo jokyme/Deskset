@@ -617,6 +617,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         skinSelection.clear()
         isTerminating = true
+        NewSkinWindowController.window(for: self)?.close()
         let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
             // Every step is written as it is made; anything still waiting is written now.
@@ -683,15 +684,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                           settings: SettingsWindowController.openWindow,
                           debug: DebugWindowController.openWindow,
                           about: AboutWindowController.openWindow,
+                          newSkin: NewSkinWindowController.window(for: self)?.window,
                           codeWindows: codeFileWindows.compactMap(\.window)) { $0.isVisible || $0.isMiniaturized }
     }
 
-    /// The skin editor, else Settings, Debug, About or the latest code window — the first of them that `isOpen`
+    /// The skin editor, else Settings, Debug, About, New skin or the latest code window — the first that `isOpen`
     /// (shown, or minimized in the Dock).
     static func reopenTarget(editor: NSWindow?, settings: NSWindow?, debug: NSWindow? = nil,
-                             about: NSWindow? = nil, codeWindows: [NSWindow],
+                             about: NSWindow? = nil, newSkin: NSWindow? = nil, codeWindows: [NSWindow],
                              isOpen: (NSWindow) -> Bool) -> NSWindow? {
-        ([editor, settings, debug, about].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
+        ([editor, settings, debug, about, newSkin].compactMap { $0 } + codeWindows.reversed()).first(where: isOpen)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }

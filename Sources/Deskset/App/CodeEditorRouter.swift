@@ -107,17 +107,19 @@ enum CodeEditorRouter {
     // MARK: Opening
 
     /// Opens `file` for editing, at `line` (1-based) when given, the way Settings ▸ Editor says.
-    static func open(file: URL, line: Int? = nil, app: AppController) {
+    static func open(file: URL, line: Int? = nil, app: AppController, loadUnloadedSkin: Bool = true) {
         let file = file.standardizedFileURL
         switch route(file: file, line: line, preferences: app.state.editor, locator: locator) {
         case .builtIn:
-            if !openBuiltIn(file: file, line: line, app: app) { openOutsideSkins(file: file, line: line, app: app) }
+            if !openBuiltIn(file: file, line: line, app: app, loadUnloadedSkin: loadUnloadedSkin) {
+                openOutsideSkins(file: file, line: line, app: app)
+            }
         case .builtInInstead(let name):
             Log.write("\(name) is no longer installed; opening \(file.lastPathComponent) in the built-in editor",
                       level: .warning)
             let notice = reportedMissing.insert(name).inserted
                 ? "\(name) is no longer installed — using the built-in editor" : nil
-            if !openBuiltIn(file: file, line: line, app: app, notice: notice) {
+            if !openBuiltIn(file: file, line: line, app: app, notice: notice, loadUnloadedSkin: loadUnloadedSkin) {
                 openOutsideSkins(file: file, line: line, app: app)
             }
         case .external(let editor, let command):
@@ -144,7 +146,8 @@ enum CodeEditorRouter {
     /// The skin editor on the skin owning `file`, revealing `line` (and showing `notice` as a warning toast). False
     /// when no skin owns it (not a skin file, or an included file of a skin that is not loaded).
     @discardableResult
-    static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil) -> Bool {
+    static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil,
+                            loadUnloadedSkin: Bool = true) -> Bool {
         // A skin that has just been loaded on the engine thread is edited once it started (at once with the main
         // executor).
         func show(_ c: SkinWindowController) {
@@ -162,6 +165,9 @@ enum CodeEditorRouter {
             show(c)
             return true
         }
+        // Creating and editing a skin does not load it onto the desktop. An already running owner still uses the
+        // Studio above; otherwise the caller's normal standalone-file fallback handles it without rescanning.
+        guard loadUnloadedSkin else { return false }
         guard let target = skinFile(for: file, in: app) else { return false }
         // The built-in editor edits running skins: a skin file of an unloaded config (or another variant of a loaded
         // one) is loaded first — on the next run loop turn, like every load a bang asks for (`!EditSkin` may come

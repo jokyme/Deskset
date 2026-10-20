@@ -70,6 +70,9 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     private let outline = NSOutlineView()
     private let activeSkinsPopup = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let newSkinButton = NSButton(image: NSImage(systemSymbolName: "folder.badge.plus",
+                                                       accessibilityDescription: "Create new skin") ?? NSImage(),
+                                         target: nil, action: nil)
     private let detailStack = NSStackView()
     private let emptyLabel = NSTextField(labelWithString: "Select a skin to see its details.")
 
@@ -331,6 +334,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         activeSkinsPopup.menu?.delegate = self
         activeSkinsPopup.menu?.autoenablesItems = false
         left.addSubview(activeSkinsPopup)
+        newSkinButton.target = self
+        newSkinButton.action = #selector(createNewSkin)
+        newSkinButton.bezelStyle = .texturedRounded
+        newSkinButton.toolTip = "Create new skin"
+        newSkinButton.setAccessibilityLabel("Create new skin")
+        newSkinButton.translatesAutoresizingMaskIntoConstraints = false
+        left.addSubview(newSkinButton)
         NSLayoutConstraint.activate([
             activeSkinsPopup.topAnchor.constraint(equalTo: left.topAnchor, constant: 10),
             outlineScroll.topAnchor.constraint(equalTo: activeSkinsPopup.bottomAnchor, constant: 8),
@@ -338,7 +348,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             outlineScroll.trailingAnchor.constraint(equalTo: left.trailingAnchor),
             outlineScroll.bottomAnchor.constraint(equalTo: left.bottomAnchor),
             activeSkinsPopup.leadingAnchor.constraint(equalTo: left.leadingAnchor, constant: 10),
-            activeSkinsPopup.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -10),
+            activeSkinsPopup.trailingAnchor.constraint(equalTo: newSkinButton.leadingAnchor, constant: -6),
+            newSkinButton.centerYAnchor.constraint(equalTo: activeSkinsPopup.centerYAnchor),
+            newSkinButton.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -10),
+            newSkinButton.widthAnchor.constraint(equalToConstant: 28),
+            newSkinButton.heightAnchor.constraint(equalToConstant: 24),
         ])
         split.addArrangedSubview(left)
         split.addArrangedSubview(detailScroll)
@@ -1454,6 +1468,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             edit.target = self
             menu.addItem(edit)
         }
+        if node.kind == .folder {
+            let create = NSMenuItem(title: "Create new skin", action: #selector(contextCreateSkin(_:)),
+                                    keyEquivalent: "")
+            create.representedObject = [node.path]
+            create.target = self
+            menu.addItem(create)
+        }
         let folder = NSMenuItem(title: "Show in Finder", action: #selector(contextFolder(_:)), keyEquivalent: "")
         folder.representedObject = [node.path]
         folder.target = self
@@ -1480,6 +1501,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     @objc private func contextFolder(_ sender: NSMenuItem) {
         guard let a = sender.representedObject as? [String], let path = a.first else { return }
         Workspace.reveal(SkinLibrary.directory(for: path, root: app.skinsDirectory))
+    }
+
+    @objc private func createNewSkin() {
+        NewSkinWindowController.show(app: app)
+    }
+
+    @objc private func contextCreateSkin(_ sender: NSMenuItem) {
+        guard let paths = sender.representedObject as? [String], let path = paths.first else { return }
+        NewSkinWindowController.show(app: app, initialDirectory: SkinLibrary.directory(for: path, root: app.skinsDirectory))
     }
 
     // MARK: Snapshot support
@@ -1612,6 +1642,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testKeepOnScreenBox: NSButton { keepOnScreenBox }
     var testFavoriteBox: NSButton { favoriteBox }
     var testActiveSkinsPopup: NSPopUpButton { activeSkinsPopup }
+    var testNewSkinButton: NSButton { newSkinButton }
     var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
     var testTransparencySlider: NSSlider { transparencySlider }
     var testStatus: String { statusLabel.stringValue }
@@ -1654,6 +1685,17 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         defer { testContextNode = nil }
         menuNeedsUpdate(menu)
         return menu.items.map(\.title)
+    }
+    /// A folder's context menu captures that row even when another skin is selected.
+    func testFolderContextMenu(config: String) -> NSMenu {
+        let menu = NSMenu()
+        guard let node = roots.flatMap(allNodes).first(where: {
+            $0.kind == .folder && $0.path.caseInsensitiveCompare(config) == .orderedSame
+        }) else { return menu }
+        testContextNode = node
+        defer { testContextNode = nil }
+        menuNeedsUpdate(menu)
+        return menu
     }
     /// Chooses Show in the outline's context menu of a config's file.
     func testContextShow(config: String) {

@@ -11,6 +11,7 @@ enum CodeEditorRoutingSelfTests {
         preferenceTests(t)
         detectionTests(t)
         routingTests(t)
+        unloadedSkinTests(t)
         configEditorTests(t)
         settingsWindowTests(t)
         miscTests(t)
@@ -541,6 +542,70 @@ enum CodeEditorRoutingSelfTests {
                 CodeEditorRouter.open(file: picture, line: nil, app: app)
                 t.equal(opener.opened.last?.app, URL(fileURLWithPath: "/System/Applications/TextEdit.app"))
                 locator.defaultApp = nil
+            }
+        }
+    }
+
+    static func unloadedSkinTests(_ t: AppTestRunner) {
+        for preference in [EditorPreferences.CodeEditor.builtIn,
+                           .app(bundleID: "com.example.not-installed-new-skin", lastKnownPath: "/nowhere/MissingEditor.app")] {
+            t.suite("App: code editor New Skin editing does not load an unloaded skin (\(preference))") {
+                guard let app = try AppSelfTest.makeApp(t),
+                      let running = app.activate(config: "Deskset\\System", file: nil) else { return }
+                t.atSuiteEnd {
+                    StudioWindowController.window(for: app)?.window?.close()
+                    for editor in app.codeFileWindows { editor.window?.close() }
+                    app.stopAllForTermination()
+                }
+                let locator = FakeLocator(), opener = RecordingOpener()
+                try withFakes(locator, opener) {
+                    app.state.updateEditor { $0.codeEditor = preference }
+                    let folder = app.skinsDirectory.appendingPathComponent("NewlyCreated")
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+                    let file = folder.appendingPathComponent("New.ini")
+                    try "[Rainmeter]\nUpdate=1000\n\n[Meter]\nMeter=String\nText=New\n"
+                        .write(to: file, atomically: true, encoding: .utf8)
+                    let library = app.library.map(\.name)
+                    let controllers = app.sortedControllers.map(ObjectIdentifier.init)
+                    t.check(!CodeEditorRouter.openBuiltIn(file: file, line: nil, app: app, loadUnloadedSkin: false))
+                    t.equal(app.library.map(\.name), library, "the opt-out returns before a skin-library rescan")
+                    CodeEditorRouter.open(file: file, line: 4, app: app, loadUnloadedSkin: false)
+                    t.equal(app.sortedControllers.map(ObjectIdentifier.init), controllers)
+                    t.check(app.controller(for: "NewlyCreated") == nil)
+                    t.equal(app.library.map(\.name), library)
+                    t.equal(app.codeFileWindows.count, 1)
+                    t.equal(app.codeFileWindows.first?.file, file.standardizedFileURL)
+                    t.equal(app.codeFileWindows.first?.codeView.caretLine, 4)
+                    t.check(StudioWindowController.window(for: app) == nil)
+                    t.equal(opener.opened.count, 0, "a missing external editor also uses the standalone built-in fallback")
+
+                    // The option only suppresses loading: a file already read by a running skin still opens in Studio.
+                    CodeEditorRouter.open(file: running.fileURL, line: nil, app: app, loadUnloadedSkin: false)
+                    t.equal(StudioWindowController.window(for: app)?.session?.config, running.config)
+                    t.check(app.controller(for: running.config) === running)
+
+                    let variant = running.fileURL.deletingLastPathComponent().appendingPathComponent("NewVariant.ini")
+                    try "[Rainmeter]\nUpdate=1000\n".write(to: variant, atomically: true, encoding: .utf8)
+                    CodeEditorRouter.open(file: variant, app: app, loadUnloadedSkin: false)
+                    t.check(app.controller(for: running.config) === running, "an unloaded variant does not replace the running one")
+                    t.equal(app.codeFileWindows.count, 2)
+                    t.equal(StudioWindowController.window(for: app)?.session?.config, running.config)
+
+                    let template = app.skinsDirectory.deletingLastPathComponent().appendingPathComponent("Settings/NewSkin.template")
+                    try FileManager.default.createDirectory(at: template.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    let templateText = "[Rainmeter]\nUpdate=1000\n\n[Metadata]\nName=日\n"
+                    let templateBytes = TextDecoding.encodeForWriting(templateText, preferring: .utf16LittleEndian(bom: true))
+                    try templateBytes.write(to: template)
+                    t.check(templateBytes.starts(with: [0xFF, 0xFE]))
+                    t.check(CodeFileWindowController.isTextFile(template), "Deskset templates remain text despite other template file associations")
+                    CodeEditorRouter.open(file: template, app: app, loadUnloadedSkin: false)
+                    t.equal(app.codeFileWindows.count, 3)
+                    t.equal(app.codeFileWindows.last?.file, template.standardizedFileURL)
+                    t.equal(app.codeFileWindows.last?.codeView.text, templateText)
+                    t.equal(app.codeFileWindows.last?.codeView.document(for: template)?.encoding, .utf16LittleEndian(bom: true))
+                    t.equal(opener.opened.count, 0)
+                    t.equal(app.sortedControllers.map(ObjectIdentifier.init), controllers)
+                }
             }
         }
     }
