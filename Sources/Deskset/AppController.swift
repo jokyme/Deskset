@@ -80,6 +80,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var fileLoggingObserver: NSObjectProtocol?
     /// Only the primary desktop instance configures and stops the persistent statistics service.
     private var networkStatisticsOwner: SystemMonitor?
+    private var startupCrashWatcher: StartupCrashWatcher?
+    private var safeStartController: SafeStartController?
+    private(set) var startupRecoveryAborted = false
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
     private var fontsGenerationSeen = Fonts.generation
@@ -258,6 +261,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // `defaults write app.deskset.Deskset FrameTimingLog -int 10`: how evenly each skin's frames come, in the log.
         FrameTimingLog.configure(from: .standard)
         if !Paths.isAppBundle { NSApp.applicationIconImage = AppIcon.image(size: 512) }
+        guard presentsWindows, layoutCommandServer != nil else {
+            continueLaunching(safeStart: false)
+            return
+        }
+        let watcher = StartupCrashWatcher(settingsDirectory: settingsDirectory,
+                                          executableURL: Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]))
+        startupCrashWatcher = watcher
+        let controller = SafeStartController()
+        safeStartController = controller
+        controller.begin(loadCrashCount: { [weak self] deliver in
+            watcher.begin { [weak self] summary in
+                guard let self, !self.isTerminating, !self.startupRecoveryAborted else { return }
+                if let warning = summary.warning { Log.write(warning, level: .warning) }
+                deliver(summary.recentCrashCount)
+            }
+        }, completion: { [weak self] restore in
+            guard let self, !self.isTerminating, !self.startupRecoveryAborted else { return }
+            self.safeStartController = nil
+            do {
+                if restore { try self.prepareSafeStartRecovery() }
+                self.continueLaunching(safeStart: restore)
+            } catch {
+                self.abortStartupRecovery()
+                Log.write("Safe Start could not save the startup layout: \(error.localizedDescription)", level: .error)
+                let alert = NSAlert()
+                alert.icon = AppIcon.image(size: 64)
+                alert.messageText = "Could not start with the default layout"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                _ = alert.runModal()
+                self.quitAction()
+            }
+        })
+    }
+
+    /// Continues only after the primary instance has finished offering startup recovery.
+    private func continueLaunching(safeStart: Bool) {
+        guard !isTerminating, !startupRecoveryAborted else { return }
         NSApp.mainMenu = MainMenu.make(app: self)
         CodeEditorRouter.install(app: self)
         WebParserAccess.install(settingsFolder: Paths.appSupport)
@@ -293,7 +334,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self.finishLayoutCommandStartup()
         }
-        if case .loadLayout(let name) = initialLayoutCommand {
+        if safeStart {
+            // An accepted recovery takes precedence over a layout supplied at launch.
+            loadSafeStartLayout(then: finishedLoading)
+        } else if case .loadLayout(let name) = initialLayoutCommand {
             // A valid layout is the first desktop: do not briefly load first-run or previous-session skins first.
             loadLayout(named: name) { [weak self] success in
                 guard let self else { return }
@@ -312,6 +356,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pendingOpenURLs = []
         }
         if presentsWindows { updates.start() }
+    }
+
+    /// A failed recovery must neither load the old desktop nor write a stale state during termination.
+    func abortStartupRecovery() {
+        guard !startupRecoveryAborted else { return }
+        startupRecoveryAborted = true
+        isTerminating = true
+        safeStartController?.cancel()
+        safeStartController = nil
+        layoutCommandsReady = false
+        let pending = pendingLayoutCommands
+        pendingLayoutCommands.removeAll()
+        layoutCommandServer?.stop()
+        layoutCommandServer = nil
+        for (_, completion) in pending { completion(false) }
     }
 
     /// Set when this launch handed over to an instance that was already running (see `handOffToRunningInstance`).
@@ -390,8 +449,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        safeStartController?.cancel()
+        safeStartController = nil
         // A duplicate instance never loaded anything; saving its copy of the state would overwrite the running one's.
-        guard !isDuplicateInstance else { return }
+        guard !isDuplicateInstance, !startupRecoveryAborted else { return }
         updates.stop()
         updateFlowStorage?.cancelAndCleanUp()
         stopAllForTermination()
@@ -499,7 +560,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// minimized; with none of them open, the Manage window (macOS may hide the menu bar icon, so this is the way back
     /// in).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard !isDuplicateInstance else { return false }
+        guard !isDuplicateInstance, !isTerminating else { return false }
+        guard layoutCommandsReady else {
+            receiveLayoutCommand(.reopen([])) { _ in }
+            return false
+        }
         if let window = reopenableWindow {
             if presentsWindows {
                 NSApp.activate(ignoringOtherApps: true)
@@ -578,10 +643,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// never showed. `each`: every window made, with the index of its item (the first-run layout places it). `done`:
     /// after the last one settled (at once with the main executor). Main thread.
     func activateInOrder(_ items: [(config: String, file: String?)],
+                         exactFile: Bool = false, thenMoveTo position: ((Int) -> WidgetPosition?)? = nil,
                          each: ((SkinWindowController, Int) -> Void)? = nil, done: @escaping () -> Void) {
         for (index, item) in items.enumerated() {
             inTurn { app in
-                guard let c = app.activate(config: item.config, file: item.file, fade: true, restack: false) else {
+                guard let c = app.activate(config: item.config, file: item.file, fade: true, restack: false,
+                                          thenMoveTo: position?(index), exactFile: exactFile) else {
                     return nil
                 }
                 each?(c, index)
@@ -945,7 +1012,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
                   continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
-                  thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
+                  thenMoveTo place: WidgetPosition? = nil, exactFile: Bool = false) -> SkinWindowController? {
         guard !isTerminating, layouts.allowsLifecycleMutation else { return nil }
         discoverSkins()
         activating += 1
@@ -954,7 +1021,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
             return nil
         }
-        guard let chosen = self.file(toLoad: file, of: entry) else { return nil }
+        guard let chosen = self.file(toLoad: file, of: entry, exact: exactFile) else { return nil }
         let key = entry.name.lowercased()
         let replacing = controllers[key] != nil
         // First load of this config: the skin's Default… window settings apply (its runtime reads them).
@@ -1026,11 +1093,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The .ini file `activate` loads for `file`: that file of the config (in any case), else the last used one, else
     /// the first. nil when the config has no .ini file.
-    private func file(toLoad file: String?, of entry: SkinConfig) -> String? {
+    private func file(toLoad file: String?, of entry: SkinConfig, exact: Bool = false) -> String? {
         let requested = file.flatMap { f in entry.files.first { $0.caseInsensitiveCompare(f) == .orderedSame } }
         if let file, !file.isEmpty, requested == nil {
             Log.write("\(entry.name) has no file \"\(file)\"", level: .warning)
         }
+        if exact { return requested }
         let remembered = state.skin(entry.name)?.file
         return requested ?? entry.files.first(where: { $0 == remembered }) ?? entry.files.first
     }

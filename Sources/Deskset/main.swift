@@ -1,5 +1,8 @@
 import AppKit
 
+// The startup monitor observes its parent without initializing the interactive application.
+if let status = StartupCrashWatcher.runEarlyIfRequested(CommandLine.arguments) { exit(status) }
+
 // --render: the same order of sets and dictionaries in every run (it starts again with deterministic hashing).
 CommandLineTools.makeHashingDeterministic(for: CommandLine.arguments)
 

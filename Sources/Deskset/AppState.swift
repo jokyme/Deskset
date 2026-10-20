@@ -503,6 +503,28 @@ final class AppState {
         }
     }
 
+    /// Persists an intentionally empty startup desktop before replacing the live state.
+    /// Application preferences and global settings remain unchanged.
+    func prepareSafeStart(write: ((Data, URL) throws -> Void)? = nil) throws {
+        var candidate = data
+        candidate.skins = [:]
+        candidate.skinOrder = []
+        candidate.hasLoadedLayout = true
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let raw = try encoder.encode(candidate)
+        if let write {
+            try write(raw, fileURL)
+        } else {
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try raw.write(to: fileURL, options: .atomic)
+        }
+        data = candidate
+        selectedSkinSnapshots.removeAll()
+        saveScheduled = false
+    }
+
     var orderedConfigs: [(config: String, state: SkinState)] { data.orderedConfigs }
 
     /// Active configs in LoadOrder, breaking ties by Rainmeter.ini section order.
