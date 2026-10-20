@@ -83,6 +83,10 @@ enum AppSelfTest {
         sliderElsewhereTests(t)
         integrationTests(t)
         CodeEditorRoutingSelfTests.run(t)
+        NewSkinModelSelfTests.run(t)
+        NewSkinUISelfTests.run(t)
+        NewSkinEditorPreflightSelfTests.run(t)
+        NewSkinManageSelfTests.run(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         WeatherSelfTests.run(t)
@@ -880,7 +884,8 @@ enum AppSelfTest {
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
-                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false,
+                                backupsDirectory: root.appendingPathComponent("Backups"),
+                                settingsDirectory: root.appendingPathComponent("Settings"), presentsWindows: false,
                                 threading: threading, workWatchdog: workWatchdog, system: system)
         retainedApps.append(app)
         return app

@@ -1402,6 +1402,26 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** partial. Favorite's precise Windows variant scope, menu hierarchy/order, empty state, active-item
   click and layout persistence remain unverified; see [details](compat/app.md#favorites-and-skin-discovery).
 
+#### New skin and templates
+- **Windows:** Manage's Create new skin button starts a root config; the folder context menu creates items within
+  that folder. The New skin tab adds folders, a root `@Resources` folder and UTF-16 skin files from a selected template.
+  Only items created in the current dialog can be renamed or deleted. The Template tab saves, edits and deletes named
+  templates; closing the dialog refreshes the application and all skins. The default template is `NewSkin.template`
+  in the settings folder (<https://docs.rainmeter.net/manual/user-interface/manage/new-skin/>,
+  <https://docs.rainmeter.net/manual/settings/>).
+- **Mac:** the folder-plus button beside Active skins and the folder context entry open the same two-tab dialog.
+  Its tree includes empty folders and `@Resources`. New files have a UTF-16LE BOM; template text is copied literally.
+  Existing files are not overwritten, and session-created files remain editable after an editor's atomic save.
+  Rename and Delete first resolve Save/Discard/Cancel in matching built-in editors; cancellation or a failed save
+  stops the operation. Delete moves items to the Trash. Closing refreshes once; quitting closes without refreshing.
+  The default is created lazily with a minimal INI skeleton; named templates live in `Templates` under Settings.
+- **Why:** naming uses native macOS sheets and deletion uses the Trash. External editors retain control of their
+  own unsaved buffers.
+- **Skin impact:** new folders and files become available through Manage after the dialog closes; editing a newly
+  created INI does not load its skin.
+- **Status:** emulated. Exact Windows naming prompts, starter text, named-template storage and Template Save's
+  initial content are not specified by the manual; those details and unusual error cases remain unverified.
+
 #### About (Log, Skins, Plugins, Version)
 - **Windows:** four About tabs for logs, active skin values, installed plugins and version/paths
   (<https://docs.rainmeter.net/manual/user-interface/about/>).
