@@ -49,11 +49,15 @@ final class SkinWindowCompanions {
     private var backdropOwner: Int?
     /// The open InputText boxes, by id.
     private var prompts: [Int: InputTextPrompting] = [:]
+    private var fileTrashQueue: [(id: Int, paths: [String])] = []
+    private var fileTrashPrompt: (id: Int, prompt: FileTrashConfirming)?
     /// The watches of the window's moves, by id.
     private var moveWatches: [Int: WindowMoveWatch] = [:]
 
     /// Self-tests: the box shown instead of `InputTextPanelPrompt` (a headless app shows none: the box is dismissed).
     static var inputTextPromptFactory: ((SkinCompanionHost) -> InputTextPrompting)?
+    /// Self-tests substitute a presenter without showing a sheet or touching files.
+    static var fileTrashPromptFactory: ((SkinCompanionHost) -> FileTrashConfirming)?
 
     init(host: SkinCompanionHost, runtime: SkinRuntime) {
         self.host = host
@@ -62,10 +66,16 @@ final class SkinWindowCompanions {
 
     /// InputText boxes open now (tests).
     var openInputTexts: Int { prompts.count }
+    var openFileTrashConfirmations: Int { fileTrashQueue.count + (fileTrashPrompt == nil ? 0 : 1) }
 
     /// Does what the skin asked (`SkinRequest.companion`).
     func apply(_ request: SkinCompanionRequest) {
-        guard !host.isStopped else { return }
+        guard !host.isStopped else {
+            if case .confirmFileTrash(let id, _) = request {
+                runtime?.send(.fileTrashAnswered(id: id, confirmed: false))
+            }
+            return
+        }
         switch request {
         case .frostedGlass(let owner, let style?):
             let b = FrostedGlassBackdrop.attach(to: host)
@@ -88,11 +98,27 @@ final class SkinWindowCompanions {
             }
         case .cancelInputText(let id):
             prompts.removeValue(forKey: id)?.cancel()
+        case .confirmFileTrash(let id, let paths):
+            fileTrashQueue.append((id, paths))
+            showNextFileTrashPrompt()
         case .followWindow(let id):
             moveWatches[id]?.stop()
             moveWatches[id] = moveWatch(id)
         case .stopFollowingWindow(let id):
             moveWatches.removeValue(forKey: id)?.stop()
+        }
+    }
+
+    private func showNextFileTrashPrompt() {
+        guard fileTrashPrompt == nil, !fileTrashQueue.isEmpty else { return }
+        let next = fileTrashQueue.removeFirst()
+        let prompt = SkinWindowCompanions.fileTrashPromptFactory?(host) ?? FileTrashConfirmation(host: host)
+        fileTrashPrompt = (next.id, prompt)
+        prompt.show(paths: next.paths) { [weak self] confirmed in
+            guard let self, self.fileTrashPrompt?.id == next.id else { return }
+            self.fileTrashPrompt = nil
+            self.runtime?.send(.fileTrashAnswered(id: next.id, confirmed: confirmed))
+            self.showNextFileTrashPrompt()
         }
     }
 
@@ -121,15 +147,19 @@ final class SkinWindowCompanions {
     }
 
     /// The skin closed while its window stays a moment (a reload on another thread): the boxes close without an answer.
-    func closeInputTexts() {
+    func closePrompts() {
         let open = prompts
         prompts = [:]
         for prompt in open.values { prompt.cancel() }
+        fileTrashQueue = []
+        let trash = fileTrashPrompt
+        fileTrashPrompt = nil
+        trash?.prompt.cancel()
     }
 
     /// The window closed: the boxes close without an answer (the skin has closed) and the backdrop goes.
     func tearDown() {
-        closeInputTexts()
+        closePrompts()
         for watch in moveWatches.values { watch.stop() }
         moveWatches = [:]
         backdrop?.remove()

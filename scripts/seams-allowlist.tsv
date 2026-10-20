@@ -522,13 +522,15 @@ random.UUID	Sources/DesksetCore/Engine/Scene/SVGDraw.swift	1	identity for indepe
 
 random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
 
+effect.fileWrite	Sources/DesksetCore/Engine/DragDropFileOperations.swift	16	SideEffects live implementation: transactional DragDrop writes and Trash; FileManager is replaceable in tests
+random.UUID	Sources/DesksetCore/Engine/DragDropFileOperations.swift	1	SideEffects live implementation: unique staging folder names, never a skin value
 background.dispatch	Sources/DesksetCore/Engine/SideEffects.swift	2	the live side effects: a helper program started off the skin's thread, and RunCommand's output read on its own queue (a recording starts nothing)
 background.executorAsync	Sources/DesksetCore/Engine/SideEffects.swift	1	a helper program's exit status handed to the executor of the skin that started it: move to the skin's hop with the threading work
 background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and its pipes (a recording starts none)
 background.global	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: plugin helper programs start off the skin's thread (PluginProcess.launcher)
 background.process	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and plugin helper programs (a recording starts none)
 background.queue	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand's pipe queue
-effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	9	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
+effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
 effect.iniWrite	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: !WriteKeyValue (a recording writes its copy, through here)
 effect.signal	Sources/DesksetCore/Engine/SideEffects.swift	2	SideEffects live implementation: RunCommand Close, Kill, Timeout and unload (a recording records the signal)
 timer.asyncAfter	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand drains the pipes on its own queue

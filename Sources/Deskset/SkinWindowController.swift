@@ -440,7 +440,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         defer { settled() }
         if keepsWindow {
             isKeptForReplacement = true
-            companions.closeInputTexts()
+            companions.closePrompts()
             return
         }
         guard duration > 0 else {

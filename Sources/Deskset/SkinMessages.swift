@@ -110,6 +110,8 @@ enum SkinMessage {
 
     /// What the person typed into InputText's box `id` (nil: they dismissed it): the measure's answer runs here.
     case inputTextAnswered(id: Int, text: String?)
+    /// A file-trash confirmation completed on the main thread; its callback runs here, once.
+    case fileTrashAnswered(id: Int, confirmed: Bool)
     /// The window's moves stopped for watch `id` (`SkinCompanionRequest.followWindow`): its measure hears it here.
     case windowSettled(id: Int)
 
@@ -272,6 +274,8 @@ enum SkinCompanionRequest {
     case showInputText(id: Int, settings: InputTextSettings, skinSize: CGSize)
     /// The box `id` closes without an answer (its measure went, or asked again).
     case cancelInputText(id: Int)
+    /// Confirm moving these dropped files to the Trash. The answer is `SkinMessage.fileTrashAnswered`.
+    case confirmFileTrash(id: Int, paths: [String])
     /// The window's moves, changes of screen and of the displays' arrangement are followed for watch `id`
     /// (`WindowMoveWatch`, Chameleon's `CropDesktop=Skin`): once they stop, `SkinMessage.windowSettled` comes back.
     case followWindow(id: Int)
