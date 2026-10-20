@@ -185,7 +185,7 @@ background.global	Sources/Deskset/AppController.swift	2	prepare user-requested u
 background.mainHop	Sources/Deskset/AppController.swift	6	app lifecycle and main-thread restart decisions; late callbacks are guarded before termination
 effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
 effect.terminate	Sources/Deskset/AppController.swift	5	ordinary quit and authorized restart use the same vetoes; restart termination is injectable
-effect.workspace	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
+effect.workspace	Sources/Deskset/AppController.swift	5	app lifecycle and single-instance handover; menu URL opener is injectable for tests
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.notification	Sources/Deskset/AppController.swift	2	wake, appearance, screen and locale changes reach every skin; local AppState changes update primary-process file logging
 event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input

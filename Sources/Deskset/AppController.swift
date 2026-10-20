@@ -69,6 +69,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) var studioSessions: [String: EditingSession] = [:]
     /// Text files the built-in code editor has open outside the skin editor (`showCodeFile`).
     private(set) var codeFileWindows: [CodeFileWindowController] = []
+    /// Folder and documentation links opened by the context menus; replaceable without changing other file actions.
+    var openMenuURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     /// The window `bringToFront` last brought up (also headless, for self-tests).
     weak var lastBroughtToFront: NSWindow?
     private(set) lazy var installer = SkinInstallFlow(app: self)
@@ -1797,6 +1799,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(item(updates.menuTitle, #selector(checkForUpdatesAction)))
         menu.addItem(item("About Deskset", #selector(aboutAction)))
+        menu.addItem(item("Help", #selector(helpAction)))
         menu.addItem(item("Quit Deskset", #selector(quitAction)))
         let restart = item("Restart Deskset", #selector(restartAction))
         restart.isAlternate = true
@@ -1855,6 +1858,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let holder = NSMenuItem(title: "Favorites", action: nil, keyEquivalent: "")
         holder.submenu = favorites
         holder.isEnabled = !favorites.items.isEmpty
+        return holder
+    }
+
+    /// The clicked skin's root only, keeping the same folder and INI hierarchy as Manage's skin tree.
+    private func rootConfigMenu(for config: String) -> NSMenuItem? {
+        guard let rootName = config.split(separator: "\\").first.map(String.init),
+              let root = ManageModel.tree(library).first(where: {
+                  $0.path.caseInsensitiveCompare(rootName) == .orderedSame
+              }) else { return nil }
+        func contents(of node: ManageModel.Node) -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            for child in node.children {
+                if child.kind == .folder {
+                    let folder = NSMenuItem(title: child.name, action: nil, keyEquivalent: "")
+                    folder.submenu = contents(of: child)
+                    menu.addItem(folder)
+                } else if let file = child.file {
+                    let choice = item(file, #selector(rootConfigSkinAction(_:)))
+                    choice.representedObject = [child.path, file]
+                    choice.state = controller(for: child.path)?.file.caseInsensitiveCompare(file) == .orderedSame ? .on : .off
+                    menu.addItem(choice)
+                }
+            }
+            return menu
+        }
+        let holder = NSMenuItem(title: root.name, action: nil, keyEquivalent: "")
+        holder.submenu = contents(of: root)
         return holder
     }
 
@@ -1919,18 +1950,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         func allMatch<Value: Equatable>(_ key: KeyPath<SkinState, Value>, _ value: Value) -> Bool {
             !targets.isEmpty && targets.allSatisfy { $0.state[keyPath: key] == value }
         }
+        let configName = item(c.config, #selector(openSkinFolderAction(_:)))
+        configName.representedObject = [c.config]
+        menu.addItem(configName)
         let selected = item("Select skin", #selector(selectSkinAction(_:)))
         selected.representedObject = [c.config]
         selected.state = skinSelection.contains(c.config) ? .on : .off
         menu.addItem(selected)
         menu.addItem(.separator())
-        // The compatibility notes from the skin's snapshot; the custom items, the name and the weather credit read when
+        // The compatibility notes from the skin's snapshot; the custom items and the weather credit read when
         // the menu opens (`menuFacts`).
         let snapshot = c.runtime.snapshot
         if includeCustomItems {
             let facts = menuFacts(for: c)
-            let title = facts.name ?? c.config
-            menu.addItem(withTitle: title, action: nil, keyEquivalent: "").isEnabled = false
             let custom = facts.items
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
             if custom.count > 3 {
@@ -1974,6 +2006,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(variantsItem)
         }
 
+        if let root = rootConfigMenu(for: c.config) { menu.addItem(root) }
+
         let zoom = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
         zoom.submenu = skinZoomMenu(for: c)
         zoom.isEnabled = !state.forceDefaultZoom
@@ -1986,13 +2020,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.addItem(positionItem)
 
         let transparency = NSMenu()
-        for percent in stride(from: 0, through: 90, by: 10) {
-            let alpha = ManageModel.alpha(forTransparencyPercent: percent)
-            let i = item("\(percent)%", #selector(transparencyAction(_:)))
-            i.representedObject = [c.config, String(alpha)]
-            let commonAlpha = targets.first?.state.alphaValue
+        let commonAlpha = targets.first?.state.alphaValue
+        for (index, choice) in ManageModel.transparencyChoices.enumerated() {
+            let i = item(choice.title, #selector(transparencyAction(_:)))
+            i.representedObject = [c.config, String(choice.alpha)]
             i.state = commonAlpha.map { allMatch(\.alphaValue, $0)
-                && ManageModel.transparencyPercent(forAlpha: $0) == percent } == true ? .on : .off
+                && ManageModel.transparencyChoiceIndex(forAlpha: $0) == index } == true ? .on : .off
             transparency.addItem(i)
         }
         let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
@@ -2336,6 +2369,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activate(config: a[0], file: a[1])
     }
 
+    @objc private func rootConfigSkinAction(_ sender: NSMenuItem) {
+        let values = args(sender)
+        guard values.count == 2 else { return }
+        activate(config: values[0], file: values[1], exactFile: true)
+    }
+
     /// A chosen custom item: its action runs on the skin's executor, from `[Rainmeter]`.
     @objc func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
@@ -2409,7 +2448,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openSkinFolderAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { Workspace.reveal(c.fileURL.deletingLastPathComponent()) }
+        guard let config = args(sender).first else { return }
+        let directory = SkinLibrary.directory(for: config, root: skinsDirectory)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return
+        }
+        openMenuURL(directory)
     }
 
     @objc private func unloadSkinAction(_ sender: NSMenuItem) {
@@ -2441,6 +2486,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func aboutAction() { showAbout(tab: .version) }
+
+    @objc private func helpAction() {
+        guard let url = URL(string: "https://docs.rainmeter.net/") else { return }
+        openMenuURL(url)
+    }
 
     @objc func checkForUpdatesAction() { updates.checkManually() }
 

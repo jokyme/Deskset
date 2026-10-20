@@ -274,8 +274,7 @@ extension AppSelfTest {
             }
             let manage = ManageWindowController(app: app)
             manage.select(config: "App\\Focus", file: "Focus.ini")
-            // An AlphaValue the slider cannot show (it stops at 90% transparency), e.g. an "invisible until hovered"
-            // skin, and one between the 10% steps.
+            // An almost transparent AlphaValue and one between the listed transparency percentages.
             for alpha in [1, 200] {
                 focus.skin.execute("[!SetTransparency \(alpha)][!FadeDuration 400]", from: nil)
                 let draggable = focus.state.draggable
@@ -291,10 +290,10 @@ extension AppSelfTest {
             manage.testFadeField.stringValue = "900"
             manage.testFadeField.sendAction(manage.testFadeField.action, to: manage.testFadeField.target)
             t.equal(focus.state.fadeDuration, 900)
-            // The slider itself still sets the transparency.
-            manage.testTransparencySlider.integerValue = 50
-            manage.testTransparencySlider.sendAction(manage.testTransparencySlider.action,
-                                                     to: manage.testTransparencySlider.target)
+            // The popup itself still sets the transparency.
+            manage.testTransparencyPopup.selectItem(withTitle: "50%")
+            manage.testTransparencyPopup.sendAction(manage.testTransparencyPopup.action,
+                                                    to: manage.testTransparencyPopup.target)
             t.equal(focus.state.alphaValue, ManageModel.alpha(forTransparencyPercent: 50))
             manage.close()
         }

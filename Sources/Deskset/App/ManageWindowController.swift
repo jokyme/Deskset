@@ -90,8 +90,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let settingsNote = NSTextField(labelWithString: "Load the skin to change its settings.")
     private let positionPopup = NSPopUpButton()
     private let displayMonitorPopup = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let transparencySlider = NSSlider(value: 0, minValue: 0, maxValue: 90, target: nil, action: nil)
-    private let transparencyLabel = NSTextField(labelWithString: "0%")
+    private let transparencyPopup = NSPopUpButton()
     private let hoverPopup = NSPopUpButton()
     private let fadeField = NSTextField()
     private let loadOrderField = NSTextField()
@@ -745,14 +744,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         hoverPopup.target = self
         hoverPopup.action = #selector(settingsChanged(_:))
-        transparencySlider.numberOfTickMarks = 10
-        transparencySlider.allowsTickMarkValuesOnly = false
-        transparencySlider.isContinuous = true
-        transparencySlider.target = self
-        transparencySlider.action = #selector(settingsChanged(_:))
-        transparencySlider.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        transparencyLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        transparencyLabel.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        for choice in ManageModel.transparencyChoices {
+            transparencyPopup.addItem(withTitle: choice.title)
+            transparencyPopup.lastItem?.tag = choice.alpha
+        }
+        transparencyPopup.target = self
+        transparencyPopup.action = #selector(settingsChanged(_:))
+        transparencyPopup.setAccessibilityLabel("Transparency")
         numberField(fadeField, width: 60, action: #selector(settingsChanged(_:)))
         numberField(loadOrderField, width: 60, action: #selector(settingsChanged(_:)))
         SkinZoomStepper.configure(field: zoomField, stepper: zoomStepper, target: self,
@@ -786,7 +784,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         settingsGrid.rowSpacing = 10
         settingsGrid.columnSpacing = 12
         settingsGrid.addRow(with: [formLabel("Position:"), row([positionPopup])])
-        settingsGrid.addRow(with: [formLabel("Transparency:"), row([transparencySlider, transparencyLabel])])
+        settingsGrid.addRow(with: [formLabel("Transparency:"), row([transparencyPopup])])
         settingsGrid.addRow(with: [formLabel("On hover:"), row([hoverPopup, formLabel("Fade duration:"), fadeField, ms])])
         settingsGrid.addRow(with: [formLabel("Coordinates:"),
                                   row([formLabel("X"), xField, formLabel("Y"), yField, displayMonitorPopup])])
@@ -1038,9 +1036,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let s = running?.state ?? app.state.skin(config.name) ?? SkinState(file: file ?? "")
         let editable = running != nil && file != nil
         positionPopup.selectItem(withTag: s.alwaysOnTop)
+        if let index = ManageModel.transparencyChoiceIndex(forAlpha: s.alphaValue) {
+            transparencyPopup.selectItem(at: index)
+        } else {
+            transparencyPopup.select(nil)
+        }
         let percent = ManageModel.transparencyPercent(forAlpha: s.alphaValue)
-        transparencySlider.integerValue = min(percent, 90)
-        transparencyLabel.stringValue = "\(percent)%"
+        let transparencyDescription = "Transparency: \(percent)%"
+        transparencyPopup.toolTip = transparencyDescription
+        transparencyPopup.setAccessibilityHelp(transparencyDescription)
         hoverPopup.selectItem(withTag: s.onHover)
         fadeField.integerValue = s.fadeDuration
         loadOrderField.integerValue = s.loadOrder
@@ -1066,7 +1070,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         zoomStepper.integerValue = zoom
         zoomField.isEnabled = editable && !app.state.forceDefaultZoom
         zoomStepper.isEnabled = zoomField.isEnabled
-        for control in [positionPopup, transparencySlider, hoverPopup, fadeField, loadOrderField, xField, yField,
+        for control in [positionPopup, transparencyPopup, hoverPopup, fadeField, loadOrderField, xField, yField,
                         draggableBox, clickThroughBox, keepOnScreenBox, snapEdgesBox, savePositionBox] as [NSControl] {
             control.isEnabled = editable
         }
@@ -1256,8 +1260,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     }
 
     /// Applies the one setting whose control changed. (Writing every control back would also rewrite settings the
-    /// controls can only approximate: an AlphaValue of 0…25 — below the slider's 90% — or one between 10% steps
-    /// would change whenever an unrelated checkbox is clicked.)
+    /// controls can only approximate: a custom AlphaValue between the listed transparency percentages would change
+    /// whenever an unrelated checkbox is clicked.)
     @objc private func settingsChanged(_ sender: Any?) {
         guard let c = selectedController, let control = sender as? NSControl else { return }
         ManageWindowController.apply(control: control, of: self, to: c, app: app)
@@ -1271,11 +1275,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinWindowController,
                               app: AppController) {
-        if control === w.transparencySlider {
-            let percent = w.transparencySlider.integerValue
-            w.transparencyLabel.stringValue = "\(percent)%"
+        if control === w.transparencyPopup {
+            let index = w.transparencyPopup.indexOfSelectedItem
+            guard ManageModel.transparencyChoices.indices.contains(index) else { return }
+            let alpha = ManageModel.transparencyChoices[index].alpha
             c.clearFadedAlpha()
-            app.changeSettings(of: c) { $0.alphaValue = ManageModel.alpha(forTransparencyPercent: percent) }
+            app.changeSettings(of: c) { $0.alphaValue = alpha }
             return
         }
         app.changeSettings(of: c) { s in
@@ -1644,7 +1649,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testActiveSkinsPopup: NSPopUpButton { activeSkinsPopup }
     var testNewSkinButton: NSButton { newSkinButton }
     var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
-    var testTransparencySlider: NSSlider { transparencySlider }
+    var testTransparencyPopup: NSPopUpButton { transparencyPopup }
     var testStatus: String { statusLabel.stringValue }
     /// The hidden notice's title and text when it shows, nil when it does not.
     var testHiddenNotice: (title: String, text: String)? {
