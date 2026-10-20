@@ -158,6 +158,8 @@ public struct SkinHitMap: Equatable, Sendable {
         public let glass: GlassRegion?
         /// A Button: it reacts to the mouse itself (`Meter.handlesMouseItself`).
         public let isButton: Bool
+        /// An editable field takes its own selection press; it is not an image Button.
+        public let isTextEdit: Bool
         /// The mouse actions that are not `.absent`.
         public let actions: [MouseEventKind: Action]
         /// `MouseActionCursor` and `MouseActionCursorName`.
@@ -168,13 +170,14 @@ public struct SkinHitMap: Equatable, Sendable {
 
         public init(name: String, frame: SkinRect, shape: MouseShape, container: MouseShape?, glass: GlassRegion?,
                     isButton: Bool, actions: [MouseEventKind: Action], cursor: Bool, cursorName: String,
-                    toolTip: ToolTipInfo?) {
+                    toolTip: ToolTipInfo?, isTextEdit: Bool = false) {
             self.name = name
             self.frame = frame
             self.shape = shape
             self.container = container
             self.glass = glass
             self.isButton = isButton
+            self.isTextEdit = isTextEdit
             self.actions = actions
             self.cursor = cursor
             self.cursorName = cursorName
@@ -185,7 +188,7 @@ public struct SkinHitMap: Equatable, Sendable {
 
         public static func == (a: Entry, b: Entry) -> Bool {
             a === b || (a.name == b.name && a.frame == b.frame && a.shape == b.shape && a.container == b.container
-                        && a.glass == b.glass && a.isButton == b.isButton && a.actions == b.actions
+                        && a.glass == b.glass && a.isButton == b.isButton && a.isTextEdit == b.isTextEdit && a.actions == b.actions
                         && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip)
         }
     }
@@ -219,13 +222,13 @@ public struct SkinHitMap: Equatable, Sendable {
     /// `Meter.isHit(x:y:precise:)` of the entry's meter. `images` answers Button pixels, including those of a
     /// container; nil keeps the engine's fallback that unknown pixels are opaque.
     public func isHit(_ e: Entry, x: Double, y: Double, precise: Bool, images: SkinImageQueries?) -> Bool {
-        MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: e.isButton, glass: e.glass, frame: e.frame,
+        MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: e.isButton || e.isTextEdit, glass: e.glass, frame: e.frame,
                        shape: { e.shape }, container: { e.container }, images: images)
     }
 
     /// `Meter.isHit(x:y:)`: a Button's mouse actions use its frame, other meters their area.
     public func isHit(_ e: Entry, x: Double, y: Double, images: SkinImageQueries?) -> Bool {
-        isHit(e, x: x, y: y, precise: !e.isButton, images: images)
+        isHit(e, x: x, y: y, precise: !e.isButton && !e.isTextEdit, images: images)
     }
 
     /// `Skin.meter(at:_:handling:)`: the topmost meter hit at the point that does something for `kind`.
@@ -244,6 +247,8 @@ public struct SkinHitMap: Equatable, Sendable {
         for e in entries where isHit(e, x: x, y: y, images: images) {
             // A Button takes a press on its pixels itself, or leaves it to its own action: handled either way.
             if e.isButton && kind == .leftDown && e.shape.contains(x: x, y: y, images: images) { return true }
+            if e.isTextEdit && (kind == .leftDown || kind == .leftUp) { return true }
+            if e.isTextEdit && (kind == .scrollUp || kind == .scrollDown) { return true }
             if e.action(kind) != .absent { return true }
         }
         return skinAction(kind) != .absent
@@ -251,7 +256,19 @@ public struct SkinHitMap: Equatable, Sendable {
 
     /// The topmost Button there (its frame or glass), the one the engine gives a click first.
     public func topButton(at x: Double, _ y: Double, images: SkinImageQueries?) -> Entry? {
-        entries.first { $0.isButton && isHit($0, x: x, y: y, images: images) }
+        guard let entry = entries.first(where: { ($0.isButton || $0.isTextEdit) && isHit($0, x: x, y: y, images: images) }),
+              entry.isButton else { return nil }
+        return entry
+    }
+
+    /// The field that receives a left press, respecting actions and Buttons above it.
+    public func textEdit(at x: Double, _ y: Double, images: SkinImageQueries?) -> Entry? {
+        for entry in entries where isHit(entry, x: x, y: y, images: images) {
+            if entry.isTextEdit { return entry }
+            if entry.isButton && entry.shape.contains(x: x, y: y, images: images) { return nil }
+            if entry.action(.leftDown) != .absent { return nil }
+        }
+        return nil
     }
 
     /// `Skin.isOnButton`: the point is on the image of the topmost Button there.
@@ -352,8 +369,9 @@ extension Skin {
             map.entries.append(SkinHitMap.Entry(
                 name: m.name, frame: m.frame, shape: m.mouseShape,
                 container: m.container.map { $0.hidden ? .nowhere : $0.mouseShape },
-                glass: shownGlassRegion(of: m), isButton: m.handlesMouseItself, actions: actions,
-                cursor: m.mouseActionCursor, cursorName: m.mouseActionCursorName, toolTip: toolTip))
+                glass: shownGlassRegion(of: m), isButton: m is ButtonMeter, actions: actions,
+                cursor: m.mouseActionCursor, cursorName: m.mouseActionCursorName, toolTip: toolTip,
+                isTextEdit: m is TextEditMeter))
         }
         map.toolTipAreas = toolTipAreas()
         map.toolTipsReadMeasures = readsMeasures

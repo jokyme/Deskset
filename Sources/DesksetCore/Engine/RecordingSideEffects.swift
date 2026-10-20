@@ -228,6 +228,12 @@ public final class RecordingSkinHost: SkinHost {
         return (widest * style.fontSize * 0.6, Double(max(lines.count, 1)) * style.fontSize * 1.2)
     }
 
+    public func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                               for skin: Skin) -> TextEditLayout {
+        inner?.textEditLayout(text, style: style, viewport: viewport, multiline: multiline, for: skin)
+            ?? TextEditLayout.fallback(text: text, style: style, viewport: viewport, multiline: multiline)
+    }
+
     public func imageSize(atPath path: String) -> (width: Double, height: Double)? {
         inner?.imageSize(atPath: path)
     }

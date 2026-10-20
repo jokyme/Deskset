@@ -33,6 +33,10 @@ import DesksetCore
 package enum TextRenderer {
     /// `cycle` only governs layout-cache turnover; it is not an input to the picture or part of the text's value.
     package static func draw(_ drawing: TextDraw, in ctx: CGContext, layouts: TextLayoutCache, cycle: Int) {
+        if let editing = drawing.editing {
+            drawEditing(drawing, editing: editing, in: ctx, layouts: layouts, cycle: cycle)
+            return
+        }
         let text = drawing.text
         let style = drawing.style
         guard !text.isEmpty, style.fontSize > 0 else { return }
@@ -89,6 +93,232 @@ package enum TextRenderer {
         }
         layout.draw(positioned, in: ctx, style: style, shadowClip: drawing.frame.cgRect,
                     target: DrawTarget.capture(ctx))
+    }
+
+    package static func editingGeometry(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                                         layouts: TextLayoutCache, cycle: Int) -> TextEditLayout {
+        editingLayout(text, style: style, viewport: viewport, multiline: multiline,
+                      layouts: layouts, cycle: cycle).geometry
+    }
+
+    private struct EditingLayout {
+        var layout: TextLayout
+        var style: TextStyle
+        var positioned: [(line: TextLayout.Placed, origin: CGPoint)]
+        var geometry: TextEditLayout
+    }
+
+    /// TextEdit clips overflow instead of truncating its value. Multiline permits explicit newlines; wrapping
+    /// continues to follow the existing String options rather than being enabled by Multiline alone.
+    private static func editingLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                                       layouts: TextLayoutCache, cycle: Int) -> EditingLayout {
+        var style = style
+        style.clip = 0
+        style.wrap = multiline && style.wrap
+        style.trailingSpaces = true
+        let width = max(viewport.width.isFinite ? viewport.width : 0, 0)
+        let height = max(viewport.height.isFinite ? viewport.height : 0, 0)
+        let units = Array(text.utf16)
+        // CoreText otherwise omits an empty input and the empty line after a terminating newline. A zero-width
+        // character supplies their normal font metrics without adding a visible character or editable index.
+        let needsEmptyLine = text.isEmpty || text.last?.isNewline == true
+        let shaped = needsEmptyLine ? text + "\u{200B}" : text
+        let layout = layouts.layout(shaped, style: style, wrapWidth: style.wrap ? CGFloat(width) : nil, cycle: cycle)
+        var placed = layout.visibleLines(clip: 0, boxHeight: CGFloat(height),
+                                         innerWidth: CGFloat(width) - 2 * layout.pad)
+        let innerWidth = max(CGFloat(width) - 2 * layout.pad, 0)
+        let blockHeight = placed.reduce(CGFloat(0)) { $0 + $1.height }
+        var y = CGFloat(0)
+        switch style.verticalAlign {
+        case .top: break
+        case .center: y = max((CGFloat(height) - blockHeight) / 2, 0)
+        case .bottom: y = max(CGFloat(height) - blockHeight, 0)
+        }
+        var stops: [Int] = [0]
+        var offset = 0
+        for character in text {
+            offset += String(character).utf16.count
+            stops.append(offset)
+        }
+        var positioned: [(line: TextLayout.Placed, origin: CGPoint)] = []
+        var geometry: [TextEditLine] = []
+        positioned.reserveCapacity(placed.count)
+        geometry.reserveCapacity(placed.count)
+        var extentX = 0.0
+        var stopCursor = 0
+        for index in placed.indices {
+            var line = placed[index]
+            let source = layout.lines[index]
+            let start = min(source.range.location, units.count)
+            let end = min(source.range.location + source.range.length, units.count)
+            var contentEnd = end
+            while contentEnd > start, TextWrapRules.isNewline(units[contentEnd - 1]) { contentEnd -= 1 }
+            let soft = index + 1 < placed.count && end > start && contentEnd == end && end < units.count
+            let x: CGFloat
+            switch style.horizontalAlign {
+            case .left: x = layout.pad
+            case .center: x = layout.pad + max((innerWidth - line.width) / 2, 0)
+            case .right: x = layout.pad + max(innerWidth - line.width, 0)
+            case .justify:
+                x = layout.pad
+                if line.canJustify, innerWidth - line.indent > 1,
+                   let justified = CTLineCreateJustifiedLine(line.line, 1, Double(innerWidth - line.indent)) {
+                    line.line = justified
+                }
+            }
+            let origin = CGPoint(x: x + line.indent, y: y + line.ascent)
+            placed[index] = line
+            positioned.append((line, origin))
+            while stopCursor < stops.count, stops[stopCursor] < start { stopCursor += 1 }
+            var cursor = stopCursor
+            var caretStops: [TextEditCaret] = []
+            var hitPoints: [CGFloat] = []
+            while cursor < stops.count, stops[cursor] <= contentEnd {
+                let position = stops[cursor]
+                var secondary = CGFloat(0)
+                let primary = CTLineGetOffsetForStringIndex(line.line, position, &secondary)
+                caretStops.append(TextEditCaret(offset: position,
+                                               x: Double(origin.x + primary)))
+                hitPoints.append(primary)
+                if abs(primary - secondary) > 0.01 { hitPoints.append(secondary) }
+                cursor += 1
+            }
+            let hitStops = hitPoints.map { x -> TextEditCaret in
+                let raw = CTLineGetStringIndexForPosition(line.line, CGPoint(x: x, y: 0))
+                var lower = 0, upper = caretStops.count
+                while lower < upper {
+                    let middle = (lower + upper) / 2
+                    if caretStops[middle].offset < raw { lower = middle + 1 } else { upper = middle }
+                }
+                var nearest = min(lower, caretStops.count - 1)
+                if nearest > 0, abs(caretStops[nearest - 1].offset - raw) < abs(caretStops[nearest].offset - raw) {
+                    nearest -= 1
+                }
+                let snapped: Int
+                if raw == kCFNotFound {
+                    snapped = caretStops.min { abs($0.x - Double(origin.x + x))
+                        < abs($1.x - Double(origin.x + x)) }?.offset ?? start
+                } else { snapped = nearest >= 0 ? caretStops[nearest].offset : start }
+                return TextEditCaret(offset: snapped, x: Double(origin.x + x))
+            }
+            let bounds = SkinRect(x: Double(x), y: Double(y), width: Double(max(line.width, 0)),
+                                  height: Double(line.height))
+            geometry.append(TextEditLine(range: start..<end, bounds: bounds,
+                                         caretStops: caretStops.isEmpty
+                                            ? [TextEditCaret(offset: start, x: Double(origin.x))] : caretStops,
+                                         isSoftWrap: soft,
+                                         selectionCells: editingCells(line.line, stops: caretStops,
+                                                                      origin: origin, bounds: bounds),
+                                         hitStops: hitStops.isEmpty ? nil : hitStops))
+            extentX = max(extentX, Double(x + max(line.width, 0) + layout.pad),
+                          (caretStops.map(\.x).max() ?? 0) + 1)
+            y += line.height
+        }
+        return EditingLayout(layout: layout, style: style, positioned: positioned,
+                             geometry: TextEditLayout(lines: geometry,
+                                                      contentSize: SkinSize(width: extentX, height: Double(y)),
+                                                      viewportSize: SkinSize(width: width, height: height)))
+    }
+
+    private static func editingCells(_ line: CTLine, stops: [TextEditCaret], origin: CGPoint,
+                                      bounds: SkinRect) -> [TextEditCell] {
+        var result: [TextEditCell] = []
+        for run in CTLineGetGlyphRuns(line) as? [CTRun] ?? [] {
+            let count = CTRunGetGlyphCount(run)
+            guard count > 0 else { continue }
+            let range = CTRunGetStringRange(run)
+            let end = range.location + range.length
+            var positions = [CGPoint](repeating: .zero, count: count)
+            var advances = [CGSize](repeating: .zero, count: count)
+            CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+            CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+            var minX = CGFloat.infinity, maxX = -CGFloat.infinity
+            for (position, advance) in zip(positions, advances) {
+                minX = min(minX, position.x, position.x + advance.width)
+                maxX = max(maxX, position.x, position.x + advance.width)
+            }
+            let rtl = CTRunGetStatus(run).contains(.rightToLeft)
+            func x(_ index: Int) -> CGFloat {
+                if index == range.location { return rtl ? maxX : minX }
+                if index == end { return rtl ? minX : maxX }
+                var secondary = CGFloat(0)
+                let primary = CTLineGetOffsetForStringIndex(line, index, &secondary)
+                if primary >= minX - 0.01, primary <= maxX + 0.01 { return primary }
+                return secondary
+            }
+            // Runs can be in visual order; find their first logical character with a bounded binary search.
+            var lower = 0, upper = stops.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                if stops[middle].offset < range.location { lower = middle + 1 } else { upper = middle }
+            }
+            var index = max(lower - 1, 0)
+            while index + 1 < stops.count, stops[index].offset < end {
+                let first = max(stops[index].offset, range.location)
+                let last = min(stops[index + 1].offset, end)
+                if first < last {
+                    let a = x(first), b = x(last)
+                    result.append(TextEditCell(range: first..<last,
+                                               bounds: SkinRect(x: Double(origin.x + min(a, b)), y: bounds.y,
+                                                                width: Double(max(abs(a - b), 1)),
+                                                                height: bounds.height)))
+                }
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private static func drawEditing(_ drawing: TextDraw, editing: TextEditingDraw, in ctx: CGContext,
+                                     layouts: TextLayoutCache, cycle: Int) {
+        let box = drawing.contentFrame.cgRect
+        let savedTextMatrix = ctx.textMatrix
+        ctx.saveGState()
+        defer { ctx.restoreGState(); ctx.textMatrix = savedTextMatrix }
+        if drawing.style.angle != 0 {
+            ctx.translateBy(x: drawing.anchor.x, y: drawing.anchor.y)
+            ctx.rotate(by: drawing.style.angle)
+            ctx.translateBy(x: -drawing.anchor.x, y: -drawing.anchor.y)
+        }
+        ctx.setShouldAntialias(drawing.style.antiAlias)
+        if editing.isFocused, editing.focusBorderWidth.isFinite, editing.focusBorderWidth > 0 {
+            let border = drawing.frame.cgRect
+            let width = min(CGFloat(editing.focusBorderWidth), min(border.width, border.height))
+            if width > 0 {
+                ctx.setLineWidth(width)
+                ctx.setStrokeColor(editing.focusBorderColor.cgColor)
+                ctx.stroke(border.insetBy(dx: width / 2, dy: width / 2))
+            }
+        }
+        guard box.width > 0, box.height > 0 else { return }
+        ctx.clip(to: box)
+        let sourceText = editing.layoutText ?? drawing.text
+        let sourceStyle = editing.layoutStyle ?? drawing.style
+        let input = editingLayout(sourceText, style: sourceStyle, viewport: drawing.contentFrame,
+                                  multiline: editing.multiline, layouts: layouts, cycle: cycle)
+        let scrollX = editing.scroll.x.isFinite ? max(editing.scroll.x, 0) : 0
+        let scrollY = editing.scroll.y.isFinite ? max(editing.scroll.y, 0) : 0
+        let dx = box.minX - CGFloat(scrollX), dy = box.minY - CGFloat(scrollY)
+        if editing.isFocused {
+            ctx.setFillColor(editing.selectionColor.cgColor)
+            for rect in input.geometry.selectionRects(in: editing.selectionRange) {
+                ctx.fill(rect.cgRect.offsetBy(dx: dx, dy: dy))
+            }
+        }
+        let painting = sourceText == drawing.text && sourceStyle == drawing.style ? input
+            : editingLayout(drawing.text, style: drawing.style, viewport: drawing.contentFrame,
+                            multiline: editing.multiline, layouts: layouts, cycle: cycle)
+        if drawing.style.fontSize > 0 {
+            let positioned = painting.positioned.map { ($0.line, $0.origin.applying(
+                CGAffineTransform(translationX: dx, y: dy))) }
+            painting.layout.draw(positioned, in: ctx, style: painting.style, shadowClip: drawing.frame.cgRect,
+                                 target: DrawTarget.capture(ctx))
+        }
+        if editing.isFocused, editing.caretVisible {
+            ctx.setFillColor(editing.caretColor.cgColor)
+            ctx.fill(input.geometry.caretRect(at: editing.caretOffset, preferredLine: editing.caretLine)
+                .cgRect.offsetBy(dx: dx, dy: dy))
+        }
     }
 }
 

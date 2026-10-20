@@ -1256,9 +1256,12 @@ public final class Skin {
         beginWork()
         defer { endWork() }
         if !focused {
+            var dismissed = false
             for case let m as TextEditMeter in meters where m.isFocused {
                 m.dismiss()
+                dismissed = true
             }
+            if dismissed, !closed { layout(); updateSize(force: true); needsDisplay() }
         }
         let action = focused ? settings.onFocusAction : settings.onUnfocusAction
         if !action.isEmpty { execute(action, from: rainmeterSection) }
@@ -1370,6 +1373,7 @@ public final class Skin {
         assertOwned()
         beginWork()
         defer { endWork() }
+        defer { mirror(.textEditKey(key)) }
         guard !closed else { return false }
         for case let meter as TextEditMeter in meters where meter.isFocused {
             if meter.handleKeyInput(key) {
@@ -1380,6 +1384,73 @@ public final class Skin {
             }
         }
         return false
+    }
+
+    /// Clipboard operations run on the skin's owner; the host alone reads and writes the platform clipboard.
+    public func textEditClipboard(cut: Bool) -> String? {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed, let meter = meters.compactMap({ $0 as? TextEditMeter }).first(where: \.isFocused) else { return nil }
+        if !cut { return meter.clipboardText }
+        let value = meter.cutSelection()
+        layout()
+        updateSize(force: true)
+        needsDisplay()
+        mirror(.textEditCut)
+        return value
+    }
+
+    @discardableResult
+    public func textEditPaste(_ value: String) -> Bool {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed, let meter = meters.compactMap({ $0 as? TextEditMeter }).first(where: \.isFocused) else { return false }
+        let handled = meter.paste(value)
+        if handled {
+            layout()
+            updateSize(force: true)
+            needsDisplay()
+            mirror(.textEditPaste(value))
+        }
+        return handled
+    }
+
+    public enum TextEditSelectionPhase: Equatable, Sendable { case dragged, ended }
+
+    /// The pressed text meter keeps selection capture even after the pointer leaves its frame.
+    @discardableResult
+    public func textEditSelection(_ phase: TextEditSelectionPhase, x: Double, y: Double) -> Bool {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed, let meter = pressedMeter as? TextEditMeter, meter.isFocused else { return false }
+        if phase == .dragged { meter.extendSelection(to: SkinPoint(x: x, y: y)) }
+        else { meter.endSelection() }
+        layout()
+        updateSize(force: true)
+        needsDisplay()
+        mirror(.textEditSelection(phase, x: x, y: y))
+        return true
+    }
+
+    public var hasFocusedTextEdit: Bool {
+        assertOwned()
+        return !closed && meters.contains { ($0 as? TextEditMeter)?.isFocused == true && !$0.hidden }
+    }
+
+    /// A caret is independent of Update, including skins whose update clock is disabled.
+    public func blinkTextEditCaret() {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed else { return }
+        var changed = false
+        for case let meter as TextEditMeter in meters where !meter.hidden && meter.isFocused {
+            if meter.toggleCaretBlink() { changed = true }
+        }
+        if changed { needsDisplay() }
     }
 
     /// What `MacOnAppearanceChangeAction` does when a skin does not set it: the skin loads again with the new values.
@@ -2916,6 +2987,12 @@ public final class Skin {
         guard !closed else { return }
         switch input {
         case .mouse(let kind, let x, let y): mouseEvent(kind, x: x, y: y)
+        case .textEditMouseDown(let x, let y, let extending):
+            mouseEvent(.leftDown, x: x, y: y, extendingTextSelection: extending)
+        case .textEditSelection(let phase, let x, let y): textEditSelection(phase, x: x, y: y)
+        case .textEditKey(let key): keyEvent(key)
+        case .textEditPaste(let value): textEditPaste(value)
+        case .textEditCut: _ = textEditClipboard(cut: true)
         case .moved(let x, let y): mouseMoved(x: x, y: y)
         case .exited: mouseExited()
         case .pressCancelled: cancelMousePress()
@@ -2949,13 +3026,28 @@ public final class Skin {
     @discardableResult
     public func mouseEvent(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         assertOwned()
+        return mouseEvent(kind, x: x, y: y, extendingTextSelection: false)
+    }
+
+    /// The native input view supplies Shift selection separately from ordinary skin mouse actions.
+    @discardableResult
+    public func mouseEvent(_ kind: MouseEventKind, x: Double, y: Double, extendingTextSelection: Bool) -> Bool {
+        assertOwned()
         beginWork()
         defer { endWork() }
-        defer { mirror(.mouse(kind, x: x, y: y)) }
+        defer {
+            if kind == .leftDown && extendingTextSelection { mirror(.textEditMouseDown(x: x, y: y, extending: true)) }
+            else { mirror(.mouse(kind, x: x, y: y)) }
+        }
         environmentValid = false
+        var changedTextEdit = false
+        defer {
+            if changedTextEdit, !closed { layout(); updateSize(force: true); needsDisplay() }
+        }
         if kind == .leftDown {
             for case let m as TextEditMeter in meters where m.isFocused && !m.isHit(x: x, y: y) {
                 m.dismiss()
+                changedTextEdit = true
                 if closed { return true }
             }
         }
@@ -2963,9 +3055,11 @@ public final class Skin {
         if kind == .leftUp, let captured = pressedMeter {
             pressedMeter = nil
             alreadyNotified = captured
+            if captured is TextEditMeter { changedTextEdit = true }
             if captured.isHit(x: x, y: y, precise: true) {
                 if captured.handleMouse(.leftUp, x: x, y: y) { return true }
             } else {
+                (captured as? TextEditMeter)?.endSelection()
                 captured.mouseHover(inside: false, x: x, y: y)
             }
             if closed { return true }
@@ -2973,7 +3067,11 @@ public final class Skin {
         for m in meters.reversed() where m.isHit(x: x, y: y) {
             let selfHandling = m.handlesMouseItself && m !== alreadyNotified
             if selfHandling {
-                let consumed = m.handleMouse(kind, x: x, y: y)
+                let consumed: Bool
+                if let text = m as? TextEditMeter {
+                    changedTextEdit = true
+                    consumed = text.handleMouse(kind, x: x, y: y, extendingSelection: extendingTextSelection)
+                } else { consumed = m.handleMouse(kind, x: x, y: y) }
                 if closed { return true }
                 if consumed {
                     if kind == .leftDown { pressedMeter = m }
@@ -3007,6 +3105,7 @@ public final class Skin {
         defer { mirror(.pressCancelled) }
         pressedMeter = nil
         for m in meters where m.handlesMouseItself {
+            (m as? TextEditMeter)?.endSelection()
             m.mouseHover(inside: false, x: -1, y: -1)
             if closed { return }
         }

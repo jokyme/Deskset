@@ -335,6 +335,9 @@ public protocol SkinHost: AnyObject {
     /// skin's owner while it lays out its meters; the skin is named so that the host can measure with that skin's
     /// own text layouts, the ones it then draws (a host may serve several skins).
     func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double)
+    /// Editing geometry in unscrolled content coordinates, from the same text layout used for drawing.
+    func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                        for skin: Skin) -> TextEditLayout
     /// Pixel size of the image file at `path`, or nil when it cannot be loaded.
     func imageSize(atPath path: String) -> (width: Double, height: Double)?
     func environment(for skin: Skin) -> SkinEnvironment
@@ -373,6 +376,11 @@ public protocol SkinHost: AnyObject {
 public enum SkinInput {
     /// `Skin.mouseEvent`.
     case mouse(MouseEventKind, x: Double, y: Double)
+    case textEditMouseDown(x: Double, y: Double, extending: Bool)
+    case textEditSelection(Skin.TextEditSelectionPhase, x: Double, y: Double)
+    case textEditKey(TextEditMeter.KeyInput)
+    case textEditPaste(String)
+    case textEditCut
     /// `Skin.mouseMoved`.
     case moved(x: Double, y: Double)
     /// `Skin.mouseExited`.
@@ -409,6 +417,10 @@ extension SkinActionPolicy {
 }
 
 extension SkinHost {
+    public func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                               for skin: Skin) -> TextEditLayout {
+        TextEditLayout.fallback(text: text, style: style, viewport: viewport, multiline: multiline)
+    }
     public func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool { false }
     public func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
     public func skinWindowTakesPointer(_ skin: Skin) -> Bool { true }

@@ -37,6 +37,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     // What the executor owns.
     private var timer: SkinScheduledWork?
+    private var textEditCaretTimer: SkinScheduledWork?
+    /// A pending paste preserves the order of later input, even when its preceding copy came from another skin.
+    private var textEditPasteRead: SkinTextClipboardRead?
+    private var messagesAfterTextEditPaste: [SkinMessage] = []
     /// OnCloseAction is running, or has run.
     private(set) var isClosing = false
     /// The skin is closed: it takes no more messages.
@@ -107,6 +111,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     deinit {
         timer?.cancel()
+        textEditCaretTimer?.cancel()
         // Only the executor lets go of a skin (docs/skin-threading.md, phase 0: Lifetime).
         guard self.skin != nil, !self.skin.executor.isCurrent else { return }
         let executor = self.skin.executor
@@ -268,6 +273,29 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     @discardableResult
     private func handle(_ message: SkinMessage) -> Bool {
+        var cancelledPasteMessages: [SkinMessage] = []
+        defer {
+            // Complete requests through their normal closed-runtime paths after close has finished.
+            for message in cancelledPasteMessages {
+                switch message {
+                case .textEditClipboard, .patch, .setZoom: _ = handle(message)
+                default: break
+                }
+            }
+        }
+        if textEditPasteRead != nil {
+            switch message {
+            case .textEditPasteResolved:
+                break
+            case .close:
+                textEditPasteRead = nil
+                cancelledPasteMessages = messagesAfterTextEditPaste
+                messagesAfterTextEditPaste = []
+            default:
+                messagesAfterTextEditPaste.append(message)
+                return true
+            }
+        }
         workActivity?.begin()
         defer { workActivity?.end() }
         messageObserver?(message)
@@ -312,7 +340,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         default:
             break
         }
-        guard !isClosed else { return false }
+        guard !isClosed else {
+            if case .textEditClipboard(_, let reply) = message { reply(nil) }
+            return false
+        }
         switch message {
         case .mouse(let kind, let x, let y):
             return skin.mouseEvent(kind, x: x, y: y)
@@ -335,7 +366,33 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         case .fileDrag(let phase, let files, let x, let y):
             return skin.fileDragEvent(phase, files: files, x: x, y: y)
         case .key(let input):
+            guard !isRetiredForLayout else { return false }
             return skin.keyEvent(input)
+        case .textEditMouseDown(let x, let y, let extending):
+            guard !isRetiredForLayout else { return false }
+            return skin.mouseEvent(.leftDown, x: x, y: y, extendingTextSelection: extending)
+        case .textEditSelection(let phase, let x, let y):
+            guard !isRetiredForLayout else { return false }
+            return skin.textEditSelection(phase, x: x, y: y)
+        case .textEditClipboard(let cut, let reply):
+            guard !isRetiredForLayout else { reply(nil); return false }
+            reply(skin.textEditClipboard(cut: cut))
+        case .textEditPaste(let value):
+            guard !isRetiredForLayout else { return false }
+            return skin.textEditPaste(value)
+        case .textEditPastePending(let read):
+            textEditPasteRead = read
+            read.whenReady { [weak self, weak read] value in
+                guard let self, let read else { return }
+                self.send(.textEditPasteResolved(read, value))
+            }
+        case .textEditPasteResolved(let read, let value):
+            guard textEditPasteRead === read else { return false }
+            textEditPasteRead = nil
+            if let value, !isRetiredForLayout { _ = skin.textEditPaste(value) }
+            let waiting = messagesAfterTextEditPaste
+            messagesAfterTextEditPaste = []
+            for message in waiting { _ = handle(message) }
         case .bang(let bang, _, let hops):
             withHops(hops) {
                 // A window bang goes to the window model (the skin's actions never see it, as before); any other bang
@@ -729,12 +786,29 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         }
     }
 
+    private func syncTextEditCaretTimer() {
+        let needed = !isClosing && !isClosed && !updatesPaused && !isRetiredForLayout && skin.hasFocusedTextEdit
+        guard needed else {
+            textEditCaretTimer?.cancel()
+            textEditCaretTimer = nil
+            return
+        }
+        guard textEditCaretTimer == nil else { return }
+        textEditCaretTimer = skin.executor.timer(interval: 0.5, leeway: 0.05, repeats: true) { [weak self] in
+            guard let self else { return }
+            guard !self.isClosed, !self.isClosing, !self.updatesPaused, !self.isRetiredForLayout,
+                  self.skin.hasFocusedTextEdit else { self.syncTextEditCaretTimer(); return }
+            self.skin.blinkTextEditCaret()
+        }
+    }
+
     /// Sleep / screens asleep / session switched away: no updates and no drawing.
     private func pause() {
         guard !updatesPaused else { return }
         updatesPaused = true
         timer?.cancel()
         timer = nil
+        syncTextEditCaretTimer()
     }
 
     /// `updateNow`: catch up at once. Skins with `Update=-1` ("update only once on load or refresh") are not updated:
@@ -744,6 +818,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         updatesPaused = false
         if updateNow && SkinRuntime.updateInterval(skin.effectiveUpdate) != nil { skin.update() }
         startTimer()
+        syncTextEditCaretTimer()
     }
 
     /// The Mac woke from sleep: the engine runs OnWakeAction at the end of the next update ("Action to execute when
@@ -766,6 +841,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         timer?.cancel()
         timer = nil
         isClosing = true
+        syncTextEditCaretTimer()
         skin.close()
         isClosed = true
         // The window fades out with the last frame.
@@ -983,6 +1059,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         defer { workActivity?.end() }
         HostCallAudit.note(self, "skinDidFinishWork")
         publishSnapshot()
+        syncTextEditCaretTimer()
     }
 
     /// MacGlass: the glass views follow the engine's regions (asked right before the redraw that shows the new layout).
@@ -1060,6 +1137,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
         HostCallAudit.note(self, "textSize")
         return SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
+    }
+
+    func textEditLayout(_ text: String, style: TextStyle, viewport: SkinRect, multiline: Bool,
+                        for skin: Skin) -> TextEditLayout {
+        HostCallAudit.note(self, "textEditLayout")
+        return SkinRenderer.textEditLayout(text, style: style, viewport: viewport, multiline: multiline, for: skin)
     }
 
     func imageSize(atPath path: String) -> (width: Double, height: Double)? {

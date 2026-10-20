@@ -769,7 +769,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   密码掩码、输入过滤、只读；动作中可用 `[$Input]` 和 `[$Input:MatchN]`；`!TextEdit:Focus`、`:Dismiss`、`:Submit`、`:Select`、
   `:SelectAll`、`:SetText`、`:Clear`、`:Reset`、`:ScrollByLine`、`:ResetScroll`）。
 - **Mac：** 两者均支持。`Meter=SVG` 解析常用的 SVG 元素、渐变和样式规则并用 CoreGraphics 光栅化，支持通用图像选项；
-  `Meter=TextEdit` 直接在皮肤中绘制和编辑，使用 macOS 的 ⌘ 快捷键（⌘A、⌘C、⌘X、⌘V）。
+  `Meter=TextEdit` 直接在皮肤中绘制和编辑，使用 macOS 的 ⌘ 快捷键（⌘A、⌘C、⌘X、⌘V、⌘Z）。光标导航、Shift 扩选、
+  鼠标选区和溢出滚动使用与绘制相同的文字排版。只读输入框仍能选择、复制和滚动；密码模式禁止复制和剪切。
+  光标、选区和焦点装饰独立于皮肤更新间隔生效。其余交互限制见 [TextEdit 编辑](compat/engine.md#textedit-editing)。
 - **原因：** SVG 与文字用 CoreGraphics / CoreText 绘制；Mac 用 ⌘ 代替 Ctrl。
 - **对皮肤的影响：** 一般皮肤无影响；少见的 SVG 滤镜、`<text>` / `<foreignObject>` 元素不会绘制。
 - **状态：** 模拟实现

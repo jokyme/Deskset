@@ -37,6 +37,14 @@ enum SkinMessage {
     case fileDrag(Skin.FileDragPhase, files: [String], x: Double, y: Double)
     /// Keyboard input for the focused `TextEditMeter` (`Skin.keyEvent`).
     case key(TextEditMeter.KeyInput)
+    /// A text selection starts with the Shift state of the press, then follows the captured pointer outside the meter.
+    case textEditMouseDown(x: Double, y: Double, extending: Bool)
+    case textEditSelection(Skin.TextEditSelectionPhase, x: Double, y: Double)
+    /// Clipboard strings cross the executor boundary; only the view touches AppKit's pasteboard.
+    case textEditClipboard(cut: Bool, reply: (String?) -> Void)
+    case textEditPaste(String)
+    case textEditPastePending(SkinTextClipboardRead)
+    case textEditPasteResolved(SkinTextClipboardRead, String?)
 
     // MARK: Actions
 
