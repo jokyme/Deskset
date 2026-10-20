@@ -87,6 +87,8 @@ enum AppSelfTest {
         NewSkinUISelfTests.run(t)
         NewSkinEditorPreflightSelfTests.run(t)
         NewSkinManageSelfTests.run(t)
+        MenuNavigationSelfTests.run(t)
+        TransparencyUISelfTests.run(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         WeatherSelfTests.run(t)

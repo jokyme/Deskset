@@ -19,6 +19,17 @@ enum ManageModel {
         return Int(((1 - a / 255) * 100).rounded())
     }
 
+    static let transparencyChoices: [(title: String, alpha: Int)] =
+        stride(from: 0, through: 90, by: 10).map {
+            (title: "\($0)%", alpha: alpha(forTransparencyPercent: $0))
+        } + [(title: "~100%", alpha: 1)]
+
+    static func transparencyChoiceIndex(forAlpha alpha: Int) -> Int? {
+        if alpha == 1 { return transparencyChoices.count - 1 }
+        let percent = transparencyPercent(forAlpha: alpha)
+        return transparencyChoices.dropLast().firstIndex { transparencyPercent(forAlpha: $0.alpha) == percent }
+    }
+
     /// A `[Metadata]` value by key (case-insensitive), trimmed; nil when missing or empty.
     static func metadataValue(_ metadata: [String: String], _ key: String) -> String? {
         let value = metadata[key] ?? metadata.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value

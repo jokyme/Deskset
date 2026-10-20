@@ -1184,9 +1184,13 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** partial
 
 #### AlphaValue, OnHover and fades
-- **Windows:** AlphaValue 0…255; the menu offers 0 %…90 % transparency; OnHover 0 nothing, 1 hide, 2 fade in, 3 fade
+- **Windows:** AlphaValue 0…255; menu and Manage transparency choices run from 0 % to 90 % in 10 % steps,
+  plus ~100 % (`AlphaValue=1`); OnHover 0 nothing, 1 hide, 2 fade in, 3 fade
   out; FadeDuration (default 250 ms) for OnHover and `!ShowFade` / `!HideFade` / `!ToggleFade`.
-- **Mac:** the same. Judgment calls: OnHover=Hide also lets clicks pass through while the skin is hidden under the
+- **Mac:** the menu and Manage popup share those choices. Opening a menu or Manage preserves custom alpha values;
+  an unrepresented value leaves the popup unselected. Only alpha 1 selects ~100 %; alpha 0 remains fully invisible.
+  See [skin settings](https://docs.rainmeter.net/manual/settings/skin-sections/#AlphaValue) and
+  [Manage](https://docs.rainmeter.net/manual/user-interface/manage/). Judgment calls: OnHover=Hide also lets clicks pass through while the skin is hidden under the
   pointer (Fade out keeps its mouse actions); the pointer is polled every 100 ms so it also works for click-through
   skins; skins also fade in when loaded and fade out when unloaded (not on refresh); FadeDuration is clamped to
   0…10 000 ms.
@@ -1361,18 +1365,21 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 ### 7.3 Menus and the Manage window
 
 #### Skin context menu and custom actions
-- **Windows:** skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through, Keep on
+- **Windows:** ConfigName opens the current config folder; the root config submenu lists its skins. Variants,
+  Settings (Position, Transparency, Hide on hover, Draggable, Click through, Keep on
   screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions (`ContextTitleN` /
   `ContextActionN`, up to 25; a submenu when more than 3).
-- **Mac:** Select skin, the skin's name, its custom actions (same rules; `!SkinCustomMenu` shows only them), Variants,
-  Zoom, Settings (Position,
+- **Mac:** the full ConfigName opens that config folder. Select skin, custom actions (same rules; `!SkinCustomMenu`
+  shows only them), Variants, a submenu named after the current root config, Zoom, Settings (Position,
   Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, Favorite), "Compatibility Notes
   (n)" when there are any, Manage Skin…, Edit Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen
   in Settings ▸ Editor, Refresh Skin, Open Skin Folder, Unload Skin.
   FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen only through `Default…`
   options and bangs. Zoom, Position, Transparency, On Hover and window-setting checkboxes target the selected group;
-  mixed values are unchecked. Refresh Skin and Unload Skin also apply to that group, clearing selection as its
-  instances stop.
+  mixed values are unchecked. ConfigName always opens the clicked skin's folder; the root submenu includes only
+  that root and loads the chosen INI without toggling it off. Missing targets do not load another variant.
+  Refresh Skin and Unload Skin also apply to that group, clearing selection as its instances stop.
+  See [context menus](https://docs.rainmeter.net/manual/user-interface/context-menus/).
 - **Why:** Mac menu conventions.
 - **Skin impact:** none.
 - **Status:** emulated
@@ -1380,7 +1387,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Main menu (the tray menu)
 - **Windows:** the notification-area icon's menu; `!TrayMenu` opens it.
 - **Mac:** the menu bar icon's menu (Manage Skins…, Skins, Favorites, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
-  Folder, Open Log, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
+  Folder, Open Log, Launch at Login, About, Help, Quit); Help opens the
+  [Rainmeter manual](https://docs.rainmeter.net/). `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   so does the first launch. A second copy of Deskset hands the files it was opened with to the running one and quits.
 - **Why:** macOS lets users hide menu bar items.
