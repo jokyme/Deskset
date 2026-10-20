@@ -308,7 +308,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Windows (Rainmeter): errors and warnings go to the log (About → Log).
 - Mac (Deskset): `skin.issues` ("Compatibility Notes" in the menu and Manage window) lists only things that work
   differently on the Mac: Windows-only measures and plugins (Windows DLLs no module provides), unsupported bangs,
-  registry values that do not exist here, SysInfo types without a Mac answer, Histogram image options not supported,
+  registry values that do not exist here, SysInfo types without a Mac answer,
   WebParser certificate flags. Mistakes in the skin that Rainmeter treats the same way are log lines only: a missing
   MeterStyle, an invalid Container, an unknown bang (not in the manual), a `Measure=` / `Meter=` type that does not
   exist, `Measure=Plugin` without `Plugin=`, a `SysInfoType` the manual does not list. Values that depend on
@@ -745,8 +745,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   ImageTint/ImageAlpha, Greyscale still applies first; missing ColorMatrix rows / values keep the identity.
   PreserveAspectRatio with only one of W/H follows the aspect ratio unless `PreserveAspectRatio=0` is written.
   Masks keep the more transparent alpha of image and mask. `UseExifOrientation=1` is honoured for Image, Bar, Bitmap,
-  Button, Rotator and Background (default 0: the pixels as stored). Histogram's PrimaryImageRotate and ColorMatrix
-  options are not supported (compatibility note).
+  Button, Rotator and Background (default 0: the pixels as stored). Histogram's Primary, Secondary and Both image
+  rotation and ColorMatrix options are supported (`docs/COMPATIBILITY.md` §4.2).
 - Why: judgment calls where the manual is silent; CoreGraphics rotation and scaling.
 - Skin impact: tinted / greyscaled images may differ slightly in tone.
 - Status: emulated / partial
@@ -1029,7 +1029,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   Control-Option selection/DragGroup behavior are described in [App](app.md); Windows desktop comparison is pending.
   `!Skin:` commands accept an explicit skin target first; the four config aliases and the scope of omitted selectors
   are described below. `!SendKey` uses the existing Mac media-key backend ([Media and UI](media-ui.md#sendkey-rainmeter-50)).
-  Safe Start and Skin Packager remain unimplemented.
+  Skin Packager remains unimplemented.
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
 ### SVG resources
