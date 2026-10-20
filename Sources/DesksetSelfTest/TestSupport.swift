@@ -51,6 +51,8 @@ class FakeSystem: SystemDataSource {
     func memoryStatus() -> MemoryStatus { memory }
     func networkInterfaces() -> [String] { ["en0"] }
     func networkCounters(interface: String?) -> NetworkCounters { net }
+    func cumulativeNetworkCounters(interface: String?) -> NetworkCounters { networkCounters(interface: interface) }
+    func resetNetworkStatistics() {}
     func diskSpace(path: String) -> (total: Double, free: Double)? { (1000, 250) }
     func uptime() -> TimeInterval { 90061 }  // 1d 1h 1m 1s
     func battery() -> BatteryStatus? { BatteryStatus(percent: 80, isCharging: false, isPluggedIn: false, minutesRemaining: 90) }
@@ -64,7 +66,7 @@ private var retainedHosts: [FakeHost] = []
 
 /// Writes `files` (relative path → contents) under a temporary Skins folder and loads `Root\Sub\Skin.ini`.
 func makeSkin(_ t: TestRunner, _ ini: String, files: [String: String] = [:],
-                      host: FakeHost = FakeHost(), system: FakeSystem = FakeSystem()) throws -> (Skin, FakeHost) {
+                      host: FakeHost = FakeHost(), system: SystemDataSource = FakeSystem()) throws -> (Skin, FakeHost) {
     let skins = t.temporaryDirectory("engine").appendingPathComponent("Skins")
     let dir = skins.appendingPathComponent("Root/Sub")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

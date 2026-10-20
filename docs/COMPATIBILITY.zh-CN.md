@@ -573,7 +573,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Windows：** 字节 / 秒；`Interface` = Best（默认）、0 = 全部、N 或网卡名称。
 - **Mac：** Best = 当前活动接口（有线优先于 Wi-Fi）；0 = 除 VPN 隧道、AWDL、网桥等虚拟接口以外的所有活动接口（避免重复
   计数）；不存在的 Windows 网卡名（`Wi-Fi`、`Realtek PCIe GBE…`）或序号会回退到 Best（记录一次日志）。`Cumulative=1`
-  从开机起计数；重启后不保留统计，不支持 `!ResetStats`。
+  读取各接口共享、跨会话保存的累计值。Settings → General 的 Reset statistics 和 `!ResetStats` 清空累计值，不改变
+  原始网速计数。使用累计测量后，本次会话每两分钟采集并保存，退出时也会保存。细节及待完成的 Windows 对照见
+  [累计网络统计](compat/app.md#cumulative-network-statistics)。
 - **原因：** macOS 的接口名（`en0`）与 Windows 网卡名不同。
 - **对皮肤的影响：** 指定了 Windows 网卡名的皮肤测量的是 Mac 当前的活动接口。
 - **状态：** 模拟实现
@@ -1314,10 +1316,10 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   `!Quit`、`!ResetStats`、`!SetAnchor`。
 - **Mac：** `!SetClip` 设置剪贴板；`!SetWallpaper` 为每块显示器设置墙纸（Tile 与 Center 一样按原尺寸显示——macOS 不能平铺）；
   `!Play` 一次播放一个声音；`!Manage` 打开管理窗口并定位到指定的配置；`!About Log` 打开日志；`!EditSkin` 在文本编辑器中打开
-  文件；`!Quit` 在当前动作结束后退出。`!ResetStats` 和 `!SetAnchor` 不起作用，并添加兼容性提示。
-- **原因：** 重启后不保留网络统计；尚未实现 `!SetAnchor`。
+  文件；`!Quit` 在当前动作结束后退出。`!ResetStats` 同步清空累计网络统计；`!SetAnchor` 添加兼容性提示。
+- **原因：** 尚未实现 `!SetAnchor`。
 - **对皮肤的影响：** 受支持的 bang 没有影响。
-- **状态：** 模拟实现 / 不支持（`!ResetStats`、`!SetAnchor`）
+- **状态：** 模拟实现 / 不支持（`!SetAnchor`）
 
 #### 运行程序和打开文件（`["…"]`）
 - **Windows：** `["program.exe" args]` 运行程序；网址或文件用默认程序打开。
@@ -2821,7 +2823,7 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
-| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang）、`!ResetStats` | 不支持 | 模糊效果请用 FrostedGlass |
+| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
 | `!SetAnchor` | 不支持 | 布局表达式和锚点已保存并应用；该 bang 仍不支持 |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |

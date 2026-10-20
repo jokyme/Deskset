@@ -12,6 +12,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `#SETTINGSPATH#`: where `Stationery.inc` is kept.
     let settingsDirectory: URL
     let layoutWallpaper: LayoutWallpaper
+    /// The system data shared by every desktop skin and the app's statistics controls.
+    let system: SystemDataSource
     lazy var layoutStore = LayoutStore(directory: layoutsDirectory)
     lazy var layouts = LayoutController(app: self)
     /// Invalidates deferred lifecycle requests made by the desktop a layout replaces.
@@ -76,6 +78,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) lazy var skinSelection = SkinSelectionController(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var fileLoggingObserver: NSObjectProtocol?
+    /// Only the primary desktop instance configures and stops the persistent statistics service.
+    private var networkStatisticsOwner: SystemMonitor?
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
     private var fontsGenerationSeen = Fonts.generation
@@ -116,9 +120,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
          settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
-         workWatchdog: SkinWorkWatchdog = .shared, layoutWallpaper: LayoutWallpaper? = nil) {
+         workWatchdog: SkinWorkWatchdog = .shared, layoutWallpaper: LayoutWallpaper? = nil,
+         system: SystemDataSource = SystemMonitor.shared) {
         self.threading = threading
         self.workWatchdog = workWatchdog
+        self.system = system
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
@@ -233,6 +239,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if presentsWindows { applyFileLoggingPreference() }
         Paths.ensureDirectories()
+        if presentsWindows, layoutCommandServer != nil, let monitor = system as? SystemMonitor {
+            monitor.configureNetworkStatistics(fileURL: settingsDirectory.appendingPathComponent("network-statistics.json"))
+            networkStatisticsOwner = monitor
+        }
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
                   + ProcessInfo.processInfo.operatingSystemVersionString
                   + "; legacy ANSI skins use code page \(TextDecoding.ansiCodePage)")
@@ -385,6 +395,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updates.stop()
         updateFlowStorage?.cancelAndCleanUp()
         stopAllForTermination()
+        if let owner = networkStatisticsOwner {
+            networkStatisticsOwner = nil
+            owner.saveNetworkStatisticsAndStop()
+        }
         SoundPlayer.stop()
         state.saveNow()
         Fonts.removePrivateCopies()

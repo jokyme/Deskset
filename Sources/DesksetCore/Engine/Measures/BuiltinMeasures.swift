@@ -257,8 +257,7 @@ public final class MemoryMeasure: Measure {
 /// - Judgment: the rate uses the real time between two samples (not the nominal Update × UpdateDivider), so
 ///   bang-triggered or irregular updates still give bytes per second. The first update is 0; a counter that goes
 ///   backwards (interface change, reset) gives 0 for that update.
-/// - `Cumulative=1` gives the interface counters since the system started (Deskset keeps no statistics across
-///   restarts; `!ResetStats` is the host's business).
+/// - `Cumulative=1` reads the data source's accumulated statistics; ordinary rates use its raw interface counters.
 public final class NetMeasure: Measure {
     /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
     public override var liveInputs: [BackgroundWorkKind] { [.system] }
@@ -336,9 +335,9 @@ public final class NetMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
-        let bytes = pick(skin.system.networkCounters(interface: interfaceName))
         let factor = useBits ? 8.0 : 1.0
-        if cumulative { return bytes * factor }
+        if cumulative { return pick(skin.system.cumulativeNetworkCounters(interface: interfaceName)) * factor }
+        let bytes = pick(skin.system.networkCounters(interface: interfaceName))
         let now = skin.clock()
         defer { previous = (bytes, now) }
         guard let previous, now > previous.time else { return 0 }

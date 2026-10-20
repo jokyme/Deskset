@@ -579,8 +579,10 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Mac (Deskset): Best = the active interface (wired preferred over Wi-Fi); 0 = all active interfaces except VPN
   tunnels, AWDL / low-latency WLAN, bridges and similar virtual ones (so traffic is not counted twice); a Windows
   adapter name or alias (`Wi-Fi`, `Ethernet`, `Intel(R) …`) or an index that does not exist falls back to Best
-  (logged once). Rates use the real time between samples; `Cumulative=1` counts since boot (no statistics are kept
-  across restarts, `!ResetStats` is not handled).
+  (logged once). Rates use the real time between samples; `Cumulative=1` reads the shared per-interface statistics,
+  persisted across app sessions and cleared by Reset statistics or `!ResetStats`. Ordinary rates keep using raw
+  counters. See [Cumulative network statistics](app.md#cumulative-network-statistics) for collection, storage and
+  remaining Windows comparison items.
 - Why: macOS interface names (en0, en1…) differ from Windows adapter names; virtual interfaces would double-count.
 - Skin impact: skins that name a Windows adapter measure the active Mac interface instead.
 - Status: emulated

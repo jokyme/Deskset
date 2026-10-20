@@ -80,6 +80,9 @@ enum AppSelfTest {
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
         CommandRoutingSelfTests.run(t)
+        NetworkStatisticsSelfTests.run(t)
+        NetworkStatisticsRuntimeSelfTests.run(t)
+        NetworkStatisticsUISelfTests.run(t)
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
         SkinZoomSelfTests.run(t)
@@ -846,7 +849,8 @@ enum AppSelfTest {
     /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins). Its desktop skins run on the main thread, as
     /// every existing suite expects, unless `threading` says otherwise (the engine thread's suites).
     static func makeApp(_ t: AppTestRunner, threading: SkinThreading = .main,
-                        workWatchdog: SkinWorkWatchdog = .shared) throws -> AppController? {
+                        workWatchdog: SkinWorkWatchdog = .shared,
+                        system: SystemDataSource = SystemMonitor.shared) throws -> AppController? {
         guard let testSkins = Paths.repositoryFolder("TestSkins") else {
             print("    (skipped: TestSkins not found; run from the repository)")
             return nil
@@ -861,7 +865,7 @@ enum AppSelfTest {
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
                                 backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false,
-                                threading: threading, workWatchdog: workWatchdog)
+                                threading: threading, workWatchdog: workWatchdog, system: system)
         retainedApps.append(app)
         return app
     }
@@ -987,7 +991,7 @@ enum AppSelfTest {
             t.equal(focus.skin.updateCount, count + 1)
 
             // Unsupported host bangs are reported as such.
-            t.equal(focus.handleHostBang(Bang(name: "resetstats", args: [])), false)
+            t.equal(focus.handleHostBang(Bang(name: "showblur", args: [])), false)
             t.equal(focus.handleHostBang(Bang(name: "autoselectscreen", args: ["1"])), true)
         }
 

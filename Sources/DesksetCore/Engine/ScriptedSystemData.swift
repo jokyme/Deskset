@@ -106,6 +106,20 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
 
     public func networkCounters(interface: String?) -> NetworkCounters {
         guard let f = frame else { return base.networkCounters(interface: interface) }
+        return Self.networkCounters(in: f, interface: interface)
+    }
+
+    public func cumulativeNetworkCounters(interface: String?) -> NetworkCounters {
+        guard let f = frame else { return base.cumulativeNetworkCounters(interface: interface) }
+        return Self.networkCounters(in: f, interface: interface)
+    }
+
+    public func resetNetworkStatistics() {
+        guard frame == nil else { return }
+        base.resetNetworkStatistics()
+    }
+
+    private static func networkCounters(in f: SkinInputData.SystemFrame, interface: String?) -> NetworkCounters {
         let network = f.network ?? [:]
         if let interface { return network[interface] ?? NetworkCounters() }
         return network.values.reduce(NetworkCounters()) {
