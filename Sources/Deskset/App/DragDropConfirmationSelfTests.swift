@@ -86,6 +86,9 @@ enum DragDropConfirmationSelfTests {
             t.equal(prompts.count, 1, "one sheet is presented at a time")
             guard let first = prompts.first else { return }
             t.equal(first.paths, ["/temporary/first.txt"])
+            let initialWindowChanges = first.windowChanges
+            controller.companions.windowChanged()
+            t.equal(first.windowChanges, initialWindowChanges + 1, "the active confirmation follows window changes")
             first.answer(true)
             t.check(AppSelfTest.spin { answers.current.count == 1 && prompts.count == 2 })
             t.equal(answers.current, [Answer(label: "first", confirmed: true, onOwner: true)])
@@ -110,6 +113,9 @@ enum DragDropConfirmationSelfTests {
             t.equal(prompts.count, 3, "the fourth prompt was never opened")
             controller.companions.tearDown()
             t.equal(third.cancellations, 1, "teardown is idempotent")
+            let changesAfterTeardown = third.windowChanges
+            controller.companions.windowChanged()
+            t.equal(third.windowChanges, changesAfterTeardown, "a torn-down confirmation no longer follows the window")
             controller.closeReplacedWindow(by: controller)
         }
     }
@@ -137,6 +143,7 @@ enum DragDropConfirmationSelfTests {
         private var completion: ((Bool) -> Void)?
         private(set) var paths: [String] = []
         private(set) var cancellations = 0
+        private(set) var windowChanges = 0
 
         func show(paths: [String], completion: @escaping (Bool) -> Void) {
             self.paths = paths
@@ -144,5 +151,6 @@ enum DragDropConfirmationSelfTests {
         }
         func answer(_ confirmed: Bool) { completion?(confirmed) }
         func cancel() { cancellations += 1 }
+        func windowChanged() { windowChanges += 1 }
     }
 }

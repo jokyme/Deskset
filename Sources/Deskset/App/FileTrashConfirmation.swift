@@ -4,10 +4,16 @@ import AppKit
 protocol FileTrashConfirming: AnyObject {
     func show(paths: [String], completion: @escaping (Bool) -> Void)
     func cancel()
+    func windowChanged()
+}
+
+extension FileTrashConfirming {
+    func windowChanged() {}
 }
 
 final class FileTrashConfirmation: FileTrashConfirming {
     private weak var host: SkinCompanionHost?
+    private weak var presentedParent: NSWindow?
     private var alert: NSAlert?
     private var completion: ((Bool) -> Void)?
 
@@ -51,13 +57,32 @@ final class FileTrashConfirmation: FileTrashConfirming {
         }
         let alert = Self.makeAlert(paths: paths)
         self.alert = alert
-        alert.beginSheetModal(for: host.skinWindow) { [weak self] response in
-            self?.finish(response == .alertFirstButtonReturn)
+        let parent = host.skinWindow
+        presentedParent = parent
+        alert.beginSheetModal(for: parent) { [weak self, weak alert] response in
+            guard let self, let alert, self.alert === alert else { return }
+            self.finish(response == .alertFirstButtonReturn)
         }
+        windowChanged()
+    }
+
+    func windowChanged() {
+        guard let alert else { return }
+        guard let host, !host.isStopped, host.showsWindows,
+              let parent = presentedParent, parent === host.skinWindow else {
+            let answer = completion
+            cancel()
+            answer?(false)
+            return
+        }
+        // AppKit gives a sheet its parent's level when it opens, including the desktop's very low level.
+        // Keep the confirmation above normal windows while preserving a higher skin's level.
+        alert.window.level = NSWindow.Level(rawValue: max(NSWindow.Level.modalPanel.rawValue, parent.level.rawValue))
     }
 
     func cancel() {
         completion = nil
+        presentedParent = nil
         guard let alert else { return }
         self.alert = nil
         alert.window.sheetParent?.endSheet(alert.window, returnCode: .cancel)
@@ -67,6 +92,7 @@ final class FileTrashConfirmation: FileTrashConfirming {
     private func finish(_ confirmed: Bool) {
         let answer = completion
         completion = nil
+        presentedParent = nil
         alert = nil
         answer?(confirmed)
     }

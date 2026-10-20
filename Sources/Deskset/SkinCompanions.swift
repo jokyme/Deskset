@@ -133,6 +133,7 @@ final class SkinWindowCompanions {
     /// The window changed (moved, resized, shown, hidden, another level or alpha, a new panel): the backdrop follows.
     func windowChanged() {
         backdrop?.sync()
+        fileTrashPrompt?.prompt.windowChanged()
         // A new panel (ClickThrough turned off again): the watches follow it, and it may stand somewhere else.
         for (id, watch) in moveWatches where watch.window !== host.skinWindow {
             watch.stop()

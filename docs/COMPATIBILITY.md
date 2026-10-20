@@ -717,7 +717,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   String, Registry and WebParser measures (numbers read in the Windows regional format, e.g. `1.234,56` as 1234.56).
 - **Mac:** both supported (`Plugin=Drag&Drop` / `Plugin=DragDrop` too); files are dropped from Finder. `Shortcut` makes a
   symbolic link instead of a `.lnk`, `Delete` moves the item to the Trash; `FancyRenderer` is ignored with a log line.
-  Delete asks for confirmation unless `Silent=1`; cancelling leaves the files untouched. A multi-file drop asks once
+  Delete asks for confirmation unless `Silent=1`; cancelling leaves the files untouched. Confirmation stays above
+  desktop skins without changing their saved window position. A multi-file drop asks once
   for the files selected by `ProcessAllFiles`. Copy, Move and Shortcut create missing destination folders and honor
   `ReplaceIfExists`; identical items and recursive folder destinations are left untouched. Replacements preserve the
   previous item if preparing or installing the new item fails. Hosts without a window decline deletion confirmation.
