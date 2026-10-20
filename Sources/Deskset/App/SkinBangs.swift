@@ -20,7 +20,7 @@ enum HostBangs {
     static func kind(of name: String) -> Kind? {
         switch name {
         case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
-             "toggleconfig", "loadlayout", "quit":
+             "toggleconfig", "loadlayout", "quit", "restart":
             return .lifecycle
         case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
              "togglemouseactionskingroup", "updategroup", "redrawgroup", "setvariablegroup":
@@ -193,6 +193,8 @@ extension SkinWindowController {
             SoundPlayer.stop()
         case "quit":
             app.layouts.enqueueApplicationAction(afterAction: runtime) { _ in NSApp.terminate(nil) }
+        case "restart":
+            app.layouts.enqueueApplicationAction(afterAction: runtime) { app in app.requestRestart() }
 
         default:
             // Window and group bangs never come here (the runtime carries them out), nor unsupported ones.

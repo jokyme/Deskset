@@ -63,11 +63,11 @@ background.mainHop	Sources/Deskset/App/AppUpdateInstaller.swift	1	private update
 background.process	Sources/Deskset/App/AppUpdateInstaller.swift	1	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
 effect.fileWrite	Sources/Deskset/App/AppUpdateInstaller.swift	8	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
 effect.workspace	Sources/Deskset/App/AppUpdateInstaller.swift	1	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
-mono.systemUptime	Sources/Deskset/App/AppUpdateInstaller.swift	3	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
+mono.systemUptime	Sources/Deskset/App/AppUpdateInstaller.swift	4	private update helper handshake and shared strict parent-exit deadline; wait/install/open injectable in tests
 random.UUID	Sources/Deskset/App/AppUpdateInstaller.swift	1	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
 random.pid	Sources/Deskset/App/AppUpdateInstaller.swift	2	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
 wait.runLoop	Sources/Deskset/App/AppUpdateInstaller.swift	1	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
-wait.sleep	Sources/Deskset/App/AppUpdateInstaller.swift	2	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
+wait.sleep	Sources/Deskset/App/AppUpdateInstaller.swift	3	private helper waits and shared exact-parent wait; clock and pause injectable in tests
 wall.Date()	Sources/Deskset/App/AppUpdateInstaller.swift	2	private update helper handshake, bounded parent-exit wait, verified replacement and relaunch; wait/install/open injectable in tests
 
 background.URLSession	Sources/Deskset/App/AppUpdateService.swift	2	GitHub release lookup behind AppUpdateFetching with an injectable URLSession
@@ -90,6 +90,13 @@ mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tool
 random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input (the age of stale temporary settings folders)
+
+background.process	Sources/Deskset/App/AppRestart.swift	1	private same-executable restart helper; child process creation and lifetime injectable
+effect.fileWrite	Sources/Deskset/App/AppRestart.swift	2	private nonce-bound restart job and atomic marker cleanup; file operations injectable
+mono.systemUptime	Sources/Deskset/App/AppRestart.swift	1	bounded helper readiness and exact-parent exit; monotonic clock injectable
+random.UUID	Sources/Deskset/App/AppRestart.swift	3	private restart job, nonce and atomic file names; not a skin input
+random.pid	Sources/Deskset/App/AppRestart.swift	3	current and child process identities for restart; PID and child injectable
+wait.sleep	Sources/Deskset/App/AppRestart.swift	1	bounded background helper polling; pause injectable
 
 background.mainHop	Sources/Deskset/App/SafeStartController.swift	4	marshal injected timer, count and prompt callbacks to the UI thread; cancellation is generation-guarded
 event.pointerState	Sources/Deskset/App/SafeStartController.swift	1	live modifier sampler for the startup chord; flags are injected in tests
@@ -174,10 +181,10 @@ random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a s
 wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 
-background.global	Sources/Deskset/AppController.swift	1	prepare the user-requested update helper off the UI thread before normal save-and-quit confirmation
-background.mainHop	Sources/Deskset/AppController.swift	5	app lifecycle, menus and single-instance handover; not a skin input
+background.global	Sources/Deskset/AppController.swift	2	prepare user-requested update and restart helpers off the UI thread; restart preparation is replaceable in tests
+background.mainHop	Sources/Deskset/AppController.swift	6	app lifecycle and main-thread restart decisions; late callbacks are guarded before termination
 effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
-effect.terminate	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
+effect.terminate	Sources/Deskset/AppController.swift	5	ordinary quit and authorized restart use the same vetoes; restart termination is injectable
 effect.workspace	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
 event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
 event.notification	Sources/Deskset/AppController.swift	2	wake, appearance, screen and locale changes reach every skin; local AppState changes update primary-process file logging

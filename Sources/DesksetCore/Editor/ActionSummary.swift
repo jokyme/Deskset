@@ -75,6 +75,7 @@ public enum ActionSummary {
             case "commandmeasure": return "Sends a command to live data"
             case "log": return "Writes to the log"
             case "quit": return "Quits Deskset"
+            case "restart": return "Restarts Deskset"
             case "manage": return "Opens Manage Widgets"
             case "skinmenu": return "Opens the widget's menu"
             default: return "Runs a command"

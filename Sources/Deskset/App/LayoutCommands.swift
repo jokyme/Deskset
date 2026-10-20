@@ -8,13 +8,22 @@ enum LayoutCommand: Equatable {
     case manageLayouts
     case about(AboutWindowController.Tab)
     case debug(DebugWindowController.Tab, config: String?)
+    case restart
 
     enum ParseResult: Equatable { case none, command(LayoutCommand), invalid(String) }
 
     static func parse(_ arguments: [String]) -> ParseResult {
         let args = Array(arguments.dropFirst())
-        guard let first = args.first, first.hasPrefix("!") else { return .none }
+        guard let first = args.first else { return .none }
+        if first.caseInsensitiveCompare("/Restart") == .orderedSame {
+            guard args.count == 1 else { return .invalid("use Deskset /Restart without additional arguments") }
+            return .command(.restart)
+        }
+        guard first.hasPrefix("!") else { return .none }
         switch first.lowercased() {
+        case "!restart":
+            guard args.count == 1 else { return .invalid("use Deskset '!Restart' without additional arguments") }
+            return .command(.restart)
         case "!loadlayout":
             guard args.count == 2, LayoutStore.isValidName(args[1]) else {
                 return .invalid("use Deskset '!LoadLayout' \"Layout name\" with one valid saved layout name")
@@ -57,6 +66,7 @@ enum LayoutCommandRequest: Equatable {
             var fields = ["kind": "debug", "tab": tab.rawValue]
             if let config { fields["config"] = config }
             return fields
+        case .command(.restart): return ["kind": "restart"]
         case .reopen(let urls):
             return ["kind": "reopen", "files": urls.map(\.absoluteString).joined(separator: "\n")]
         }
@@ -64,6 +74,7 @@ enum LayoutCommandRequest: Equatable {
 
     init?(fields: [String: String]) {
         switch fields["kind"] {
+        case "restart": self = .command(.restart)
         case "load":
             guard let name = fields["name"], LayoutStore.isValidName(name) else { return nil }
             self = .command(.loadLayout(name))
@@ -295,6 +306,7 @@ extension AppController {
 
     func executeLayoutCommand(_ request: LayoutCommandRequest, completion: @escaping (Bool) -> Void) {
         switch request {
+        case .command(.restart): requestRestart(completion: completion)
         case .command(.loadLayout(let name)): loadLayout(named: name, completion: completion)
         case .command(.manageLayouts):
             showManageWindow(selecting: nil, file: nil, tab: .layouts)

@@ -95,6 +95,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updateAlertVisible = false
     private var updateFlowStorage: AppUpdateFlow?
     private var updateHandoff: AppUpdateInstaller.Handoff?
+    private(set) var terminationDecisionInProgress = false
+    private final class RestartRequest {
+        var completion: ((Bool) -> Void)?
+        var handoff: AppRestart.Handoff?
+        var didPrepare = false
+        var committed = false
+        init(completion: @escaping (Bool) -> Void) { self.completion = completion }
+        func finish(_ success: Bool) {
+            let answer = completion
+            completion = nil
+            answer?(success)
+        }
+    }
+    private var restartRequest: RestartRequest?
+    /// The existing background preparation and native termination paths are replaceable in headless tests.
+    var prepareRestart: (URL, @escaping (Result<AppRestart.Handoff, Error>) -> Void) -> Void = { url, answer in
+        DispatchQueue.global(qos: .userInitiated).async { answer(Result { try AppRestart.prepare(appURL: url) }) }
+    }
+    var terminateForRestart: () -> Void = { NSApp.terminate(nil) }
     var updateFlow: AppUpdateFlow {
         if let updateFlowStorage { return updateFlowStorage }
         let flow = AppUpdateFlow(presentsWindows: presentsWindows) { [weak self] prepared in
@@ -124,7 +143,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
          settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
          workWatchdog: SkinWorkWatchdog = .shared, layoutWallpaper: LayoutWallpaper? = nil,
-         system: SystemDataSource = SystemMonitor.shared) {
+         system: SystemDataSource = SystemMonitor.shared, updateFlow: AppUpdateFlow? = nil) {
         self.threading = threading
         self.workWatchdog = workWatchdog
         self.system = system
@@ -138,6 +157,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? SystemLayoutWallpaper(file: settingsDirectory.appendingPathComponent("Wallpaper.bmp"))
             : MemoryLayoutWallpaper())
         self.presentsWindows = presentsWindows
+        self.updateFlowStorage = updateFlow
         defersDesktopUpdates = presentsWindows
         super.init()
     }
@@ -430,19 +450,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// fails, Save / Discard / Cancel (Cancel keeps the app running).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isDuplicateInstance else { return .terminateNow }
+        // A nested quit inside a save/conflict modal must not authorize or cancel its outer handoff.
+        guard !terminationDecisionInProgress else { return .terminateCancel }
+        terminationDecisionInProgress = true
+        defer { terminationDecisionInProgress = false }
+        if restartRequest?.handoff == nil { cancelRestart() }
         if let studio = StudioWindowController.window(for: self), !studio.canTerminate() {
             cancelUpdateTermination()
+            cancelRestart()
             return .terminateCancel
         }
         for window in codeFileWindows where !window.canTerminate() {
             cancelUpdateTermination()
+            cancelRestart()
             return .terminateCancel
         }
         // Authorize only after every editor has accepted quitting. The helper still waits for this process to exit,
         // including applicationWillTerminate's state saving, before it replaces the bundle.
-        do { try updateHandoff?.commit() }
+        do {
+            try updateHandoff?.commit()
+            if let request = restartRequest, let handoff = request.handoff {
+                try handoff.commit()
+                request.committed = true
+                request.finish(true)
+            }
+        }
         catch {
             cancelUpdateTermination(error.localizedDescription)
+            cancelRestart(error.localizedDescription)
             return .terminateCancel
         }
         return .terminateNow
@@ -453,6 +488,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         safeStartController = nil
         // A duplicate instance never loaded anything; saving its copy of the state would overwrite the running one's.
         guard !isDuplicateInstance, !startupRecoveryAborted else { return }
+        if restartRequest?.committed != true { cancelRestart() }
         updates.stop()
         updateFlowStorage?.cancelAndCleanUp()
         stopAllForTermination()
@@ -465,16 +501,26 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Fonts.removePrivateCopies()
     }
 
-    private func prepareUpdateInstallation(_ prepared: AppPreparedUpdate) {
-        guard updateHandoff == nil, let version = updateFlowStorage?.release?.version.description else { return }
+    func prepareUpdateInstallation(_ prepared: AppPreparedUpdate) {
+        guard updateHandoff == nil, restartRequest == nil, !terminationDecisionInProgress, !isTerminating,
+              let version = updateFlowStorage?.release?.version.description else {
+            if !isTerminating, updateFlowStorage?.phase == .preparing {
+                updateFlowStorage?.installationCancelled("Installation was paused while Deskset was quitting or restarting.")
+            }
+            return
+        }
         let destination = Bundle.main.bundleURL
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
                 try AppUpdateInstaller.prepare(source: prepared.appURL, destination: destination, expectedVersion: version)
             }
             DispatchQueue.main.async {
-                guard let self, self.updateFlowStorage?.phase == .preparing, !self.isTerminating else {
+                guard let self, self.updateFlowStorage?.phase == .preparing, !self.isTerminating,
+                      !self.terminationDecisionInProgress, self.restartRequest == nil else {
                     if case .success(let handoff) = result { handoff.cancel() }
+                    if let self, !self.isTerminating, self.updateFlowStorage?.phase == .preparing {
+                        self.updateFlowStorage?.installationCancelled("Installation was paused while Deskset was quitting or restarting.")
+                    }
                     return
                 }
                 switch result {
@@ -494,6 +540,60 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         handoff.cancel()
         updateHandoff = nil
         updateFlowStorage?.installationCancelled(message ?? "Installation was paused because quitting was cancelled. You can try again when ready.")
+    }
+
+    /// Restarts only after the ordinary editor vetoes and the exact process's exit have completed.
+    func requestRestart(completion: @escaping (Bool) -> Void = { _ in }) {
+        guard !isTerminating, !terminationDecisionInProgress, !startupRecoveryAborted,
+              restartRequest == nil, updateHandoff == nil, updateFlowStorage?.phase != .preparing else {
+            completion(false)
+            return
+        }
+        let request = RestartRequest(completion: completion)
+        restartRequest = request
+        prepareRestart(Bundle.main.bundleURL) { [weak self] result in
+            let deliver = { [weak self] in
+                guard let self else {
+                    if case .success(let handoff) = result { handoff.cancel() }
+                    request.finish(false)
+                    return
+                }
+                self.preparedRestart(result, request: request)
+            }
+            if Thread.isMainThread { deliver() }
+            else { DispatchQueue.main.async(execute: deliver) }
+        }
+    }
+
+    private func preparedRestart(_ result: Result<AppRestart.Handoff, Error>, request: RestartRequest) {
+        guard !request.didPrepare else {
+            if case .success(let handoff) = result, handoff !== request.handoff { handoff.cancel() }
+            return
+        }
+        request.didPrepare = true
+        guard restartRequest === request, !isTerminating, !terminationDecisionInProgress,
+              updateHandoff == nil, updateFlowStorage?.phase != .preparing else {
+            if case .success(let handoff) = result { handoff.cancel() }
+            if restartRequest === request { cancelRestart() }
+            else { request.finish(false) }
+            return
+        }
+        switch result {
+        case .failure(let error): cancelRestart(error.localizedDescription)
+        case .success(let handoff):
+            request.handoff = handoff
+            terminateForRestart()
+            // A return without authorization means the synchronous termination delegate vetoed quitting.
+            if !request.committed { cancelRestart() }
+        }
+    }
+
+    private func cancelRestart(_ message: String? = nil) {
+        guard let request = restartRequest else { return }
+        restartRequest = nil
+        request.handoff?.cancel()
+        request.finish(false)
+        if let message { Log.write("Could not restart Deskset: \(message)", level: .error) }
     }
 
     /// True once the app is quitting: skins are being closed ("OnCloseAction: … when Rainmeter is closed").
@@ -1105,10 +1205,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// `!ActivateConfig Config [File]`, sent by the skin `sender`. "If no file is specified, the next .ini file variant
     /// in the config folder is activated": a running config moves on to its next variant (one that is not running
-    /// loads its last used one). Judgment call (the manual does not say what happens when the config already runs the
-    /// file asked for): nothing happens but a warning in the log; forum threads about an "already active" warning
-    /// suggest Rainmeter does the same. Reloading instead would let a skin that activates its own config reload itself
-    /// endlessly (Monstercat Visualizer's update notice does that on every load while a newer version exists).
+    /// loads its last used one). Asking for the running variant brings it forward at its current Z position,
+    /// without reloading it or warning. Reloading would let a skin that activates itself on load repeat endlessly.
     /// `!Refresh`, the Manage window and the menus call `activate`, which always loads.
     func activateFromBang(config rawConfig: String, file: String?, sender: String) {
         guard !isTerminating else { return }
@@ -1119,11 +1217,30 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard let chosen = self.file(toLoad: file ?? nextVariant(of: entry.name), of: entry) else { return }
         if let running = controller(for: entry.name), running.file.caseInsensitiveCompare(chosen) == .orderedSame {
-            Log.write("!ActivateConfig: \"\(entry.name)\\\(running.file)\" is already active", level: .warning,
-                      source: sender)
+            focusSkin(running)
             return
         }
         activate(config: entry.name, file: chosen, fade: true)
+    }
+
+    /// Brings this instance forward within its existing Z position. Loading waits; hidden skins remain hidden.
+    func focusSkin(_ c: SkinWindowController) {
+        guard !isTerminating, controller(for: c.config) === c, !c.isStopped, !c.runtime.isRetiredForLayout else { return }
+        if c.isStarting {
+            c.whenStarted { [weak self, weak c] in
+                guard let self, let c, self.controller(for: c.config) === c else { return }
+                self.focusSkin(c)
+            }
+            return
+        }
+        guard c.isStarted, !c.isHiddenByBang else { return }
+        if presentsWindows && !c.window.isVisible { return }
+        // A restack already queued for earlier work must finish before the focus, rather than undo it next turn.
+        if restackPending != nil || windowBatchNeeds.restack { restack() }
+        guard !isTerminating, controller(for: c.config) === c, !c.isStopped, !c.isHiddenByBang else { return }
+        willFocusSkin?(c)
+        guard presentsWindows, controller(for: c.config) === c, !c.isStopped, !c.isHiddenByBang else { return }
+        c.window.orderFrontRegardless()
     }
 
     func deactivate(config: String, fade: Bool = false) {
@@ -1230,14 +1347,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// `activate` calls under way (a skin of the main executor starts inside them).
     private var activating = 0
-    private var restackPending = false
+    private var restackPending: NSObject?
+    /// Self-tests observe the same requests without ordering headless windows onto the person's desktop.
+    var willRestackSkins: (() -> Void)?
+    var willFocusSkin: ((SkinWindowController) -> Void)?
 
     /// `restack` on the next turn, once for everything asking before then.
     private func restackSoon() {
-        guard !restackPending else { return }
-        restackPending = true
+        guard restackPending == nil else { return }
+        let ticket = NSObject()
+        restackPending = ticket
         later { app in
-            app.restackPending = false
+            guard app.restackPending === ticket else { return }
             app.restack()
         }
     }
@@ -1245,6 +1366,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Orders skins that share a Position by load order (higher in front), without moving them relative to
     /// other applications' windows.
     func restack() {
+        restackPending = nil
+        windowBatchNeeds.restack = false
+        willRestackSkins?()
         guard presentsWindows else { return }
         let items = sortedControllers.filter(\.isShown)
         for level in -2...2 {
@@ -1671,7 +1795,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(item(updates.menuTitle, #selector(checkForUpdatesAction)))
         menu.addItem(item("About Deskset", #selector(aboutAction)))
-        menu.addItem(item("Quit Deskset", #selector(quitAction), key: "q"))
+        menu.addItem(item("Quit Deskset", #selector(quitAction)))
+        let restart = item("Restart Deskset", #selector(restartAction))
+        restart.isAlternate = true
+        restart.keyEquivalentModifierMask = [.shift]
+        menu.addItem(restart)
     }
 
     private func skinsSubmenu() -> NSMenu {
@@ -1930,6 +2058,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let i = item(title, selector)
             i.representedObject = [c.config]
             menu.addItem(i)
+            if selector == #selector(refreshSkinAction(_:)) {
+                i.keyEquivalentModifierMask = []
+                let focus = item("Focus Skin", #selector(focusSkinAction(_:)))
+                focus.isAlternate = true
+                focus.keyEquivalentModifierMask = [.shift]
+                focus.representedObject = FocusMenuAction(controller: c)
+                focus.isEnabled = controller(for: c.config) === c && !c.isStopped
+                menu.addItem(focus)
+            }
         }
         return menu
     }
@@ -1944,6 +2081,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let change: SkinPositionSettings.Change
         let appliesToSelection: Bool
         let screens: [WindowGeometry.Screen]
+    }
+
+    private struct FocusMenuAction {
+        weak var controller: SkinWindowController?
     }
 
     /// Manage and the Position submenu use the same monitor choices and actions.
@@ -2256,6 +2397,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for c in targets { refresh(c) }
     }
 
+    @objc private func focusSkinAction(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? FocusMenuAction, let controller = target.controller else { return }
+        focusSkin(controller)
+    }
+
     @objc private func editSkinAction(_ sender: NSMenuItem) {
         if let c = args(sender).first.flatMap(controller(for:)) { CodeEditorRouter.open(file: c.fileURL, app: self) }
     }
@@ -2271,6 +2417,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func manageAction() { showManageWindow(selecting: nil, file: nil) }
+
+    @objc func restartAction() { requestRestart() }
 
     @objc func refreshAllAction() { refreshAll(rescan: true) }
 

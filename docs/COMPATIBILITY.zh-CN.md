@@ -1101,10 +1101,20 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 启动恢复保留皮肤文件和原布局备份。
 - **状态：** 模拟实现 / 部分支持（Windows 提示细节、计数清零、命令优先级和缺省皮肤缺失行为待确认）。
 
+#### Restart 和 Focus
+- **Windows：** Shift 将退出切换为 Restart、刷新皮肤切换为 Focus skin；`!Restart` 和 `/Restart` 重启 Rainmeter。
+  Focus 只在当前 z 层级内置前（<https://www.rainmeter.net/changes-5.0/>）。
+- **Mac：** 已实现原生 Shift 上下文菜单、bang 与同用户命令路由。重启经过全部编辑器保存确认，并等待旧进程真正退出；
+  取消、超时或进程身份失效时不启动替代实例。Focus 保留实例、位置、设置和五种窗口层级。
+- **原因：** 重启复用正常退出；聚焦先完成已有的延迟重排，且不改 LoadOrder。
+- **对皮肤的影响：** 重启恢复保存的桌面；聚焦不刷新 measure。
+- **状态：** 模拟实现 / 部分支持；冷启动、失败、隐藏和多选边界见 [Restart 和 Focus](compat/app.md#restart-and-focus-rainmeter-50)。
+  Windows 旧 helper 仍未映射。
+
 #### Rainmeter 5.0 中尚未实现的部分
-- **Windows：** Shift 将“退出”变为“重新启动”、“刷新皮肤”变为“聚焦皮肤”；`Rainmeter.exe [!Launch][!Bang]`
-  可以先启动再执行命令。另外还有崩溃转储与皮肤打包器。
-- **Mac：** 这些部分仍未实现。Debug 及其标签页、显式目标前置的命令、复合皮肤组选择与七个 SendKey 媒体键名称已实现，见对应条目。
+- **Windows：** `Rainmeter.exe [!Launch][!Bang]` 可以先启动再执行命令，另外还有崩溃转储与皮肤打包器。
+- **Mac：** 这些部分仍未实现。Debug、Safe Start、Restart/Focus、显式目标前置命令、复合皮肤组选择与七个 SendKey
+  媒体键名称已实现，具体限制见对应条目。
 - **原因：** 剩余的进程启动、崩溃转储和打包流程尚未完成。
 - **对皮肤的影响：** 在剩余命令可用之前，继续使用现有加载和刷新操作。
 - **状态：** 不支持
@@ -1281,15 +1291,13 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### 对已在运行该文件的配置执行 `!ActivateConfig`
-- **Windows：** “激活一个皮肤”；不指定 File 时，“激活配置文件夹中的下一个 .ini 变体”。手册没有说明配置已经在运行该文件时
-  会怎样；论坛上关于日志警告“already active”（已激活）的讨论表明，Rainmeter 会让该皮肤保持原样。
-- **Mac：** 除了在日志中写一条警告外什么也不做。比较文件名时不区分大小写；配置文件夹中没有的文件会回退到上次使用的文件，
-  对只有一个 .ini 文件的配置执行 `!ActivateConfig 配置` 得到的也是该文件，所以这两种情况同样不会动正在运行的皮肤。指定另一个
-  变体时仍会替换正在运行的变体；`!Refresh`、`!ToggleConfig`、管理窗口和菜单不受影响。
-- **原因：** 取舍判断。如果重新加载，激活自身配置的皮肤就会无休止地重新加载自己（Monstercat Visualizer 的更新提示在有新版本时
-  每次加载都会这样做）。
-- **对皮肤的影响：** 预计无；想重新加载自己的皮肤应使用 `!Refresh`。
-- **状态：** 模拟实现（取舍判断）
+- **Windows：** Rainmeter 5.0 将已加载的皮肤在其当前 z 层级内置前（<https://www.rainmeter.net/changes-5.0/>）；
+  省略 File 时仍选择下一个 INI 变体。
+- **Mac：** 同一运行中变体只聚焦，不重新加载、更新或警告。文件名仍不区分大小写，缺失文件回退和变体轮换规则保持原样；
+  另一个变体仍会替换当前实例。Refresh、ToggleConfig、Manage 与普通变体菜单的行为保持原样。
+- **原因：** 重复激活应保留 measure 状态，避免皮肤激活自身时无限重新加载。
+- **对皮肤的影响：** 需要重新加载时使用 `!Refresh`。
+- **状态：** 模拟实现，窗口顺序限制见 [Restart 和 Focus](compat/app.md#restart-and-focus-rainmeter-50)。
 
 #### `!RefreshApp` 与全部刷新
 - **Windows：** 刷新 Rainmeter 和所有皮肤。

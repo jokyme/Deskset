@@ -329,6 +329,8 @@ final class CodeEditorView: NSView {
     func isDirty(_ url: URL) -> Bool { buffer(for: url)?.isDirty ?? false }
     /// Whether any open buffer differs from its file.
     var hasUncommittedChanges: Bool { buffers.contains { $0.isDirty } }
+    /// A save, including its conversion or conflict decision, has not finished yet.
+    var hasCommitInProgress: Bool { committingBuffer != nil }
 
     /// The file's clean state: text as last read or committed, encoding, BOM and dominant line ending.
     func document(for url: URL) -> CodeDocument? { buffer(for: url)?.document }

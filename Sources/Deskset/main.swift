@@ -1,5 +1,7 @@
 import AppKit
 
+if let status = AppRestart.runEarlyIfRequested(CommandLine.arguments) { exit(status) }
+
 // The startup monitor observes its parent without initializing the interactive application.
 if let status = StartupCrashWatcher.runEarlyIfRequested(CommandLine.arguments) { exit(status) }
 

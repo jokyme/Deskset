@@ -76,6 +76,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     var pendingAnnouncement: String?
     /// Answers the question about typed code that can't be saved (self-tests); nil: an alert asks.
     var closeChoice: (() -> CodeFileWindowController.CloseChoice)?
+    private var isCheckingClose = false
 
     init(app: AppController) {
         self.app = app
@@ -430,15 +431,21 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// Closing (⌘W, the close button, Done) with typed code that can't be saved asks first: Save (try again), Discard
     /// Changes, or Cancel. Quitting runs this too (`canTerminate`).
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !isCheckingClose else { return false }
+        guard !codeController.isViewLoaded || !codeView.hasCommitInProgress else { return false }
+        isCheckingClose = true
+        defer { isCheckingClose = false }
         if let editor = sender.firstResponder as? NSTextView, editor.isFieldEditor { sender.makeFirstResponder(nil) }
         guard codeController.isViewLoaded else { return true }
-        if codeView.commitNow(explicit: true) || !codeView.hasUncommittedChanges { return true }
+        _ = codeView.commitNow(explicit: true)
+        if !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress { return true }
         switch askAboutUncommittedCode() {
         case .save:
-            return codeView.commitNow(explicit: true)
+            _ = codeView.commitNow(explicit: true)
+            return !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress
         case .discard:
             codeView.discardUncommittedChanges()
-            return true
+            return !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress
         case .cancel:
             return false
         }
