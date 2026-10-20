@@ -681,7 +681,205 @@ func runGraphMeterTests(_ t: TestRunner) {
         let noImage = try t.graphUnwrap(histogram(skin, "NoImage"))
         t.close(noImage.frame.width, 12, "an image that cannot be loaded leaves W/H in effect")
         t.equal(noImage.historyLength, 12)
-        t.check(skin.issues.contains { $0.contains("ImageRotate") }, "\(skin.issues)")
+        let rotated = try t.graphUnwrap(histogram(skin, "Rotated"))
+        t.close(rotated.frame.width, 50)
+        t.close(rotated.frame.height, 100)
+        t.equal(rotated.historyLength, 50, "rotation changes the time axis to the rotated width")
+        t.close(try t.graphUnwrap(rotated.primaryImage).rotate, 90)
+        t.equal(skin.issues, [])
+    }
+
+    t.suite("GraphMeter: Histogram image rotation sizes and time axes") {
+        let (skin, _) = try makeSkin(t, """
+        [P]
+        Measure=Calc
+        Formula=50
+        MaxValue=100
+
+        [Secondary]
+        Meter=Histogram
+        MeasureName=P
+        SecondaryImage=Graph100x50.png
+        SecondaryImageRotate=-90
+        GraphOrientation=Horizontal
+        W=7
+        H=9
+
+        [Both]
+        Meter=Histogram
+        MeasureName=P
+        BothImage=Graph100x50.png
+        BothImageRotate=450
+        W=7
+        H=9
+
+        [Cropped]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageCrop=-20,-10,40,20,5
+        PrimaryImageRotate=270
+        W=7
+        H=9
+
+        [Oblique]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageRotate=-45
+
+        [RoundedCrop]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageCrop=0,0,10.4,5.6
+        PrimaryImageRotate=90
+
+        [MatrixCrop]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageCrop=0,0,10.4,5.6
+        PrimaryColorMatrix5=0.25;0;0;0;1
+        """)
+        skin.update()
+        let secondary = try t.graphUnwrap(histogram(skin, "Secondary"))
+        t.equal(secondary.frame, SkinRect(x: 0, y: 0, width: 50, height: 100), "W/H cannot scale rotated images")
+        t.equal(secondary.historyLength, 100, "horizontal time axis uses the rotated height")
+        t.close(try t.graphUnwrap(secondary.secondaryImage).rotate, -90)
+        let both = try t.graphUnwrap(histogram(skin, "Both"))
+        t.equal(both.frame, SkinRect(x: 0, y: 0, width: 50, height: 100))
+        t.equal(both.historyLength, 50)
+        t.close(try t.graphUnwrap(both.bothImage).rotate, 90, "whole turns are normalized")
+        let cropped = try t.graphUnwrap(histogram(skin, "Cropped"))
+        t.equal(cropped.frame, SkinRect(x: 0, y: 0, width: 20, height: 40), "crop precedes rotation")
+        t.equal(cropped.historyLength, 20)
+        let oblique = try t.graphUnwrap(histogram(skin, "Oblique"))
+        let diagonal = 150 / 2.0.squareRoot()
+        t.close(oblique.frame.width, diagonal, accuracy: 1e-6)
+        t.close(oblique.frame.height, diagonal, accuracy: 1e-6)
+        t.equal(oblique.historyLength, 106, "the time axis keeps whole-pixel slots")
+        let rounded = try t.graphUnwrap(histogram(skin, "RoundedCrop"))
+        t.equal(rounded.frame, SkinRect(x: 0, y: 0, width: 6, height: 10), "rotated crops use prepared pixel dimensions")
+        let matrix = try t.graphUnwrap(histogram(skin, "MatrixCrop"))
+        t.equal(matrix.frame, SkinRect(x: 0, y: 0, width: 10.4, height: 5.6), "a color matrix does not change geometry")
+        t.equal(skin.issues, [])
+    }
+
+    t.suite("GraphMeter: Histogram documented color matrix stems and precedence") {
+        let (skin, _) = try makeSkin(t, """
+        [P]
+        Measure=Calc
+        Formula=50
+        MaxValue=100
+
+        [Matrices]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageTint=10,20,30,40
+        PrimaryImageAlpha=0
+        PrimaryGreyScale=1
+        PrimaryColorMatrix5=(1/4);0;0;0;1
+        PrimaryUseExifOrientation=1
+        PrimaryMacSymbolSize=100
+        SecondaryImage=Graph100x50.png
+        SecondaryColorMatrix1=0;0;1;0;0
+        BothImage=Graph100x50.png
+        BothImageColorMatrix4=0;0;0;0.5;0
+
+        [Aliases]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageColorMatrix5=1;0;0;0;1
+        SecondaryImage=Graph100x50.png
+        SecondaryImageColorMatrix5=0;1;0;0;1
+        BothImage=Graph100x50.png
+        BothColorMatrix5=0;0;1;0;1
+        """)
+        skin.update()
+        let matrices = try t.graphUnwrap(histogram(skin, "Matrices"))
+        let primary = try t.graphUnwrap(matrices.primaryImage)
+        var expected = ImageOptions.identityMatrix
+        expected[20] = 0.25
+        t.equal(primary.colorMatrix, expected, "a single row preserves the other identity rows")
+        t.close(primary.alpha, 0, "the original ImageAlpha field remains available")
+        t.close(primary.options.drawAlpha, 255, "a matrix overrides ImageAlpha and ImageTint alpha")
+        let transformed = try t.graphUnwrap(primary.options.processingMatrix)
+        let red = ImageOptions.apply(transformed, r: 1, g: 0, b: 0, a: 1)
+        t.close(red.r, 0.299 + 0.25, "greyscale precedes the explicit matrix")
+        t.close(red.g, 0.299, "the matrix replaces the red tint rather than multiplying it")
+        t.close(red.b, 0.299)
+        t.close(red.a, 1)
+        t.check(!primary.options.useExifOrientation, "Histogram does not enable unlisted EXIF options")
+        t.equal(primary.options.symbol, MacSymbol.Style(), "Histogram does not enable symbol styling")
+        let secondary = try t.graphUnwrap(matrices.secondaryImage)
+        expected = ImageOptions.identityMatrix
+        expected.replaceSubrange(0..<5, with: [0, 0, 1, 0, 0])
+        t.equal(secondary.colorMatrix, expected)
+        let both = try t.graphUnwrap(matrices.bothImage)
+        expected = ImageOptions.identityMatrix
+        expected[18] = 0.5
+        t.equal(both.colorMatrix, expected, "overlap uses BothImageColorMatrixN")
+        let aliases = try t.graphUnwrap(histogram(skin, "Aliases"))
+        t.equal(try t.graphUnwrap(aliases.primaryImage).colorMatrix, nil)
+        t.equal(try t.graphUnwrap(aliases.secondaryImage).colorMatrix, nil)
+        t.equal(try t.graphUnwrap(aliases.bothImage).colorMatrix, nil, "undocumented matrix aliases are not enabled")
+        t.equal(skin.issues, [])
+    }
+
+    t.suite("GraphMeter: Histogram dynamic image options and captured values") {
+        let (skin, _) = try makeSkin(t, """
+        [Variables]
+        Angle=0
+        RedOffset=0
+
+        [P]
+        Measure=Calc
+        Formula=50
+        MaxValue=100
+
+        [Hist]
+        Meter=Histogram
+        MeasureName=P
+        PrimaryImage=Graph100x50.png
+        PrimaryImageCrop=0,0,40,20
+        PrimaryImageRotate=#Angle#
+        PrimaryColorMatrix5=#RedOffset#;0;0;0;1
+        DynamicVariables=1
+        W=7
+        H=9
+        """)
+        skin.update()
+        let meter = try t.graphUnwrap(histogram(skin, "Hist"))
+        let before = meter.lower()
+        t.equal(before, meter.lower(), "capturing an unchanged meter preserves value equality")
+        t.equal(before.contentFrame, SkinRect(x: 0, y: 0, width: 40, height: 20))
+        skin.setVariable("Angle", "90")
+        skin.setVariable("RedOffset", "0.5")
+        skin.update()
+        let after = meter.lower()
+        t.equal(after.contentFrame, SkinRect(x: 0, y: 0, width: 20, height: 40))
+        t.equal(meter.historyLength, 20)
+        t.check(before != after)
+        t.check(before.primaryImage != after.primaryImage, "image equality includes rotation and matrix values")
+        t.close(try t.graphUnwrap(before.primaryImage).rotate, 0, "a capture is not changed by later updates")
+        t.close(try t.graphUnwrap(before.primaryImage?.colorMatrix?[20]), 0)
+        t.close(try t.graphUnwrap(after.primaryImage).rotate, 90)
+        t.close(try t.graphUnwrap(after.primaryImage?.colorMatrix?[20]), 0.5)
+        var changed = try t.graphUnwrap(after.primaryImage)
+        changed.rotate = 180
+        t.check(changed != after.primaryImage, "rotation alone participates in equality")
+        changed = try t.graphUnwrap(after.primaryImage)
+        changed.colorMatrix?[20] = 1
+        t.check(changed != after.primaryImage, "a matrix alone participates in equality")
+        skin.execute("[!SetOption Hist PrimaryImageRotate 0][!SetOption Hist PrimaryColorMatrix5 \"\"]", from: nil)
+        skin.update()
+        t.equal(meter.frame, SkinRect(x: 0, y: 0, width: 40, height: 20))
+        t.equal(meter.historyLength, 40)
+        t.equal(try t.graphUnwrap(meter.primaryImage).colorMatrix, nil, "clearing the only matrix row removes the matrix")
+        t.equal(skin.issues, [])
     }
 
     t.suite("GraphMeter: Histogram ImageCrop origins") {
@@ -855,8 +1053,9 @@ func runGraphMeterTests(_ t: TestRunner) {
         let path = try t.graphUnwrap(windows.primaryImage).path
         t.check(path.hasSuffix("/Root/Sub/Images.v2/Graph100x50.png"), "\\ separators, default .png: \(path)")
         t.close(windows.frame.width, 100)
-        t.check(skin.issues.contains { $0.contains("Both") && $0.contains("ColorMatrix") },
-                "any ColorMatrixN row is reported: \(skin.issues)")
+        let matrix = try t.graphUnwrap(histogram(skin, "Matrix"))
+        t.close(try t.graphUnwrap(matrix.bothImage?.colorMatrix?[20]), 0.5, "a standalone overlap offset row is read")
+        t.equal(skin.issues, [])
     }
 
     t.suite("GraphMeter: TestSkins/Graphs/Aliased fixture") {
