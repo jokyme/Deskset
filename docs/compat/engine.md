@@ -1032,6 +1032,23 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   Safe Start and Skin Packager remain unimplemented.
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
+### SVG resources
+- Windows (Rainmeter): [SVG meters](https://docs-v5.rainmeter.net/manual/meters/svg/) use the documented
+  [Direct2D SVG subset](https://learn.microsoft.com/en-us/windows/win32/direct2d/svg-support). It includes
+  linear/radial gradients, `defs`, local `use` references, `clipPath` and base64-encoded images through
+  `xlink:href`. External image references and elements outside that subset are unsupported.
+- Mac (Deskset): gradients support inherited stops and attributes, object-bounding-box/user-space units,
+  transforms and pad/reflect/repeat spread. Definitions do not draw on their own; local references resolve
+  forward declarations and stop at cycles. Clip children form a union, nested clips intersect, and group
+  opacity is applied after the group is drawn. Embedded PNG/JPEG images preserve alpha and support
+  `preserveAspectRatio` alignment, meet, slice and none. `AttributeN` resource changes invalidate captured
+  drawing data; earlier snapshots retain their own resources.
+- Limits: document size, nesting, reference expansion and embedded image memory are bounded. Unsupported
+  or malformed resources are skipped. Other embedded image codecs have not been confirmed.
+- Verification: local parser, pixel and scene-cache tests cover these paths. Windows desktop pixel comparison
+  remains pending; small rasterization differences between CoreGraphics and Direct2D may remain.
+- Status: emulated
+
 ### TextEdit editing
 - Windows (Rainmeter): [TextEdit](https://docs-v5.rainmeter.net/manual/meters/textedit/) supports text selection,
   copy/cut/paste, undo, arrow navigation and scrolling overflow without an ellipsis. ReadOnly fields remain

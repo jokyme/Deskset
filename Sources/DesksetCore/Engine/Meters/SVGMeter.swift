@@ -20,6 +20,7 @@ public final class SVGMeter: Meter {
     public private(set) var svgSource = ""
     public private(set) var attributeOverrides: [AttributeOverride] = []
     public private(set) var shapes: [ShapeItem] = []
+    public private(set) var nodes: [SVGRenderNode] = []
     public private(set) var intrinsicSize: (width: Double, height: Double) = (0, 0)
     public private(set) var revision = 0
     let drawingIdentity = UUID()
@@ -96,6 +97,7 @@ public final class SVGMeter: Meter {
         cachedInput = key
         guard !xml.isEmpty, var root = SVGDOMParser.parse(xml: xml) else {
             shapes = []
+            nodes = []
             intrinsicSize = (0, 0)
             rootAttributes = [:]
             elementsByID = [:]
@@ -135,6 +137,7 @@ public final class SVGMeter: Meter {
         SVGShapeBuilder.build(node: root, inheritedStyle: SVGStyle(), transform: rootTransform,
                               index: &nextIndex, into: &built)
         shapes = built
+        nodes = SVGDocumentBuilder(root: root).build(width: finalW, height: finalH)
         revision &+= 1
     }
 
@@ -153,9 +156,9 @@ public final class SVGMeter: Meter {
         computeNaturalSize(baseW: intrinsicSize.width, baseH: intrinsicSize.height)
     }
 
-    public func lower() -> ShapeDraw {
+    public func lower() -> SVGDraw {
         skin.assertOwned()
-        return ShapeDraw(sourceID: drawingIdentity, revision: revision, shapes: shapes, contentFrame: contentFrame)
+        return SVGDraw(sourceID: drawingIdentity, revision: revision, contentFrame: contentFrame, nodes: nodes)
     }
 }
 
@@ -212,21 +215,25 @@ private struct SVGNode {
 private final class SVGDOMParser: NSObject, XMLParserDelegate {
     private var stack: [SVGNode] = []
     private var root: SVGNode?
+    private var elementCount = 0
 
     static func parse(xml: String) -> SVGNode? {
-        guard let data = xml.data(using: .utf8) else { return nil }
+        guard xml.utf8.count <= 16 * 1024 * 1024, let data = xml.data(using: .utf8) else { return nil }
         let delegate = SVGDOMParser()
         let parser = XMLParser(data: data)
         parser.delegate = delegate
         parser.shouldProcessNamespaces = false
         parser.shouldResolveExternalEntities = false
         guard parser.parse() else { return nil }
+        guard delegate.root?.tag.lowercased() == "svg" else { return nil }
         return delegate.root
     }
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
         let local = elementName.split(separator: ":").last.map(String.init) ?? elementName
+        elementCount += 1
+        guard stack.count < 64, elementCount <= 20_000 else { parser.abortParsing(); return }
         stack.append(SVGNode(tag: local, attributes: attributeDict, children: []))
     }
 
@@ -484,7 +491,7 @@ private enum SVGShapeBuilder {
         items.append(item)
     }
 
-    private static func parseTransform(_ raw: String?) -> ShapeTransform {
+    static func parseTransform(_ raw: String?) -> ShapeTransform {
         guard let raw, !raw.isEmpty else { return .identity }
         var result = ShapeTransform.identity
         let chars = Array(raw)
@@ -532,12 +539,404 @@ private enum SVGShapeBuilder {
     }
 }
 
+// MARK: - Captured document resources and rendering tree
+
+private struct SVGViewport {
+    var width: Double
+    var height: Double
+    var diagonal: Double { hypot(width, height) / sqrt(2) }
+}
+
+private extension SVGNode {
+    var presentation: [String: String] {
+        var result: [String: String] = [:]
+        for (key, value) in attributes { result[key.lowercased()] = value }
+        if let inline = attribute("style") {
+            for declaration in inline.split(separator: ";") {
+                let pair = declaration.split(separator: ":", maxSplits: 1)
+                if pair.count == 2 {
+                    result[pair[0].trimmingCharacters(in: .whitespaces).lowercased()] =
+                        pair[1].trimmingCharacters(in: .whitespaces)
+                }
+            }
+        }
+        return result
+    }
+}
+
+private struct SVGInheritedStyle {
+    var declarations: [String: String] = [:]
+    func applying(_ node: SVGNode) -> Self {
+        var next = self
+        let inherited: Set<String> = ["fill", "stroke", "color", "fill-opacity", "stroke-opacity", "fill-rule",
+                                      "clip-rule", "stroke-width", "stroke-linecap", "stroke-linejoin",
+                                      "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset", "visibility",
+                                      "stop-color", "stop-opacity"]
+        for (key, value) in node.presentation where inherited.contains(key) && value != "inherit" {
+            next.declarations[key] = value
+        }
+        return next
+    }
+    func value(_ key: String, _ fallback: String) -> String { declarations[key] ?? fallback }
+}
+
+/// Resolves the supported local SVG resources once, without retaining the mutable meter or DOM.
+private final class SVGDocumentBuilder {
+    private struct GradientKey: Hashable {
+        var id: String
+        var width: Double
+        var height: Double
+    }
+    private let root: SVGNode
+    private var references: [String: SVGNode] = [:]
+    private var originalStyles: [String: SVGInheritedStyle] = [:]
+    private var remainingNodes = 20_000
+    private var remainingImageBytes = 16 * 1024 * 1024
+    private var remainingResourceWork = 50_000
+    private var gradients: [GradientKey: SVGGradient] = [:]
+    private var invalidGradients: Set<GradientKey> = []
+    private var imageData: [String: Data] = [:]
+
+    init(root: SVGNode) {
+        self.root = root
+        index(root, inherited: SVGInheritedStyle())
+    }
+
+    private func index(_ node: SVGNode, inherited: SVGInheritedStyle) {
+        let style = inherited.applying(node)
+        if let id = node.attribute("id"), !id.isEmpty, references[id] == nil {
+            references[id] = node
+            originalStyles[id] = style
+        }
+        for child in node.children { index(child, inherited: style) }
+    }
+
+    func build(width: Double, height: Double) -> [SVGRenderNode] {
+        guard width > 0, height > 0 else { return [] }
+        return buildSVG(root, inherited: SVGInheritedStyle(), parent: SVGViewport(width: width, height: height),
+                        size: SVGViewport(width: width, height: height), active: [], depth: 0, isRoot: true)
+    }
+
+    private static func length(_ raw: String?, relativeTo extent: Double, fallback: Double = 0) -> Double {
+        guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines) else { return fallback }
+        if text.hasSuffix("%"), let number = Double(text.dropLast()), number.isFinite {
+            return number / 100 * extent
+        }
+        return SVGDOMParser.parseLength(text) ?? fallback
+    }
+
+    private static func opacity(_ raw: String?) -> Double {
+        length(raw, relativeTo: 1, fallback: 1).clamped(0, 1)
+    }
+
+    private static func localID(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), raw.hasPrefix("#"), raw.count > 1 else { return nil }
+        return String(raw.dropFirst())
+    }
+
+    private static func paintReference(_ raw: String?) -> (id: String, fallback: String)? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), raw.hasPrefix("url("),
+              let end = raw.firstIndex(of: ")") else { return nil }
+        let inside = String(raw[raw.index(raw.startIndex, offsetBy: 4)..<end])
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+        guard let id = localID(inside) else { return nil }
+        return (id, String(raw[raw.index(after: end)...]).trimmingCharacters(in: .whitespaces))
+    }
+
+    private func buildNode(_ node: SVGNode, inherited: SVGInheritedStyle, viewport: SVGViewport,
+                           active: Set<String>, depth: Int) -> [SVGRenderNode] {
+        guard depth < 64, remainingNodes > 0 else { return [] }
+        remainingNodes -= 1
+        let own = node.presentation
+        guard own["display"]?.lowercased() != "none" else { return [] }
+        let style = inherited.applying(node)
+        let tag = node.tag.lowercased()
+        if tag == "svg" {
+            return buildSVG(node, inherited: inherited, parent: viewport, size: nil, active: active, depth: depth, isRoot: false)
+        }
+        var children: [SVGRenderNode] = []
+        var transform = SVGShapeBuilder.parseTransform(node.attribute("transform"))
+        switch tag {
+        case "g":
+            for child in node.children { children += buildNode(child, inherited: style, viewport: viewport, active: active, depth: depth + 1) }
+        case "use":
+            guard let id = Self.localID(node.attribute("xlink:href")), !active.contains(id), let target = references[id] else { return [] }
+            transform = ShapeTransform.translation(Self.length(node.attribute("x"), relativeTo: viewport.width),
+                                                     Self.length(node.attribute("y"), relativeTo: viewport.height)).then(transform)
+            var next = active
+            next.insert(id)
+            if target.tag.lowercased() == "svg" {
+                let size = SVGViewport(width: Self.length(node.attribute("width"), relativeTo: viewport.width,
+                                                          fallback: Self.length(target.attribute("width"), relativeTo: viewport.width, fallback: viewport.width)),
+                                       height: Self.length(node.attribute("height"), relativeTo: viewport.height,
+                                                           fallback: Self.length(target.attribute("height"), relativeTo: viewport.height, fallback: viewport.height)))
+                children = buildSVG(target, inherited: style, parent: viewport, size: size, active: next, depth: depth + 1, isRoot: false)
+            } else {
+                children = buildNode(target, inherited: style, viewport: viewport, active: next, depth: depth + 1)
+            }
+        case "image":
+            if style.value("visibility", "visible") != "hidden", style.value("visibility", "visible") != "collapse",
+               let image = image(node, viewport: viewport) { children = [.image(image)] }
+        case "path", "rect", "circle", "ellipse", "line", "polyline", "polygon":
+            guard style.value("visibility", "visible") != "hidden", style.value("visibility", "visible") != "collapse",
+                  let path = geometry(node, viewport: viewport, rule: style.value("fill-rule", "nonzero")) else { return [] }
+            var stroke = ShapeStrokeStyle()
+            stroke.width = max(0, Self.length(style.declarations["stroke-width"], relativeTo: viewport.diagonal, fallback: 1))
+            switch style.value("stroke-linecap", "butt") {
+            case "round": stroke.startCap = .round; stroke.endCap = .round; stroke.dashCap = .round
+            case "square": stroke.startCap = .square; stroke.endCap = .square; stroke.dashCap = .square
+            default: break
+            }
+            switch style.value("stroke-linejoin", "miter") {
+            case "round": stroke.join = .round
+            case "bevel": stroke.join = .bevel
+            default: break
+            }
+            stroke.miterLimit = max(1, Self.length(style.declarations["stroke-miterlimit"], relativeTo: 1, fallback: 4))
+            if stroke.width > 0, let dash = style.declarations["stroke-dasharray"], dash != "none" {
+                var values = dash.split(whereSeparator: { $0 == "," || $0.isWhitespace }).map { Self.length(String($0), relativeTo: viewport.diagonal) }
+                if values.allSatisfy({ $0 >= 0 }), values.contains(where: { $0 > 0 }) {
+                    if values.count % 2 != 0 { values += values }
+                    stroke.dashes = values.map { $0 / stroke.width }
+                }
+                stroke.dashOffset = Self.length(style.declarations["stroke-dashoffset"], relativeTo: viewport.diagonal) / stroke.width
+            }
+            children = [.path(SVGPathDraw(path: path,
+                                         fill: paint(style.value("fill", "black"), style: style, viewport: viewport),
+                                         stroke: paint(style.value("stroke", "none"), style: style, viewport: viewport),
+                                         strokeStyle: stroke, fillOpacity: Self.opacity(style.declarations["fill-opacity"]),
+                                         strokeOpacity: Self.opacity(style.declarations["stroke-opacity"])))]
+        default: return []
+        }
+        guard !children.isEmpty else { return [] }
+        return [.group(transform: transform, opacity: Self.opacity(own["opacity"]),
+                       clip: clip(own["clip-path"], viewport: viewport, active: active, depth: depth + 1), children: children)]
+    }
+
+    private func buildSVG(_ node: SVGNode, inherited: SVGInheritedStyle, parent: SVGViewport, size: SVGViewport?,
+                          active: Set<String>, depth: Int, isRoot: Bool) -> [SVGRenderNode] {
+        guard depth < 64, remainingNodes > 0, node.presentation["display"] != "none" else { return [] }
+        remainingNodes -= 1
+        let size = size ?? SVGViewport(width: Self.length(node.attribute("width"), relativeTo: parent.width, fallback: parent.width),
+                                      height: Self.length(node.attribute("height"), relativeTo: parent.height, fallback: parent.height))
+        guard size.width > 0, size.height > 0 else { return [] }
+        let viewBox = SVGDOMParser.parseViewBox(node.attribute("viewBox"))
+        if let viewBox, viewBox.width <= 0 || viewBox.height <= 0 { return [] }
+        let viewport = SVGViewport(width: viewBox?.width ?? size.width, height: viewBox?.height ?? size.height)
+        let style = inherited.applying(node)
+        var children: [SVGRenderNode] = []
+        for child in node.children { children += buildNode(child, inherited: style, viewport: viewport, active: active, depth: depth + 1) }
+        guard !children.isEmpty else { return [] }
+        var mapping = ShapeTransform.identity
+        if let vb = viewBox {
+            let aspect = Self.aspect(node.attribute("preserveAspectRatio"))
+            var sx = size.width / vb.width
+            var sy = size.height / vb.height
+            if !aspect.none { let scale = aspect.slice ? max(sx, sy) : min(sx, sy); sx = scale; sy = scale }
+            mapping = ShapeTransform.translation(-vb.minX, -vb.minY)
+                .then(ShapeTransform(a: sx, b: 0, c: 0, d: sy, tx: 0, ty: 0))
+                .then(.translation((size.width - vb.width * sx) * aspect.x.rawValue,
+                                   (size.height - vb.height * sy) * aspect.y.rawValue))
+        }
+        let inner = SVGRenderNode.group(transform: mapping, opacity: 1,
+                                         clip: clip(node.presentation["clip-path"], viewport: viewport, active: active, depth: depth + 1), children: children)
+        let position = isRoot ? ShapeTransform.identity : ShapeTransform.translation(
+            Self.length(node.attribute("x"), relativeTo: parent.width), Self.length(node.attribute("y"), relativeTo: parent.height))
+        let viewportClip = node.presentation["overflow"] == "visible" ? nil : Self.rectangleClip(size)
+        return [.group(transform: position, opacity: Self.opacity(node.presentation["opacity"]), clip: viewportClip, children: [inner])]
+    }
+
+    private static func rectangleClip(_ size: SVGViewport) -> SVGClip {
+        SVGClip(children: [.path(ShapePath(subpaths: [ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: size.width, height: size.height)]))])
+    }
+
+    private func geometry(_ node: SVGNode, viewport: SVGViewport, rule: String) -> ShapePath? {
+        var normalized = node
+        normalized.attributes = [:]
+        normalized.children = []
+        for key in ["d", "points"] { if let value = node.attribute(key) { normalized.attributes[key] = value } }
+        for key in ["x", "x1", "x2", "cx", "width", "rx"] {
+            if let value = node.attribute(key) { normalized.attributes[key] = String(Self.length(value, relativeTo: viewport.width)) }
+        }
+        for key in ["y", "y1", "y2", "cy", "height", "ry"] {
+            if let value = node.attribute(key) { normalized.attributes[key] = String(Self.length(value, relativeTo: viewport.height)) }
+        }
+        if let value = node.attribute("r") { normalized.attributes["r"] = String(Self.length(value, relativeTo: viewport.diagonal)) }
+        var style = SVGStyle()
+        style.fillRule = rule == "evenodd" ? .evenOdd : .nonZero
+        var items: [ShapeItem] = []
+        var index = 1
+        SVGShapeBuilder.build(node: normalized, inheritedStyle: style, transform: .identity, index: &index, into: &items)
+        guard case .path(let path)? = items.first?.geometry else { return nil }
+        return path
+    }
+
+    private func paint(_ raw: String, style: SVGInheritedStyle, viewport: SVGViewport) -> SVGPaint {
+        var colorValue = raw
+        if let reference = Self.paintReference(raw) {
+            if let gradient = gradient(reference.id, viewport: viewport) { return .gradient(gradient) }
+            // SVG paint accepts one optional color/none fallback, not another paint server.
+            colorValue = reference.fallback
+        }
+        let value = colorValue.lowercased() == "currentcolor" ? style.value("color", "black") : colorValue
+        if case .color(let color) = SVGStyle.parsePaint(value) { return .color(color) }
+        return .none
+    }
+
+    private func gradient(_ id: String, viewport: SVGViewport) -> SVGGradient? {
+        let key = GradientKey(id: id, width: viewport.width, height: viewport.height)
+        if let cached = gradients[key] { return cached }
+        if invalidGradients.contains(key) { return nil }
+        if let result = resolveGradient(id, viewport: viewport) {
+            gradients[key] = result
+            return result
+        }
+        invalidGradients.insert(key)
+        return nil
+    }
+
+    private func resolveGradient(_ id: String, viewport: SVGViewport) -> SVGGradient? {
+        guard let node = references[id], ["lineargradient", "radialgradient"].contains(node.tag.lowercased()) else { return nil }
+        var chain: [SVGNode] = []
+        var visited: Set<String> = []
+        var current: String? = id
+        while let key = current {
+            guard remainingResourceWork > 0 else { return nil }
+            remainingResourceWork -= 1
+            guard visited.count < 64, !visited.contains(key), let next = references[key],
+                  ["lineargradient", "radialgradient"].contains(next.tag.lowercased()) else { return nil }
+            visited.insert(key)
+            chain.append(next)
+            current = Self.localID(next.attribute("xlink:href"))
+        }
+        var attributes: [String: String] = [:]
+        for entry in chain.reversed() { for (key, value) in entry.presentation { attributes[key] = value } }
+        let stopSource = chain.first(where: { $0.children.contains(where: { $0.tag.lowercased() == "stop" }) }) ?? node
+        let inherited = stopSource.attribute("id").flatMap { originalStyles[$0] } ?? SVGInheritedStyle().applying(stopSource)
+        var stops: [ShapeGradientStop] = []
+        var previous = 0.0
+        for stop in stopSource.children where stop.tag.lowercased() == "stop" {
+            guard remainingResourceWork > 0 else { return nil }
+            remainingResourceWork -= 1
+            let values = inherited.applying(stop)
+            let offset = max(previous, Self.length(stop.attribute("offset"), relativeTo: 1).clamped(0, 1))
+            previous = offset
+            let rawColor = values.value("stop-color", "black")
+            let resolved = rawColor.lowercased() == "currentcolor" ? values.value("color", "black") : rawColor
+            var color = RGBA.black
+            if case .color(let parsed) = SVGStyle.parsePaint(resolved) { color = parsed }
+            color.a *= Self.opacity(values.declarations["stop-opacity"])
+            stops.append(ShapeGradientStop(color: color, position: offset))
+        }
+        let units: SVGCoordinateUnits = attributes["gradientunits"] == "userSpaceOnUse" ? .userSpaceOnUse : .objectBoundingBox
+        let relative = units == .objectBoundingBox ? SVGViewport(width: 1, height: 1) : viewport
+        func coordinate(_ name: String, _ fallback: String, _ extent: Double) -> Double {
+            Self.length(attributes[name] ?? fallback, relativeTo: extent)
+        }
+        let kind: SVGGradient.Kind
+        if node.tag.lowercased() == "lineargradient" {
+            kind = .linear(start: ShapePoint(coordinate("x1", "0%", relative.width), coordinate("y1", "0%", relative.height)),
+                           end: ShapePoint(coordinate("x2", "100%", relative.width), coordinate("y2", "0%", relative.height)))
+        } else {
+            let center = ShapePoint(coordinate("cx", "50%", relative.width), coordinate("cy", "50%", relative.height))
+            let radius = coordinate("r", "50%", relative.diagonal)
+            guard radius >= 0 else { return nil }
+            var focus = ShapePoint(attributes["fx"].map { Self.length($0, relativeTo: relative.width) } ?? center.x,
+                                   attributes["fy"].map { Self.length($0, relativeTo: relative.height) } ?? center.y)
+            let distance = hypot(focus.x - center.x, focus.y - center.y)
+            if distance > radius, distance > 0 {
+                focus = ShapePoint(center.x + (focus.x - center.x) * radius / distance,
+                                   center.y + (focus.y - center.y) * radius / distance)
+            }
+            kind = .radial(center: center, focus: focus, radius: radius)
+        }
+        let spread: SVGSpreadMethod = attributes["spreadmethod"] == "reflect" ? .reflect : attributes["spreadmethod"] == "repeat" ? .repeat : .pad
+        return SVGGradient(kind: kind, units: units, transform: SVGShapeBuilder.parseTransform(attributes["gradienttransform"]), spread: spread, stops: stops)
+    }
+
+    private func clip(_ raw: String?, viewport: SVGViewport, active: Set<String>, depth: Int) -> SVGClip? {
+        guard depth < 64, let reference = Self.paintReference(raw), !active.contains(reference.id),
+              let node = references[reference.id], node.tag.lowercased() == "clippath" else { return nil }
+        let units: SVGCoordinateUnits = node.attribute("clipPathUnits") == "objectBoundingBox" ? .objectBoundingBox : .userSpaceOnUse
+        let localViewport = units == .objectBoundingBox ? SVGViewport(width: 1, height: 1) : viewport
+        var next = active
+        next.insert(reference.id)
+        let style = originalStyles[reference.id] ?? SVGInheritedStyle().applying(node)
+        var children: [SVGClipNode] = []
+        for child in node.children {
+            guard remainingNodes > 0 else { break }
+            remainingNodes -= 1
+            guard child.presentation["display"] != "none" else { continue }
+            var target = child
+            var targetStyle = style.applying(child)
+            var transform = SVGShapeBuilder.parseTransform(child.attribute("transform"))
+            if child.tag.lowercased() == "use" {
+                guard let id = Self.localID(child.attribute("xlink:href")), !next.contains(id), let referenced = references[id],
+                      ["path", "rect", "circle", "ellipse", "line", "polygon", "polyline"].contains(referenced.tag.lowercased()),
+                      referenced.presentation["display"] != "none" else { continue }
+                target = referenced
+                targetStyle = targetStyle.applying(referenced)
+                transform = SVGShapeBuilder.parseTransform(referenced.attribute("transform"))
+                    .then(.translation(Self.length(child.attribute("x"), relativeTo: localViewport.width),
+                                       Self.length(child.attribute("y"), relativeTo: localViewport.height))).then(transform)
+            }
+            guard targetStyle.value("visibility", "visible") != "hidden", targetStyle.value("visibility", "visible") != "collapse",
+                  let path = geometry(target, viewport: localViewport, rule: targetStyle.value("clip-rule", "nonzero")) else { continue }
+            let targetClip = clip(target.presentation["clip-path"], viewport: localViewport, active: next, depth: depth + 1)
+            var childNode = SVGClipNode.group(transform: transform, clip: targetClip, children: [.path(path)])
+            if child.tag.lowercased() == "use", let useClip = clip(child.presentation["clip-path"], viewport: localViewport, active: next, depth: depth + 1) {
+                childNode = .group(transform: .identity, clip: useClip, children: [childNode])
+            }
+            children.append(childNode)
+        }
+        let ownClip = clip(node.presentation["clip-path"], viewport: localViewport, active: next, depth: depth + 1)
+        if let ownClip { children = [.group(transform: .identity, clip: ownClip, children: children)] }
+        return SVGClip(units: units, transform: SVGShapeBuilder.parseTransform(node.attribute("transform")), children: children)
+    }
+
+    private func image(_ node: SVGNode, viewport: SVGViewport) -> SVGImageDraw? {
+        guard let raw = node.attribute("xlink:href"), let comma = raw.firstIndex(of: ",") else { return nil }
+        let header = raw[..<comma].lowercased()
+        guard ["data:image/png;base64", "data:image/jpeg;base64", "data:image/jpg;base64"].contains(header) else { return nil }
+        let data: Data
+        if let cached = imageData[raw] {
+            data = cached
+        } else {
+            let encoded = raw[raw.index(after: comma)...]
+            guard encoded.utf8.count <= 12 * 1024 * 1024,
+                  let decoded = Data(base64Encoded: String(encoded.filter { !$0.isWhitespace })),
+                  decoded.count <= 8 * 1024 * 1024, decoded.count <= remainingImageBytes else { return nil }
+            let isPNG = decoded.starts(with: [137, 80, 78, 71, 13, 10, 26, 10])
+            let isJPEG = decoded.starts(with: [255, 216, 255])
+            guard (header == "data:image/png;base64" && isPNG) || (header != "data:image/png;base64" && isJPEG) else { return nil }
+            data = decoded
+            remainingImageBytes -= data.count
+            imageData[raw] = data
+        }
+        let width = Self.length(node.attribute("width"), relativeTo: viewport.width)
+        let height = Self.length(node.attribute("height"), relativeTo: viewport.height)
+        guard width > 0, height > 0 else { return nil }
+        return SVGImageDraw(data: data, rect: SkinRect(x: Self.length(node.attribute("x"), relativeTo: viewport.width),
+                                                      y: Self.length(node.attribute("y"), relativeTo: viewport.height), width: width, height: height),
+                            preserveAspectRatio: Self.aspect(node.attribute("preserveAspectRatio")))
+    }
+
+    private static func aspect(_ raw: String?) -> SVGPreserveAspectRatio {
+        let parts = (raw ?? "xMidYMid meet").split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "defer" }
+        guard let align = parts.first else { return SVGPreserveAspectRatio() }
+        if align == "none" { return SVGPreserveAspectRatio(none: true) }
+        let x: SVGPreserveAspectRatio.Alignment = align.hasPrefix("xMin") ? .min : align.hasPrefix("xMax") ? .max : .mid
+        let y: SVGPreserveAspectRatio.Alignment = align.hasSuffix("YMin") ? .min : align.hasSuffix("YMax") ? .max : .mid
+        return SVGPreserveAspectRatio(x: x, y: y, slice: parts.dropFirst().contains("slice"))
+    }
+}
+
 private enum SVGPathParser {
     static func scanNumbers(_ s: String) -> [Double] {
         var out: [Double] = []
         let chars = Array(s.unicodeScalars)
         var i = 0
-        while i < chars.count {
+        while i < chars.count && out.count < ShapeParser.maxPathSegments * 2 + 2 {
             while i < chars.count, !(chars[i].value >= 48 && chars[i].value <= 57) && chars[i] != "-" && chars[i] != "+" && chars[i] != "." {
                 i += 1
             }
@@ -637,6 +1036,7 @@ private enum SVGPathParser {
         while i < chars.count && subpaths.count + currentSegments.count < ShapeParser.maxPathSegments {
             skipSeparators()
             guard i < chars.count else { break }
+            let iterationStart = i
             let c = chars[i]
             if (c.value >= 65 && c.value <= 90) || (c.value >= 97 && c.value <= 122) {
                 currentCmd = c
@@ -742,6 +1142,7 @@ private enum SVGPathParser {
             default:
                 return subpaths
             }
+            if i == iterationStart { break }
         }
         flushSubpath(closed: false)
         return subpaths

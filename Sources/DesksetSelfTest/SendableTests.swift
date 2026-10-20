@@ -43,7 +43,9 @@ func runSendableTests(_ t: TestRunner) {
                      sendable(TextDraw.self), sendable(ImageDraw.self), sendable(BarDraw.self), sendable(GraphDraw.self),
                      sendable(LineDraw.self), sendable(HistogramDraw.self), sendable(GraphDrawHistory.self),
                      sendable(RoundlineDraw.self), sendable(RotatorDraw.self), sendable(SpriteDraw.self),
-                     sendable(ShapeDraw.self), sendable(SkinPoint.self), sendable(SkinAppearance.self),
+                     sendable(ShapeDraw.self), sendable(SVGDraw.self), sendable(SVGRenderNode.self),
+                     sendable(SVGClip.self), sendable(SVGImageDraw.self), sendable(SVGGradient.self),
+                     sendable(SkinPoint.self), sendable(SkinAppearance.self),
                      sendable(MacRegionalSettings.self), sendable(TemperatureUnit.self), sendable(ImageStamp.self),
                      sendable(ImageDependency.self), sendable(AppearanceStamp.self), sendable(EnvironmentStamp.self)]
         let all = geometry + color + glass + text + shape + images + meters + actions + input + scene

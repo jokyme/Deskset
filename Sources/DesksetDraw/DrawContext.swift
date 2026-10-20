@@ -7,6 +7,7 @@ public final class DrawContext {
     package let rotatorImages = RotatorImageCache()
     package let histogram = HistogramCache()
     package let shapes = ShapeCG.Cache()
+    package let svg = SVGRenderer.Cache()
 
     /// At most this many sources, with only one revision per source; least recently drawn sources are evicted.
     package static let maxShapeSources = 256
