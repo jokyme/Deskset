@@ -2,6 +2,43 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.0
+
+This release makes skins easier to manage and debug, improves text editing and graphics, and adds more Rainmeter 5.0 controls.
+
+### Added
+
+- **Favorites and automatic skin discovery.** Save shortcuts to individual skins and find newly copied skins and variants without refreshing the desktop.
+- **A dedicated Debug window.** Inspect logs, live measures and variables, expression watches, displays, network interfaces and bundled plugin implementations. Refresh a selected skin when its files change.
+- **More placement controls.** Choose a monitor, position skins from the right or bottom, use percentage coordinates and jump to an active skin from Manage.
+- **A global drag lock.** Disable ordinary mouse dragging from General settings without changing each skin’s saved Draggable setting.
+- **Safe Start and restart controls.** Recover a problematic startup by restoring the default desktop while keeping skin files and a backup of the previous layout. Restart Deskset from the menu or a skin command.
+- **Persistent network statistics.** Cumulative network totals survive app restarts. Clear them from General settings or with `!ResetStats`.
+- **New skins, templates and metadata.** Create folders, a root resources folder and UTF-16 skin files from Manage, save, edit and delete reusable templates, and add the standard five blank `[Metadata]` fields to skins that have no metadata section.
+
+### Changed and improved
+
+- **More complete skin menus.** Open a skin’s folder from its config name, load another skin from the same root, open the manual from Help, and choose the almost-transparent ~100% preset.
+- **Zoom and multiple-skin selection.** Adjust skin zoom from Manage or the skin menu, set a global default or force it for all skins, and select skins together for shared movement, resizing and settings.
+- **More complete text editing.** TextEdit meters support clipboard operations, undo, cursor navigation, selections and scrolling, with appropriate restrictions for read-only and password fields.
+- **Broader graphics support.** SVG meters support gradients, reusable definitions, clipping and embedded images. Histogram images support rotation and color matrices. See the [compatibility guide](docs/COMPATIBILITY.md) for remaining differences.
+- **Clearer installer choices.** Choose whether to load an included skin or layout and whether to back up replaced skins. Modern merge packages preserve unrelated files without creating an extra skin backup.
+- **More Rainmeter command support.** Added target-first skin commands, compound group selectors, media-key commands and dynamic anchor changes.
+- **Persistent logging and clearer version details.** File logging remembers its enabled state across restarts. About shows and copies version, build, architecture and path details, while Debug identifies plugin implementations bundled with Deskset.
+
+### Fixed
+
+- Fixed native skin backgrounds, drawing and pointer input becoming misaligned after zooming.
+- File drops now honor deletion confirmation and replacement settings, with rollback handling for failed replacements.
+- `!ActivateConfig` targeting the variant already running now brings it forward without reloading it or resetting its measures.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved. Save open edits before updating or replacing the application.
+- Still supports macOS 13 and later on Apple silicon and Intel Macs. Windows-only plugins and programs cannot run directly on macOS.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.3.0...v0.5.0)
+
 ## 0.3.0
 
 This release adds saved desktop layouts, updates you can download and install inside Deskset, and a clearer installation experience.
