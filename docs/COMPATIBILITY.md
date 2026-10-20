@@ -71,7 +71,7 @@ shipped with Deskset.
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins, Aero blur or `!SetAnchor`; Windows desktop comparison of zoom/selection is pending |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins or Aero blur; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
 
 ---
 
@@ -1184,11 +1184,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   position lasts for the session. A new skin without a saved or default position is cascaded from the top-left of the
   visible area. AutoSelectScreen decides which display the monitor variables without `@N` describe. Imported layout
   positions retain their expressions and anchors across save/reload, movement and resizing (see [Layouts](compat/layouts.md)).
-  Existing `DefaultAnchorX/Y` and `!SetWindowPosition` placement remain separate; `!SetAnchor` is not supported.
-- **Why:** macOS works in points (Retina); `!SetAnchor` has not been implemented.
+  `!SetAnchor` changes the anchor around the current window-position point while preserving the position expressions.
+  Initial commands reuse normal placement priorities; see [Dynamic anchors](compat/app.md#dynamic-anchors-setanchor).
+- **Why:** macOS works in points (Retina).
 - **Skin impact:** skins positioned for a specific Windows resolution can land elsewhere on a Retina Mac; KeepOnScreen
   keeps them visible. Layout anchors now remain effective when the skin changes size.
-- **Status:** emulated / partial (`!SetAnchor`)
+- **Status:** emulated / partial (Windows first-frame anchor timing remains unverified)
 
 #### Position controls and Active skins
 - **Windows:** Position provides Display monitor and From right/bottom and X/Y percentage switches. Manage has a
@@ -1478,10 +1479,11 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** `!SetClip` sets the pasteboard; `!SetWallpaper` sets the picture of every display (Tile is shown unscaled like
   Center — macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage window on the named config;
   `!About Log` opens the log; `!EditSkin` opens the file in the text editor; `!Quit` quits after the current action.
-  `!ResetStats` clears cumulative network statistics synchronously; `!SetAnchor` adds a compatibility note.
-- **Why:** `!SetAnchor` has not been implemented.
-- **Skin impact:** none for the supported ones.
-- **Status:** emulated / not supported (`!SetAnchor`)
+  `!ResetStats` clears cumulative network statistics synchronously; `!SetAnchor` changes the anchor while preserving
+  the position expressions (see [Dynamic anchors](compat/app.md#dynamic-anchors-setanchor)).
+- **Why:** native host services and point-based window geometry.
+- **Skin impact:** skins can change anchors without refreshing.
+- **Status:** emulated / partial (initial anchor timing)
 
 #### Running programs and opening files (`["…"]`)
 - **Windows:** `["program.exe" args]` runs a program; a URL or file opens with its default handler.
@@ -3172,7 +3174,7 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | Hardware sensors (temperatures, fans, power, clocks) | emulated | Read directly without privileges (§9.3); Apple documents none of them, the values are approximations; M1–M3 and Intel Macs untested; HWiNFO skins still read nothing |
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
 | Aero blur (`Blur`, `BlurRegion`, blur bangs) | not supported | Use FrostedGlass for blur |
-| `!SetAnchor` | not supported | Layout expressions and anchors are persisted and applied; the bang remains unsupported |
+| Initial `!SetAnchor` timing | partial | Dynamic anchors are implemented; exact first-frame scheduling and commands before initial meter geometry remain unverified ([App](compat/app.md#dynamic-anchors-setanchor)) |
 | The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |

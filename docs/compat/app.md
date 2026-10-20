@@ -215,11 +215,31 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   With SavePosition off, the position is kept for the session only (a refresh keeps it). A new skin without a saved
   position or DefaultWindowX/Y is cascaded from the top-left of the visible area. AutoSelectScreen decides which
   display the monitor variables without `@N` describe. Imported layout position expressions and anchors persist
-  across save/reload, movement and resizing; see [Layouts](layouts.md). `!SetAnchor` remains unsupported.
+  across save/reload, movement and resizing; see [Layouts](layouts.md). `!SetAnchor` changes the anchor dynamically
+  as described below.
 - Why: macOS works in points (Retina).
 - Skin impact: skins positioned for a specific Windows resolution land elsewhere on a Retina Mac; KeepOnScreen keeps
   them visible.
 - Status: emulated
+
+### Dynamic anchors (`!SetAnchor`)
+- Windows (Rainmeter): `!SetAnchor AnchorX AnchorY [Config]` changes the skin's anchor settings. Anchors accept
+  pixels, percentages of the skin's dimensions, and `R` / `B` edge-relative values; the modifiers can be combined
+  (<https://docs.rainmeter.net/manual/bangs/#SetAnchor>,
+  <https://docs.rainmeter.net/manual/settings/skin-sections/#AnchorX>).
+- Mac (Deskset): the bang uses the existing current/config/`*` target routing, including `Skin:` target-first forms.
+  Changing the anchor adjusts the top-left corner around the same window-position point, subject to KeepOnScreen.
+  Pixel anchors follow the applied skin zoom; percentage anchors follow its current size. Existing `WindowX/Y`
+  expressions and monitor/edge suffixes remain intact. With SavePosition off, a live session move stays separate
+  from the saved position. Legacy coordinates with no raw expressions are normalized using their saved point.
+  Moves held during a press retain their command order; an actual drag takes precedence. Invalid anchor arguments
+  leave the window and its saved settings unchanged. First positioning reuses the normal session/layout/default/
+  cascade priority, rather than treating the unplaced panel as a saved position.
+- Why: one placement calculation is shared by initial positioning and dynamic anchors; it uses macOS points.
+- Skin impact: skins can change anchors without refreshing and keep their position expressions through reloads.
+- Status: emulated / partial. Exact Windows first-frame scheduling, commands issued before initial meter geometry,
+  and concurrent-start cascade sampling remain unverified. Cascade fallback uses an activation-time snapshot when
+  an early positioning command needs it; ordinary startup keeps its existing placement timing.
 
 ### Position menus and active-skin selection
 - Windows (Rainmeter): Settings → Position includes Display monitor, the five window levels, From right, From bottom,
@@ -594,7 +614,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   the picture unscaled like Center: macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage
   window on the named config; `!Debug Log` opens the log; `!About` opens version information; `!EditSkin` opens the file in the text editor; `!Quit` quits
   after the current action. `!ResetStats` clears cumulative network statistics on the owning executor; `!SetAnchor`
-  adds a compatibility note.
+  changes the window anchor while preserving its position expressions.
 - Why: —
 - Skin impact: none for the supported ones.
 - Status: emulated

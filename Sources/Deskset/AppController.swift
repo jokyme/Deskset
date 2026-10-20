@@ -988,7 +988,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         c.moveWhenStarted = place
         c.replacedWindow = replaced
         let order = SkinLoadOrder(state: c.state, firstLoad: firstLoad, continuing: previous,
-                                  presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket)
+                                  presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket,
+                                  placement: c.placementContext)
         if let ticket { studioReload(ticket, .loading, c) }
         c.load(order, fadeIn: fade && !replacing)
         if !inline {

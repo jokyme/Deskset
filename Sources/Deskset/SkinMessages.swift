@@ -140,6 +140,8 @@ struct SkinLoadOrder {
     var paused: Bool
     /// A reload the Studio asked for, which this load is part of: it comes back with `.started` or `.failed`.
     var ticket: SkinReloadTicket? = nil
+    /// Initial saved/session position and the main thread's cascade inputs, for a first positioning bang.
+    var placement: SkinPlacementContext? = nil
 }
 
 /// A reload of a widget that the Studio's editing session asked for (docs/skin-threading.md §8.5). It rides on the

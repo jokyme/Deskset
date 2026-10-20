@@ -16,7 +16,7 @@ enum HostBangs {
     }
 
     /// The kind of a bang the engine left to the host (`Bang.name`); nil when it is not supported on macOS
-    /// (blur bangs, !SetAnchor…). Executor-only commands are handled directly by `SkinRuntime`.
+    /// (blur bangs…). Executor-only commands are handled directly by `SkinRuntime`.
     static func kind(of name: String) -> Kind? {
         switch name {
         case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
@@ -25,7 +25,7 @@ enum HostBangs {
         case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
              "togglemouseactionskingroup", "updategroup", "redrawgroup", "setvariablegroup":
             return .group
-        case "move", "setwindowposition", "zpos", "zposgroup", "settransparency", "settransparencygroup", "draggable",
+        case "move", "setwindowposition", "setanchor", "zpos", "zposgroup", "settransparency", "settransparencygroup", "draggable",
              "draggablegroup", "clickthrough", "clickthroughgroup", "keeponscreen", "keeponscreengroup", "snapedges",
              "snapedgesgroup", "autoselectscreen", "autoselectscreengroup", "show", "hide", "toggle", "showfade",
              "hidefade", "togglefade", "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup",

@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势，Aero 模糊和 `!SetAnchor` 仍不支持；缩放／选择尚待 Windows 桌面对照 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势，Aero 模糊仍不支持；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
 
 ---
 
@@ -1061,12 +1061,12 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Mac：** 以点为单位，原点在主显示器（带菜单栏的那个）的左上角，y 向下增大——约定相同，只是单位为点。`!Move` 的数值限制
   在 ±1 000 000 以内。关闭 SavePosition 时，位置只在本次运行期间有效。没有保存位置也没有默认位置的新皮肤从可见区域的左上角
   开始层叠摆放。AutoSelectScreen 决定不带 `@N` 的显示器变量描述哪块显示器。导入布局的位置表达式和锚点会在保存、重载、
-  移动与尺寸变化时保留并应用（见 [Layouts](compat/layouts.md)）。原有 `DefaultAnchorX/Y` 和 `!SetWindowPosition` 的摆放
-  路径仍单独处理，`!SetAnchor` 尚不支持。
-- **原因：** macOS 以点为单位（Retina）；尚未实现 `!SetAnchor`。
+  移动与尺寸变化时保留并应用（见 [Layouts](compat/layouts.md)）。`!SetAnchor` 围绕当前窗口位置点改变锚点，并保留位置表达式。
+  初始命令复用常规摆放优先级，详见 [Dynamic anchors](compat/app.md#dynamic-anchors-setanchor)。
+- **原因：** macOS 以点为单位（Retina）。
 - **对皮肤的影响：** 按特定 Windows 分辨率摆放的皮肤在 Retina Mac 上可能落在别处；KeepOnScreen 会让它们保持可见。
   布局中的锚点现在会继续影响皮肤尺寸变化。
-- **状态：** 模拟实现 / 部分支持（`!SetAnchor`）
+- **状态：** 模拟实现 / 部分支持（Windows 首帧锚点时序尚待确认）
 
 #### Position 控件与 Active skins
 - **Windows：** Position 提供 Display monitor、From right/bottom 和 X/Y 百分比开关；Manage 提供显示器控件与活动皮肤下拉。
@@ -1316,10 +1316,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   `!Quit`、`!ResetStats`、`!SetAnchor`。
 - **Mac：** `!SetClip` 设置剪贴板；`!SetWallpaper` 为每块显示器设置墙纸（Tile 与 Center 一样按原尺寸显示——macOS 不能平铺）；
   `!Play` 一次播放一个声音；`!Manage` 打开管理窗口并定位到指定的配置；`!About Log` 打开日志；`!EditSkin` 在文本编辑器中打开
-  文件；`!Quit` 在当前动作结束后退出。`!ResetStats` 同步清空累计网络统计；`!SetAnchor` 添加兼容性提示。
-- **原因：** 尚未实现 `!SetAnchor`。
-- **对皮肤的影响：** 受支持的 bang 没有影响。
-- **状态：** 模拟实现 / 不支持（`!SetAnchor`）
+  文件；`!Quit` 在当前动作结束后退出。`!ResetStats` 同步清空累计网络统计；`!SetAnchor` 改变锚点并保留位置表达式
+  （详见 [Dynamic anchors](compat/app.md#dynamic-anchors-setanchor)）。
+- **原因：** 使用原生宿主服务和点坐标窗口几何。
+- **对皮肤的影响：** 皮肤无需刷新即可改变锚点。
+- **状态：** 模拟实现 / 部分支持（初始锚点时序）
 
 #### 运行程序和打开文件（`["…"]`）
 - **Windows：** `["program.exe" args]` 运行程序；网址或文件用默认程序打开。
@@ -2824,7 +2825,7 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
 | Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
-| `!SetAnchor` | 不支持 | 布局表达式和锚点已保存并应用；该 bang 仍不支持 |
+| 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |
