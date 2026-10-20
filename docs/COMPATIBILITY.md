@@ -63,7 +63,7 @@ shipped with Deskset.
 | --- | --- | --- | --- |
 | Skin files, variables, formulas, bangs | identical / emulated | INI rules, `@Include`, `@Inherit`, `SyntaxVersion`, `#Var#` / section variables, `%Env%` / `[%Env]`, `[$Skin…]` / `[$Display…]`, bracketed and unbracketed formulas, compound skin and section groups, `!SetOption` (2- and 3-arg), target-first `!Skin:` bangs, matching-section namespace commands and `!SendKey` | Exotic PCRE regex features; ambiguous combinations of omitted namespace arguments |
 | Layout and text | emulated | `r`/`R` positions, StringAlign (including `Justify`), window sizing, inline options, fonts in `@Resources\Fonts` | Microsoft fonts are substituted; text can be a pixel wider or narrower |
-| Meters (String, Image, Bar, Bitmap, Button, Line, Histogram, Roundline, Rotator, Shape, SVG, TextEdit) | emulated | All documented 4.x and 5.0 meter types and options | Histogram `PrimaryImageRotate` / ColorMatrix options |
+| Meters (String, Image, Bar, Bitmap, Button, Line, Histogram, Roundline, Rotator, Shape, SVG, TextEdit) | emulated | All documented 4.x and 5.0 meter types and options | Font, image-processing and rendering differences described below |
 | System measures (CPU, memory, network, disk, time, uptime, SysInfo, Process, battery, DragDrop) | emulated | All of them, mapped to macOS data, plus 5.0 `NumberConversionFormat=Locale` and the new `TimeStampFormat` codes | Drive letters all mean the startup disk; Windows adapter names fall back to the active interface |
 | Registry | emulated (a fixed set) | Windows version, CPU / GPU name, core count, user folders, the wallpaper | Every other registry value reads `0` / empty |
 | Lua (`Measure=Script`, inline Lua) | identical | Lua 5.1, the whole SKIN / SELF / Measure / Meter API, and Rainmeter 5.0 Unicode `string.uc*` / `SetOption` / `ReadTextFile` / `WriteTextFile` additions | `os.execute` only opens files and URLs; a few unsafe functions are removed |
@@ -599,7 +599,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Windows:** errors and warnings go to the log.
 - **Mac:** the *Compatibility Notes* (menu and Manage window) list only things that work differently on the Mac:
   Windows-only measures and plugins, unsupported bangs, registry values and SysInfo types without a Mac answer,
-  unsupported Histogram image options, WebParser certificate flags, and — in the app — refused permissions, players
+  WebParser certificate flags, and — in the app — refused permissions, players
   without a Mac version and the WebNowPlaying browser extension (see [§4](#4-macos-permissions)). A permission note
   goes away by itself once the permission is granted. Mistakes in the skin itself (a missing MeterStyle, an invalid
   Container, a misspelled bang or measure type) are log lines only.
@@ -776,8 +776,10 @@ than a separate 20 ms timer.
   image are transparent; ImageTint multiplies; Greyscale uses Rec. 601 weights; ColorMatrix replaces ImageTint /
   ImageAlpha (Greyscale still first); PreserveAspectRatio with only one of W / H follows the aspect ratio unless
   `PreserveAspectRatio=0` is written; masks keep the more transparent alpha; `UseExifOrientation=1` is honoured
-  (default 0 = pixels as stored). Histogram's `PrimaryImageRotate` and ColorMatrix options are not supported
-  (compatibility note).
+  (default 0 = pixels as stored). Histogram supports the documented primary, secondary and overlap image rotation
+  and color-matrix options, including the distinct `BothImageColorMatrixN` spelling. Histogram images with neither
+  rotation nor a matrix retain their existing crop and CoreGraphics tint/greyscale path; rotation or a matrix uses
+  the shared image-processing path above.
 - **Why:** judgment calls where the manual is silent; CoreGraphics scaling.
 - **Skin impact:** tinted or greyscaled images may differ slightly in tone.
 - **Status:** emulated / partial
@@ -846,9 +848,14 @@ than a separate 20 ms timer.
 - **Mac:** GraphOrientation=Horizontal is the vertical graph turned 90° clockwise; history not yet filled reads as 0
   (a new graph starts as a flat line); without AutoScale the range runs from the lowest MinValue to the highest
   MaxValue (Line) or each measure's own range (Histogram); HorizontalLines draws 3 lines at the quarters;
-  LineColor defaults to white; hidden meters keep sampling, and `!UpdateMeter` also adds a sample.
+  LineColor defaults to white; hidden meters keep sampling, and `!UpdateMeter` also adds a sample. Histogram image
+  rotation uses the cropped image's rotated bounding box for the meter size and history length; W/H do not resize
+  the image. The graph reveals the transformed image through its columns in the final meter coordinates. Color
+  matrices override ImageTint and ImageAlpha. The first configured image still defines the size when loadable;
+  missing images fall back to the part color. Different image sizes are outside the documented requirements.
 - **Why:** judgment calls where the manual is silent.
-- **Skin impact:** a new graph starts flat instead of growing from one edge.
+- **Skin impact:** a new graph starts flat instead of growing from one edge. Combined crop/flip/rotation ordering
+  and color rounding have local tests; a Windows desktop comparison remains pending.
 - **Status:** emulated
 
 #### Shape

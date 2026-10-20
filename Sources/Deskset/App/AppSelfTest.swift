@@ -116,6 +116,7 @@ enum AppSelfTest {
         DrawImageSelfTests.run(t)
         ImageDrawValueSelfTests.run(t)
         GraphDrawValueSelfTests.run(t)
+        HistogramImageSelfTests.run(t)
         ShapeDrawValueSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)

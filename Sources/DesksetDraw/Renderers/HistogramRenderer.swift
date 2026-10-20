@@ -44,6 +44,15 @@ package enum HistogramRenderer {
             ctx.fill(rects)
             return
         }
+        if image.rotate != 0 || image.colorMatrix != nil {
+            guard let prepared = PreparedImage(path: image.path, options: image.options) else { return }
+            ctx.saveGState()
+            // Reveal the transformed image through graph columns in the meter's final coordinates.
+            ctx.clip(to: rects)
+            prepared.draw(in: area, ctx)
+            ctx.restoreGState()
+            return
+        }
         if let crop = image.cropRect(imageWidth: Double(cg.width), imageHeight: Double(cg.height)) {
             let rect = crop.cgRect
             if let hit = cache.crops[image.path], hit.source === cg, hit.rect == rect {

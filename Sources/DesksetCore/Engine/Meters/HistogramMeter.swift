@@ -11,7 +11,8 @@ import Foundation
 /// - PrimaryImage / SecondaryImage / BothImage replace the colors; the image is "revealed" horizontally and
 ///   vertically by the value and over time. The image size cannot be changed with W/H: the histogram takes the
 ///   image's size. Paths: PrimaryImagePath… Image options: PrimaryGreyScale, PrimaryImageCrop, PrimaryImageTint,
-///   PrimaryImageAlpha, PrimaryImageFlip (and Secondary…/Both… variants).
+///   PrimaryImageAlpha, PrimaryImageFlip, PrimaryImageRotate and PrimaryColorMatrix1…5 (and Secondary…/Both…
+///   variants; the overlap matrix uses BothImageColorMatrix1…5).
 /// - GraphStart, GraphOrientation, Flip: see GraphHistory.swift.
 ///
 /// Judgment calls:
@@ -23,7 +24,6 @@ import Foundation
 ///   The histogram's size comes from the first set image (Primary, Secondary, Both) when it loads; a crop's W,H
 ///   wins. A first image that cannot be loaded leaves W/H in effect.
 /// - An image name without extension gets ".png" (General Image Options: ".png is assumed").
-/// - PrimaryImageRotate and the ColorMatrix options are not supported (reported as compatibility issues).
 public final class HistogramMeter: Meter {
     /// Separates captured history revisions from those of another graph instance.
     let drawIdentity = UUID()
@@ -40,6 +40,27 @@ public final class HistogramMeter: Meter {
         public var greyscale: Bool
         public var flipHorizontal: Bool
         public var flipVertical: Bool
+        /// Degrees, clockwise; negative angles rotate counter-clockwise.
+        public var rotate = 0.0
+        /// Five row-major ColorMatrix rows; nil when none is set.
+        public var colorMatrix: [Double]? = nil
+
+        /// Only the image options documented for Histogram. EXIF orientation and symbol options do not apply.
+        public var options: ImageOptions {
+            var options = ImageOptions()
+            if let crop, crop.count >= 4, crop.prefix(4).allSatisfy(\.isFinite), crop[2] > 0, crop[3] > 0 {
+                let origin = crop.count >= 5 && crop[4].isFinite ? Int(crop[4].clamped(0, 10)) : 1
+                options.crop = ImageOptions.Crop(x: crop[0], y: crop[1], width: crop[2], height: crop[3],
+                                                origin: (1...5).contains(origin) ? origin : 1)
+            }
+            options.greyscale = greyscale
+            options.tint = tint ?? .white
+            options.alpha = alpha
+            options.flip = flipHorizontal ? (flipVertical ? .both : .horizontal) : (flipVertical ? .vertical : .none)
+            options.rotate = rotate
+            options.colorMatrix = colorMatrix
+            return options
+        }
 
         /// Crop rectangle in image pixels for an image of the given size (Origin 1 top-left … 4 bottom-left,
         /// 5 center), or nil when there is no usable crop.
@@ -103,7 +124,9 @@ public final class HistogramMeter: Meter {
             // Only an image that loads defines the size (a crop of a missing file must not: the parts are then
             // drawn with their colors, in W×H like any histogram without images).
             if let size = skin.host?.imageSize(atPath: image.path) {
-                if let crop = image.crop, crop.count >= 4, crop[2] > 0, crop[3] > 0,
+                if image.rotate != 0 {
+                    imageSize = image.options.displaySize(imageWidth: size.width, imageHeight: size.height)
+                } else if let crop = image.crop, crop.count >= 4, crop[2] > 0, crop[3] > 0,
                    crop[2].isFinite, crop[3].isFinite {
                     imageSize = (crop[2], crop[3])
                 } else {
@@ -142,18 +165,13 @@ public final class HistogramMeter: Meter {
         tint?.a = 255
         if tint == RGBA.white { tint = nil }
         let flip = string("\(prefix)ImageFlip", "None").trimmingCharacters(in: .whitespaces).lowercased()
-        if double("\(prefix)ImageRotate", 0) != 0 {
-            skin.addIssue("Histogram \(prefix)ImageRotate is not supported")
-        }
-        // ColorMatrix1…5 are separate rows; a skin may set only one of them (e.g. ColorMatrix5 for offsets).
-        if (1...5).contains(where: { option("\(prefix)ColorMatrix\($0)") != nil
-                                     || option("\(prefix)ImageColorMatrix\($0)") != nil }) {
-            skin.addIssue("Histogram \(prefix) ColorMatrix options are not supported")
-        }
+        let matrixStem = prefix == "Both" ? "BothImageColorMatrix" : prefix + "ColorMatrix"
+        let options = ImageOptions.read(from: self, prefix: prefix, colorMatrixKey: matrixStem)
         return HistogramImage(path: path, crop: crop.count >= 4 ? crop : nil, tint: tint, alpha: alpha,
                               greyscale: bool("\(prefix)GreyScale", false),
                               flipHorizontal: flip == "horizontal" || flip == "both",
-                              flipVertical: flip == "vertical" || flip == "both")
+                              flipVertical: flip == "vertical" || flip == "both",
+                              rotate: options.rotate, colorMatrix: options.colorMatrix)
     }
 
     public override func naturalSize() -> (width: Double, height: Double) {
