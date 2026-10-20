@@ -49,6 +49,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
     /// main thread's facts after them. On the executor.
     private(set) var model = SkinWindowModel()
+    /// Retained until a positioning bang succeeds or the controller acknowledges normal first placement.
+    private var initialPlacement: SkinPlacementContext?
     /// The running skins, where the skin sends its bangs for other skins (nil: every such bang goes through the main
     /// thread, as for a runtime of the self-tests without an app).
     weak var directoryStore: SkinDirectoryStore?
@@ -134,6 +136,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// first load seeds, its fonts and notes), then what it needs to place and show the window (`.started`), or that
     /// the skin could not be loaded (`.failed`: the skin counts as closed). On the executor.
     private func start(_ order: SkinLoadOrder) {
+        initialPlacement = order.placement
         // From here on messages sent on the executor run at once again (the load is the one running now).
         queueLock.lock()
         loadQueued = false
@@ -154,6 +157,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         // when it hears of the load; the model has them at once, before the first update, which may read
         // #CURRENTCONFIGZPOS#.
         let defaults = order.firstLoad ? skin.settings.windowDefaults : [:]
+        if var placement = initialPlacement {
+            placement.state = placement.state.seeded(with: defaults)
+            func value(_ key: String) -> String? { defaults[key].flatMap { $0.isEmpty ? nil : $0 } }
+            if value("WindowX") != nil || value("WindowY") != nil {
+                placement.defaultPosition = (value("WindowX") ?? "0", value("WindowY") ?? "0",
+                                             value("AnchorX") ?? "0", value("AnchorY") ?? "0")
+            }
+            initialPlacement = placement
+        }
         if !defaults.isEmpty { model.settings = model.settings.seeded(with: defaults) }
         if order.state.seeded(with: defaults).startHidden { model.settings.hidden = true }
         request(.loaded(SkinLoadReport(windowDefaults: defaults, registeredFonts: loaded.registeredFonts,
@@ -268,6 +280,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             let oldSettings = model.settings
             let oldZoom = model.settings.zoomFactor
             model.take(facts)
+            if model.facts?.hasPlacedWindow == true { initialPlacement = nil }
             frames.take(model.facts)
             skin.hostFactsChanged()
             if oldSettings != model.settings {
@@ -590,10 +603,34 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
     private func ownWindowBang(_ bang: Bang) {
+        guard !isClosed else { return }
         let previousZoom = model.settings.zoomFactor
-        guard !isClosed, var change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        let isPosition = bang.name == "move" || bang.name == "setwindowposition" || bang.name == "setanchor"
+        let screens = EnvironmentStore.shared.currentScreens
+        var candidate = model
+        var size: CGSize?
+        let zoom = skin.effectiveZoomFactor
+        if isPosition {
+            let currentSize = SkinRuntime.scaledWindowSize(width: skin.width, height: skin.height, zoomFactor: zoom)
+            if currentSize != requestedSize || candidate.frameZoomFactor != zoom {
+                size = currentSize
+                candidate.resize(to: currentSize, zoomFactor: zoom, screens: screens)
+            }
+            if bang.name == "setanchor", let placement = initialPlacement,
+               candidate.facts?.hasPlacedWindow != true {
+                candidate.seedPlacement(placement.resolve(settings: candidate.settings, size: currentSize,
+                    screens: screens, zoomFactor: zoom), zoomFactor: zoom, screens: screens)
+            }
+        }
+        guard var change = candidate.apply(bang, screens: screens) else { return }
+        model = candidate
+        if isPosition { initialPlacement = nil }
         change.whileClosing = isClosing
         skin.invalidateEnvironment()
+        if let size {
+            requestedSize = size
+            request(.resize(size, zoomFactor: zoom))
+        }
         // Shown: a window that has not drawn yet (StartHidden) has its first frame before the main thread orders it
         // in, as at the start, wherever the skin runs.
         if !Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
@@ -605,6 +642,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         if case .hidden = change.operation, skin.settings.invisibleUpdate != nil {
             startTimer()
         }
+    }
+
+    /// Self-tests whose controller loads synchronously and starts separately use the same placement inputs.
+    func prepareInitialPlacement(_ placement: SkinPlacementContext) {
+        precondition(executor.isCurrent)
+        initialPlacement = placement
     }
 
     /// Runs `body` as one batch of window changes on the main thread (`SkinRuntimeWindow.batchingWindowChanges`).

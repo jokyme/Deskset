@@ -66,7 +66,8 @@ implementation and self-tests are not evidence of a Windows parity run.
   override. Default removes that override, and saves omit its `Zoom` key. Exports do not create a `ZoomFactor` key.
 - Why: macOS window geometry is measured in points. Deskset's deterministic alphabetical order does not promise
   the same variant index for every Windows filesystem or Unicode filename. Skin zoom is separate from display
-  backing scale; `!SetAnchor` remains outside this implementation. Zoom and selection details are in [App](app.md).
+  backing scale. Dynamic `!SetAnchor` changes preserve the position expressions; their behavior and remaining timing
+  limits are described with zoom and selection in [App](app.md#dynamic-anchors-setanchor).
 - Skin impact: display sizes, font metrics and supported skin/plugin behavior can still differ across platforms.
   Unsupported original config options survive a layout round trip but do not gain functionality through persistence.
 - Status: emulated / partial

@@ -41,6 +41,8 @@ enum AppSelfTest {
         LayoutPositionSelfTests.run(t)
         PositionConversionSelfTests.run(t)
         PositionSettingsSelfTests.run(t)
+        SetAnchorSelfTests.run(t)
+        SetAnchorRuntimeSelfTests.run(t)
         ManagePositionUISelfTests.run(t)
         LayoutsSelfTests.run(t)
         LayoutsUISelfTests.run(t)

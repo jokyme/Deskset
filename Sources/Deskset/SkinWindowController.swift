@@ -347,6 +347,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         isLoaded = true
         isStarted = true
         prepareToShow()
+        runtime.prepareInitialPlacement(placementContext)
         // The first update, then the update clock (which never fires inline).
         runtime.send(.start)
         show(fadeIn: fadeIn, size: runtime.snapshot.size)
@@ -362,6 +363,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// How many times the window was placed and shown at a start (ordered in when the app presents windows and the skin
     /// does not start hidden). Self-tests.
     private(set) var showCount = 0
+    private var hasPlacedWindow = false
+    private var hasStoredInitialPosition = false
 
     /// Places the window for a skin of `size` (then where a step of the Studio moves it: `moveWhenStarted`) and shows
     /// it with its first frame (fading in when `fadeIn`), unless it starts hidden.
@@ -693,6 +696,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// time (see `seed(_:)`), used by the first placement.
     private var defaultPosition: (x: String, y: String, anchorX: String, anchorY: String)?
 
+    /// Captured on the main thread; resolving later never needs to consult AppKit or the app from a skin executor.
+    var placementContext: SkinPlacementContext {
+        let session = app.sessionPositions[config.lowercased()].map { NSPoint(x: $0.0, y: $0.1) }
+        return SkinPlacementContext(state: state, sessionPosition: session, cascadeIndex: app.controllers.count,
+            cascadeVisibleFrame: NSScreen.main?.visibleFrame ?? screens.first?.visibleFrame
+                ?? CGRect(x: 0, y: 0, width: 1440, height: 900), defaultPosition: defaultPosition)
+    }
+
     /// First load of a config (no saved settings): the skin's `Default…` options in `[Rainmeter]` (`defaults`, which
     /// its runtime read and seeded its window model with) become its window settings (manual: skin sections of
     /// Rainmeter.ini, and "Default" values a skin may set for them).
@@ -718,47 +729,22 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func placeWindow(size: CGSize? = nil) {
         let size = size ?? skinSize
         let s = state
-        let ph = primaryHeight
-        var frame: CGRect
-        var isNew = false
-        if !s.savePosition, let p = app.sessionPositions[config.lowercased()] {
-            frame = WindowGeometry.frame(topLeftX: p.0, y: p.1, size: size, primaryHeight: ph)
-        } else if let p = layoutPosition(size: size) {
-            frame = WindowGeometry.frame(topLeftX: p.x, y: p.y, size: size, primaryHeight: ph)
-            if s.x == nil || s.y == nil {
-                app.state.update(config) { $0.x = p.x; $0.y = p.y }
-            }
-        } else if s.savePosition, let x = s.x, let y = s.y {
-            frame = WindowGeometry.frame(topLeftX: x, y: y, size: size, primaryHeight: ph)
-        } else if let p = app.sessionPositions[config.lowercased()] ?? s.x.flatMap({ x in s.y.map { (x, $0) } }) {
-            frame = WindowGeometry.frame(topLeftX: p.0, y: p.1, size: size, primaryHeight: ph)
-        } else if let d = defaultPosition,
-                  let p = WindowPosition.resolve(x: d.x, y: d.y, anchorX: d.anchorX, anchorY: d.anchorY, skinSize: size,
-                                                 screens: screens, zoomFactor: effectiveZoomFactor) {
-            frame = WindowGeometry.frame(topLeftX: p.x, y: p.y, size: size, primaryHeight: ph)
-            isNew = true
-        } else {
-            let visible = NSScreen.main?.visibleFrame ?? screens.first?.visibleFrame
-                ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-            frame = WindowGeometry.cascadeFrame(index: app.controllers.count, size: size, visible: visible)
-            isNew = true
+        let placement = placementContext.resolve(settings: windowSettings, size: size, screens: screens,
+                                                 zoomFactor: effectiveZoomFactor)
+        let frame = placement.frame
+        if let p = placement.resolvedLayoutPosition, s.x == nil || s.y == nil {
+            app.state.update(config) { $0.x = Double(p.x); $0.y = Double(p.y) }
         }
-        frame = constrained(frame)
         windowZoomFactor = effectiveZoomFactor
         window.setFrame(frame, display: false)
         view.frame = NSRect(origin: .zero, size: size)
         defaultPosition = nil
-        if isNew { saveFrame(frame, force: true) }
+        hasPlacedWindow = true
+        if placement.isNew {
+            saveFrame(frame, force: true)
+            hasStoredInitialPosition = true
+        }
         publishFacts()
-    }
-
-    /// Layout coordinates are evaluated only once the window size is known, so percentage anchors use its bounds.
-    private func layoutPosition(size: CGSize) -> (x: Double, y: Double)? {
-        let s = state
-        guard s.windowX != nil || s.windowY != nil else { return nil }
-        return WindowPosition.resolve(x: s.windowX ?? "0", y: s.windowY ?? "0",
-                                      anchorX: s.anchorX ?? "0", anchorY: s.anchorY ?? "0",
-                                      skinSize: size, screens: screens, zoomFactor: effectiveZoomFactor)
     }
 
     /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
@@ -1018,18 +1004,56 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         appliedModelSequence = max(appliedModelSequence, change.sequence)
         switch change.operation {
         case .move(let frame):
+            let before = state
+            let settings = change.model.settings
+            let forceInitialSave = change.model.forceSaveInitialPosition && !hasStoredInitialPosition
+            // Legacy saved x/y are top-left coordinates. Preserve their old anchor point before the first
+            // anchor change gives them expressions; a session-only drag must never become that saved point.
+            var legacyPosition: (x: String, y: String)?
+            if before.windowX == nil, before.windowY == nil, let x = before.x, let y = before.y,
+               ((before.anchorX ?? "0") != settings.anchorX || (before.anchorY ?? "0") != settings.anchorY) {
+                legacyPosition = WindowPosition.moved(x: x, y: y, windowX: nil, windowY: nil,
+                    anchorX: before.anchorX, anchorY: before.anchorY, skinSize: window.frame.size,
+                    screens: screens, autoSelectScreen: before.autoSelectScreen, zoomFactor: windowZoomFactor)
+            }
             app.state.update(config) {
                 // A held move carries all preceding position/anchor bangs, even when its last bang is !Move.
-                $0.anchorX = change.model.settings.anchorX
-                $0.anchorY = change.model.settings.anchorY
-                if $0.savePosition {
-                    $0.windowX = change.model.settings.windowX
-                    $0.windowY = change.model.settings.windowY
+                if let legacyPosition {
+                    $0.windowX = legacyPosition.x
+                    $0.windowY = legacyPosition.y
+                }
+                $0.anchorX = settings.anchorX
+                $0.anchorY = settings.anchorY
+                if forceInitialSave, !$0.savePosition, let initial = change.model.initialPositionExpressions {
+                    $0.windowX = initial.x
+                    $0.windowY = initial.y
+                } else if ($0.savePosition || forceInitialSave),
+                   settings.windowX != nil || settings.windowY != nil {
+                    $0.windowX = settings.windowX
+                    $0.windowY = settings.windowY
                 }
             }
             let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
             if isStopped, state.savePosition { app.state.update(config) { $0.x = p.x; $0.y = p.y } }
-            moveTo(x: p.x, y: p.y)
+            moveTo(x: p.x, y: p.y, preservingPositionExpressions: change.bang == "setanchor")
+            if forceInitialSave {
+                if !state.savePosition {
+                    if let initial = change.model.initialPositionExpressions,
+                       let saved = WindowPosition.resolve(x: initial.x, y: initial.y,
+                           anchorX: settings.anchorX, anchorY: settings.anchorY, skinSize: window.frame.size,
+                           screens: screens, zoomFactor: windowZoomFactor) {
+                        // Store the fallback point once without replacing the session position of a later held Move.
+                        app.state.update(config) {
+                            $0.file = file
+                            $0.x = saved.x
+                            $0.y = saved.y
+                        }
+                    }
+                } else {
+                    saveFrame(window.frame, force: true, preservingPositionExpressions: change.bang == "setanchor")
+                }
+                hasStoredInitialPosition = true
+            }
         case .zPosition(let value):
             app.state.update(config) { $0.alwaysOnTop = value }
             applyWindowSettings()
@@ -1112,6 +1136,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
                         frameZoomFactor: windowZoomFactor,
                         // While a move of the skin's waits, its model keeps that move and what came after it.
                         modelSequence: heldMove.map { min(appliedModelSequence, $0.sequence - 1) } ?? appliedModelSequence,
+                        hasPlacedWindow: hasPlacedWindow,
                         sequence: factsSequence)
     }
 
@@ -1201,9 +1226,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         return environment
     }
 
-    /// While a move of the skin's waits for a drag to end, the model and the window differ on purpose.
+    /// A held move, or a size request preceding its position request, intentionally leaves the model ahead of the panel.
+    /// SnapshotAudit asks this only for a runtime on the main executor.
     func liveEnvironment(for skin: Skin) -> SkinEnvironment? {
-        heldMove == nil ? environment : nil
+        heldMove == nil && appliedModelSequence >= runtime.model.sequence ? environment : nil
     }
 
     var liveTakesPointer: Bool? { takesPointer }

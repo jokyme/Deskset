@@ -144,6 +144,8 @@ struct SkinWindowFacts: Equatable {
     var settings: SkinWindowSettings
     /// The last of the skin's own window changes (`SkinWindowChange.sequence`) that `frame` and `settings` include.
     var modelSequence: Int
+    /// The controller completed its first placement, including when the window starts hidden.
+    var hasPlacedWindow: Bool
     /// Counts the facts the main thread published for this window.
     var sequence: Int
 
@@ -151,7 +153,7 @@ struct SkinWindowFacts: Equatable {
          isOrderedIn: Bool = false, scale: CGFloat, colorSpace: CGColorSpace? = nil,
          appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
          settings: SkinWindowSettings = SkinWindowSettings(), frameZoomFactor: Double = 1,
-         modelSequence: Int = 0, sequence: Int) {
+         modelSequence: Int = 0, hasPlacedWindow: Bool = false, sequence: Int) {
         self.frame = frame
         self.frameZoomFactor = frameZoomFactor
         self.screen = screen
@@ -164,6 +166,7 @@ struct SkinWindowFacts: Equatable {
         self.takesPointer = takesPointer
         self.settings = settings
         self.modelSequence = modelSequence
+        self.hasPlacedWindow = hasPlacedWindow
         self.sequence = sequence
     }
 
@@ -208,6 +211,62 @@ extension SkinState {
     }
 }
 
+/// Main-thread inputs for the first placement that are not available from the runtime's window facts.
+struct SkinPlacementContext {
+    var state: SkinState
+    var sessionPosition: NSPoint?
+    var cascadeIndex: Int
+    var cascadeVisibleFrame: CGRect
+    var defaultPosition: (x: String, y: String, anchorX: String, anchorY: String)? = nil
+
+    /// The same saved/session/default precedence used when the controller first shows a window.
+    func resolve(settings: SkinWindowSettings, size: CGSize, screens: [WindowGeometry.Screen],
+                 zoomFactor: Double) -> SkinPlacementResult {
+        let ph = WindowGeometry.primaryHeight(screens)
+        func frame(_ p: NSPoint) -> CGRect {
+            WindowGeometry.frame(topLeftX: Double(p.x), y: Double(p.y), size: size, primaryHeight: ph)
+        }
+        let saved = state.x.flatMap { x in state.y.map { NSPoint(x: x, y: $0) } }
+        var result: CGRect
+        var layout: NSPoint?
+        var isNew = false
+        if !settings.savePosition, let p = sessionPosition {
+            result = frame(p)
+        } else if (settings.windowX != nil || settings.windowY != nil),
+                  let p = WindowPosition.resolve(x: settings.windowX ?? "0", y: settings.windowY ?? "0",
+                      anchorX: settings.anchorX, anchorY: settings.anchorY, skinSize: size,
+                      screens: screens, zoomFactor: zoomFactor) {
+            let point = NSPoint(x: p.x, y: p.y)
+            layout = point
+            result = frame(point)
+        } else if settings.savePosition, let p = saved {
+            result = frame(p)
+        } else if let p = sessionPosition ?? saved {
+            result = frame(p)
+        } else if let d = defaultPosition,
+                  let p = WindowPosition.resolve(x: d.x, y: d.y, anchorX: d.anchorX, anchorY: d.anchorY,
+                      skinSize: size, screens: screens, zoomFactor: zoomFactor) {
+            result = frame(NSPoint(x: p.x, y: p.y))
+            isNew = true
+        } else {
+            result = WindowGeometry.cascadeFrame(index: cascadeIndex, size: size, visible: cascadeVisibleFrame)
+            isNew = true
+        }
+        if settings.effectiveKeepOnScreen {
+            result = WindowGeometry.keptOnScreen(result, screens: screens)
+        } else if !settings.isSelected {
+            result = WindowGeometry.rescuedIfOffScreen(result, screens: screens)
+        }
+        return SkinPlacementResult(frame: result, resolvedLayoutPosition: layout, isNew: isNew)
+    }
+}
+
+struct SkinPlacementResult {
+    var frame: CGRect
+    var resolvedLayoutPosition: NSPoint?
+    var isNew: Bool
+}
+
 /// A setting a flag bang switches.
 enum SkinWindowFlag: Hashable {
     case draggable, clickThrough, keepOnScreen, snapEdges, autoSelectScreen
@@ -239,7 +298,7 @@ enum SkinWindowFlag: Hashable {
 
 /// What a skin's window bang asks of the main thread, with the values the runtime worked out.
 enum SkinWindowOperation: Equatable {
-    /// !Move, !SetWindowPosition: the window's new frame (AppKit coordinates), kept on screen with KeepOnScreen.
+    /// !Move, !SetWindowPosition, !SetAnchor: the new frame, kept on screen with KeepOnScreen.
     case move(CGRect)
     /// !ZPos.
     case zPosition(Int)
@@ -279,6 +338,10 @@ struct SkinWindowModel {
     private(set) var facts: SkinWindowFacts?
     /// Counts the skin's own window changes.
     private(set) var sequence = 0
+    /// A positioning bang happened before normal first placement; its new position must still be stored once.
+    private(set) var forceSaveInitialPosition = false
+    /// The original fallback anchor point, independent of later session-only moves before its acknowledgement.
+    private(set) var initialPositionExpressions: (x: String, y: String)?
 
     /// The window takes the pointer (true until the window said otherwise).
     var takesPointer: Bool { facts?.takesPointer ?? true }
@@ -293,6 +356,29 @@ struct SkinWindowModel {
         frame = facts.frame
         frameZoomFactor = facts.frameZoomFactor
         settings = facts.settings
+        forceSaveInitialPosition = false
+        initialPositionExpressions = nil
+    }
+
+    /// Seeds only the first positioning bang. No request or saved state changes until that bang is accepted.
+    mutating func seedPlacement(_ placement: SkinPlacementResult, zoomFactor: Double,
+                                screens: [WindowGeometry.Screen]) {
+        frame = placement.frame
+        frameZoomFactor = zoomFactor
+        forceSaveInitialPosition = placement.isNew
+        if placement.isNew {
+            // A new cascade position is normally stored by placeWindow, including with SavePosition=0.
+            // Materialize its original anchor point before SetAnchor changes that anchor.
+            let point = WindowGeometry.topLeft(of: placement.frame, primaryHeight: WindowGeometry.primaryHeight(screens))
+            let position = WindowPosition.moved(x: point.x, y: point.y, windowX: settings.windowX, windowY: settings.windowY,
+                anchorX: settings.anchorX, anchorY: settings.anchorY, skinSize: placement.frame.size,
+                screens: screens, autoSelectScreen: settings.autoSelectScreen, zoomFactor: zoomFactor)
+            initialPositionExpressions = position
+            if settings.windowX == nil, settings.windowY == nil {
+                settings.windowX = position.x
+                settings.windowY = position.y
+            }
+        }
     }
 
     /// The skin's size changed: the window follows it with its configured anchor fixed, kept on screen when it is shown
@@ -343,7 +429,7 @@ struct SkinWindowModel {
         switch bang.name {
         case "move":
             guard let x = OptionValue.number(arg(0)), let y = OptionValue.number(arg(1)) else { return nil }
-            return move(x: x, y: y, screens: screens)
+            return move(x: x, y: y, screens: screens, recordsPosition: true)
         case "setwindowposition":
             // !SetWindowPosition WindowX WindowY [AnchorX AnchorY]
             let anchor = a.count >= 4 ? (arg(2), arg(3)) : (settings.anchorX, settings.anchorY)
@@ -353,7 +439,21 @@ struct SkinWindowModel {
             settings.anchorY = anchor.1
             settings.windowX = arg(0)
             settings.windowY = arg(1)
-            return move(x: p.x, y: p.y, screens: screens)
+            return move(x: p.x, y: p.y, screens: screens, recordsPosition: true)
+        case "setanchor":
+            guard a.count >= 2,
+                  let xAnchor = WindowPosition.parse(arg(0), endLetter: "R"), xAnchor.screen == nil,
+                  let yAnchor = WindowPosition.parse(arg(1), endLetter: "B"), yAnchor.screen == nil,
+                  let before = WindowPosition.anchor(x: settings.anchorX, y: settings.anchorY,
+                      size: currentFrame.size, zoomFactor: frameZoomFactor),
+                  let after = WindowPosition.anchor(x: arg(0), y: arg(1),
+                      size: currentFrame.size, zoomFactor: frameZoomFactor) else { return nil }
+            let point = WindowGeometry.topLeft(of: currentFrame, primaryHeight: WindowGeometry.primaryHeight(screens))
+            let x = point.x + before.x - after.x, y = point.y + before.y - after.y
+            guard x.isFinite, y.isFinite else { return nil }
+            settings.anchorX = arg(0)
+            settings.anchorY = arg(1)
+            return move(x: x, y: y, screens: screens)
         case "zpos":
             let value = min(max(OptionValue.int(arg(0)) ?? 0, -2), 2)
             settings.zPosition = value
@@ -405,13 +505,23 @@ struct SkinWindowModel {
 
     /// The window's top-left corner goes to (x, y) (skin coordinates, clamped to ±1e6 like the saved positions), kept on
     /// screen with KeepOnScreen.
-    private mutating func move(x: Double, y: Double, screens: [WindowGeometry.Screen]) -> SkinWindowOperation? {
+    private mutating func move(x: Double, y: Double, screens: [WindowGeometry.Screen],
+                               recordsPosition: Bool = false) -> SkinWindowOperation? {
         guard x.isFinite, y.isFinite else { return nil }
         let limit = SkinState.maxPosition
         var f = WindowGeometry.frame(topLeftX: min(max(x, -limit), limit), y: min(max(y, -limit), limit),
                                      size: currentFrame.size, primaryHeight: WindowGeometry.primaryHeight(screens))
         if settings.effectiveKeepOnScreen { f = WindowGeometry.keptOnScreen(f, screens: screens) }
         frame = f
+        if recordsPosition && settings.savePosition {
+            let point = WindowGeometry.topLeft(of: f, primaryHeight: WindowGeometry.primaryHeight(screens))
+            let position = WindowPosition.moved(x: point.x, y: point.y, windowX: settings.windowX,
+                windowY: settings.windowY, anchorX: settings.anchorX, anchorY: settings.anchorY,
+                skinSize: f.size, screens: screens, autoSelectScreen: settings.autoSelectScreen,
+                zoomFactor: frameZoomFactor)
+            settings.windowX = position.x
+            settings.windowY = position.y
+        }
         return .move(f)
     }
 }
@@ -447,7 +557,7 @@ enum SkinWindowBangs {
                                        literalArguments: bang.literalArguments.filter { $0 < index }))
         }
         switch bang.name {
-        case "move":
+        case "move", "setanchor":
             return configTarget(2)
         case "setwindowposition":
             // !SetWindowPosition WindowX WindowY [AnchorX AnchorY] [Config]
