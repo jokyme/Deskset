@@ -25,6 +25,9 @@ enum LayoutCommandsSelfTests {
     static func run(_ t: AppTestRunner) {
         t.suite("App: Layout commands: strict parsing and request encoding") {
             t.equal(LayoutCommand.parse(["Deskset"]), .none)
+            for command in ["!Restart", "!restart", "/Restart", "/RESTART"] {
+                t.equal(LayoutCommand.parse(["Deskset", command]), .command(.restart))
+            }
             t.equal(LayoutCommand.parse(["Deskset", "--self-test", "!LoadLayout"]), .none)
             t.equal(LayoutCommand.parse(["Deskset", "!LoadLayout", "My Desktop"]), .command(.loadLayout("My Desktop")))
             t.equal(LayoutCommand.parse(["Deskset", "!loadlayout", "@Backup"]), .command(.loadLayout("@Backup")))
@@ -44,7 +47,7 @@ enum LayoutCommandsSelfTests {
                     .command(.debug(.skins, config: "App\\Focus")))
             t.equal(LayoutCommand.parse(["Deskset", "!Debug", "Skin"]), .command(.debug(.skins, config: nil)))
             t.equal(LayoutCommand.parse(["Deskset", "!Debug", "UnknownTab"]), .command(.debug(.log, config: nil)))
-            for args in [["!LoadLayout"], ["!LoadLayout", ""], ["!LoadLayout", "../outside"],
+            for args in [["!Restart", "extra"], ["/Restart", "extra"], ["!LoadLayout"], ["!LoadLayout", ""], ["!LoadLayout", "../outside"],
                          ["!LoadLayout", "one", "two"], ["!Manage"], ["!Manage", "Skins"],
                          ["!Manage", "Layouts", "config"], ["!About", "Skins", "extra"],
                          ["!Debug", "Skin", "App\\Focus", "extra"],
@@ -54,6 +57,7 @@ enum LayoutCommandsSelfTests {
             }
             let requests: [LayoutCommandRequest] = [
                 .command(.loadLayout("My Desktop")), .command(.manageLayouts),
+                .command(.restart),
                 .command(.about(.log)), .command(.about(.skins)),
                 .command(.about(.plugins)), .command(.about(.version)),
                 .command(.debug(.log, config: nil)), .command(.debug(.display, config: nil)),

@@ -1230,13 +1230,24 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** startup recovery retains skin files and a backup of the previous layout.
 - **Status:** emulated / partial (Windows prompt details, counter-clearing, command precedence and missing defaults).
 
+#### Restart and Focus
+- **Windows:** Shift changes Exit to Restart and Refresh skin to Focus skin; `!Restart` and `/Restart` restart
+  Rainmeter. Focus only brings a skin forward at its current z-position (<https://www.rainmeter.net/changes-5.0/>).
+- **Mac:** native Shift context-menu alternates, the bang and same-user command routing are implemented. Restart
+  uses all editor vetoes and waits for the old process to exit; cancellation, timeout or identity failure never
+  launches a replacement. Focus keeps the running instance, frame, settings and level, including all five z-positions.
+- **Why:** restart shares ordinary shutdown; focus consumes earlier pending restacks without changing LoadOrder.
+- **Skin impact:** restart restores the saved desktop; focus does not refresh measures.
+- **Status:** emulated / partial; see [Restart and Focus](compat/app.md#restart-and-focus-rainmeter-50) for cold-process,
+  failure, hidden and multi-selection limits. The Windows legacy helper remains unmapped.
+
 #### Rainmeter 5.0 features not implemented yet
-- **Windows:** Shift changes Exit into Restart and Refresh skin into Focus skin; `Rainmeter.exe [!Launch][!Bang]`
-  can launch before executing bangs. Rainmeter also provides crash dumps and its Skin Packager.
-- **Mac:** these remain unimplemented. Debug and its tabs, explicit target-first skin commands, compound skin
-  selectors and the seven media-key SendKey names are implemented; see the relevant sections above and below.
-- **Why:** the remaining process-startup, crash-dump and packaging workflows are not implemented yet.
-- **Skin impact:** use the existing load and refresh operations until the remaining commands are available.
+- **Windows:** `Rainmeter.exe [!Launch][!Bang]` can launch before executing bangs. Rainmeter also provides crash
+  dumps and its Skin Packager.
+- **Mac:** these remain unimplemented. Debug, Safe Start, Restart/Focus, explicit target-first skin commands,
+  compound skin selectors and the seven media-key SendKey names are implemented; see their compatibility limits.
+- **Why:** the remaining launch, crash-dump and packaging workflows are not implemented yet.
+- **Skin impact:** use existing load and refresh operations until the remaining commands are available.
 - **Status:** not supported
 
 #### Sleep, displays asleep, other user sessions
@@ -1436,17 +1447,14 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### `!ActivateConfig` for a config that already runs that file
-- **Windows:** "Activates a skin"; without File, "the next .ini file variant in the config folder is activated". The
-  manual does not say what happens when the config already runs that file; forum threads about an "already active"
-  log warning suggest that the skin is left as it is.
-- **Mac:** nothing happens apart from a warning in the log. File names are compared ignoring case; a file the config
-  folder does not have falls back to the last used one, and `!ActivateConfig Config` for a config with a single .ini
-  file names that file, so both leave the running skin alone too. Another variant still replaces the running one;
-  `!Refresh`, `!ToggleConfig`, the Manage window and the menus are not affected.
-- **Why:** judgment call. Reloading would let a skin that activates its own config reload itself endlessly
-  (Monstercat Visualizer's update notice does that on every load while a newer version exists).
-- **Skin impact:** none expected; a skin that wants to reload itself uses `!Refresh`.
-- **Status:** emulated (judgment call)
+- **Windows:** Rainmeter 5.0 brings an activated loaded skin forward at its current z-position
+  (<https://www.rainmeter.net/changes-5.0/>). Omitting File still selects the next INI variant.
+- **Mac:** the same running variant is focused without reload, update or warning. Case-insensitive comparison,
+  missing-file fallback and next-variant selection remain; another variant still replaces the running instance.
+  Refresh, ToggleConfig, Manage and ordinary variant menu behavior are unchanged.
+- **Why:** repeated activation must preserve measures and avoid self-activation reload loops.
+- **Skin impact:** use `!Refresh` when a reload is required.
+- **Status:** emulated (see [Restart and Focus](compat/app.md#restart-and-focus-rainmeter-50)).
 
 #### `!RefreshApp` and Refresh All
 - **Windows:** refreshes Rainmeter and all skins.

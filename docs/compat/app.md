@@ -510,6 +510,28 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none for other skins; any skin may include `#SETTINGSPATH#Stationery.inc` and write into it.
 - Status: emulated (`FirstRun.ini` and `Stationery.inc`: Deskset extensions)
 
+### Restart and Focus (Rainmeter 5.0)
+- Windows (Rainmeter): Shift changes Exit to Restart in the application context menu and Refresh skin to Focus skin
+  in a skin context menu. `!Restart` and `Rainmeter.exe /Restart` restart the application. Focus brings a skin forward
+  within its current z-position (<https://www.rainmeter.net/changes-5.0/>).
+- Mac (Deskset): the context menus use native Shift alternates, Restart Deskset and Focus Skin, without adding a
+  keyboard shortcut. The standard application Quit shortcut remains Command+Q. `!Restart`, `Deskset '!Restart'`
+  and `Deskset /Restart` share the ordinary save-and-quit checks; a skin's request waits until its current action
+  finishes. A private helper opens the same application only after authorization and the exact old process's exit.
+  Cancelling a save, failed preparation, a replaced PID or a timeout never authorizes a launch. Update installation
+  and restart handoffs exclude each other, including callbacks during a save modal. Normal shutdown saves the
+  existing desktop and application state; no persistent restart flag is added. Failures are written to the log.
+  A command with no running instance starts Deskset once rather than entering a restart loop.
+  Focus waits for the selected instance to finish loading, consumes earlier pending restacks, and brings that
+  visible window forward at its existing level. It does not change its frame, LoadOrder, settings, key window or
+  application activation. Hidden, stopped, retired and replaced instances are left alone; a skin-menu action
+  addresses only the clicked instance. Later explicit load-order or window changes may restack normally.
+- Why: process exit must finish before a fresh desktop starts; focus must preserve the running skin.
+- Skin impact: restart retains the saved desktop; focus does not reset measures or run a refresh.
+- Status: emulated / partial. Windows behavior for a restart command with no current process, save/preparation
+  failures, hidden skins and multi-selection Focus remains unverified. The legacy `RestartRainmeter.exe` helper is
+  not mapped on macOS. Direct checks of native modifier-menu display remain incomplete.
+
 ### Safe Start
 - Windows (Rainmeter): the 5.0 changes specify holding Control+Shift for one second during startup, and an offer
   after two crashes within five minutes. Recovery saves the previous desktop as `@Backup` and loads the bundled
@@ -592,20 +614,15 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Status: emulated
 
 ### !ActivateConfig for a config that already runs that file
-- Windows (Rainmeter): `!ActivateConfig Config File` "Activates a skin"; without File, "the next .ini file variant in
-  the config folder is activated" (https://docs.rainmeter.net/manual/bangs/). The manual does not say what happens
-  when the config is already active with that file. Forum threads about a log warning that the config is "already
-  active" suggest that Rainmeter leaves the skin as it is.
-- Mac (Deskset): nothing happens apart from a warning in the log (`!ActivateConfig: "Config\File.ini" is already
-  active`). File names are compared ignoring case. A file the config folder does not have falls back to the last used
-  file, as it does for a config that is not running, so it too leaves the running skin alone; so does
-  `!ActivateConfig Config` for a config with a single .ini file, which is its own next variant. Another variant still
-  replaces the running one. `!Refresh`, `!ToggleConfig`, the Manage window and the menus are not affected.
-- Why: judgment call. Reloading would let a skin that activates its own config reload itself endlessly, reading its
-  web page again each time: Monstercat Visualizer's update notice activates itself on every load while a newer
-  version exists.
-- Skin impact: none expected; a skin that wants to reload itself uses `!Refresh`.
-- Status: emulated (judgment call)
+- Windows (Rainmeter): the 5.0 changes specify that activating a loaded skin brings it forward at its current
+  z-position (<https://www.rainmeter.net/changes-5.0/>). Without File, the next INI variant is still selected.
+- Mac (Deskset): selecting the running variant focuses that instance without reloading, updating or warning.
+  File names are compared ignoring case. The existing missing-file fallback and next-variant selection remain;
+  another variant replaces the running one. Refresh, ToggleConfig, Manage and ordinary variant menus retain their
+  existing load behavior.
+- Why: repeated activation must not reset measures or repeatedly reload a skin that activates itself.
+- Skin impact: use `!Refresh` when a reload is required.
+- Status: emulated; see Restart and Focus for the window-ordering limits.
 
 ### !RefreshApp and Refresh All
 - Windows (Rainmeter): refreshes Rainmeter and all skins.
@@ -635,7 +652,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### Other host bangs
 - Windows (Rainmeter): `!SetClip`, `!SetWallpaper`, `!Play` / `!PlayLoop` / `!PlayStop`, `!Manage`, `!About`,
-  `!EditSkin`, `!Quit`, `!ResetStats`, `!SetAnchor`.
+  `!EditSkin`, `!Quit`, `!Restart`, `!ResetStats`, `!SetAnchor`.
 - Mac (Deskset): `!SetClip` sets the pasteboard; `!SetWallpaper` sets the desktop picture of every display (Tile shows
   the picture unscaled like Center: macOS cannot tile); `!Play` plays one sound at a time; `!Manage` opens the Manage
   window on the named config; `!Debug Log` opens the log; `!About` opens version information; `!EditSkin` opens the file in the text editor; `!Quit` quits

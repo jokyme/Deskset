@@ -17,6 +17,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     unowned let app: AppController
     /// Asked when the window closes with edits that could not be saved (self-tests answer it; nil: an alert).
     var closeChoice: (() -> CloseChoice)?
+    private var isCheckingClose = false
 
     init(file: URL, app: AppController) throws {
         self.file = file.standardizedFileURL
@@ -66,12 +67,18 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     /// Closing (or quitting) saves the edits; when that fails: Save (try again), Discard Changes, or Cancel.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if codeView.commitNow(explicit: true) || !codeView.hasUncommittedChanges { return true }
+        guard !isCheckingClose, !codeView.hasCommitInProgress else { return false }
+        isCheckingClose = true
+        defer { isCheckingClose = false }
+        _ = codeView.commitNow(explicit: true)
+        if !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress { return true }
         switch askAboutUncommittedCode() {
-        case .save: return codeView.commitNow(explicit: true)
+        case .save:
+            _ = codeView.commitNow(explicit: true)
+            return !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress
         case .discard:
             codeView.discardUncommittedChanges()
-            return true
+            return !codeView.hasUncommittedChanges && !codeView.hasCommitInProgress
         case .cancel: return false
         }
     }

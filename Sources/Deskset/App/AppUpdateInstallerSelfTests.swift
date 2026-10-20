@@ -3,6 +3,7 @@ import Foundation
 enum AppUpdateInstallerSelfTests {
     static func run(_ t: AppTestRunner) {
         waitingTests(t)
+        strictWaitingTests(t)
         validationTests(t)
         helperIdentityTests(t)
         handoffTests(t)
@@ -96,6 +97,45 @@ enum AppUpdateInstallerSelfTests {
                 try AppUpdateInstaller.validateApplications(source: source, destination: target, expectedVersion: "1.2.3")
                 t.check(false, "a newer app installed while downloading must not be downgraded")
             } catch { t.equal(error as? AppInstallation.Failure, .olderVersion("2.0.0")) }
+        }
+    }
+
+    private static func strictWaitingTests(_ t: AppTestRunner) {
+        t.suite("App: Update installer: expired waits reject late exits and late commitment") {
+            let identity = AppUpdateInstaller.ProcessIdentity(seconds: 10, microseconds: 20)
+            for scenario in ["exit-at-deadline", "late-commit", "slow-identity", "slow-commit"] {
+                var time: TimeInterval = 0
+                do {
+                    try AppUpdateInstaller.waitForParentExit(parentPID: 123, parentIdentity: identity, committed: {
+                        if scenario == "slow-commit" { time = 1800; return true }
+                        return scenario == "late-commit" ? time >= 1800 : true
+                    }, identity: { _ in
+                        if scenario == "slow-identity" { time = 60; return nil }
+                        return scenario == "exit-at-deadline" && time >= 60 ? nil : identity
+                    }, now: { time }, pause: { time += scenario == "late-commit" ? 1800 : 60 })
+                    t.check(false, "\(scenario) cannot succeed after its deadline")
+                } catch {
+                    if case AppUpdateInstaller.Failure.timedOut = error { t.check(true) }
+                    else { t.check(false, "expected a timeout, got \(error)") }
+                }
+            }
+        }
+        t.suite("App: Update installer: repeated commitment cannot extend the closing deadline") {
+            let identity = AppUpdateInstaller.ProcessIdentity(seconds: 10, microseconds: 20)
+            var time: TimeInterval = 0
+            do {
+                try AppUpdateInstaller.waitForParentExit(parentPID: 123, parentIdentity: identity, committed: { true },
+                    identity: { _ in identity }, now: { time }, pause: { time += 20 })
+                t.check(false)
+            } catch {
+                if case AppUpdateInstaller.Failure.timedOut = error { t.check(true) }
+                else { t.check(false, "expected a timeout, got \(error)") }
+            }
+            t.equal(time, 60)
+            time = 0
+            let deadline = try AppUpdateInstaller.waitForParentExit(parentPID: 123, parentIdentity: identity,
+                committed: { true }, identity: { _ in time >= 1 ? nil : identity }, now: { time }, pause: { time += 1 })
+            t.equal(deadline, 60, "the caller can check the same deadline after final validation")
         }
     }
 

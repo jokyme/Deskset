@@ -192,17 +192,44 @@ enum AppUpdateInstaller {
                                   identity: (pid_t) throws -> ProcessIdentity? = processIdentity,
                                   now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                                   pause: () -> Void = { Thread.sleep(forTimeInterval: 0.1) }) throws {
+        try waitForParentExit(parentPID: manifest.parentPID, parentIdentity: manifest.parentIdentity,
+                              committed: committed, identity: identity, now: now, pause: pause)
+    }
+
+    /// Shared by helpers that wait for an authorized, exact process exit. Returns the remaining deadline so a
+    /// caller can check it again after its final file validation. Slow callbacks cannot authorize an expired job.
+    @discardableResult
+    static func waitForParentExit(parentPID: pid_t, parentIdentity: ProcessIdentity,
+                                  committed: () throws -> Bool,
+                                  identity: (pid_t) throws -> ProcessIdentity? = processIdentity,
+                                  now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                                  pause: () -> Void = { Thread.sleep(forTimeInterval: 0.1) }) throws -> TimeInterval {
         let started = now()
+        guard parentPID > 1, started.isFinite else { throw Failure.invalidJob }
+        var previousTime = started
+        var deadline = started + 1800
         var committedAt: TimeInterval?
+        func checkTime() throws -> TimeInterval {
+            let time = now()
+            guard time.isFinite, time >= previousTime, time < deadline else { throw Failure.timedOut }
+            previousTime = time
+            return time
+        }
         while true {
-            if try committed() { committedAt = committedAt ?? now() }
-            let current = try identity(manifest.parentPID)
+            _ = try checkTime()
+            let authorized = try committed()
+            let afterCommit = try checkTime()
+            if authorized, committedAt == nil {
+                committedAt = afterCommit
+                deadline = afterCommit + 60
+            }
+            let current = try identity(parentPID)
+            _ = try checkTime()
             if current == nil {
                 guard committedAt != nil else { throw Failure.helperFailed }
-                return
+                return deadline
             }
-            guard current == manifest.parentIdentity else { throw Failure.parentChanged }
-            guard now() - (committedAt ?? started) < (committedAt == nil ? 1800 : 60) else { throw Failure.timedOut }
+            guard current == parentIdentity else { throw Failure.parentChanged }
             pause()
         }
     }
@@ -259,7 +286,7 @@ enum AppUpdateInstaller {
         guard fchmod(descriptor, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 
-    private static func openApplication(_ target: URL) throws {
+    static func openApplication(_ target: URL) throws {
         // NSWorkspace can launch without NSApplication. Registering this same-bundle-ID helper with Launch
         // Services would let the target mistake it for an older running instance and immediately quit.
         let configuration = NSWorkspace.OpenConfiguration()

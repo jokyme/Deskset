@@ -51,6 +51,7 @@ enum CommandLineTools {
                                         load a saved layout in the running app, or start Deskset with it
                Deskset '!Manage' Layouts open the Layouts page in Manage
                Deskset '!About'         open the About window
+               Deskset /Restart         restart the running app (or start Deskset when it is not running)
                Deskset '!Debug' [Log|Display|Network|Plugins|Skin] [Config]
                                         open the Debug window (default Log), optionally selecting a loaded skin
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
