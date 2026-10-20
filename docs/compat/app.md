@@ -510,6 +510,32 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none for other skins; any skin may include `#SETTINGSPATH#Stationery.inc` and write into it.
 - Status: emulated (`FirstRun.ini` and `Stationery.inc`: Deskset extensions)
 
+### Safe Start
+- Windows (Rainmeter): the 5.0 changes specify holding Control+Shift for one second during startup, and an offer
+  after two crashes within five minutes. Recovery saves the previous desktop as `@Backup` and loads the bundled
+  default layout without removing skins (<https://www.rainmeter.net/changes-5.0/>,
+  <https://docs-v5.rainmeter.net/manual/user-interface/>). The older Control-only wording on the interface page
+  predates the updated shortcut.
+- Mac (Deskset): the primary desktop instance samples Control+Shift while startup observation is prepared; a
+  completed hold remains eligible if that preparation takes longer. The two triggers share one native offer.
+  Safe Start saves `@Backup` before atomically committing an empty desktop, then loads the available exact variants
+  from Deskset's bundled first-run layout. Skin files are retained; application preferences and global options are
+  preserved.
+  Default window settings apply on first load, and layout positions apply before the windows appear in all executor
+  modes. Cancel continues ordinary startup without changing the layout or `@Backup`. Backup or state-write failure
+  stops startup; the previous skins are not loaded as a fallback. An accepted recovery takes precedence over a layout
+  supplied at launch. Missing default variants are skipped; an unavailable default layout leaves an intentional
+  empty desktop and a warning, without the ordinary first-launch Clock fallback.
+- Why: a separate same-user process observes the primary process's actual kernel exit status. ABRT, TRAP, SEGV, BUS,
+  ILL and FPE exits count; normal exits (including nonzero exit codes), TERM, KILL and missing results do not.
+  Startup uses verified results in a rolling five-minute window, excluding future timestamps and clock anomalies.
+  Unknown or unavailable observation produces a warning without inventing a crash; manual recovery remains usable.
+- Skin impact: a broken startup skin can be replaced by the default desktop while its files and saved backup remain.
+- Status: emulated / partial. Exact Windows prompt wording, button focus, cancellation, counter-clearing policy,
+  startup-command precedence and missing-default handling remain unverified. Observation starts after the primary
+  instance is acquired; failures before the observer is ready and unavailable exit results cannot be counted.
+  Automatic crash dumps are separate and remain unsupported.
+
 ### Compatibility notes
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): things that work differently on the Mac (Windows-only measures and plugins, unsupported bangs, refused

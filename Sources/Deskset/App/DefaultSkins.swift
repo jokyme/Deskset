@@ -224,6 +224,55 @@ extension AppController {
         }
     }
 
+    /// Resolves only bundled manifest variants that are also installed. Missing variants never select another INI.
+    func safeStartLayout() -> [(config: String, entry: FirstRunLayout.Entry)] {
+        guard let source = defaultSkinsSource,
+              let layout = FirstRunLayout.load(from: source.appendingPathComponent(DefaultSkins.firstRunFileName))
+        else {
+            Log.write("The default layout is unavailable; Safe Start will leave the desktop empty", level: .warning)
+            return []
+        }
+        discoverSkins()
+        let bundled = SkinLibrary.scan(source)
+        let result: [(config: String, entry: FirstRunLayout.Entry)] = layout.entries.compactMap { entry in
+            guard let original = bundled.first(where: {
+                $0.name.caseInsensitiveCompare(entry.config) == .orderedSame
+            }), let file = entry.file.flatMap({ requested in
+                original.files.first { $0.caseInsensitiveCompare(requested) == .orderedSame }
+            }) ?? (entry.file == nil ? LayoutStateCodec.variants(in: original).first : nil),
+            let installed = config(named: entry.config),
+            let installedFile = installed.files.first(where: { $0.caseInsensitiveCompare(file) == .orderedSame })
+            else {
+                Log.write("Skipping unavailable default skin \(entry.config) in Safe Start", level: .warning)
+                return nil
+            }
+            var resolved = entry
+            resolved.config = installed.name
+            resolved.file = installedFile
+            return (installed.name, resolved)
+        }
+        if result.isEmpty {
+            Log.write("No default skins are available; Safe Start will leave the desktop empty", level: .warning)
+        }
+        return result
+    }
+
+    /// Loads the exact default variants after recovery committed its empty desktop.
+    func loadSafeStartLayout(then: (() -> Void)? = nil) {
+        let layout = safeStartLayout()
+        guard !layout.isEmpty else { then?(); return }
+        let screens = WindowGeometry.currentScreens()
+        let visible = screens.first?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 875)
+        let primaryHeight = WindowGeometry.primaryHeight(screens)
+        activateInOrder(layout.map { ($0.config, $0.entry.file) }, exactFile: true, thenMoveTo: { index in
+            layout[index].entry.position(visibleFrame: visible, primaryHeight: primaryHeight)
+                .map { WidgetPosition(x: $0.x, y: $0.y) }
+        }, done: { [weak self] in
+            self?.restack()
+            then?()
+        })
+    }
+
     /// Loads `layout` (`firstRunLayout`) one after another (`activateInOrder`), each at its place. `then`: once the
     /// last one started (at once with the main executor).
     func loadFirstRunLayout(_ layout: [(config: String, entry: FirstRunLayout.Entry)], then: (() -> Void)? = nil) {

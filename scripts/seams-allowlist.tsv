@@ -91,6 +91,20 @@ random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, n
 random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input (the age of stale temporary settings folders)
 
+background.mainHop	Sources/Deskset/App/SafeStartController.swift	4	marshal injected timer, count and prompt callbacks to the UI thread; cancellation is generation-guarded
+event.pointerState	Sources/Deskset/App/SafeStartController.swift	1	live modifier sampler for the startup chord; flags are injected in tests
+mono.systemUptime	Sources/Deskset/App/SafeStartController.swift	1	one-second startup chord interval; the monotonic clock is injected
+timer.executorTimer	Sources/Deskset/App/SafeStartController.swift	1	startup chord sampling through the executor timer; scheduler is injected
+background.mainHop	Sources/Deskset/App/StartupCrashWatcher.swift	2	deliver startup observation summaries once on the UI thread
+background.process	Sources/Deskset/App/StartupCrashWatcher.swift	1	private same-executable exit observer; launcher is injected and no skin starts a process here
+background.queue	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded READY and prior-result waits run off the UI thread
+effect.fileWrite	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation records and temporary-file cleanup; file operations are injectable
+mono.systemUptime	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded startup observer waits; clock and pause are injected
+random.UUID	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation job identifiers, nonces and atomic-write temporary names; not a skin input
+random.pid	Sources/Deskset/App/StartupCrashWatcher.swift	1	primary process identity for exit observation; PID lookup is injected
+wait.sleep	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded background handshake polling; pause is injected and never blocks the UI
+wall.Date()	Sources/Deskset/App/StartupCrashWatcher.swift	1	five-minute observation history; wall clock is injected
+
 effect.fileWrite	Sources/Deskset/App/DefaultSkins.swift	6	installing the default skins
 effect.iniWrite	Sources/Deskset/App/DefaultSkins.swift	1	installing the default skins
 
@@ -176,7 +190,7 @@ timer.asyncAfter	Sources/Deskset/AppController.swift	2	re-check of regional sett
 wall.Date()	Sources/Deskset/AppController.swift	1	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
 
-effect.fileWrite	Sources/Deskset/AppState.swift	4	app files (state, log, caches); not a skin effect
+effect.fileWrite	Sources/Deskset/AppState.swift	6	app state files; the transactional Safe Start writer is injectable and does not run as a skin effect
 timer.asyncAfter	Sources/Deskset/AppState.swift	1	state.json saving and ordering; not a skin input
 zone.localizedText	Sources/Deskset/AppState.swift	2	state.json saving and ordering; not a skin input
 

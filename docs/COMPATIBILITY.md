@@ -1217,12 +1217,25 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   in that action keep their layout until refreshed (as on Windows).
 - **Status:** emulated
 
+#### Safe Start
+- **Windows:** Control+Shift held for one second at startup offers recovery; two crashes within five minutes also
+  trigger an offer. Recovery saves `@Backup` and loads the bundled default layout without deleting skins
+  (<https://www.rainmeter.net/changes-5.0/>, <https://docs-v5.rainmeter.net/manual/user-interface/>).
+- **Mac:** a single native offer combines both triggers. A confirmed recovery first saves `@Backup`, commits an
+  empty startup desktop, and loads the exact available variants of Deskset's default layout. Cancel continues normal
+  startup. A backup or state-write error stops startup without loading the old desktop. Preferences and global
+  options are preserved; missing default variants never select another INI or the first-launch Clock fallback.
+- **Why:** a separate process records actual kernel exit status; ordinary exits, TERM/KILL and unfinished records
+  do not count as crashes. See [Safe Start](compat/app.md#safe-start) for the platform limits.
+- **Skin impact:** startup recovery retains skin files and a backup of the previous layout.
+- **Status:** emulated / partial (Windows prompt details, counter-clearing, command precedence and missing defaults).
+
 #### Rainmeter 5.0 features not implemented yet
 - **Windows:** Shift changes Exit into Restart and Refresh skin into Focus skin; `Rainmeter.exe [!Launch][!Bang]`
-  can launch before executing bangs. Rainmeter also provides crash dumps, Safe Start and its Skin Packager.
+  can launch before executing bangs. Rainmeter also provides crash dumps and its Skin Packager.
 - **Mac:** these remain unimplemented. Debug and its tabs, explicit target-first skin commands, compound skin
   selectors and the seven media-key SendKey names are implemented; see the relevant sections above and below.
-- **Why:** the remaining startup, recovery and packaging workflows are not implemented yet.
+- **Why:** the remaining process-startup, crash-dump and packaging workflows are not implemented yet.
 - **Skin impact:** use the existing load and refresh operations until the remaining commands are available.
 - **Status:** not supported
 
