@@ -1430,6 +1430,26 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated. Exact Windows naming prompts, starter text, named-template storage and Template Save's
   initial content are not specified by the manual; those details and unusual error cases remain unverified.
 
+#### Manage skin metadata (`[Metadata]` and `Add metadata`)
+- **Windows:** Manage's Skins tab displays the selected `.ini` file's `[Metadata]` values (`Name`, `Author`,
+  `Version`, `License` and `Information`, with `|` rendered as a line break in `Information`), and offers an
+  `Add metadata` link when the selected `.ini` file has no `[Metadata]` section so a blank `[Metadata]` section with
+  the five standard keys (`Name`, `Author`, `Information`, `Version`, `License`) is added to the file
+  (<https://docs.rainmeter.net/manual/user-interface/manage/>,
+  <https://docs.rainmeter.net/manual/skins/metadata-section/>).
+- **Mac:** when a selected `.ini` file has no `[Metadata]` section, Manage shows `This skin has no [Metadata] section.`
+  with an `Add metadata` link button; once a `[Metadata]` section exists with blank values, Manage shows
+  `This skin has no metadata values.` without the button. Clicking `Add metadata` first commits any matching built-in
+  editor buffers, then atomically inserts `[Metadata]` with empty `Name=`, `Author=`, `Information=`, `Version=` and
+  `License=` lines while preserving the file's encoding, BOM, line endings and symlink target, and adopts the updated
+  text in open editor sessions without opening an editor or reloading the running skin.
+- **Why:** native macOS Manage detail pane and atomic INI writer coordinated with the built-in editor.
+- **Skin impact:** adding metadata writes only the `[Metadata]` section when absent and does not alter existing
+  sections, comments or active skin state.
+- **Status:** emulated; macOS self-tests cover encoding, line-ending, symlink and editor synchronization cases.
+  Exact Windows placement and blank-line formatting when `[Metadata]` is inserted remain unverified on a Windows
+  desktop.
+
 #### About (Log, Skins, Plugins, Version)
 - **Windows:** four About tabs for logs, active skin values, installed plugins and version/paths
   (<https://docs.rainmeter.net/manual/user-interface/about/>).

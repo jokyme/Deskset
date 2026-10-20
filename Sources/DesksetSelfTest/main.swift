@@ -5,6 +5,7 @@ if let result = runLuaTimeReferenceIfRequested() { exit(result) }
 let t = TestRunner(arguments: CommandLine.arguments)
 print("DesksetSelfTest")
 runIniTests(t)
+runIniMetadataTests(t)
 runIncludeTests(t)
 runSourceProviderTests(t)
 runInspectorTests(t)

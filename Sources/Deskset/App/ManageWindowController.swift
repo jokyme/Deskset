@@ -86,6 +86,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let folderButton = NSButton(title: "Open Folder", target: nil, action: nil)
 
     private let metadataGrid = NSGridView()
+    private var addMetadataButton: MetadataActionButton?
+    private var metadataEmptyLabel: NSTextField?
     private let settingsGrid = NSGridView()
     private let settingsNote = NSTextField(labelWithString: "Load the skin to change its settings.")
     private let positionPopup = NSPopUpButton()
@@ -968,6 +970,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             : "Available when Deskset runs as an installed app."
 
         guard let target = detailTarget() else {
+            addMetadataButton = nil
+            metadataEmptyLabel = nil
             updateDisplayMonitorMenu()
             emptyLabel.isHidden = false
             skinSections.forEach { $0.isHidden = true }
@@ -1003,6 +1007,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
         // Metadata
         // NSGridView.removeRow leaves the cell views behind: remove them first.
+        addMetadataButton = nil
+        metadataEmptyLabel = nil
         for row in 0..<metadataGrid.numberOfRows {
             for column in 0..<metadataGrid.numberOfColumns {
                 metadataGrid.cell(atColumnIndex: column, rowIndex: row).contentView?.removeFromSuperview()
@@ -1020,11 +1026,40 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             rows += 1
         }
         if rows == 0 {
-            let none = NSTextField(labelWithString: file == nil
-                                   ? "Contains \(config.files.count) skin\(config.files.count == 1 ? "" : "s")."
-                                   : "This skin has no [Metadata] section.")
-            none.textColor = .secondaryLabelColor
-            metadataGrid.addRow(with: [none])
+            if let file {
+                let fileURL = config.directory.appendingPathComponent(file)
+                let hasSection = ManageModel.hasMetadataSection(fileURL)
+                let message: String
+                switch hasSection {
+                case false:
+                    message = "This skin has no [Metadata] section."
+                case true:
+                    message = "This skin has no metadata values."
+                case nil:
+                    message = "No metadata available."
+                }
+                let none = NSTextField(labelWithString: message)
+                none.textColor = .secondaryLabelColor
+                metadataEmptyLabel = none
+                if hasSection == false {
+                    let addButton = MetadataActionButton(fileURL: fileURL,
+                                                         target: self,
+                                                         action: #selector(addMetadataClicked(_:)))
+                    let row = NSStackView(views: [none, addButton])
+                    row.orientation = .horizontal
+                    row.alignment = .firstBaseline
+                    row.spacing = 6
+                    addMetadataButton = addButton
+                    metadataGrid.addRow(with: [row])
+                } else {
+                    metadataGrid.addRow(with: [none])
+                }
+            } else {
+                let none = NSTextField(labelWithString: "Contains \(config.files.count) skin\(config.files.count == 1 ? "" : "s").")
+                none.textColor = .secondaryLabelColor
+                metadataEmptyLabel = none
+                metadataGrid.addRow(with: [none])
+            }
         }
         if metadataGrid.numberOfColumns > 1 {
             metadataGrid.column(at: 0).xPlacement = .trailing
@@ -1245,6 +1280,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     @objc private func folderClicked() {
         guard let selection else { return }
         Workspace.reveal(SkinLibrary.directory(for: selection.config, root: app.skinsDirectory))
+    }
+
+    @objc private func addMetadataClicked(_ sender: MetadataActionButton) {
+        do {
+            _ = try MetadataEditing.addIfMissing(to: sender.fileURL, app: app)
+        } catch {
+            app.alert("Could not add metadata", error.localizedDescription)
+        }
+        updateDetail()
     }
 
     @objc private func outlineDoubleClicked() {
@@ -1648,6 +1692,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testFavoriteBox: NSButton { favoriteBox }
     var testActiveSkinsPopup: NSPopUpButton { activeSkinsPopup }
     var testNewSkinButton: NSButton { newSkinButton }
+    var testAddMetadataButton: NSButton? { addMetadataButton }
+    var testMetadataEmptyText: String? { metadataEmptyLabel?.stringValue }
     var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
     var testTransparencyPopup: NSPopUpButton { transparencyPopup }
     var testStatus: String { statusLabel.stringValue }
@@ -1785,6 +1831,37 @@ final class HiddenSkinNotice: NSView {
 /// Top-left origin container for the scrolling detail pane.
 final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// Link-styled action button bound to a specific skin `.ini` file so selection changes during preflight prompts
+/// never retarget another skin.
+final class MetadataActionButton: NSButton {
+    let fileURL: URL
+
+    init(fileURL: URL, target: AnyObject?, action: Selector?) {
+        self.fileURL = fileURL
+        super.init(frame: .zero)
+        self.title = "Add metadata"
+        self.target = target
+        self.action = action
+        self.isBordered = false
+        self.bezelStyle = .inline
+        self.setButtonType(.momentaryPushIn)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ]
+        self.attributedTitle = NSAttributedString(string: "Add metadata", attributes: attributes)
+        self.setAccessibilityLabel("Add metadata")
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
 }
 
 /// Window content that accepts dropped skin packages: .rmskin files, ZIP archives and folders (the install flow sorts
