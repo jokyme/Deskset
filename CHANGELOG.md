@@ -7,6 +7,7 @@
 ### Fixed
 
 - Time measures now evaluate parenthesized `TimeStamp` formulas, including variable and measure references, when their options are read. A nonempty `TimeStampFormat` without a matching `TimeStamp` now reports an error instead of silently using the current time.
+- Countdown keeps its pending-date parser disabled until an edit is submitted, avoiding a startup error for its empty input field.
 
 ## 0.5.0
 

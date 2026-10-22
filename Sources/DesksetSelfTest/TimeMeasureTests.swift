@@ -3,6 +3,60 @@ import Foundation
 
 // TimeStamp forms and option-update behavior, from the public Time measure and Variables manual pages.
 func runTimeMeasureTests(_ t: TestRunner) {
+    t.suite("Time measure: Countdown parses pending dates only after submission") {
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = repo.appendingPathComponent("DefaultSkins/Stationery/Countdown/Small.ini")
+        let doc = IniDocument.parse(try String(contentsOf: url, encoding: .utf8))
+        let variables = doc.section(named: "Variables")!
+        // Use the shipped parsing sections without starting the skin's input UI or settings-file commands.
+        let sections = ["MeasurePendingDate", "MeasurePendingISO", "MeasurePendingOK"].map { name in
+            var section = doc.section(named: name)!
+            if name == "MeasurePendingOK" {
+                section.setValue("[!SetVariable SavedDate \"[MeasurePendingISO]\"]", forKey: "IfTrueAction")
+                section.setValue("[!SetVariable PendingEdits 0][!SetVariable Retried 1]", forKey: "IfTrueAction2")
+            }
+            return "[\(name)]\n" + section.entries.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
+        }.joined(separator: "\n")
+        let (skin, host) = try makeSkin(t, """
+        [Variables]
+        PendingDate=\(variables["PendingDate"]!)
+        PendingEdits=\(variables["PendingEdits"]!)
+        SavedDate=
+        Retried=0
+        [MeasureDTToday]
+        Measure=Calc
+        Formula=Floor(11644473600 / 86400)
+        \(sections)
+        """)
+        defer { skin.close() }
+        let pending = skin.measure(named: "MeasurePendingDate")!
+        skin.update()
+        t.check(pending.disabled, "the empty initial field has not been submitted")
+        t.equal(pending.value, 0)
+        t.equal(skin.measure(named: "MeasurePendingOK")!.value, 0)
+        t.check(host.logs.isEmpty, "startup must not try to parse the empty field")
+        t.equal(skin.resolve("#Retried#", in: nil, sectionVariables: true), "0")
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "")
+
+        skin.execute("[!SetVariable PendingEdits 1][!UpdateMeasureGroup Pending]", from: nil)
+        t.check(!pending.disabled, "an explicitly submitted empty date is still validated")
+        t.equal(pending.value, 0)
+        t.equal(host.logs.filter { $0.contains("[MeasurePendingDate] TimeStamp") }.count, 1)
+        t.equal(skin.resolve("#Retried#", in: nil, sectionVariables: true), "1")
+        t.equal(skin.resolve("#PendingEdits#", in: nil, sectionVariables: true), "0")
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "")
+        skin.execute("[!UpdateMeasureGroup Pending]", from: nil)
+        t.check(pending.disabled, "waiting for the retry keeps parsing idle")
+        skin.execute("[!SetVariable PendingDate 1970-1-2][!SetVariable PendingEdits 1][!UpdateMeasureGroup Pending]", from: nil)
+        t.check(!pending.disabled)
+        t.equal(pending.value, 11_644_560_000, "a valid retry re-enables parsing")
+        t.equal(skin.measure(named: "MeasurePendingISO")!.stringValue, "1970-01-02")
+        t.equal(skin.measure(named: "MeasurePendingOK")!.value, 1)
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "1970-01-02")
+        t.equal(host.logs.filter { $0.contains("[MeasurePendingDate] TimeStamp") }.count, 1)
+    }
+
     t.suite("Time measure: timestamp formulas and numeric values") {
         let (skin, host) = try makeSkin(t, """
         [Formatted]
