@@ -353,7 +353,12 @@ open class Measure: SkinSection {
     }
 
     private func runActions() {
-        for i in conditions.indices {
+        // A callback can !SetOption and !UpdateMeasure this measure, replacing these arrays during this pass.
+        // Keep the option identities, not their offsets; read their current state so nested updates are not lost.
+        for (offset, index) in conditions.map(\.index).enumerated() {
+            let position: Int? = conditions.indices.contains(offset) && conditions[offset].index == index
+                ? offset : conditions.firstIndex(where: { $0.index == index })
+            guard let i = position else { continue }
             guard let formula = conditions[i].formula else { continue }
             guard let number = try? formula.evaluate({ skin.formulaValue(of: $0, from: self) }) else {
                 if !conditions[i].loggedError {
@@ -370,29 +375,32 @@ open class Measure: SkinSection {
             }
         }
 
-        func check(_ t: inout Threshold?, _ holds: (Double) -> Bool) {
-            guard var th = t else { return }
+        func check(_ t: inout Threshold?, _ holds: (Double) -> Bool) -> String? {
+            guard var th = t else { return nil }
             if holds(th.value) {
                 if !th.active {
                     th.active = true
                     t = th
-                    skin.execute(th.action, from: self)
-                    return
+                    return th.action
                 }
             } else {
                 th.active = false
             }
             t = th
+            return nil
         }
-        let current = value
-        check(&ifAbove) { current > $0 }
-        check(&ifBelow) { current < $0 }
-        check(&ifEqual) { roundedInt(current) == roundedInt($0) }
+        // End each inout access before running its callback: a finite self-update must see the latched state,
+        // not overlap the exclusive access to the same threshold in this invocation. Later checks use the current
+        // value, including a nested update's result, rather than rolling its threshold state back with stale data.
+        if let action = check(&ifAbove, { value > $0 }) { skin.execute(action, from: self) }
+        if let action = check(&ifBelow, { value < $0 }) { skin.execute(action, from: self) }
+        if let action = check(&ifEqual, { roundedInt(value) == roundedInt($0) }) { skin.execute(action, from: self) }
 
-        let needsText = !matches.isEmpty || !onChangeAction.isEmpty
-        let text = needsText ? stringValue : ""
-        for i in matches.indices {
-            guard let result = PCRE.matches(matches[i].pattern, in: text) else {
+        for (offset, index) in matches.map(\.index).enumerated() {
+            let position: Int? = matches.indices.contains(offset) && matches[offset].index == index
+                ? offset : matches.firstIndex(where: { $0.index == index })
+            guard let i = position else { continue }
+            guard let result = PCRE.matches(matches[i].pattern, in: stringValue) else {
                 if !matches[i].loggedError {
                     matches[i].loggedError = true
                     skin.log("[\(name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
@@ -407,11 +415,13 @@ open class Measure: SkinSection {
         }
 
         if !onChangeAction.isEmpty {
-            if let lastValue, lastValue != value || lastString != text {
-                skin.execute(onChangeAction, from: self)
-            }
+            let text = stringValue
+            let changed = lastValue.map { $0 != value || lastString != text } ?? false
+            // Latch before the callback. Its nested update may keep this value or establish a newer baseline;
+            // neither should replay this change when the outer callback returns.
             lastValue = value
             lastString = text
+            if changed { skin.execute(onChangeAction, from: self) }
         } else {
             // Not tracked while there is no action; a later !SetOption starts from a fresh "initial" value.
             lastValue = nil

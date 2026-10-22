@@ -622,6 +622,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 ### 6.4 Measures
 
+#### Measure actions that update their own measure
+- **Windows:** [measure actions](https://docs-v5.rainmeter.net/manual/measures/general-options/) can run
+  [!UpdateMeasure](https://docs-v5.rainmeter.net/manual/bangs/#UpdateMeasure) immediately. Normal condition actions
+  fire on transitions; OnChangeAction ignores the initial value. Overlapping action-pass ordering is not documented.
+- **Mac:** state is latched before callbacks, so finite self-updates do not crash or repeat an unchanged value's
+  change action. After nested option reads, numbered actions use surviving option identities and their latest state;
+  later checks use the current values. OnUpdateAction still runs for every update; loop limits remain in place.
+- **Why:** judgment call for nested ordering: a resumed action pass must not overwrite newer results with stale data.
+- **Skin impact:** existing skins need no changes. See [the detailed note](compat/engine.md#measure-actions-that-update-their-own-measure).
+- **Status:** emulated (nested ordering judgment; ordinary behavior unchanged)
+
 #### Measures that "were previously a plugin"
 - **Windows:** SysInfo, Process, WebParser, RecycleManager, MediaKey, NowPlaying and WiFiStatus still work as
   `Measure=Plugin` + `Plugin=Name` (`Name.dll`, `Plugins\Name.dll`).

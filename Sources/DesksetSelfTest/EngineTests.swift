@@ -986,6 +986,165 @@ private func runMeasureGeneralTests(_ t: TestRunner) {
         t.equal(skin.variable("NumChanges"), "1")
     }
 
+    t.suite("Engine: threshold actions can update their own measure") {
+        for (kind, active, inactive) in [("Above", "1", "-1"), ("Below", "-1", "1"), ("Equal", "0", "1")] {
+            let (skin, host, _) = try makeEngineSkin(t, """
+            [Variables]
+            V=\(active)
+            Hits=0
+            Updates=0
+            [M]
+            Measure=Calc
+            Formula=#V#
+            DynamicVariables=1
+            If\(kind)Value=0
+            If\(kind)Action=[!SetVariable Hits "([#Hits]+1)"][!UpdateMeasure M]
+            OnUpdateAction=[!SetVariable Updates "([#Updates]+1)"]
+            """)
+            skin.update()
+            t.equal(skin.variable("Hits"), "1", "\(kind): the nested update sees the latched threshold")
+            t.equal(skin.variable("Updates"), "2", "\(kind): both updates still run OnUpdateAction")
+            skin.update()
+            t.equal(skin.variable("Hits"), "1", "\(kind): an unchanged value does not fire again")
+            skin.setVariable("V", inactive)
+            skin.update()
+            skin.setVariable("V", active)
+            skin.update()
+            t.equal(skin.variable("Hits"), "2", "\(kind): leaving the threshold re-arms the action")
+            t.equal(skin.variable("Updates"), "6")
+            t.equal(skin.measure(named: "M")!.updateCount, 6)
+            t.check(!host.logs.contains { $0.contains("nested too deeply") }, "\(kind): no loop guard needed")
+        }
+    }
+
+    t.suite("Engine: later thresholds keep a nested update's state") {
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Variables]
+        Below=0
+        [M]
+        Measure=Calc
+        Formula=10
+        IfAboveValue=5
+        IfAboveAction=[!SetOption M Formula 0][!UpdateMeasure M]
+        IfBelowValue=5
+        IfBelowAction=[!SetVariable Below "([#Below]+1)"]
+        """)
+        skin.update()
+        t.close(value(skin, "M"), 0)
+        t.equal(skin.variable("Below"), "1", "the nested update crosses the lower threshold")
+        skin.update()
+        t.equal(skin.variable("Below"), "1", "the outer update must not re-arm it with the previous value")
+    }
+
+    t.suite("Engine: numbered actions survive nested option removal") {
+        for (family, action, type, reading) in [
+            ("IfCondition", "IfTrueAction", "Calc", "Formula=1"),
+            ("IfMatch", "IfMatchAction", "String", "String=1"),
+        ] {
+            for removeFirst in [false, true] {
+                let suffix = removeFirst ? "" : "2"
+                let (skin, host, _) = try makeEngineSkin(t, """
+                [Variables]
+                Later=0
+                Last=0
+                Updates=0
+                [M]
+                Measure=\(type)
+                \(reading)
+                \(family)=1
+                \(action)=[!SetOption M \(family)\(suffix) ""][!UpdateMeasure M]
+                \(family)2=1
+                \(action)2=[!SetVariable Later "([#Later]+1)"]
+                \(family)3=1
+                \(action)3=[!SetVariable Last "([#Last]+1)"]
+                OnUpdateAction=[!SetVariable Updates "([#Updates]+1)"]
+                """)
+                skin.update()
+                let hits = removeFirst ? "1" : "0"
+                t.equal(skin.variable("Later"), hits, "\(family): removed entries are skipped; shifted ones run once")
+                t.equal(skin.variable("Last"), hits, "\(family): a gap removes the remainder of the numbered family")
+                t.equal(skin.variable("Updates"), "2", "\(family): the explicit update still runs")
+                skin.update()
+                t.equal(skin.variable("Later"), hits, "\(family): nested results remain latched")
+                t.equal(skin.variable("Last"), hits)
+                t.check(!host.logs.contains { $0.contains("nested too deeply") }, "\(family): finite reentry")
+            }
+        }
+    }
+
+    t.suite("Engine: OnChangeAction latches before a self-update") {
+        for (type, option, initial, changed) in [
+            ("Calc", "Formula", "1", "2"), ("String", "String", "a", "b"),
+        ] {
+            let (skin, host, _) = try makeEngineSkin(t, """
+            [Variables]
+            Changes=0
+            Updates=0
+            [M]
+            Measure=\(type)
+            \(option)=\(initial)
+            OnChangeAction=[!SetVariable Changes "([#Changes]+1)"][!UpdateMeasure M]
+            OnUpdateAction=[!SetVariable Updates "([#Updates]+1)"]
+            """)
+            skin.update()
+            t.equal(skin.variable("Changes"), "0", "\(type): initial value is still ignored")
+            run(skin, "[!SetOption M \(option) \(changed)][!UpdateMeasure M]")
+            t.equal(skin.variable("Changes"), "1", "\(type): the unchanged nested value is not another change")
+            t.equal(skin.variable("Updates"), "3", "\(type): every actual update runs OnUpdateAction")
+            skin.update()
+            t.equal(skin.variable("Changes"), "1")
+            t.equal(skin.measure(named: "M")!.updateCount, 4)
+            t.check(!host.logs.contains { $0.contains("nested too deeply") }, "\(type): no loop guard needed")
+        }
+    }
+
+    t.suite("Engine: OnChangeAction keeps a nested newer baseline") {
+        let (skin, host, _) = try makeEngineSkin(t, """
+        [Variables]
+        Changes=0
+        [M]
+        Measure=String
+        String=a
+        OnChangeAction=[!SetVariable Changes "([#Changes]+1)"][!SetOption M String c][!UpdateMeasure M]
+        """)
+        skin.update()
+        run(skin, "[!SetOption M String b][!UpdateMeasure M]")
+        t.equal(string(skin, "M"), "c")
+        t.equal(skin.variable("Changes"), "2", "a to b and b to c each trigger once")
+        skin.update()
+        t.equal(skin.variable("Changes"), "2", "the outer callback must not restore the old b baseline")
+        t.equal(skin.measure(named: "M")!.updateCount, 5)
+        t.check(!host.logs.contains { $0.contains("nested too deeply") }, "finite chained changes")
+    }
+
+    t.suite("Engine: matches and changes use a nested update's latest string") {
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Variables]
+        Matches=0
+        Unmatches=0
+        Changes=0
+        [M]
+        Measure=String
+        String=z
+        IfMatch=^a$
+        IfMatchAction=[!SetOption M String b][!UpdateMeasure M]
+        IfMatch2=^b$
+        IfMatchAction2=[!SetVariable Matches "([#Matches]+1)"]
+        IfNotMatchAction2=[!SetVariable Unmatches "([#Unmatches]+1)"]
+        OnChangeAction=[!SetVariable Changes "([#Changes]+1)"]
+        """)
+        skin.update()
+        t.equal(skin.variable("Unmatches"), "1", "the initial string does not match b")
+        run(skin, "[!SetOption M String a][!UpdateMeasure M]")
+        t.equal(string(skin, "M"), "b")
+        t.equal(skin.variable("Matches"), "1")
+        t.equal(skin.variable("Unmatches"), "1", "the outer match must not replay the stale a string")
+        t.equal(skin.variable("Changes"), "1", "OnChange reads the current number and string together")
+        skin.update()
+        t.equal(skin.variable("Matches"), "1", "the nested match state remains latched")
+        t.equal(skin.variable("Changes"), "1", "the nested string remains the change baseline")
+    }
+
     t.suite("Engine: measure order and Substitute") {
         let (skin, _, _) = try makeEngineSkin(t, """
         [A]

@@ -557,6 +557,16 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 ### 6.4 Measure
 
+#### 动作中更新自身的 measure
+- **Windows：** [measure 动作](https://docs-v5.rainmeter.net/manual/measures/general-options/) 可通过
+  [!UpdateMeasure](https://docs-v5.rainmeter.net/manual/bangs/#UpdateMeasure) 立即触发更新。普通条件动作在状态变化时触发，
+  OnChangeAction 忽略初始值；手册未规定多次动作流程嵌套时的具体顺序。
+- **Mac：** 先记录状态再执行动作，有限的自身更新不再崩溃，也不会把未变化的值重复当作变化。嵌套读取选项后，带编号的条件
+  和匹配项按选项身份查找仍存在的项，保留其最新状态；后续检查使用当前值。每次更新仍执行 OnUpdateAction，循环保护保持不变。
+- **原因：** 对未规定的嵌套顺序作出取舍：恢复执行的外层流程不应以旧数据覆盖较新的结果。
+- **对皮肤的影响：** 已有皮肤无需修改。详见[详细说明](compat/engine.md#measure-actions-that-update-their-own-measure)。
+- **状态：** 模拟实现（嵌套顺序为取舍判断，普通动作行为不变）
+
 #### “以前是插件”的 measure
 - **Windows：** SysInfo、Process、WebParser、RecycleManager、MediaKey、NowPlaying 和 WiFiStatus 仍可写成
   `Measure=Plugin` + `Plugin=Name`（`Name.dll`、`Plugins\Name.dll`）。
