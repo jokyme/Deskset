@@ -561,6 +561,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 
 ## 4. Measures
 
+### Measure actions that update their own measure
+- Windows (Rainmeter): [IfActions](https://docs-v5.rainmeter.net/manual/measures/general-options/ifactions/),
+  [IfConditions](https://docs-v5.rainmeter.net/manual/measures/general-options/ifconditions/) and
+  [IfMatchActions](https://docs-v5.rainmeter.net/manual/measures/general-options/ifmatchactions/) normally fire when
+  their condition changes; `IfConditionMode=1` / `IfMatchMode=1` instead fire on every update.
+  [OnChangeAction](https://docs-v5.rainmeter.net/manual/measures/general-options/#OnChangeAction) ignores the initial
+  value and runs on subsequent number or string changes. [!UpdateMeasure](https://docs-v5.rainmeter.net/manual/bangs/#UpdateMeasure)
+  updates immediately, even from an action. The manual does not define the ordering of overlapping action passes.
+- Mac (Deskset): action state and the change baseline are recorded before their respective callbacks run. A finite
+  self-update can finish without a conflicting state access or duplicate change notification. Numbered conditions
+  and matches retain their option identities across a nested option reread; removed entries are skipped, and surviving
+  entries use their latest state. Each later check uses the current value, including any nested update's result. Every actual update
+  still runs OnUpdateAction, and the existing recursion/work limits still stop genuinely self-triggering loops.
+- Why: the documented bangs may re-enter measure updates. Using current values and option identities after a nested
+  update is a judgment call for the unspecified ordering, avoiding stale state overwriting a newer result.
+- Skin impact: finite action chains no longer crash or produce repeated change actions; existing skins need no changes.
+- Status: emulated (nested ordering judgment; ordinary action behavior unchanged)
+
 ### Measures that "were previously a plugin"
 - Windows (Rainmeter): SysInfo, Process, WebParser, RecycleManager, MediaKey, NowPlaying and WiFiStatus pages each
   say the measure "was previously a plugin measure" and "still works with those forms": `Measure=Plugin` with

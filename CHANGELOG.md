@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- Measure actions can now safely update their own measure: finite chains no longer crash or repeat change notifications, including when numbered conditions are removed during an update.
 - Time measures now evaluate parenthesized `TimeStamp` formulas, including variable and measure references, when their options are read. Existing empty-timestamp behavior is unchanged.
 
 ## 0.5.0
