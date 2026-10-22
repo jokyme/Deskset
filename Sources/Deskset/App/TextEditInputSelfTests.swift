@@ -24,6 +24,59 @@ enum TextEditInputSelfTests {
         }
 
         for threading in [SkinThreading.main, .engine, .pool] {
+            t.suite("App: TextEdit input: dynamic InitialText follows the focus lifecycle, \(threading)") {
+                guard let (app, c) = try fixture(t, threading: threading, extra: "DynamicVariables=1\n",
+                                                secondInput: true, initialText: "#Seed#",
+                                                variables: "Seed=alpha beta") else { return }
+                c.runtime.send(.run("[!SetVariable Seed beforeClick][!Update]"))
+                drain(t, c)
+                t.equal(value(c, \.inputText), "beforeClick")
+                t.equal(value(c, \.text), "beforeClick")
+                t.check(!c.runtime.snapshot.hasFocusedTextEdit)
+
+                c.view.mouseDown(with: mouse(.leftMouseDown, c, x: 180, y: 15))
+                c.view.mouseUp(with: mouse(.leftMouseUp, c, x: 180, y: 15))
+                drain(t, c)
+                t.equal(value(c, \.isFocused), true)
+                t.check(c.runtime.snapshot.hasFocusedTextEdit)
+                c.view.selectAll(nil)
+                c.view.keyDown(with: key(18, chars: "!"))
+                c.runtime.send(.run("[!SetVariable Seed afterClick][!Update]"))
+                drain(t, c)
+                t.equal(value(c, \.inputText), "!", "native pointer focus protects subsequent typed text")
+
+                c.view.mouseDown(with: mouse(.leftMouseDown, c, x: 180, y: 75))
+                c.view.mouseUp(with: mouse(.leftMouseUp, c, x: 180, y: 75))
+                c.runtime.send(.run("[!SetVariable Seed afterDismiss][!Update]"))
+                drain(t, c)
+                t.equal(value(c, \.isFocused), false)
+                t.equal(value(c, \.isFocused, meter: "Other"), true)
+                t.equal(value(c, \.inputText), "!", "clicking another field leaves InitialText locked")
+
+                c.runtime.send(.run("[!TextEdit:Reset Input]"))
+                drain(t, c)
+                t.equal(value(c, \.inputText), "afterDismiss")
+                c.runtime.send(.run("[!SetVariable Seed afterReset][!Update]"))
+                drain(t, c)
+                t.equal(value(c, \.inputText), "afterReset")
+                focus(t, c)
+                c.runtime.send(.run("[!SetVariable Seed afterBangFocus][!Update]"))
+                drain(t, c)
+                t.equal(value(c, \.inputText), "afterReset", "bang focus uses the same lock as pointer focus")
+                t.equal(value(c, \.text), "afterReset")
+
+                app.refresh(c)
+                guard let fresh = app.controller(for: "TextEditInput"), fresh !== c else {
+                    return t.check(false, "refresh creates a new controller")
+                }
+                t.check(AppSelfTest.spin { fresh.isStarted })
+                t.check(!fresh.runtime.snapshot.hasFocusedTextEdit)
+                t.equal(value(fresh, \.inputText), "alpha beta")
+                fresh.runtime.send(.run("[!SetVariable Seed afterRefresh][!Update]"))
+                drain(t, fresh)
+                t.equal(value(fresh, \.inputText), "afterRefresh", "refresh starts an unlocked lifecycle")
+            }
+
             t.suite("App: TextEdit input: native clipboard and undo actions, \(threading)") {
                 guard let (_, c) = try fixture(t, threading: threading) else { return }
                 var clipboard = "", writes: [String] = []
@@ -500,7 +553,8 @@ enum TextEditInputSelfTests {
     }
 
     private static func fixture(_ t: AppTestRunner, threading: SkinThreading = .main,
-                                extra: String = "", secondInput: Bool = false) throws -> (AppController, SkinWindowController)? {
+                                extra: String = "", secondInput: Bool = false,
+                                initialText: String = "alpha beta", variables: String = "") throws -> (AppController, SkinWindowController)? {
         guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return nil }
         t.atSuiteEnd { app.stopAllForTermination(); app.endEngineThread() }
         let folder = app.skinsDirectory.appendingPathComponent("TextEditInput", isDirectory: true)
@@ -511,6 +565,7 @@ enum TextEditInputSelfTests {
         [Variables]
         Down=no
         Up=no
+        \(variables)
         [Input]
         Meter=TextEdit
         X=10
@@ -519,7 +574,7 @@ enum TextEditInputSelfTests {
         H=42
         FontFace=Arial
         FontSize=12
-        InitialText=alpha beta
+        InitialText=\(initialText)
         Multiline=1
         \(extra)
         """

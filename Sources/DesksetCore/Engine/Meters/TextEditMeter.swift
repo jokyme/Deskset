@@ -6,7 +6,8 @@ import Foundation
 /// - Supports standard String formatting options (`FontFace`, `FontSize`, `FontColor`, `FontWeight`, `StringAlign`,
 ///   `StringStyle`, `StringEffect`, `FontEffectColor`, `ClipString`, `ClipStringW`, `ClipStringH`, `StringCase`,
 ///   and `InlineSetting` / `InlinePattern`). Does not use `Text`; uses `InitialText` and `PlaceholderText`.
-/// - `InitialText` sets the starting text at initialization and on `!TextEdit:Reset` (not modified by `!SetOption`).
+/// - `InitialText` follows dynamic variables until focus, and again after `!TextEdit:Reset` until the next focus
+///   (not modified by `!SetOption`).
 /// - `PlaceholderText` (with `PlaceholderFontColor`, `PlaceholderFontFace`, `PlaceholderFontSize`,
 ///   `PlaceholderStringStyle`) is displayed when the current input text is empty.
 /// - `Multiline` (default `0`), `SubmitOnEnter` (default `1` when single-line, `0` when multiline), `MaxLength`
@@ -94,7 +95,8 @@ public final class TextEditMeter: Meter {
     private var inlineCache: (source: String, rules: [StringMeter.InlineRule], text: String, spans: [InlineSpan])?
     private var loggedPatterns: Set<String> = []
     private var loggedSettings: Set<String> = []
-    private var initializedInitialText = false
+    private var lastInitialText: String?
+    private var initialTextLocked = false
     private var composed = false
 
     private lazy var fontFolder = skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true).path
@@ -190,12 +192,15 @@ public final class TextEditMeter: Meter {
         baseStyle = s
 
         let previousText = inputText
-        if !initializedInitialText {
-            initializedInitialText = true
-            inputText = normalizedInput(readInitialText(), checkFilter: false)
-        } else {
-            inputText = normalizedInput(inputText, checkFilter: false)
+        if lastInitialText == nil || (dynamicVariables && !initialTextLocked) {
+            let initialText = readInitialText()
+            // An unchanged default must not overwrite an explicit SetText or Clear on each update.
+            if initialText != lastInitialText {
+                inputText = initialText
+                lastInitialText = initialText
+            }
         }
+        inputText = normalizedInput(inputText, checkFilter: false)
         if inputText != previousText {
             clearHistory()
             preferredNavigationX = nil
@@ -389,6 +394,7 @@ public final class TextEditMeter: Meter {
 
     public func focus() {
         guard !isFocused else { return }
+        initialTextLocked = true
         for case let other as TextEditMeter in skin.meters where other !== self && other.isFocused {
             other.dismiss()
         }
@@ -441,7 +447,10 @@ public final class TextEditMeter: Meter {
     }
 
     public func reset() {
-        inputText = normalizedInput(readInitialText(), checkFilter: false)
+        let initialText = readInitialText()
+        lastInitialText = initialText
+        initialTextLocked = false
+        inputText = normalizedInput(initialText, checkFilter: false)
         caretPosition = 0
         selectionAnchor = 0
         resetScrollState()

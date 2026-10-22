@@ -1112,7 +1112,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 ### TextEdit editing
 - Windows (Rainmeter): [TextEdit](https://docs-v5.rainmeter.net/manual/meters/textedit/) supports text selection,
   copy/cut/paste, undo, arrow navigation and scrolling overflow without an ellipsis. ReadOnly fields remain
-  selectable, copyable and scrollable; Password prevents copying text to the clipboard.
+  selectable, copyable and scrollable; Password prevents copying text to the clipboard. With `DynamicVariables=1`,
+  `InitialText` can change until focus; `!TextEdit:Reset` restores it and reopens changes until the next focus.
+  The manual's example explicitly excludes changing `InitialText` with `!SetOption`.
 - Mac (Deskset): editing uses a separate caret and selection anchor. Command-A/C/X/V/Z supplies the Mac equivalents
   of select all, copy, cut, paste and undo. Shift extends selections with navigation or a click; dragging selects
   text without moving the skin. Caret, selection and scrolling share the shaped text layout used for drawing.
@@ -1120,6 +1122,12 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   ResetScroll. Focus decorations and blinking remain independent of the skin's update interval.
   ReadOnly blocks user text changes, including undo. Password blocks both copy and cut. Pasting applies the
   existing input filter, case and length rules while retaining text outside the selected range.
+  Dynamic `InitialText` follows variable and section-variable changes until pointer or bang focus. Dismiss and
+  submit do not reopen it; Reset does, even while focused, without changing focus. A skin refresh starts anew.
+  `DynamicVariables=0` keeps its initial value until an explicit Reset; `!SetOption InitialText` remains ignored.
+- Why: the documented focus/reset lifecycle is shared by pointer and bang input. The manual does not specify
+  unchanged defaults after `SetText` or `Clear`: Deskset preserves those explicit edits on ordinary updates,
+  replacing them only when the resolved `InitialText` changes while unlocked or Reset is applied.
 - Skin impact: input fields can edit in place and reveal overflowing text. Ordinary String meter rendering is
   unchanged. Command-drag retains the existing skin-drag override.
 - Status: emulated / partial. The manual does not specify undo grouping/history, character-index units, exact

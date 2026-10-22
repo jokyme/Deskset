@@ -4,8 +4,9 @@ import Foundation
 func runTextEditMeterTests(_ t: TestRunner) {
     var retainedSkins: [Skin] = []
     defer { withExtendedLifetime(retainedSkins) {} }
-    func editor(_ options: String = "") throws -> (Skin, TextEditMeter) {
+    func editor(_ options: String = "", preamble: String = "") throws -> (Skin, TextEditMeter) {
         let (skin, _) = try makeSkin(t, """
+        \(preamble)
         [Input]
         Meter=TextEdit
         W=80
@@ -19,6 +20,196 @@ func runTextEditMeterTests(_ t: TestRunner) {
             throw NSError(domain: "TextEditMeterTests", code: 1)
         }
         return (skin, meter)
+    }
+
+    t.suite("TextEdit: dynamic InitialText follows variables before focus and ignores SetOption") {
+        let (skin, m) = try editor("InitialText=#Seed#\nDynamicVariables=1",
+                                   preamble: "[Variables]\nSeed=first")
+        t.equal(m.inputText, "first")
+        let initialDrawing = m.lower()
+        skin.setVariable("Seed", "second")
+        skin.update()
+        t.equal(m.inputText, "second")
+        t.equal(m.text, "second")
+        t.equal(m.lower().text, "second", "drawing uses the updated default")
+        t.equal(initialDrawing.text, "first", "previous drawing snapshots retain their captured text")
+        skin.execute("[!SetOption Input InitialText override][!UpdateMeter Input]", from: nil)
+        t.equal(m.inputText, "second", "the file definition remains the source of InitialText")
+        skin.execute("[!SetVariable Seed third][!UpdateMeter Input]", from: nil)
+        t.equal(m.inputText, "third", "a forced meter update also follows variables")
+        skin.execute("[!SetOption Input InitialText \"\"][!UpdateMeter Input][!TextEdit:Reset Input]", from: nil)
+        t.equal(m.inputText, "third", "removing the option through a bang does not replace the file definition")
+    }
+
+    t.suite("TextEdit: first focus locks InitialText through dismiss and submit") {
+        let (skin, m) = try editor("""
+        InitialText=#Seed#
+        DynamicVariables=1
+        OnFocusAction=[!SetVariable Seed fromFocus][!UpdateMeter Input]
+        """, preamble: "[Variables]\nSeed=first")
+        skin.execute("[!TextEdit:Focus Input]", from: nil)
+        t.check(m.isFocused)
+        t.equal(m.inputText, "first", "the lock is in place before OnFocusAction updates the meter")
+        m.selectAll()
+        m.handleKeyInput(.insert("typed"))
+        skin.execute("[!SetVariable Seed changed][!UpdateMeter Input]", from: nil)
+        t.equal(m.inputText, "typed")
+        skin.execute("[!TextEdit:Dismiss Input][!UpdateMeter Input]", from: nil)
+        t.check(!m.isFocused)
+        t.equal(m.inputText, "typed", "dismiss does not reopen dynamic InitialText")
+        skin.execute("[!TextEdit:Focus Input][!TextEdit:Submit Input]", from: nil)
+        skin.setVariable("Seed", "afterSubmit")
+        skin.update()
+        t.check(!m.isFocused)
+        t.equal(m.inputText, "typed", "submit and later updates keep the focus lock")
+    }
+
+    t.suite("TextEdit: Reset reopens dynamic InitialText until the next focus") {
+        let (skin, m) = try editor("InitialText=#Seed#\nDynamicVariables=1",
+                                   preamble: "[Variables]\nSeed=first")
+        m.focus()
+        m.dismiss()
+        skin.setVariable("Seed", "resetValue")
+        skin.execute("[!TextEdit:Reset Input]", from: nil)
+        t.equal(m.inputText, "resetValue", "reset immediately resolves the latest default")
+        skin.update()
+        skin.setVariable("Seed", "afterReset")
+        skin.update()
+        t.equal(m.inputText, "afterReset", "reset is not just a one-time snapshot")
+        m.focus()
+        skin.setVariable("Seed", "lockedAgain")
+        skin.update()
+        t.equal(m.inputText, "afterReset")
+        m.dismiss()
+        skin.execute("[!TextEdit:Reset Input]", from: nil)
+        t.equal(m.inputText, "lockedAgain", "repeated reset/focus cycles retain the same lifecycle")
+    }
+
+    t.suite("TextEdit: Reset while focused reopens InitialText without changing focus") {
+        let (skin, m) = try editor("InitialText=#Seed#\nDynamicVariables=1",
+                                   preamble: "[Variables]\nSeed=first")
+        m.focus()
+        m.handleKeyInput(.insert("x"))
+        t.check(m.canUndo)
+        skin.execute("[!TextEdit:Reset Input]", from: nil)
+        t.check(m.isFocused)
+        t.check(!m.canUndo)
+        t.equal(m.selectionRange, 0..<0)
+        skin.setVariable("Seed", "whileFocused")
+        skin.update()
+        t.equal(m.inputText, "whileFocused")
+        m.dismiss()
+        m.focus()
+        skin.setVariable("Seed", "afterRefocus")
+        skin.update()
+        t.equal(m.inputText, "whileFocused", "the next focus transition locks the reset default")
+    }
+
+    t.suite("TextEdit: static InitialText only rereads its value on Reset") {
+        let (skin, m) = try editor("InitialText=#Seed#\nDynamicVariables=0",
+                                   preamble: "[Variables]\nSeed=first")
+        skin.setVariable("Seed", "second")
+        skin.update()
+        skin.execute("[!SetOption Input FontSize 12][!UpdateMeter Input]", from: nil)
+        t.equal(m.inputText, "first", "unrelated option reads do not make InitialText dynamic")
+        skin.execute("[!TextEdit:Reset Input]", from: nil)
+        t.equal(m.inputText, "second", "explicit reset keeps its existing snapshot behavior")
+        skin.setVariable("Seed", "third")
+        skin.update()
+        t.equal(m.inputText, "second")
+        m.setText("programmatic")
+        skin.execute("[!SetOption Input FontColor 255,0,0][!UpdateMeter Input]", from: nil)
+        t.equal(m.inputText, "programmatic")
+    }
+
+    t.suite("TextEdit: unchanged InitialText preserves programmatic SetText and Clear") {
+        let (skin, m) = try editor("InitialText=#Seed#\nDynamicVariables=1\nPlaceholderText=empty",
+                                   preamble: "[Variables]\nSeed=first")
+        skin.execute("[!TextEdit:SetText Input explicit][!UpdateMeter Input]", from: nil)
+        skin.update()
+        t.equal(m.inputText, "explicit")
+        skin.execute("[!TextEdit:Clear Input][!UpdateMeter Input]", from: nil)
+        skin.update()
+        t.equal(m.inputText, "")
+        t.equal(m.text, "empty")
+        skin.setVariable("Seed", "changed")
+        skin.update()
+        t.equal(m.inputText, "changed", "programmatic edits do not take focus or close dynamic following")
+        m.setText("another")
+        m.reset()
+        t.equal(m.inputText, "changed", "Reset restores even an unchanged InitialText value")
+        m.focus()
+        m.setText("locked")
+        skin.setVariable("Seed", "newDefault")
+        skin.update()
+        t.equal(m.inputText, "locked")
+    }
+
+    t.suite("TextEdit: dynamic defaults keep normalization and selection bounds") {
+        let (skin, m) = try editor("""
+        InitialText=#Seed#
+        DynamicVariables=1
+        StringCase=Upper
+        MaxLength=3
+        InputFilter=Numeric
+        """, preamble: "[Variables]\nSeed=abcde")
+        m.selectAll()
+        skin.setVariable("Seed", "aßz")
+        skin.update()
+        t.equal(m.inputText, "ASS", "default text is cased and limited but not rejected by the typing filter")
+        skin.setVariable("Seed", "👨‍👩‍👧‍👦")
+        skin.update()
+        t.equal(m.inputText, "👨‍👩‍👧‍👦")
+        t.equal(m.selectionRange, 0..<1, "selection clamps to grapheme-cluster bounds")
+        skin.setVariable("Seed", "b\r\nc\nd\r")
+        skin.update()
+        t.equal(m.inputText, "BCD", "single-line defaults remove newlines before applying length")
+        m.focus()
+        skin.setVariable("Seed", "efgh")
+        m.reset()
+        t.equal(m.inputText, "EFG", "reset uses the same normalization")
+    }
+
+    t.suite("TextEdit: dynamic InitialText inherits styles and resolves section variables") {
+        let (skin, m) = try editor("MeterStyle=Defaults\nDynamicVariables=1", preamble: """
+        [Variables]
+        Seed=one
+        [Source]
+        Measure=String
+        String=#Seed#
+        DynamicVariables=1
+        [Defaults]
+        InitialText=[Source]
+        """)
+        t.equal(m.inputText, "one")
+        skin.setVariable("Seed", "two")
+        skin.update()
+        t.equal(m.inputText, "two")
+        m.focus()
+        skin.setVariable("Seed", "three")
+        skin.update()
+        t.equal(m.inputText, "two")
+        m.reset()
+        t.equal(m.inputText, "three")
+    }
+
+    t.suite("TextEdit: a skin reload starts a fresh InitialText lifecycle") {
+        let (skin, old) = try editor("InitialText=#Seed#\nDynamicVariables=1",
+                                     preamble: "[Variables]\nSeed=first")
+        old.focus()
+        old.setText("typed")
+        skin.setVariable("Seed", "beforeReload")
+        try skin.load()
+        skin.update()
+        guard let fresh = skin.meter(named: "Input") as? TextEditMeter else {
+            return t.check(false, "reloaded text editor exists")
+        }
+        t.check(fresh !== old)
+        t.check(!fresh.isFocused)
+        t.equal(fresh.inputText, "first")
+        skin.setVariable("Seed", "afterReload")
+        skin.update()
+        t.equal(fresh.inputText, "afterReload")
     }
 
     t.suite("TextEdit: insertion, backspace and forward delete use the caret") {

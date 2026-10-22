@@ -796,7 +796,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `AttributeN` 修改也会更新引用资源。限制与验证状态见 [SVG 资源](compat/engine.md#svg-resources)。
   `Meter=TextEdit` 直接在皮肤中绘制和编辑，使用 macOS 的 ⌘ 快捷键（⌘A、⌘C、⌘X、⌘V、⌘Z）。光标导航、Shift 扩选、
   鼠标选区和溢出滚动使用与绘制相同的文字排版。只读输入框仍能选择、复制和滚动；密码模式禁止复制和剪切。
-  光标、选区和焦点装饰独立于皮肤更新间隔生效。其余交互限制见 [TextEdit 编辑](compat/engine.md#textedit-editing)。
+  光标、选区和焦点装饰独立于皮肤更新间隔生效。设置 `DynamicVariables=1` 时，`InitialText` 在获得焦点前跟随变量更新，
+  失去焦点或提交后仍保持锁定；`!TextEdit:Reset` 恢复动态更新，直到下次获得焦点。默认值未变化时保留 `SetText`/`Clear`
+  的显式修改；静态默认值保持静态，且按文档忽略 `!SetOption InitialText`。其余交互限制见 [TextEdit 编辑](compat/engine.md#textedit-editing)。
 - **原因：** SVG 与文字用 CoreGraphics / CoreText 绘制；Mac 用 ⌘ 代替 Ctrl。
 - **对皮肤的影响：** SVG 滤镜、`<text>` 和 `<foreignObject>` 不在 Windows 文档规定的 SVG 子集中，不会绘制。
   不加载外部图片引用；其他内嵌图片格式尚未确认。
