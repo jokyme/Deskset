@@ -908,6 +908,9 @@ than a separate 20 ms timer.
   shortcuts (⌘A, ⌘C, ⌘X, ⌘V, ⌘Z). Caret navigation, Shift selection, pointer selection and overflow scrolling
   use the same shaped layout as drawing. ReadOnly fields retain selection, copy and scrolling; Password blocks
   copy and cut. Caret, selection and focus decorations work independently of the update interval.
+  With `DynamicVariables=1`, `InitialText` follows variables until focus, then stays locked through dismiss/submit;
+  `!TextEdit:Reset` reopens changes until the next focus. Unchanged defaults preserve explicit `SetText`/`Clear` edits.
+  Static defaults remain static, and `!SetOption InitialText` is ignored as documented.
   See [TextEdit editing](compat/engine.md#textedit-editing) for the remaining interaction limits.
   Justified text aligns every wrapped line but the last.
 - **Why:** CoreGraphics / CoreText drawing; ⌘ instead of Ctrl on the Mac.

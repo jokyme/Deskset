@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- TextEdit `InitialText` now follows dynamic variables until first focus. `!TextEdit:Reset` restores that behavior until the next focus, while dismissing or submitting keeps edited text protected.
 - Measure actions can now safely update their own measure: finite chains no longer crash or repeat change notifications, including when numbered conditions are removed during an update.
 - Time measures now evaluate parenthesized `TimeStamp` formulas, including variable and measure references, when their options are read. Existing empty-timestamp behavior is unchanged.
 
