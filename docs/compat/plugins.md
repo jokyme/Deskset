@@ -400,18 +400,22 @@ plugin's source code.
 - Status: identical
 
 ### State, Close, Kill, Timeout
-- Windows (Rainmeter): `State` Hide / Show / Minimized / Maximized; hidden programs are killed on refresh / unload;
-  Close sends a close message, Kill terminates; Timeout closes (or kills with State=Hide) and FinishAction runs "even
-  if the program does not actually terminate".
+- Windows (Rainmeter): `State` Hide / Show / Minimized / Maximized; hidden programs are killed on refresh / unload.
+  Close requests closure; if the program cancels it, the measure continues gathering output. Kill terminates the
+  program. Timeout closes (or kills with State=Hide) and runs FinishAction even if the program does not terminate
+  ([RunCommand manual](https://docs-v5.rainmeter.net/manual/measures/runcommand/)).
 - Mac (Deskset): command-line programs have no window, so State only decides whether a running program is killed on
   refresh / unload (Hide, the default) or left running. Close = SIGTERM, Kill = SIGKILL, both to the whole process
-  group. Timeout sends SIGTERM (SIGKILL with State=Hide) and finishes the run with the output received so far
-  (value 1). A program that is still running one second after Close (it ignores SIGTERM) is no longer waited for: the
-  run finishes (value 1, FinishAction), as the manual says for Close. Programs left behind this way are still killed
-  on refresh / unload with State=Hide. A program that has ended is never signalled again (its process id may belong to
-  another program by then).
-- Why: no console windows on the Mac.
-- Skin impact: none.
+  group. Close keeps the run active and collects output until the program exits, even if it ignores SIGTERM. A
+  repeated Run returns 101 while waiting; OutputFile and FinishAction wait for the final output. No blocking wait
+  or automatic escalation follows Close. A configured Timeout remains active: it sends SIGTERM (SIGKILL with
+  State=Hide) and finishes the run with the output received so far (value 1, FinishAction), independently of actual
+  exit. Hidden programs left running after Timeout are still killed on refresh / unload. A program that has ended
+  is never signalled again (its process id may belong to another program by then).
+- Why: macOS command-line programs have no Windows close-message equivalent; SIGTERM is a cooperative request,
+  which a program can handle or ignore. Timeout's early completion is separate from that request.
+- Skin impact: a program that ignores Close stays active until it exits, is killed, or reaches its configured
+  Timeout; its later output is no longer cut off after one second. Use Kill or a positive Timeout for a bounded run.
 - Status: emulated
 
 ### Output encoding and OutputFile

@@ -1947,12 +1947,15 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 
 #### RunCommand：数值、错误码、State、Close、Kill、Timeout、输出
 - **Windows：** 首次运行前 -1，运行中 0，成功 1，100–106 为错误；`State` 为 Hide / Show / Minimized / Maximized；Close /
-  Kill；OutputType 为 UTF16 / UTF8 / ANSI。
+  Kill；程序拒绝 Close 时继续收集输出，只有 Timeout 可以在程序实际退出前执行 FinishAction
+  （[官方文档](https://docs-v5.rainmeter.net/manual/measures/runcommand/)）；OutputType 为 UTF16 / UTF8 / ANSI。
 - **Mac：** 错误码相同；退出状态不影响结果；标准错误被丢弃（`2>&1` 可保留）；输出最多 16 MB。命令行程序没有窗口，所以
-  `State` 只决定刷新时是否结束程序（Hide，默认）。Close = SIGTERM，Kill = SIGKILL；忽略 Close 超过一秒的程序不再等待。不论
-  OutputType 如何，输出都按 UTF-8 读取；OutputFile 按 OutputType 指定的编码写入。
-- **原因：** Mac 上没有控制台窗口；Mac 程序输出 UTF-8。
-- **对皮肤的影响：** 无。
+  `State` 只决定刷新／卸载时是否结束程序（Hide，默认）。Close = SIGTERM，Kill = SIGKILL，均作用于进程组。Close 持续收集
+  输出直到程序退出，不阻塞皮肤；期间 Run 返回 101，OutputFile 和 FinishAction 等待完整输出。已配置的 Timeout 仍会按时
+  使用现有输出结束本次运行，即使程序忽略其 SIGTERM 请求（State=Hide 时发送 SIGKILL）。不论 OutputType 如何，输出都按
+  UTF-8 读取；OutputFile 按指定编码写入。
+- **原因：** Mac 命令行程序没有对应的 Windows 关闭消息；Mac 程序输出 UTF-8。
+- **对皮肤的影响：** Close 不再于一秒后截断输出。若需限制运行时间，可使用 Kill 或正数 Timeout。
 - **状态：** 模拟实现
 
 ### 9.6 文件与文件夹

@@ -1061,7 +1061,7 @@ dropped without being closed, whose WebParser transfers are now cancelled (see L
 **Routed through the skin's executor:**
 - The engine: `!Delay`, Bitmap transitions, ActionTimer steps, the Mouse plugin's UpdateRate timer and the Slider's
   HoldDelay timer. The timers have no leeway, as before.
-- Plugin results: Ping, RunCommand (exit, decoded output, start failure, Timeout, Close grace period), Quote,
+- Plugin results: Ping, RunCommand (exit, decoded output, start failure, Timeout), Quote,
   FolderInfo, FileView (listing and icons), ResMon, WebParser (page, download, bad download URL), and Chameleon in the
   app.
 - Shared services hand a skin's callback to that skin's executor, which the caller must name (there is no default, so
@@ -1076,7 +1076,7 @@ dropped without being closed, whose WebParser transfers are now cancelled (see L
   runs no action or child download; a temporary file it saved is deleted, also when the skin is gone by then.
 - A ResMon lookup that ends after the unload is dropped.
 - A running Bitmap transition stops.
-- Pending `!Delay` continuations and RunCommand's Timeout and Close waits are cancelled, rather than left to find the
+- Pending `!Delay` continuations and RunCommand's Timeout waits are cancelled, rather than left to find the
   skin closed.
 
 **Lifetime:** work queued with `Skin.async` holds the skin until it has run; a result posted with `SkinHop.post`

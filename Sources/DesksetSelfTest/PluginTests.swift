@@ -22,6 +22,7 @@ func runPluginTests(_ t: TestRunner) {
     runPluginSamplingCostTests(t)
     runPluginPingTests(t)
     runPluginRunCommandTests(t)
+    runRunCommandLifecycleTests(t)
     runPluginQuoteTests(t)
     runPluginFolderInfoTests(t)
     runPluginFileViewTests(t)
@@ -1221,13 +1222,17 @@ private func runPluginRunCommandTests(_ t: TestRunner) {
         t.equal(skin.variable("WindowsDone"), "x", "…but not again right away (no Run loop)")
     }
 
-    t.suite("Plugin: RunCommand Close finishes even when the program stays (review)") {
+    t.suite("Plugin: RunCommand Close waits for exit and preserves late output") {
         let (skin, _) = try makeSkin(t, """
+        [Variables]
+        StubbornDone=
         [Stubborn]
         Measure=Plugin
         Plugin=RunCommand
-        Parameter=trap '' TERM; : > ready.flag; echo ready; while :; do sleep 0.1; done
-        FinishAction=[!SetVariable StubbornDone 1]
+        Parameter=trap '' TERM; echo ready; : > ready.flag; while [ ! -f finish.flag ]; do sleep 0.05; done; echo late
+        OutputFile=stubborn.txt
+        OutputType=UTF8
+        FinishAction=[!SetVariable StubbornDone "[#StubbornDone]x"]
         [Both]
         Measure=Plugin
         Plugin=RunCommand
@@ -1237,21 +1242,32 @@ private func runPluginRunCommandTests(_ t: TestRunner) {
         Plugin=RunCommand
         Parameter=echo "$LANG$LC_ALL$LC_CTYPE"
         """)
-        let savedGrace = RunCommandMeasure.closeGrace
-        RunCommandMeasure.closeGrace = 0.2
-        defer { RunCommandMeasure.closeGrace = savedGrace }
+        let finish = skin.directory.appendingPathComponent("finish.flag")
+        defer {
+            try? Data().write(to: finish)
+            skin.close()
+        }
         let stubborn = measure(skin, "Stubborn", RunCommandMeasure.self)
         stubborn.execute(command: "Run")
         // Close only once the shell ignores TERM (it starts in the skin's folder); a loaded machine may take a while.
         let ready = skin.directory.appendingPathComponent("ready.flag").path
         t.check(spin(10) { FileManager.default.fileExists(atPath: ready) }, "the shell ignores TERM")
         stubborn.execute(command: "Close")
-        t.check(spin(3) { !stubborn.isRunning }, "the run ends after the grace period")
+        spin(for: 1.2)  // Past the old one-second cutoff, while the shell still ignores TERM.
+        t.check(stubborn.isRunning, "Close keeps waiting asynchronously for the program")
+        t.equal(stubborn.value, 0)
+        t.equal(skin.variable("StubbornDone"), "", "no early FinishAction")
+        let outputFile = skin.directory.appendingPathComponent("stubborn.txt")
+        t.check(!FileManager.default.fileExists(atPath: outputFile.path), "OutputFile waits for the full output")
+        stubborn.execute(command: "Run")
+        t.equal(stubborn.value, 101, "the same program is still active after Close")
+        try Data().write(to: finish)
+        t.check(spin(5) { !stubborn.isRunning }, "the program exits after writing its late output")
         t.equal(stubborn.value, 1)
-        t.equal(skin.variable("StubbornDone"), "1", "FinishAction runs \"even if the program does not terminate\"")
-        t.equal(stubborn.runningJobCount, 1, "the program is still running, detached")
-        stubborn.skinWillClose()
-        t.equal(stubborn.runningJobCount, 0, "State=Hide: unloading kills detached programs too")
+        t.equal(stubborn.stringValue, "ready\nlate\n")
+        t.equal(try? String(contentsOf: outputFile, encoding: .utf8), "ready\nlate\n")
+        t.equal(skin.variable("StubbornDone"), "x", "FinishAction runs once, after the actual exit")
+        t.equal(stubborn.runningJobCount, 0, "no detached program remains")
 
         let both = measure(skin, "Both", RunCommandMeasure.self)
         both.execute(command: "Run")

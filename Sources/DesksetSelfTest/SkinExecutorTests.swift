@@ -470,14 +470,13 @@ private func runSeamTests(_ t: TestRunner) {
         executor.runPending(where: { $0 == .async })
         t.equal(skin.variable("Failed"), "1")
 
-        // Close: the run finishes without the program once the grace period is over, which is waited for on the
-        // skin's executor; unloading the skin cancels that wait.
+        // Close does not schedule a forced completion. Unloading still cancels the outstanding Timeout.
+        let timeout = executor.pending.first { $0.kind == .after(86_400) }
         skin.execute("[!CommandMeasure Stay Run][!CommandMeasure Stay Close]", from: nil)
-        let grace = executor.pending.first { $0.kind == .after(RunCommandMeasure.closeGrace) }
-        t.check(grace != nil, "the grace period after Close waits on the skin's executor (\(executor.pendingKinds))")
+        t.equal(executor.pendingKinds.filter { $0 != .async }, [.after(86_400)], "Close adds no grace period")
         t.equal(skin.variable("Stayed"), nil)
         skin.close()
-        t.check(grace?.work.isCancelled == true, "unloading the skin cancels it")
+        t.check(timeout?.work.isCancelled == true, "unloading the skin cancels Timeout")
         executor.runPending()
         t.equal(skin.variable("Stayed"), nil)
     }

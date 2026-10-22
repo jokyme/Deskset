@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-// Clean-room implementation from the public manual only: https://docs.rainmeter.net/manual/plugins/runcommand/
+// Clean-room implementation from the public manual only: https://docs-v5.rainmeter.net/manual/measures/runcommand/
 
 /// `Plugin=RunCommand`: runs a command on `!CommandMeasure M "Run"` and captures its standard output.
 ///
@@ -21,9 +21,9 @@ import Foundation
 /// - `State` has no meaning for command-line programs (no console windows on the Mac); with `State=Hide` (default) a
 ///   still running program is killed when the skin is refreshed or unloaded, as the manual says. Each run is its own
 ///   process group, so Close / Kill / Timeout reach the programs a shell command started too. Close = SIGTERM,
-///   Kill = SIGKILL. `Timeout` closes (or, with State=Hide, kills) the program and finishes the run with the output
-///   received so far — FinishAction runs "even if the program does not actually terminate"; so does Close when the
-///   program is still running `closeGrace` (1 s) later. Such programs are still killed on unload with State=Hide.
+///   Kill = SIGKILL. Close keeps collecting output until the program exits, even if it ignores SIGTERM. `Timeout`
+///   separately closes (or, with State=Hide, kills) the program and finishes the run with the output received so far,
+///   even if the program does not actually terminate. Such programs are still killed on unload with State=Hide.
 /// - Output is decoded as UTF-8 (Windows-1252 when it is not valid UTF-8): Mac programs write UTF-8 whatever
 ///   `OutputType` says. `OutputFile` is written in the `OutputType` encoding: UTF16 (default) = UTF-16 LE with BOM,
 ///   UTF8 = UTF-8 without BOM, ANSI = Windows-1252.
@@ -49,16 +49,14 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private var reported: Set<String> = []
     /// The output of a finished program is being decoded / saved (`finish`).
     private var finishing = false
-    /// Programs the measure no longer waits for (stopped by Timeout or Close but still running); with State=Hide they
+    /// Programs the measure no longer waits for (stopped by Timeout but still running); with State=Hide they
     /// are killed when the skin is unloaded, like the running one.
     private var detached: [SkinProcess] = []
-    /// Timeouts and Close grace periods waiting on the skin's executor; cancelled when the skin is unloaded.
+    /// Timeouts waiting on the skin's executor; cancelled when the skin is unloaded.
     private var waits: [SkinScheduledWork] = []
 
     /// Maximum bytes of output kept.
     static let maxOutput = 16 * 1024 * 1024
-    /// How long a program may take to end after Close before the run finishes without it (seconds; tests shorten it).
-    static var closeGrace: TimeInterval = 1
 
     public var isRunning: Bool { job != nil }
 
@@ -271,15 +269,8 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
             setState(105)
             return
         }
-        guard sig == SIGTERM else { return }
-        // Manual: "Any FinishAction will run even if the program does not actually terminate". A program that ignores
-        // the request is no longer waited for after a moment: the run finishes with the output so far.
-        let generation = runGeneration
-        schedule(after: RunCommandMeasure.closeGrace) { [weak self] in
-            guard let self, self.runGeneration == generation, !self.finishing, let job = self.job else { return }
-            self.detach(job)
-            self.finish(generation: generation, timedOut: false)
-        }
+        // Close only requests termination. If the program refuses it, keep the same job and its output readers
+        // until onExit completes the run. Only Timeout may finish before exit; neither command waits on this thread.
     }
 
     // MARK: Text
