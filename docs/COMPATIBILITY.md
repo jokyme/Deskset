@@ -2244,13 +2244,16 @@ Intel Macs are untested.
 
 #### RunCommand: values, error codes, State, Close, Kill, Timeout, output
 - **Windows:** -1 before the first run, 0 running, 1 success, 100–106 errors; `State` Hide / Show / Minimized /
-  Maximized; Close / Kill; OutputType UTF16 / UTF8 / ANSI.
+  Maximized; Close continues gathering output if the program refuses to close; only Timeout may run FinishAction
+  before actual exit ([manual](https://docs-v5.rainmeter.net/manual/measures/runcommand/)). OutputType UTF16 / UTF8 / ANSI.
 - **Mac:** the same codes; the exit status does not matter; standard error is discarded (`2>&1` keeps it); output
   capped at 16 MB. Command-line programs have no window, so `State` only decides whether a program is killed on
-  refresh (Hide, the default). Close = SIGTERM, Kill = SIGKILL; a program ignoring Close for a second is no longer
-  waited for. Output is read as UTF-8 whatever OutputType says; OutputFile is written in the OutputType encoding.
-- **Why:** no console windows on the Mac; Mac programs write UTF-8.
-- **Skin impact:** none.
+  refresh / unload (Hide, the default). Close = SIGTERM, Kill = SIGKILL, to the process group. Close keeps collecting
+  output until exit, without blocking the skin; Run returns 101 meanwhile, and OutputFile / FinishAction wait for
+  final output. A configured Timeout still finishes with the output so far, even if its SIGTERM request is ignored
+  (SIGKILL with State=Hide). Output is read as UTF-8 whatever OutputType says; OutputFile uses its specified encoding.
+- **Why:** no Windows close-message equivalent for Mac command-line programs; Mac programs write UTF-8.
+- **Skin impact:** Close no longer cuts off output after one second. Use Kill or a positive Timeout for a bounded run.
 - **Status:** emulated
 
 ### 9.6 Files and folders
