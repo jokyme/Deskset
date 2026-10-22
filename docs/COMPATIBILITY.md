@@ -539,6 +539,9 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Windows:** strftime codes with the `#` flag; value = seconds since 1601; Rainmeter 5.0's `TimeStampFormat` also reads ordinal, week-number and ISO week dates and `%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z` (offsets converted to UTC); Uptime
   `%1`…`%4` with printf specs; FormatLocale uses Windows locale data.
 - **Mac:** the same codes, including the new 5.0 `TimeStampFormat` codes.
+  Unmasked `TimeStamp` values support parenthesized formulas and follow normal option-read timing
+  (`DynamicVariables` and `!SetOption`). A nonempty `TimeStampFormat` with missing or mismatched input reports an
+  error and uses timestamp zero. See [TimeStamp input handling](compat/engine.md#timestamp-formulas-and-missing-formatted-input).
   Judgment calls: `%r` is upper-case "10:55:03 PM"; `%Z` is the English zone name; unknown
   codes are shown as written; an empty Format means `%H:%M:%S`; with Format set, the number is the leading number
   of the text; TimeZone accepts fractional hours and is not applied to TimeStamp values (numeric ones included);

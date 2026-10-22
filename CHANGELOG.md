@@ -2,6 +2,12 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## Unreleased
+
+### Fixed
+
+- Time measures now evaluate parenthesized `TimeStamp` formulas, including variable and measure references, when their options are read. A nonempty `TimeStampFormat` without a matching `TimeStamp` now reports an error instead of silently using the current time.
+
 ## 0.5.0
 
 This release makes skins easier to manage and debug, improves text editing and graphics, and adds more Rainmeter 5.0 controls.

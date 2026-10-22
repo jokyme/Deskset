@@ -486,6 +486,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: localized dates may be spelled slightly differently.
 - Status: emulated
 
+### TimeStamp formulas and missing formatted input
+- Windows (Rainmeter): [TimeStamp](https://docs.rainmeter.net/manual/measures/time/#TimeStamp) accepts a numeric
+  timestamp or a formula defining one. [Formulas](https://docs.rainmeter.net/manual/formulas/) in numeric options
+  need enclosing parentheses. [TimeStampFormat](https://docs.rainmeter.net/manual/measures/time/#TimeStampFormat)
+  requires a matching TimeStamp and reports an error when it is missing or does not match.
+- Mac (Deskset): unmasked, parenthesized TimeStamp values use the same formula evaluator as other numeric options,
+  including variable and measure references. Evaluation happens when options are read: static values remain fixed,
+  `DynamicVariables=1` rereads them on updates, and `!SetOption` requests a reread. A nonempty TimeStampFormat keeps
+  its text input, even if it starts with a number or parentheses. Missing formatted input follows the existing
+  invalid-timestamp path: timestamp zero and one diagnostic per measure instance. With neither input nor mask,
+  the measure still uses the clock. DST codes retain their existing local-time behavior.
+- Why: implement the documented input forms without interpreting formatted date text as a numeric prefix or
+  changing the [dynamic-variable lifecycle](https://docs.rainmeter.net/manual/variables/#DynamicVariables).
+  The manual specifies an error for invalid formatted input but not its numeric fallback or diagnostic frequency.
+- Skin impact: timestamp arithmetic works without an intermediate Calc measure; an incomplete formatted date no
+  longer displays the current time as though parsing succeeded.
+- Status: emulated; regression fixtures in `TimeMeasureTests.swift` (`swift run DesksetSelfTest "Time measure:"`).
+
 ### Actions, bangs and Substitute
 - Windows (Rainmeter): `[!Bang arg "arg with spaces"]`, magic quotes `"""…"""`, legacy `!Rainmeter…` bang names
   (/manual/bangs/); Substitute pairs and RegExpSubstitute use PCRE (/manual/measures/general-options/substitute/).
