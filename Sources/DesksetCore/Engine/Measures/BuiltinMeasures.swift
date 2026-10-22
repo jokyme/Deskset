@@ -94,6 +94,8 @@ public final class TimeMeasure: Measure {
     private lazy var timeZone = skin.skinClock.timeZone()
     private var locale = TimeFormatting.defaultLocale
     private var timeStampText = ""
+    /// Numeric formulas are option values: freeze them until the next option read, like other numeric options.
+    private var timeStampFormulaValue: Double?
     private var timeStampFormat: String?
     private var timeStampLocale: Locale?
     private var loggedTimeStampError = false
@@ -116,6 +118,12 @@ public final class TimeMeasure: Measure {
         timeStampText = string("TimeStamp").trimmingCharacters(in: .whitespaces)
         timeStampFormat = option("TimeStampFormat")
         timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"), local: systemLocale)
+        // A mask owns the input, including text that begins with '(' or a number. Without a mask, the manual
+        // allows a parenthesized timestamp formula; do not parse date strings as numeric prefixes.
+        timeStampFormulaValue = nil
+        if timeStampFormat?.isEmpty ?? true, timeStampText.hasPrefix("(") {
+            timeStampFormulaValue = Formula.number(timeStampText) { self.skin.formulaValue(of: $0, from: self) }
+        }
     }
 
     public override func computeValue() -> Double {
@@ -123,6 +131,8 @@ public final class TimeMeasure: Measure {
         let systemLocale = skin.locale
         if timeStampText.isEmpty {
             timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
+        } else if let timeStampFormulaValue {
+            timestamp = timeStampFormulaValue
         } else if let parsed = TimeFormatting.parseTimeStamp(timeStampText, format: timeStampFormat,
                                                               locale: timeStampLocale, now: clock.now(),
                                                               localTimeZone: clock.timeZone(),

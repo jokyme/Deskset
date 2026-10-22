@@ -486,6 +486,30 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: localized dates may be spelled slightly differently.
 - Status: emulated
 
+### TimeStamp formulas and empty-input compatibility
+- Windows (Rainmeter): [TimeStamp](https://docs.rainmeter.net/manual/measures/time/#TimeStamp) accepts a numeric
+  timestamp or a formula defining one. [Formulas](https://docs.rainmeter.net/manual/formulas/) in numeric options
+  need enclosing parentheses. [TimeStampFormat](https://docs.rainmeter.net/manual/measures/time/#TimeStampFormat)
+  requires a matching TimeStamp and reports an error when it is missing or does not match.
+- Mac (Deskset): unmasked, parenthesized TimeStamp values use the same formula evaluator as other numeric options,
+  including variable and measure references. Evaluation happens when options are read: static values remain fixed,
+  `DynamicVariables=1` rereads them on updates, and `!SetOption` requests a reread. A nonempty TimeStampFormat keeps
+  its nonempty text input, even if it starts with a number or parentheses. Missing, explicitly empty and
+  variable-resolved empty TimeStamp values retain Deskset's existing current-clock fallback, with or without a
+  mask. Nonempty invalid input retains the existing timestamp-zero fallback and one diagnostic per measure
+  instance. DST codes retain their existing local-time behavior.
+- Why: implement the documented input forms without interpreting formatted date text as a numeric prefix or
+  changing the [dynamic-variable lifecycle](https://docs.rainmeter.net/manual/variables/#DynamicVariables).
+  The manual requires an error for missing formatted input but does not distinguish an absent option from an
+  explicit or variable-resolved empty value, or define its numeric fallback or diagnostic frequency. Original
+  runtime behavior for those cases has not been verified. Stricter empty-input validation is deferred rather
+  than changing existing skins' initialization or requiring skin migration in this formula-support change.
+- Skin impact: timestamp arithmetic works without an intermediate Calc measure; existing empty-input skins,
+  including the unmodified Countdown, keep their prior behavior and do not require a new Disabled option.
+- Status: formula support emulated; empty-input fallback is a retained Deskset compatibility deviation, not a
+  claim of full Rainmeter parity. Regression fixtures: `TimeMeasureTests.swift`
+  (`swift run DesksetSelfTest "Time measure:"`).
+
 ### Actions, bangs and Substitute
 - Windows (Rainmeter): `[!Bang arg "arg with spaces"]`, magic quotes `"""…"""`, legacy `!Rainmeter…` bang names
   (/manual/bangs/); Substitute pairs and RegExpSubstitute use PCRE (/manual/measures/general-options/substitute/).

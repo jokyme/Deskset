@@ -484,7 +484,11 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 #### 时间与开机时长格式
 - **Windows：** 带 `#` 标志的 strftime 格式码；数值 = 自 1601 年起的秒数；Rainmeter 5.0 的 `TimeStampFormat` 还支持序数日期、周数日期、ISO 周日期和 `%F`、`%g`、`%G`、`%u`、`%V`、`%z`、`%Z`（时区偏移换算到 UTC）；Uptime 用
   `%1`…`%4` 加 printf 格式；FormatLocale 使用 Windows 的区域数据。
-- **Mac：** 格式码相同，包括 5.0 新增的 `TimeStampFormat` 格式码。取舍判断：`%r` 为大写的 “10:55:03 PM”；
+- **Mac：** 格式码相同，包括 5.0 新增的 `TimeStampFormat` 格式码。未指定格式掩码时，`TimeStamp` 支持括号包围的公式，
+  并遵循通常的选项读取时机（`DynamicVariables` 和 `!SetOption`）。为兼容已有皮肤，缺少或为空的 `TimeStamp`
+  仍使用当前时间，即使格式掩码非空。这与手册中缺少输入应报错的规则不同，原版对空输入的确切行为尚未验证。
+  详见 [TimeStamp 输入处理](compat/engine.md#timestamp-formulas-and-empty-input-compatibility)。
+  取舍判断：`%r` 为大写的 “10:55:03 PM”；
   `%Z` 为英文时区名；未知格式码原样输出；Format 为空时
   等同 `%H:%M:%S`；设置了 Format 时，数值取文字开头的数字；TimeZone 接受小数小时，且不作用于 TimeStamp 的值（数字形式的
   也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1；Uptime 的数值保留秒的小数部分。区域格式（`%c`、`%x`）来自
