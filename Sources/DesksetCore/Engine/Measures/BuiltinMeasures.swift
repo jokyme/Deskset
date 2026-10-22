@@ -129,7 +129,7 @@ public final class TimeMeasure: Measure {
     public override func computeValue() -> Double {
         let clock = skin.skinClock
         let systemLocale = skin.locale
-        if timeStampText.isEmpty && (timeStampFormat?.isEmpty ?? true) {
+        if timeStampText.isEmpty {
             timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
         } else if let timeStampFormulaValue {
             timestamp = timeStampFormulaValue

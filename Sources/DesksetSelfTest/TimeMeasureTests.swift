@@ -3,14 +3,16 @@ import Foundation
 
 // TimeStamp forms and option-update behavior, from the public Time measure and Variables manual pages.
 func runTimeMeasureTests(_ t: TestRunner) {
-    t.suite("Time measure: Countdown parses pending dates only after submission") {
+    t.suite("Time measure: unchanged Countdown keeps empty-input initialization") {
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
         let url = repo.appendingPathComponent("DefaultSkins/Stationery/Countdown/Small.ini")
         let doc = IniDocument.parse(try String(contentsOf: url, encoding: .utf8))
         let variables = doc.section(named: "Variables")!
-        // Use the shipped parsing sections without starting the skin's input UI or settings-file commands.
-        let sections = ["MeasurePendingDate", "MeasurePendingISO", "MeasurePendingOK"].map { name in
+        let daysTo = try String(contentsOf: repo.appendingPathComponent("DefaultSkins/Stationery/@Resources/Suite/DaysTo.inc"), encoding: .utf8)
+        // Use the shipped display and parsing sections without starting its input UI or settings-file commands.
+        let sections = ["MeasureDaysKind", "MeasureTargetStamp", "MeasureDateISO", "MeasureEventDate",
+                        "MeasurePendingDate", "MeasurePendingISO", "MeasurePendingOK"].map { name in
             var section = doc.section(named: name)!
             if name == "MeasurePendingOK" {
                 section.setValue("[!SetVariable SavedDate \"[MeasurePendingISO]\"]", forKey: "IfTrueAction")
@@ -22,39 +24,90 @@ func runTimeMeasureTests(_ t: TestRunner) {
         [Variables]
         PendingDate=\(variables["PendingDate"]!)
         PendingEdits=\(variables["PendingEdits"]!)
+        CountdownDate=1970-01-04
+        DaysToDate=#CountdownDate#
+        DaysToYearly=0
+        DaysToSince=1969-12-31
+        TestNow=11644473600
         SavedDate=
         Retried=0
-        [MeasureDTToday]
-        Measure=Calc
-        Formula=Floor(11644473600 / 86400)
+        @Include=DaysTo.inc
         \(sections)
-        """)
+        """, files: ["Root/Sub/DaysTo.inc": daysTo])
         defer { skin.close() }
+        skin.skinClock = .fixed(Date(timeIntervalSince1970: 0), timeZone: TimeZone(secondsFromGMT: 0)!)
         let pending = skin.measure(named: "MeasurePendingDate")!
         skin.update()
-        t.check(pending.disabled, "the empty initial field has not been submitted")
-        t.equal(pending.value, 0)
-        t.equal(skin.measure(named: "MeasurePendingOK")!.value, 0)
-        t.check(host.logs.isEmpty, "startup must not try to parse the empty field")
+        t.check(!pending.disabled, "existing skins do not need a new Disabled option")
+        t.check(pending.value > 0, "an empty pending field retains the current-clock fallback")
+        t.equal(skin.measure(named: "MeasurePendingOK")!.value, 1)
+        t.check(host.logs.isEmpty, "startup must remain free of empty-input diagnostics")
+        t.equal(skin.measure(named: "MeasureEventDate")!.stringValue, "1970-01-04")
+        t.equal(skin.measure(named: "MeasureDaysTo")!.value, 3)
         t.equal(skin.resolve("#Retried#", in: nil, sectionVariables: true), "0")
-        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "")
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "", "initialization does not save an edit")
 
-        skin.execute("[!SetVariable PendingEdits 1][!UpdateMeasureGroup Pending]", from: nil)
-        t.check(!pending.disabled, "an explicitly submitted empty date is still validated")
-        t.equal(pending.value, 0)
+        skin.execute("[!SetVariable PendingDate not-a-date][!SetVariable PendingEdits 1][!UpdateMeasureGroup Pending]", from: nil)
+        t.equal(pending.value, 0, "nonempty invalid input is still rejected")
         t.equal(host.logs.filter { $0.contains("[MeasurePendingDate] TimeStamp") }.count, 1)
         t.equal(skin.resolve("#Retried#", in: nil, sectionVariables: true), "1")
         t.equal(skin.resolve("#PendingEdits#", in: nil, sectionVariables: true), "0")
         t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "")
-        skin.execute("[!UpdateMeasureGroup Pending]", from: nil)
-        t.check(pending.disabled, "waiting for the retry keeps parsing idle")
+        t.equal(skin.measure(named: "MeasureEventDate")!.stringValue, "1970-01-04", "rejected edits do not change the display")
+        skin.execute("[!SetVariable PendingDate \"\"][!UpdateMeasureGroup Pending]", from: nil)
+        t.check(pending.value > 0, "clearing a pending field restores the current-clock fallback")
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "", "idle clearing does not save an edit")
         skin.execute("[!SetVariable PendingDate 1970-1-2][!SetVariable PendingEdits 1][!UpdateMeasureGroup Pending]", from: nil)
-        t.check(!pending.disabled)
-        t.equal(pending.value, 11_644_560_000, "a valid retry re-enables parsing")
+        t.equal(pending.value, 11_644_560_000)
         t.equal(skin.measure(named: "MeasurePendingISO")!.stringValue, "1970-01-02")
         t.equal(skin.measure(named: "MeasurePendingOK")!.value, 1)
-        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "1970-01-02")
+        t.equal(skin.resolve("#SavedDate#", in: nil, sectionVariables: true), "1970-01-02", "a valid retry reaches the save action")
         t.equal(host.logs.filter { $0.contains("[MeasurePendingDate] TimeStamp") }.count, 1)
+    }
+
+    t.suite("Time measure: missing and empty timestamps retain the clock fallback") {
+        // Preserve Deskset's legacy behavior, not a claim about Rainmeter's undocumented empty-input fallback.
+        for input in ["", "TimeStamp=", "TimeStamp=#Pending#"] {
+            for mask in ["", "TimeStampFormat=%Y-%m-%d"] {
+                let (skin, host) = try makeSkin(t, """
+                [Variables]
+                Pending=
+                [Time]
+                Measure=Time
+                \(input)
+                \(mask)
+                TimeZone=0
+                DaylightSavingTime=0
+                """)
+                defer { skin.close() }
+                skin.skinClock = .fixed(Date(timeIntervalSince1970: 3600), timeZone: TimeZone(secondsFromGMT: 0)!)
+                skin.update()
+                t.equal(skin.measure(named: "Time")!.value, 11_644_477_200, "\(input), \(mask)")
+                t.check(host.logs.isEmpty, "missing and empty input must not introduce errors")
+            }
+        }
+        let (skin, host) = try makeSkin(t, """
+        [Variables]
+        Pending=1970-01-02
+        [Time]
+        Measure=Time
+        TimeStamp=#Pending#
+        TimeStampFormat=%Y-%m-%d
+        DynamicVariables=1
+        TimeZone=0
+        DaylightSavingTime=0
+        """)
+        defer { skin.close() }
+        skin.skinClock = .fixed(Date(timeIntervalSince1970: 3600), timeZone: TimeZone(secondsFromGMT: 0)!)
+        skin.update()
+        t.equal(skin.measure(named: "Time")!.value, 11_644_560_000)
+        skin.execute("[!SetVariable Pending \"\"]", from: nil)
+        skin.update()
+        t.equal(skin.measure(named: "Time")!.value, 11_644_477_200, "a cleared variable returns to the clock")
+        skin.execute("[!SetVariable Pending 1970-01-03]", from: nil)
+        skin.update()
+        t.equal(skin.measure(named: "Time")!.value, 11_644_646_400, "a new date resumes masked parsing")
+        t.check(host.logs.isEmpty)
     }
 
     t.suite("Time measure: timestamp formulas and numeric values") {
@@ -177,9 +230,6 @@ func runTimeMeasureTests(_ t: TestRunner) {
         DynamicVariables=1
         TimeZone=0
         DaylightSavingTime=0
-        [Missing]
-        Measure=Time
-        TimeStampFormat=%Y-%m-%d
         [MaskedFormula]
         Measure=Time
         TimeStamp=(11644473600 + 3600)
@@ -192,7 +242,7 @@ func runTimeMeasureTests(_ t: TestRunner) {
         defer { skin.close() }
         skin.skinClock = .fixed(Date(timeIntervalSince1970: 3600), timeZone: TimeZone(secondsFromGMT: 0)!)
         for _ in 0..<3 { skin.update() }
-        for name in ["Invalid", "Missing", "MaskedFormula"] {
+        for name in ["Invalid", "MaskedFormula"] {
             t.equal((skin.measure(named: name) as! TimeMeasure).timestamp, 0, name)
             t.equal(host.logs.filter { $0.contains("[\(name)] TimeStamp") }.count, 1, "one diagnostic for \(name)")
         }
