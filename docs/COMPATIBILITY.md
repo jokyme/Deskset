@@ -210,6 +210,15 @@ In short: skin files, variables, formulas and bangs follow the manual. Layout ma
 The differences come from macOS itself (points instead of pixels, other fonts, no drive letters, no registry)
 and from judgment calls where the manual is silent. Detailed notes: [`compat/engine.md`](compat/engine.md).
 
+#### Inherited plugin selection (Rainmeter 5.0 RC1)
+- **Windows:** [`@Inherit`](https://docs-v5.rainmeter.net/manual/skins/inherit/) also applies to `Plugin`;
+  `Measure`, `Meter` and the inheritance directive itself cannot be inherited.
+- **Mac:** plugin selection now uses the child's value, then later parents, with child-context variables and the
+  existing empty-value fallback. Legacy direct `Plugin` declarations and aliases are unchanged.
+- **Skin impact:** shared plugin templates work without copying `Plugin` into every measure. Refresh after upgrading;
+  no skin edits are needed. Dynamic reads do not replace a loaded plugin; source changes request a reload.
+- **Status:** emulated; Windows runtime comparison is pending. See [scope and lifecycle](compat/engine.md#inherited-plugin-selection).
+
 ### 6.1 Layout and window size
 
 #### Coordinates and units

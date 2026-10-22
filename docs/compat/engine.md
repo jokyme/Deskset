@@ -1005,6 +1005,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Lua-driven layouts (Enigma's Taskbar skin widths, calendars, notes, readers) run their scripts now (lua.md); their
   first update sees provisional meter geometry (§1).
 
+### Inherited plugin selection
+- Windows (Rainmeter): the [5.0 option-inheritance manual](https://docs-v5.rainmeter.net/manual/skins/inherit/)
+  permits `Plugin` to be inherited; only `Meter`, `Measure` and the inheritance directive itself are excluded.
+  The [5.0 RC1 release notes](https://www.rainmeter.net/changes-5.0/), dated October 12, 2026, retain
+  `Measure=Plugin` alongside the new built-in measure forms. This check uses that explicitly linked v5 manual.
+- Mac (Deskset): inherited `Plugin` is resolved before creating the measure. The child's own nonempty value wins,
+  then later parents, with variables evaluated in the child section. Existing empty-value fallback and legacy
+  plugin names, paths and `.dll` aliases are unchanged. Parent inheritance is not recursive. The current load's
+  `SyntaxVersion` is selected before dispatch, so first load and refresh use the same environment-reference rules.
+- Why: plugin selection must happen before type-specific option reads. The [Plugin manual](https://docs-v5.rainmeter.net/manual/measures/plugin/)
+  disallows dynamic changes to the plugin name. The selected implementation remains fixed until refresh; dynamic
+  option reads and `!SetOption Plugin` do not replace it. Editing the inherited plugin in source requests a reload
+  rather than replacing a live implementation.
+- Skin impact: reusable plugin templates no longer create unsupported, empty measures. No skin migration is needed;
+  refresh an affected skin after upgrading. `Measure` and `Meter` must still be written directly on each section.
+- Status: emulated. Regression coverage includes precedence, empty/absent options, disabled/paused startup, dynamic
+  reads, reloads, an offline JSON parent/child flow and an unchanged legacy fixture. Windows runtime comparison is pending.
+
 ### Rainmeter 5.0 engine additions
 - Windows (Rainmeter 5.0): `[Rainmeter] SyntaxVersion` (`1` default, `2` disables legacy `%Name%` environment
   expansion) / `AppVersion`, `Update=<visible> | Invisible <invisible>` (`Invisible 0` pauses regular updates while
@@ -1019,7 +1037,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   `ReplaceIfExists`, `ProcessAllFiles` / `$FileNr$`, `Parent`, `Bounds`, `OnDropAction` / `OnEnterAction` /
   `OnLeaveAction`), `NumberConversionFormat=Locale` (`String` / `Registry` / `WebParser`), `TimeStampFormat` ISO 8601
   tokens (`%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z`) and week/ordinal dates, Calc `UseRandomSeed`, Loop `ResetValue`,
-  WebParser `JsonPointer` and `KeepOldData`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
+  WebParser `JsonPointer`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
   `[Meter:Attribute(selector, attr)]`), `Meter=TextEdit` (`[$Input]`, `[$Input:MatchN]`, `!TextEdit:*`),
   `StringAlign=Justify…`, and Shape `LineJoin`.
 - Mac (Deskset): the above are implemented. The official 5.0 `!SetZoomFactor` and `!SetZoomFactorGroup` support

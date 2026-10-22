@@ -198,6 +198,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 简而言之：皮肤文件、变量、公式和 bang 都遵循手册。布局与 Windows 100 % 缩放时一致。差异来自 macOS 本身（用点而不是
 像素、字体不同、没有盘符、没有注册表），以及手册未作规定时的取舍判断。详细说明：[`compat/engine.md`](compat/engine.md)。
 
+#### 插件选择的继承（Rainmeter 5.0 RC1）
+- **Windows：** [`@Inherit`](https://docs-v5.rainmeter.net/manual/skins/inherit/) 也适用于 `Plugin`；
+  `Measure`、`Meter` 和继承指令本身不能继承。
+- **Mac：** 创建插件时先取子节自身的值，再取靠后的父节，并在子节上下文解析变量；保留原有空值回退规则。
+  直接声明 `Plugin` 的旧皮肤及插件别名行为不变。
+- **皮肤影响：** 共用插件模板不再需要在每个数据源重复填写 `Plugin`。升级后刷新即可，无需修改皮肤。
+  动态选项读取不会替换已加载的插件；修改源文件中的插件选择会要求重新加载。
+- **状态：** 仿真；Windows 实机对照仍待完成。详见[范围与生命周期](compat/engine.md#inherited-plugin-selection)。
+
 ### 6.1 布局与窗口尺寸
 
 #### 坐标与单位
