@@ -554,6 +554,13 @@ public final class Skin {
         meters = []
         measureIndex = [:]
         meterIndex = [:]
+        let root = RainmeterSection(name: "Rainmeter", section: document.section(named: "Rainmeter")
+                                    ?? IniSection(name: "Rainmeter"), skin: self)
+        rainmeterSection = root
+        // The current load's syntax controls parent and plugin names before their classes are selected.
+        // Reset first so a refresh from version 2 to the default does not retain its resolution rules.
+        settings.syntaxVersion = 1
+        settings.syntaxVersion = readSyntaxVersion(root)
         for section in document.sections {
             let lower = section.name.lowercased()
             if lower == "rainmeter" || lower == "metadata" || lower == "variables" { continue }
@@ -571,9 +578,6 @@ public final class Skin {
         pointerObservers = measures.compactMap { $0 as? SkinPointerObserver }
         outsideObservers = measures.compactMap { $0 as? SkinOutsidePointerObserver }
 
-        let root = RainmeterSection(name: "Rainmeter", section: document.section(named: "Rainmeter")
-                                    ?? IniSection(name: "Rainmeter"), skin: self)
-        rainmeterSection = root
         readSettings(root)
         guard isSupportedSyntaxVersion else {
             measures = []
@@ -630,18 +634,23 @@ public final class Skin {
         return false
     }
 
-    private func readSettings(_ s: RainmeterSection) {
-        var st = SkinSettings()
+    private func readSyntaxVersion(_ s: RainmeterSection) -> Int {
         if let rawSyntax = s.option("SyntaxVersion")?.trimmingCharacters(in: .whitespaces), !rawSyntax.isEmpty {
             if let v = Formula.withLookup({ self.formulaValue(of: $0, from: s) }, { OptionValue.int(rawSyntax) }),
                v == 1 || v == 2 {
-                st.syntaxVersion = v
+                return v
             } else {
                 isSupportedSyntaxVersion = false
                 log("[Rainmeter] Unsupported SyntaxVersion=\(rawSyntax)", level: .error)
                 addIssue("SyntaxVersion=\(rawSyntax) is not supported")
             }
         }
+        return 1
+    }
+
+    private func readSettings(_ s: RainmeterSection) {
+        var st = SkinSettings()
+        st.syntaxVersion = settings.syntaxVersion
         let parsedUpdate = parseUpdateOption(s.option("Update"), in: s)
         st.update = parsedUpdate.update
         st.invisibleUpdate = parsedUpdate.invisibleUpdate
@@ -805,7 +814,18 @@ public final class Skin {
     private func makeMeasure(_ section: IniSection, type rawType: String) -> Measure {
         let type = rawType.trimmingCharacters(in: .whitespaces).lowercased()
         let isPlugin = type == "plugin"
-        let plugin = resolve(section.value(forKey: "Plugin") ?? "", in: nil, sectionVariables: false)
+        let plugin: String
+        if isPlugin {
+            // Plugin is inheritable even though Measure is not. Resolve it before choosing the class, using the
+            // normal own-option / later-parent precedence and the child's variable context. Types stay fixed until
+            // refresh: section variables and later dynamic option changes do not replace a measure's class.
+            let optionScope = SkinSection(name: section.name, section: section, skin: self)
+            optionScope.styles = OptionValue.list(resolve(section.value(forKey: "@Inherit") ?? "",
+                                                         in: optionScope, sectionVariables: false))
+            plugin = resolve(optionScope.rawOption("Plugin") ?? "", in: optionScope, sectionVariables: false)
+        } else {
+            plugin = ""
+        }
         // For `Measure=Plugin` the type is the plugin name (`Plugins\WebParser.dll` → `webparser`), so WebParser
         // child measures find a parent written in the plugin form.
         let effectiveType = isPlugin ? pluginName(plugin) : type
