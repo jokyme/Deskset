@@ -195,7 +195,7 @@ enum MetadataEditingSelfTests {
 
         // A skin's metadata rows have two columns; a folder's one-cell row must not keep the second one, empty and
         // zero wide, or layout squeezes the window below its minimum size (after installing a package, Manage
-        // selects its root folder) and `keepMinimumSize` loops with it until AppKit raises an exception.
+        // selects its root folder).
         t.suite("App: Metadata: a folder after a skin leaves no empty metadata column") {
             let f = try makeFixture(t)
             _ = try f.skinFile("Suite/Alpha/FullMeta.ini",

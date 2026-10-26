@@ -1195,12 +1195,50 @@ enum AppSelfTest {
             }
             t.check(widths.allSatisfy { $0 == width }, "the window keeps its width: \(width) → \(widths)")
             t.check(window.frame.width >= window.minSize.width, "never narrower than its minimum")
-            // Whatever shrinks it below its minimum (AppKit only enforces minSize for the user's drags), it grows back.
+            // Whatever shrinks it below its minimum (AppKit only enforces minSize for the user's drags), it grows back
+            // on the next turn of the run loop.
             window.setFrame(NSRect(x: 100, y: 100, width: 380, height: 660), display: false)
-            t.equal(window.frame.width, window.minSize.width, "restored to its minimum width")
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            // A layout pass may run first and grow it to what its content needs, which can be wider.
+            t.check(window.frame.width >= window.minSize.width, "restored to at least its minimum width")
             t.check(manage.testGridHugging < NSLayoutConstraint.Priority.windowSizeStayPut,
                     "the detail grids never pull the window narrower")
             manage.close()
+        }
+        // The minimum size used to be set back from windowDidResize. When content constraints shrank the window, that
+        // resize ran inside the layout pass, and setting the frame there restarted the pass until AppKit raised an
+        // exception (the crash after installing a package). The frame is now restored on the next turn of the run
+        // loop, and content that keeps shrinking it is left alone after a few attempts.
+        t.suite("App: manage window: its minimum size is restored after the resize, not during it") {
+            guard let app = try makeApp(t) else { return }
+            let manage = ManageWindowController(app: app)
+            defer { manage.close() }
+            guard let window = manage.window, let content = window.contentView else { return t.check(false, "window") }
+            window.setFrame(NSRect(x: 100, y: 100, width: 900, height: 660), display: false)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+            window.setFrame(NSRect(x: 100, y: 100, width: 380, height: 300), display: false)
+            t.equal(window.frame.size, NSSize(width: 380, height: 300), "not set back while the resize is running")
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            t.equal(window.frame.size, window.minSize, "restored right after it")
+            t.check(!manage.testMinimumSizeRestoreGaveUp)
+
+            // Content that insists on a narrower window: the window is restored a few times, then left alone.
+            let squeeze = content.widthAnchor.constraint(equalToConstant: 380)
+            squeeze.isActive = true
+            var narrowest = window.frame.width
+            for _ in 0..<(ManageWindowController.maxMinimumSizeRestores * 4) {
+                window.layoutIfNeeded()
+                narrowest = min(narrowest, window.frame.width)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
+            if narrowest < window.minSize.width {
+                t.check(manage.testMinimumSizeRestoreGaveUp, "stops restoring a size layout keeps undoing")
+            }
+            squeeze.isActive = false
+            window.setFrame(NSRect(x: 100, y: 100, width: 900, height: 660), display: false)
+            window.layoutIfNeeded()
+            t.equal(window.frame.width, 900, "the window is usable again once the content lets go")
         }
         t.suite("App: manage window: on the first launch it opens beside the first widgets") {
             let size = NSSize(width: 900, height: 692), minSize = NSSize(width: 780, height: 520)
