@@ -193,6 +193,29 @@ enum MetadataEditingSelfTests {
             t.equal(doc.section(named: "Metadata")?.keys, IniWriter.metadataKeys)
         }
 
+        // A skin's metadata rows have two columns; a folder's one-cell row must not keep the second one, empty and
+        // zero wide, or layout squeezes the window below its minimum size (after installing a package, Manage
+        // selects its root folder) and `keepMinimumSize` loops with it until AppKit raises an exception.
+        t.suite("App: Metadata: a folder after a skin leaves no empty metadata column") {
+            let f = try makeFixture(t)
+            _ = try f.skinFile("Suite/Alpha/FullMeta.ini",
+                               text: "[Rainmeter]\nUpdate=-1\n[Metadata]\nAuthor=Ada\nVersion=1.0\n")
+            _ = try f.skinFile("Suite/Alpha/NoMeta.ini", text: "[Rainmeter]\nUpdate=-1\n[Meter]\nMeter=String\n")
+            f.app.rescanLibrary()
+            let manage = ManageWindowController(app: f.app)
+            defer { manage.close() }
+            guard let window = manage.window else { return t.check(false, "Manage has a window") }
+
+            for (config, file, columns) in [("Suite\\Alpha", "FullMeta.ini", 2), ("Suite", nil, 1),
+                                            ("Suite\\Alpha", "FullMeta.ini", 2), ("Suite\\Alpha", "NoMeta.ini", 1)] {
+                manage.select(config: config, file: file)
+                t.equal(manage.testMetadataColumns, columns, "\(config) \(file ?? "(folder)")")
+                window.layoutIfNeeded()
+                t.check(window.frame.width >= window.minSize.width,
+                        "\(config) \(file ?? "(folder)"): window keeps its minimum width (\(window.frame.width))")
+            }
+        }
+
         t.suite("App: Metadata: button captures target fileURL and alerts on failure") {
             let f = try makeFixture(t)
             let firstURL = try f.skinFile("Beta/First.ini", text: "[Rainmeter]\nUpdate=-1\n")
