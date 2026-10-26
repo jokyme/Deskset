@@ -133,8 +133,17 @@ enum EngineReloadSelfTests {
                                 && app.controller(for: "Engine\\Other").map { $0 !== other && $0.isStarted } == true
                                 && !opened.current.isEmpty
                         }
+                        // On a failure, where the close got to: whether the closing skin's thread took the close
+                        // (and is free to say so), and whether it has finished closing.
+                        let closeState: String = done ? "" : {
+                            let state = closing.exclusive(timeout: 5) { _ in
+                                "closing \(closing.isClosing), closed \(closing.isClosed)"
+                            } ?? "its thread did not answer within 5 s"
+                            return "; Closer: \(state), didClose \(closing.didClose), target pending "
+                                + "\(app.isLoadPending("Engine\\Target"))"
+                        }()
                         t.check(done, "\(threading) \(step): Target loaded, Victim unloaded, Other refreshed, the page "
-                                + "opened: \(running()), \(opened.current)")
+                                + "opened: \(running()), \(opened.current)\(closeState)")
                         for name in ["Target", "Other"] {
                             if let c = app.controller(for: "Engine\\\(name)") { tracked.append(E.track(c)) }
                         }

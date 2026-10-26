@@ -1224,10 +1224,12 @@ enum AudioSelfTests {
             engine.stopDelay = 0
             engine.silenceCheckInterval = 0.05
             engine.appsPlayingAudio = { [501] }
-            // Every look for 1 s after the verdict (a look 0.05 s after each tap, the tap 0.3 s after the look); the
-            // first delay falls in that second, the second one ends 3 s after the tap that used the first.
-            engine.quickRetapWindow = 1
-            engine.retapDelays = [0.2, 3]
+            // Every look for 2.5 s after the verdict (a look 0.05 s after each tap, the tap 0.3 s after the look); the
+            // first delay falls in that window, the second one ends 6 s after the look that used the first. The window
+            // holds several looks even when a busy Mac coalesces the 0.05 s timers into about a second per look and
+            // tap, and the second delay ends well after the window's last tap.
+            engine.quickRetapWindow = 2.5
+            engine.retapDelays = [0.2, 6]
             engine.makeBackend = { _ in
                 lock.lock(); taken.append(ProcessInfo.processInfo.systemUptime); lock.unlock()
                 return AppSelfTest.SilenceBackend()
@@ -1240,13 +1242,15 @@ enum AudioSelfTests {
             t.check(wait { engine.status(for: key).refusalSuspected }, "the verdict")
             let verdict = ProcessInfo.processInfo.systemUptime
             let before = taps().count
+            // Taps up to 4.5 s after the verdict belong to the window (2.5 s, plus a slow look and tap); the delayed one
+            // comes at least 6 s after the look that used the first delay, which came after the verdict.
             t.check(wait { taps().count >= before + 2 }, "new taps, one look after another")
-            t.check(wait { (taps().last ?? 0) > verdict + 2 }, "and one more after the window, when the delay is over")
+            t.check(wait { (taps().last ?? 0) > verdict + 4.5 }, "and one more after the window, when the delay is over")
             let after = Array(taps().dropFirst(before))
-            let quick = after.filter { $0 <= verdict + 2 }
-            let late = after.filter { $0 > verdict + 2 }
+            let quick = after.filter { $0 <= verdict + 4.5 }
+            let late = after.filter { $0 > verdict + 4.5 }
             t.check(quick.count >= 2, "at every look in the window: \(quick.map { $0 - verdict })")
-            t.check((late.first ?? 0) - verdict >= 2.9, "then the next delay: \(late.map { $0 - verdict })")
+            t.check((late.first ?? 0) - verdict >= 5.5, "then the next delay: \(late.map { $0 - verdict })")
             // The delays are used up.
             Thread.sleep(forTimeInterval: 1.0)
             t.equal(taps().count, before + after.count, "no more new taps")
