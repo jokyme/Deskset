@@ -1015,6 +1015,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             }
         }
         while metadataGrid.numberOfRows > 0 { metadataGrid.removeRow(at: 0) }
+        // Columns outlive their rows. A label column left over from the previous skin stays empty under a one-cell
+        // row ("Contains 3 skins."), and an empty column is held at zero width: with the label column's fixed width
+        // that pins the grid, and through it the window, far below `minSize`. `keepMinimumSize` then fights the
+        // layout pass until AppKit gives up and raises an exception.
+        while metadataGrid.numberOfColumns > 0 { metadataGrid.removeColumn(at: 0) }
         var rows = 0
         for key in ["Author", "Version", "License", "Information"] {
             guard var value = ManageModel.metadataValue(metadata, key) else { continue }
@@ -1694,6 +1699,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testNewSkinButton: NSButton { newSkinButton }
     var testAddMetadataButton: NSButton? { addMetadataButton }
     var testMetadataEmptyText: String? { metadataEmptyLabel?.stringValue }
+    var testMetadataColumns: Int { metadataGrid.numberOfColumns }
     var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
     var testTransparencyPopup: NSPopUpButton { transparencyPopup }
     var testStatus: String { statusLabel.stringValue }
