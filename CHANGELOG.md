@@ -2,14 +2,23 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
-## Unreleased
+## 0.5.1
+
+This release fixes a crash after installing skin packages and several skin-engine compatibility issues.
 
 ### Fixed
 
+- Fixed Deskset quitting unexpectedly after installing a skin package, or when the Manage window showed a skin folder after a skin with metadata.
 - TextEdit `InitialText` now follows dynamic variables until first focus. `!TextEdit:Reset` restores that behavior until the next focus, while dismissing or submitting keeps edited text protected.
 - Measure actions can now safely update their own measure: finite chains no longer crash or repeat change notifications, including when numbered conditions are removed during an update.
 - Time measures now evaluate parenthesized `TimeStamp` formulas, including variable and measure references, when their options are read. Existing empty-timestamp behavior is unchanged.
 - RunCommand `Close` now keeps collecting output until the program exits, without an early FinishAction or truncated OutputFile. `Timeout` retains its separate early-completion behavior.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.5.0...v0.5.1)
 
 ## 0.5.0
 

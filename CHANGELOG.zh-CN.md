@@ -2,14 +2,23 @@
 
 [English](CHANGELOG.md)
 
-## 未发布
+## 0.5.1
+
+这一版修复了安装皮肤包后闪退的问题，以及若干皮肤引擎的兼容性问题。
 
 ### 修复
 
+- 修复安装皮肤包后，或在 Manage 窗口中先选中带元数据的皮肤、再选中皮肤文件夹时，Deskset 意外退出的问题。
 - TextEdit 的 `InitialText` 现在会在首次获得焦点前跟随动态变量更新；`!TextEdit:Reset` 会恢复这一行为，直到下次获得焦点。失去焦点或提交后仍会保留已编辑文本。
 - measure 动作现在可安全更新自身：有限的动作链不再崩溃或重复触发变化通知，更新过程中移除带编号的条件也能正常处理。
 - Time 数据源现在会在读取选项时计算括号包围的 `TimeStamp` 公式，支持变量和数据源引用。空时间戳的既有行为保持不变。
 - RunCommand 的 `Close` 现在会持续收集输出直到程序退出，不再提前执行 FinishAction 或截断 OutputFile。`Timeout` 仍保留独立的提前完成行为。
+
+### 升级说明
+
+- 你的皮肤、已保存的布局和设置都会保留。仍支持 macOS 13 及以上版本的 Apple 芯片和 Intel Mac。
+
+[查看此版本的全部改动](https://github.com/jokyme/Deskset/compare/v0.5.0...v0.5.1)
 
 ## 0.5.0
 
