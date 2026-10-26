@@ -124,6 +124,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private static let labelColumnWidth: CGFloat = 104
     /// The window had no saved frame and was centered: `placeBeside` may still move it.
     private var placedByDefault = false
+    /// A minimum-size check is queued for the next turn of the main run loop (`windowDidResize`).
+    private var minimumSizeCheckPending = false
+    /// Frames `keepMinimumSize` restored since the user last resized the window, to stop when layout keeps undoing it.
+    private var minimumSizeRestores = 0
+    private var minimumSizeRestoreGaveUp = false
     private var interfaceReady = false
 
     init(app: AppController) {
@@ -198,13 +203,42 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let frame = window.frame
         let width = max(frame.width, window.minSize.width), height = max(frame.height, window.minSize.height)
         guard width != frame.width || height != frame.height else { return }
+        // Content constraints that keep the window this small would shrink it again after every restore: give up
+        // instead of resizing back and forth, and leave the window as layout wants it. Nothing else is meant to make
+        // it smaller than its minimum, so a few restores are plenty until the user resizes it.
+        guard minimumSizeRestores < ManageWindowController.maxMinimumSizeRestores else {
+            if !minimumSizeRestoreGaveUp {
+                minimumSizeRestoreGaveUp = true
+                Log.write("Manage window keeps shrinking to \(Int(frame.width)) × \(Int(frame.height)) after being "
+                          + "restored to its minimum size; left as it is.", level: .warning)
+            }
+            return
+        }
+        minimumSizeRestores += 1
         Log.write("Manage window shrank to \(Int(frame.width)) × \(Int(frame.height)); restored to its minimum size. "
                   + Thread.callStackSymbols.prefix(12).joined(separator: " | "), level: .warning)
         window.setFrame(NSRect(x: frame.minX, y: frame.maxY - height, width: width, height: height), display: true)
     }
 
+    /// Restores between two resizes by the user before `keepMinimumSize` stops fighting the layout.
+    static let maxMinimumSizeRestores = 3
+
+    /// The minimum size is restored on the next turn of the main run loop, never from inside `windowDidResize`: when
+    /// content constraints resize the window, that resize happens inside the layout pass, and setting the frame back
+    /// there starts the pass again until AppKit raises an exception and the app aborts.
     func windowDidResize(_ notification: Notification) {
-        keepMinimumSize()
+        guard !minimumSizeCheckPending else { return }
+        minimumSizeCheckPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.minimumSizeCheckPending = false
+            self.keepMinimumSize()
+        }
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        minimumSizeRestores = 0
+        minimumSizeRestoreGaveUp = false
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -1017,8 +1051,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         while metadataGrid.numberOfRows > 0 { metadataGrid.removeRow(at: 0) }
         // Columns outlive their rows. A label column left over from the previous skin stays empty under a one-cell
         // row ("Contains 3 skins."), and an empty column is held at zero width: with the label column's fixed width
-        // that pins the grid, and through it the window, far below `minSize`. `keepMinimumSize` then fights the
-        // layout pass until AppKit gives up and raises an exception.
+        // that pins the grid, and through it the window, far below `minSize`.
         while metadataGrid.numberOfColumns > 0 { metadataGrid.removeColumn(at: 0) }
         var rows = 0
         for key in ["Author", "Version", "License", "Information"] {
@@ -1700,6 +1733,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testAddMetadataButton: NSButton? { addMetadataButton }
     var testMetadataEmptyText: String? { metadataEmptyLabel?.stringValue }
     var testMetadataColumns: Int { metadataGrid.numberOfColumns }
+    var testMinimumSizeRestoreGaveUp: Bool { minimumSizeRestoreGaveUp }
     var testDisplayMonitorPopup: NSPopUpButton { displayMonitorPopup }
     var testTransparencyPopup: NSPopUpButton { transparencyPopup }
     var testStatus: String { statusLabel.stringValue }
