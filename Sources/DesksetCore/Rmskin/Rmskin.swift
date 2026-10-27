@@ -129,6 +129,20 @@ public struct RmskinManifest: Equatable {
         return true
     }
 
+    /// The Rainmeter release whose skin features Deskset implements (all of its revisions).
+    public static let compatibleRainmeterVersion = "5.0.0"
+
+    /// `MinimumRainmeter` (or a legacy package's `MinRainmeterVer`) asks for a release newer than
+    /// `compatibleRainmeterVersion`. Revisions are ignored: every 5.0 revision counts as 5.0. Rainmeter refuses such a
+    /// package ("Rainmeter will not install the skin on a system that does not meet the requirements"); Deskset only
+    /// warns, since the skins may not need anything newer.
+    public var requiresNewerRainmeter: Bool {
+        let minimum = minimumRainmeter.trimmingCharacters(in: .whitespaces)
+        guard !minimum.isEmpty else { return false }
+        let release = RmskinManifest.versionComponents(minimum).prefix(3).map(String.init).joined(separator: ".")
+        return !RmskinManifest.version(RmskinManifest.compatibleRainmeterVersion, isAtLeast: release)
+    }
+
     public static func versionComponents(_ version: String) -> [Int] {
         let trimmed = version.trimmingCharacters(in: .whitespaces)
         if !trimmed.contains("."), let packed = Int(trimmed), packed >= 1_000_000 {
@@ -467,6 +481,10 @@ public enum RmskinPackage {
             }
         }
 
+        if inspection.manifest.requiresNewerRainmeter {
+            inspection.warnings.append("The package requires Rainmeter \(inspection.manifest.minimumRainmeter) or later. "
+                + "Deskset is compatible with Rainmeter 5.0 skins, so features of a newer version may not work.")
+        }
         if inspection.manifest.packageFormat == .rmskin,
            inspection.manifest.mergeSkins, !inspection.manifest.variableFiles.isEmpty {
             inspection.warnings.append("The package sets both MergeSkins and VariableFiles, which the Skin Packager "

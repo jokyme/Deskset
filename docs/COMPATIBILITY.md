@@ -1331,12 +1331,19 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### Blur and BlurRegion (`[Rainmeter]`), blur bangs
-- **Windows:** "Set to 1 to enable Aero Blur"; `!ShowBlur`, `!AddBlur`… change it.
-- **Mac:** not supported (the FrostedGlass plugin is, see [§10.7](#107-window-desktop-and-color-plugins-third-party));
-  the bangs add a compatibility note.
-- **Why:** not implemented yet.
-- **Skin impact:** the skin is drawn without the blurred backdrop.
-- **Status:** not supported
+- **Windows:** "Set to 1 to enable Aero Blur on the Windows 7 operating system"; `!ShowBlur`, `!HideBlur`,
+  `!ToggleBlur`, `!AddBlur` and `!RemoveBlur` change it. The manual adds that it "will not work on Window 8.1 or
+  Windows 10", and Rainmeter 5.0 requires Windows 10 or later, so on current Windows these options and bangs have no
+  visible effect.
+- **Mac:** the same: `Blur` and `BlurRegion` are read and nothing is drawn; the five bangs are accepted, do nothing,
+  and the rest of the action runs. They add no compatibility note and no log line. For a frosted background on the Mac,
+  use the FrostedGlass plugin ([§10.7](#107-window-desktop-and-color-plugins-third-party)) or `MacGlass`
+  ([§6.8](#68-deskset-extensions)).
+- **Why:** matches Rainmeter 5.0 on Windows 10 and 11. Drawing the Windows 7 blur would make skins that still set
+  `Blur=1` look different from what Windows users see today.
+- **Skin impact:** none compared with current Windows; a skin designed on Windows 7 shows no blurred backdrop, as on
+  Windows 10 and 11. Not compared on a Windows desktop.
+- **Status:** identical
 
 ### 7.2 Mouse
 
@@ -3086,11 +3093,16 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 - **Windows:** the manual documents the packager's fields but not the key names; the header must be a 400×60 `.bmp`;
   the installer refuses packages whose minimum Rainmeter / Windows version is not met.
 - **Mac:** `[rmskin]` keys Name, Author, Version, LoadType, Load, VariableFiles, MergeSkins (also `Merge`),
-  MinimumRainmeter, MinimumWindows (UTF-8 / UTF-16 / ANSI). **Minimum versions are not enforced.** `RMSKIN.bmp` is shown
-  when it is a real bitmap of at most 4096 px (exact size not required).
-- **Why:** Windows versions mean nothing on macOS; unsupported features are reported by the engine instead.
-- **Skin impact:** packages made for a newer Rainmeter install; unsupported features degrade.
-- **Status:** identical / not supported (minimum versions)
+  MinimumRainmeter, MinimumWindows (UTF-8 / UTF-16 / ANSI). A `MinimumRainmeter` newer than 5.0 (any revision of 5.0
+  counts as 5.0; legacy packages' `MinRainmeterVer` too) adds a warning to the install confirmation, but the package can
+  still be installed. `MinimumWindows` is ignored. `RMSKIN.bmp` is shown when it is a real bitmap of at most 4096 px
+  (exact size not required).
+- **Why:** Deskset implements Rainmeter 5.0's skin features, so a package asking for a newer release may use something
+  missing; refusing it outright would also block skins that do not need it. Windows versions mean nothing on macOS.
+- **Skin impact:** packages made for a newer Rainmeter install after the warning; unsupported features degrade and are
+  reported by the engine.
+- **Status:** identical / emulated (minimum Rainmeter version warns instead of refusing) / not supported (minimum
+  Windows version)
 
 #### Root configs, backups and Merge skins
 - **Windows:** one root config per package; Backup skins controls replacement backups; Merge skins does not remove
@@ -3303,7 +3315,6 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | --- | --- | --- |
 | Hardware sensors (temperatures, fans, power, clocks) | emulated | Read directly without privileges (§9.3); Apple documents none of them, the values are approximations; M1–M3 and Intel Macs untested; HWiNFO skins still read nothing |
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
-| Aero blur (`Blur`, `BlurRegion`, blur bangs) | not supported | Use FrostedGlass for blur |
 | Initial `!SetAnchor` timing | partial | Dynamic anchors are implemented; exact first-frame scheduling and commands before initial meter geometry remain unverified ([App](compat/app.md#dynamic-anchors-setanchor)) |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |

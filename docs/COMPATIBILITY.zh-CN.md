@@ -1169,11 +1169,17 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### Blur 和 BlurRegion（`[Rainmeter]`）以及模糊类 bang
-- **Windows：** “设为 1 以启用 Aero 模糊”；`!ShowBlur`、`!AddBlur`…… 可以修改它。
-- **Mac：** 不支持（FrostedGlass 插件是支持的，见 [§10.7](#107-窗口桌面与颜色插件第三方)）；这些 bang 会添加兼容性提示。
-- **原因：** 尚未实现。
-- **对皮肤的影响：** 皮肤没有模糊背景。
-- **状态：** 不支持
+- **Windows：** “设为 1 以在 Windows 7 上启用 Aero 模糊”；`!ShowBlur`、`!HideBlur`、`!ToggleBlur`、`!AddBlur`、
+  `!RemoveBlur` 可以修改它。手册另外写明它“在 Windows 8.1 和 Windows 10 上不起作用”，而 Rainmeter 5.0 要求 Windows 10
+  或更高版本，所以在现在的 Windows 上，这些选项和 bang 没有可见效果。
+- **Mac：** 相同：会读取 `Blur` 和 `BlurRegion`，但不绘制任何东西；这五个 bang 会被接受、不做任何事，动作里其余的部分照常执行。
+  它们不产生兼容性提示，也不写日志。想在 Mac 上要毛玻璃背景，请用 FrostedGlass 插件（见 [§10.7](#107-窗口桌面与颜色插件第三方)）
+  或 `MacGlass`（见 [§6.8](#68-deskset-扩展)）。
+- **原因：** 与 Windows 10、11 上的 Rainmeter 5.0 一致。如果画出 Windows 7 的模糊效果，仍写着 `Blur=1` 的皮肤会和现在
+  Windows 用户看到的不一样。
+- **对皮肤的影响：** 与现在的 Windows 相比没有差别；为 Windows 7 设计的皮肤不显示模糊背景，和 Windows 10、11 上一样。
+  尚未在 Windows 桌面上对照。
+- **状态：** 完全一致
 
 ### 7.2 鼠标
 
@@ -2687,11 +2693,13 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 - **Windows：** 手册记录了打包器的字段但没有写键名；头图必须是 400×60 的 `.bmp`；不满足最低 Rainmeter / Windows 版本的包会被
   安装器拒绝。
 - **Mac：** `[rmskin]` 的键为 Name、Author、Version、LoadType、Load、VariableFiles、MergeSkins（也接受 `Merge`）、
-  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。**不检查最低版本。** `RMSKIN.bmp` 只要是真正的位图且不超过
-  4096 像素就会显示（不要求精确尺寸）。
-- **原因：** Windows 版本号在 macOS 上没有意义；不支持的功能由引擎报告。
-- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包也能安装；不支持的功能会优雅降级。
-- **状态：** 完全一致 / 不支持（最低版本）
+  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。`MinimumRainmeter` 高于 5.0 时（5.0 的任何修订号都算 5.0；
+  老式安装包的 `MinRainmeterVer` 同样处理），安装确认里会显示一条警告，但仍然可以安装。`MinimumWindows` 被忽略。
+  `RMSKIN.bmp` 只要是真正的位图且不超过 4096 像素就会显示（不要求精确尺寸）。
+- **原因：** Deskset 实现的是 Rainmeter 5.0 的皮肤功能，要求更新版本的包可能用到尚未实现的功能；直接拒绝又会挡住其实用不到
+  这些功能的皮肤。Windows 版本号在 macOS 上没有意义。
+- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包在警告后照常安装；不支持的功能会优雅降级，并由引擎报告。
+- **状态：** 完全一致 / 模拟实现（最低 Rainmeter 版本只警告、不拒绝）/ 不支持（最低 Windows 版本）
 
 #### 根配置、备份与合并皮肤
 - **Windows：** 每个包一个根配置；Backup skins 控制替换时的备份；Merge skins 不删除无关文件，也不备份根配置。
@@ -2878,7 +2886,6 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
-| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |

@@ -299,11 +299,16 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Status: emulated
 
 ### Blur and BlurRegion ([Rainmeter]), blur bangs
-- Windows (Rainmeter): "Set to 1 to enable Aero Blur"; `!ShowBlur`, `!AddBlur`… change it.
-- Mac (Deskset): not supported (the FrostedGlass plugin is, see `media-ui.md`). The bangs add a compatibility note.
-- Why: not implemented yet.
-- Skin impact: the skin is drawn without the blurred backdrop.
-- Status: not supported
+- Windows (Rainmeter): "Set to 1 to enable Aero Blur on the Windows 7 operating system"; `!ShowBlur`, `!HideBlur`,
+  `!ToggleBlur`, `!AddBlur` and `!RemoveBlur` change it. The manual notes it "will not work on Window 8.1 or
+  Windows 10", and Rainmeter 5.0 requires Windows 10 or later, so on current Windows they have no visible effect.
+- Mac (Deskset): the same. `Blur` and `BlurRegion` are read and nothing is drawn; the five bangs are accepted with no
+  effect (the rest of the action runs), without a compatibility note or log line. The FrostedGlass plugin
+  (`media-ui.md`) and `MacGlass` (`engine.md`) draw frosted backgrounds on the Mac.
+- Why: matches Rainmeter 5.0 on Windows 10 and 11; drawing the Windows 7 blur would make skins that still set
+  `Blur=1` differ from current Windows.
+- Skin impact: none compared with current Windows. Not compared on a Windows desktop.
+- Status: identical
 
 ---
 
