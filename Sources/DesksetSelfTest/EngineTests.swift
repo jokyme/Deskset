@@ -1402,6 +1402,28 @@ private func runMeterGeneralTests(_ t: TestRunner) {
         """)
         hiddenAll.update()
         t.check(hiddenAll.toolTipInfo(at: 5, 5) == nil, "ToolTipHidden in [Rainmeter] hides all tooltips")
+
+        let (icons, _, _) = try makeEngineSkin(t, """
+        [Preset]
+        Meter=Image
+        W=10
+        H=10
+        ToolTipText=x
+        ToolTipTitle=T
+        ToolTipIcon= warning
+        [File]
+        Meter=Image
+        X=20
+        W=10
+        H=10
+        ToolTipText=x
+        ToolTipTitle=T
+        ToolTipIcon=#@#Icons\\Tip.ico
+        """)
+        icons.update()
+        t.equal(icons.toolTipInfo(at: 5, 5)?.icon, "warning", "preset names are kept")
+        t.equal(icons.toolTipInfo(at: 25, 5)?.icon, icons.resourcesDirectory.appendingPathComponent("Icons/Tip.ico").path,
+                "an icon file's path is made absolute")
     }
 
     t.suite("Engine: Container") {

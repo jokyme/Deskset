@@ -1397,15 +1397,20 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Tooltips
 - **Windows:** ToolTipText / ToolTipTitle, ToolTipIcon, ToolTipType (balloon), ToolTipWidth; ToolTipHidden in
   `[Rainmeter]`.
-- **Mac:** standard macOS tooltips, one area per meter, the title on its own line above the text. ToolTipIcon,
-  ToolTipType and ToolTipWidth are read but not shown. No tooltips for hidden meters, hidden containers' content,
-  click-through skins or ToolTipHidden=1. `%1`, `%2`… in tooltips use the manual's forced format (AutoScale=1, no
-  decimals) on every meter type (judgment call). Tooltips show whichever app is in front: skin windows allow them in
-  the background (macOS otherwise shows a window's tooltips only while its app is active, and Deskset, a menu bar
-  app, almost never is). They appear after half a second, as on Windows (AppKit alone waits two to three seconds).
-- **Why:** macOS tooltips have no icon, balloon style or width setting.
-- **Skin impact:** tooltips look like other Mac tooltips.
-- **Status:** partial
+- **Mac:** Deskset draws the tooltips with the macOS tooltip material and font, one area per meter. The title is bold
+  on its own line (never wrapped) with the ToolTipIcon before it — Info, Warning, Error, Question and Shield as SF
+  Symbols in their usual colors, or an icon file (`.ico` or any image macOS reads; relative paths start in the skin's
+  folder) — and the icon only appears with a title, as the manual requires. The text wraps at ToolTipWidth, counted in
+  points (pixels at 100% on Windows). ToolTipType=1 draws a balloon whose stem points at the pointer, above it near the
+  bottom of the screen. A tooltip appears below the pointer half a second after it comes to rest over a meter (sooner
+  when moving straight from another tooltip; a value set for all apps with `defaults write -g NSInitialToolTipDelay`
+  still wins), stays while the pointer stays over that meter, and goes on a press, a scroll or leaving the meter. It
+  shows whichever app is in front. No tooltips for hidden meters, hidden containers' content, click-through skins or
+  ToolTipHidden=1. `%1`, `%2`… in tooltips use the manual's forced format (AutoScale=1, no decimals) on every meter
+  type (judgment call).
+- **Why:** AppKit's own tooltips show plain text only.
+- **Skin impact:** tooltips look like Mac tooltips; balloons and icons follow the macOS style, not Windows'.
+- **Status:** emulated
 
 ### 7.3 Menus and the Manage window
 

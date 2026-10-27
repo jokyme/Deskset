@@ -362,17 +362,19 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Tooltips
 - Windows (Rainmeter): ToolTipText / ToolTipTitle, ToolTipIcon, ToolTipType (balloon), ToolTipWidth; ToolTipHidden in
   [Rainmeter].
-- Mac (Deskset): standard macOS tooltips, one area per meter (moving to another meter shows its tooltip), the title on
-  its own line above the text. ToolTipIcon, ToolTipType and ToolTipWidth are read but not shown. No tooltips for hidden
-  meters, the content of hidden containers, ClickThrough skins or ToolTipHidden=1. They show whichever app is in front:
-  macOS shows a window's tooltips only while its app is active unless the window allows them in the background, and
-  Deskset — a menu bar app whose skin windows never activate it — is almost never active, so skin windows allow them
-  (found in review: without that, skin tooltips almost never appeared). They appear after half a second, Windows'
-  default; AppKit's own delay is two to three seconds for a background app (a value set for all apps with
-  `defaults write -g NSInitialToolTipDelay` still wins).
-- Why: macOS tooltips have no icon, balloon style or width setting.
-- Skin impact: tooltips look like other Mac tooltips.
-- Status: partial
+- Mac (Deskset): Deskset draws the tooltips (`SkinToolTipPresenter`, one at a time for the app) with the macOS tooltip
+  material and font, one area per meter (moving to another meter shows its tooltip). The title is bold on one line
+  with the ToolTipIcon before it: the five presets as SF Symbols, or an icon file whose path the engine makes absolute
+  (relative to the skin's folder); no icon without a title. The text wraps at ToolTipWidth in points. ToolTipType=1 is
+  a balloon with its stem at the pointer, flipped above it near the bottom of the screen. The tooltip appears below the
+  pointer after half a second at rest, Windows' default (0.1 s when moving straight from another tooltip; a value set
+  for all apps with `defaults write -g NSInitialToolTipDelay` still wins), stays while the pointer stays over the same
+  tooltip, and goes on a press, a scroll, leaving, or a change of the skin's tooltip areas. It shows whichever app is in
+  front, since it follows the skin view's own hover events. No tooltips for hidden meters, the content of hidden
+  containers, ClickThrough skins or ToolTipHidden=1.
+- Why: AppKit's own tooltips show plain text only.
+- Skin impact: tooltips look like Mac tooltips; balloons and icons follow the macOS style.
+- Status: emulated
 
 ---
 

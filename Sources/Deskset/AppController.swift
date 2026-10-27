@@ -78,6 +78,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) lazy var outsidePointer = OutsidePointerMonitor(app: self)
     /// Ctrl–Option selection and the selected skins' shared move / zoom gesture.
     private(set) lazy var skinSelection = SkinSelectionController(app: self)
+    private(set) lazy var skinToolTips = SkinToolTipPresenter(app: self)
     private(set) lazy var clickThroughOverride = ClickThroughOverride(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var fileLoggingObserver: NSObjectProtocol?
