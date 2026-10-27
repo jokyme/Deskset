@@ -2,6 +2,31 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.2
+
+This release brings more of Rainmeter 5.0's mouse and tooltip options to the Mac, and makes click-through skins reachable again.
+
+### Added
+
+- **Tooltip styles.** `ToolTipIcon` shows an icon before the tooltip title (Info, Warning, Error, Question, Shield or an icon file), `ToolTipType=1` draws a balloon tooltip, and `ToolTipWidth` sets where the text wraps.
+- **Every built-in cursor.** All `MouseActionCursorName` names now show a cursor, including HELP, BUSY, WAIT, PEN, UPARROW and the move and diagonal resize cursors. Custom `.cur` and `.ani` files in a skin's `@Resources\Cursors` folder work too; animated cursors show their first frame.
+- **Reach click-through skins.** Hold ⌘ or Control over a click-through skin to drag it, open its menu with Control-click or select it with Control-Option-click.
+
+### Changed and improved
+
+- `Blur`, `BlurRegion` and the blur bangs now have no effect and no longer show a compatibility note, matching Rainmeter 5.0 on Windows 10 and later.
+- Installing a skin package that requires a newer Rainmeter than 5.0 now shows a warning. The package can still be installed.
+
+### Fixed
+
+- Fixed a layout loop in the Manage window that could make Deskset quit while restoring the window's minimum size.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.5.1...v0.5.2)
+
 ## 0.5.1
 
 This release fixes a crash after installing skin packages and several skin-engine compatibility issues.

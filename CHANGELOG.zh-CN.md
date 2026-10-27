@@ -2,6 +2,31 @@
 
 [English](CHANGELOG.md)
 
+## 0.5.2
+
+这一版在 Mac 上实现了更多 Rainmeter 5.0 的鼠标和工具提示选项，点击穿透的皮肤也重新可以直接操作了。
+
+### 新增
+
+- **工具提示样式。** `ToolTipIcon` 在工具提示标题前显示图标（Info、Warning、Error、Question、Shield 或图标文件），`ToolTipType=1` 显示气泡样式，`ToolTipWidth` 设置文字换行的宽度。
+- **全部内置光标。** `MouseActionCursorName` 的所有名称现在都有对应光标，包括 HELP、BUSY、WAIT、PEN、UPARROW 以及移动和对角调整光标。皮肤 `@Resources\Cursors` 文件夹中的自定义 `.cur`、`.ani` 文件也能使用；动画光标显示第一帧。
+- **操作点击穿透的皮肤。** 在点击穿透的皮肤上按住 ⌘ 或 Control，就能拖动它、用 Control 点按打开菜单，或用 Control-Option 点按选中它。
+
+### 调整与改进
+
+- `Blur`、`BlurRegion` 和模糊类 bang 现在不产生效果，也不再显示兼容性提示，与 Windows 10 及以上的 Rainmeter 5.0 一致。
+- 安装要求比 Rainmeter 5.0 更新版本的皮肤包时会显示警告，但仍然可以安装。
+
+### 修复
+
+- 修复 Manage 窗口恢复最小尺寸时的布局循环，它可能导致 Deskset 意外退出。
+
+### 升级说明
+
+- 你的皮肤、已保存的布局和设置都会保留。仍然支持 macOS 13 及以上的 Apple 芯片和 Intel Mac。
+
+[查看此版本的全部改动](https://github.com/jokyme/Deskset/compare/v0.5.1...v0.5.2)
+
 ## 0.5.1
 
 这一版修复了安装皮肤包后闪退的问题，以及若干皮肤引擎的兼容性问题。
