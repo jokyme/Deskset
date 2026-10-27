@@ -661,6 +661,7 @@ zone.implicitFormatter	Sources/Deskset/App/DebugWindowController.swift	1	Debug w
 zone.localizedText	Sources/Deskset/App/DebugSkinInspectorView.swift	2	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
 zone.localizedText	Sources/Deskset/App/DebugSystemInfo.swift	1	Debug formats current macOS device facts; never a skin input
 zone.localizedText	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+zone.localizedText	Sources/Deskset/App/Localization.swift	1	the Settings language list's alphabetical order; app UI, never a skin input
 random.UUID	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
 effect.fileWrite	Sources/Deskset/App/NewSkinModel.swift	12	New skin dialog writes within injected Skins and Settings directories; Trash is injectable and tests use temporary folders
 random.UUID	Sources/Deskset/App/NewSkinModel.swift	2	New skin dialog session identities and exclusive temporary file names; never a skin input

@@ -30,6 +30,52 @@ enum LocalizationSelfTests {
             t.equal(L("Contains %lld skins.", 3), "Contains 3 skins.")
         }
 
+        t.suite("App: localization: the language chosen in Settings") {
+            let suite = "app.deskset.LocalizationSelfTests.\(UUID().uuidString)"
+            guard let defaults = UserDefaults(suiteName: suite) else { return t.check(false, "temporary defaults") }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let preference = LanguagePreference(defaults: defaults, domain: suite)
+            t.equal(preference.chosen, nil, "follows the Mac by default")
+            preference.choose("de")
+            t.equal(preference.chosen, "de")
+            preference.choose(nil)
+            t.equal(preference.chosen, nil)
+
+            t.equal(LanguagePreference.systemLanguage(preferences: ["zh-Hans-SG"]), "zh-Hans")
+            t.equal(LanguagePreference.systemLanguage(preferences: ["fr-CA", "en"]), "fr")
+            t.equal(LanguagePreference.systemLanguage(preferences: ["sr-Latn-RS"]), "sr-Latn")
+            t.equal(LanguagePreference.systemLanguage(preferences: ["pt-PT"]), "pt-PT")
+            t.equal(LanguagePreference.systemLanguage(preferences: ["gd", "nl"]), "nl", "the first language Deskset has")
+            t.equal(LanguagePreference.systemLanguage(preferences: ["gd"]), "en")
+
+            let choices = LanguagePreference.choices
+            t.equal(choices.count, Localization.languages.count + 1)
+            t.equal(Set(choices.map(\.name)).count, choices.count, "every language has its own name")
+            t.equal(LanguagePreference.name(of: "de"), "Deutsch")
+            t.equal(LanguagePreference.name(of: "ja"), "日本語")
+            t.equal(LanguagePreference.name(of: "fr"), "Français", "capitalised as a menu item")
+
+            // The pop-up keeps the choice in the preference; without windows no restart is offered.
+            guard let app = try AppSelfTest.makeApp(t) else { return }
+            CodeEditorRoutingSelfTests.withFakes(.init(), .init()) {
+                let settings = SettingsWindowController(app: app)
+                settings.languagePreference = preference
+                settings.refreshLanguagePopUp()
+                t.equal(settings.languagePopUp.indexOfSelectedItem, 0, "System default is selected")
+                let japanese = settings.languagePopUp.itemArray.firstIndex { $0.representedObject as? String == "ja" }
+                t.check(japanese != nil)
+                settings.languagePopUp.selectItem(at: japanese ?? 0)
+                settings.languageChosen()
+                t.equal(preference.chosen, "ja")
+                settings.refreshLanguagePopUp()
+                t.equal(settings.languagePopUp.selectedItem?.representedObject as? String, "ja", "the choice shows again")
+                settings.languagePopUp.selectItem(at: 0)
+                settings.languageChosen()
+                t.equal(preference.chosen, nil)
+                settings.close()
+            }
+        }
+
         t.suite("App: localization: the made-up language") {
             let long = PseudoLanguage.long.transform("Refresh All")
             t.check(PseudoLanguage.isPseudo(long))
@@ -64,6 +110,8 @@ enum LocalizationSelfTests {
             // Rainmeter's About keys, kept in English for bug reports (scripts/localization-ignore.tsv).
             data.formUnion(["Path:", "IniFile:", "SkinPath:", "SettingsPath:", "LogFile:"])
             for screen in NSScreen.screens { data.insert(screen.localizedName) }
+            // Settings lists every language in its own name.
+            data.formUnion(LanguagePreference.choices.map(\.name))
             func isData(_ text: String) -> Bool {
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty || data.contains(trimmed) { return true }
