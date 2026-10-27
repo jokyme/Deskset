@@ -26,3 +26,7 @@ AppController.swift	engine thread	log line
 App/ManageWindowController.swift	restored to its minimum size; left as it is.	log line
 App/ManageWindowController.swift	Name	[Metadata] key
 App/SkinInstallFlow.swift	The package includes Windows plugins	prefix of DesksetCore's English warning, matched to replace it
+App/SkinPackagerWindowController.swift	Skin\\Folder\\Variables.inc | …	example path in the Variables files field (INI path syntax)
+App/SkinPackagerWindowController.swift	Metadata	INI section name read from the skin
+App/SkinPackagerWindowController.swift	Author	INI key read from [Metadata]
+App/SkinPackagerWindowController.swift	Version	INI key read from [Metadata]

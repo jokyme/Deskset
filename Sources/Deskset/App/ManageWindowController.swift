@@ -73,6 +73,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let newSkinButton = NSButton(image: NSImage(systemSymbolName: "folder.badge.plus",
                                                        accessibilityDescription: L("Create new skin")) ?? NSImage(),
                                          target: nil, action: nil)
+    /// Skin Packager (Rainmeter's "Create .rmskin package..." button); an icon here keeps the bottom bar's width.
+    private let packageButton = NSButton(image: NSImage(systemSymbolName: "shippingbox",
+                                                        accessibilityDescription: L("Create .rmskin Package…")) ?? NSImage(),
+                                         target: nil, action: nil)
     private let detailStack = NSStackView()
     private let emptyLabel = NSTextField(labelWithString: L("Select a skin to see its details."))
 
@@ -383,6 +387,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         newSkinButton.setAccessibilityLabel(L("Create new skin"))
         newSkinButton.translatesAutoresizingMaskIntoConstraints = false
         left.addSubview(newSkinButton)
+        packageButton.target = self
+        packageButton.action = #selector(createPackage)
+        packageButton.bezelStyle = .texturedRounded
+        packageButton.toolTip = L("Create .rmskin Package…")
+        packageButton.setAccessibilityLabel(L("Create .rmskin Package…"))
+        packageButton.translatesAutoresizingMaskIntoConstraints = false
+        left.addSubview(packageButton)
         NSLayoutConstraint.activate([
             activeSkinsPopup.topAnchor.constraint(equalTo: left.topAnchor, constant: 10),
             outlineScroll.topAnchor.constraint(equalTo: activeSkinsPopup.bottomAnchor, constant: 8),
@@ -392,7 +403,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             activeSkinsPopup.leadingAnchor.constraint(equalTo: left.leadingAnchor, constant: 10),
             activeSkinsPopup.trailingAnchor.constraint(equalTo: newSkinButton.leadingAnchor, constant: -6),
             newSkinButton.centerYAnchor.constraint(equalTo: activeSkinsPopup.centerYAnchor),
-            newSkinButton.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -10),
+            newSkinButton.trailingAnchor.constraint(equalTo: packageButton.leadingAnchor, constant: -4),
+            packageButton.centerYAnchor.constraint(equalTo: activeSkinsPopup.centerYAnchor),
+            packageButton.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -10),
+            packageButton.widthAnchor.constraint(equalToConstant: 28),
+            packageButton.heightAnchor.constraint(equalToConstant: 24),
             newSkinButton.widthAnchor.constraint(equalToConstant: 28),
             newSkinButton.heightAnchor.constraint(equalToConstant: 24),
         ])
@@ -1599,6 +1614,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         Workspace.reveal(SkinLibrary.directory(for: path, root: app.skinsDirectory))
     }
 
+    /// Skin Packager, starting with the root config of the skin selected in the Skins tab.
+    @objc func createPackage() {
+        let root = selection.map { SkinLibrary.directory(for: String($0.config.split(separator: "\\").first ?? ""),
+                                                          root: app.skinsDirectory) }
+        SkinPackagerWindowController.show(app: app, rootConfig: root)
+    }
+
     @objc private func createNewSkin() {
         NewSkinWindowController.show(app: app)
     }
@@ -1739,6 +1761,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testFavoriteBox: NSButton { favoriteBox }
     var testActiveSkinsPopup: NSPopUpButton { activeSkinsPopup }
     var testNewSkinButton: NSButton { newSkinButton }
+    var testPackageButton: NSButton { packageButton }
     var testAddMetadataButton: NSButton? { addMetadataButton }
     var testMetadataEmptyText: String? { metadataEmptyLabel?.stringValue }
     var testMetadataColumns: Int { metadataGrid.numberOfColumns }

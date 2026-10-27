@@ -1305,10 +1305,11 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### Rainmeter 5.0 features not implemented yet
 - **Windows:** `Rainmeter.exe [!Launch][!Bang]` can launch before executing bangs. Rainmeter also provides crash
-  dumps and its Skin Packager.
+  dumps.
 - **Mac:** these remain unimplemented. Debug, Safe Start, Restart/Focus, explicit target-first skin commands,
-  compound skin selectors and the seven media-key SendKey names are implemented; see their compatibility limits.
-- **Why:** the remaining launch, crash-dump and packaging workflows are not implemented yet.
+  compound skin selectors, the seven media-key SendKey names and the Skin Packager
+  ([§11.2](#skin-packager-create-rmskin-package)) are implemented; see their compatibility limits.
+- **Why:** the remaining launch and crash-dump workflows are not implemented yet.
 - **Skin impact:** use existing load and refresh operations until the remaining commands are available.
 - **Status:** not supported
 
@@ -3115,6 +3116,29 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
   reported by the engine.
 - **Status:** identical / emulated (minimum Rainmeter version warns instead of refusing) / not supported (minimum
   Windows version)
+
+#### Skin Packager (Create .rmskin Package…)
+- **Windows:** Manage's "Create .rmskin package..." button: step 1 asks for Name, Author, Version, one root config
+  folder, layouts and plugins (both the 32-bit and 64-bit DLLs; choosing one looks for the other by swapping `32bit` /
+  `64bit` in its folder); step 2 for the output folder (the Desktop), what to load after installation and the minimum
+  Rainmeter version, and on its Advanced tab a 400×60 `.bmp` header, Variables files and Merge skins (not both). Load
+  previous restores the last settings of a package (Shift deletes an entry); Back returns to step 1. Hidden files and
+  folders are left out; the file is saved as `Name_Version.rmskin`.
+- **Mac:** the same steps, options, checks and file name; the button is the box icon next to "Create new skin" above
+  Manage's skin list (it starts with the selected skin's root config), keeping the bottom bar narrow enough. The package installs with Deskset's installer
+  (checked by the self-tests); it has not been installed on a Windows desktop yet. Choices made for Windows:
+  `RMSKIN.ini` is UTF-16 LE with a BOM and CRLF line ends; file names are stored in Unicode normal form C with the ZIP
+  UTF-8 flag; the archive has no `__MACOSX` folder or other Mac metadata. Hidden means a name starting with `.`,
+  Windows Explorer's `desktop.ini` / `Thumbs.db`, or Finder's hidden flag; symbolic links are left out and listed
+  after the package is made. The minimum Rainmeter version defaults to 5.0, the Rainmeter release whose skin features
+  Deskset implements; no minimum Windows version is written (Rainmeter 5.0 removed that option). The Windows plugin
+  version is read from each DLL's PE header (also `x86` / `x64` folders). Empty Name, Author and Version are filled from
+  the folder name and its first skin's `[Metadata]`, and "Load skin" starts with that skin (judgment calls). Load
+  previous is kept in Deskset's preferences, one entry per package name, at most 20.
+- **Why:** Windows reads INI files in UTF-16 or its ANSI code page, and unzip tools read names without the UTF-8 flag
+  in a legacy code page; macOS hands out decomposed names and links that Windows cannot recreate.
+- **Skin impact:** skin authors can package on the Mac. Windows desktop installation is still to be compared.
+- **Status:** emulated
 
 #### Root configs, backups and Merge skins
 - **Windows:** one root config per package; Backup skins controls replacement backups; Merge skins does not remove

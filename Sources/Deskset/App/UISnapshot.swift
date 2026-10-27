@@ -54,6 +54,8 @@ enum UISnapshot {
                                 select: value(after: "--select"),
                                 skinsDir: value(after: "--skins-dir"),
                                 size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil)
+        case "packager":
+            data = packagerPreview(pane: value(after: "--pane"))
         case "codeeditor":
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
                 .map { $0.isFinite ? min(max($0, 200), 3000) : 760 }
@@ -70,7 +72,7 @@ enum UISnapshot {
                                  coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil,
                                  pane: value(after: "--pane").flatMap(ManageWindowController.Tab.init(rawValue:)) ?? .skins)
         default:
-            fputs("unknown snapshot \"\(what)\" (manage, settings, about, debug, codeeditor, install, install-zip, icon, menubar)\n", stderr)
+            fputs("unknown snapshot \"\(what)\" (manage, settings, about, debug, packager, codeeditor, install, install-zip, icon, menubar)\n", stderr)
             return 2
         }
         guard let data else {
@@ -172,6 +174,31 @@ enum UISnapshot {
         let settings = SettingsWindowController(app: app)
         settings.select(pane)
         let data = settings.snapshot()?.representation(using: .png, properties: [:])
+        withExtendedLifetime(app) {}
+        return data
+    }
+
+    /// The Skin Packager with TestSkins' Deskset suite chosen; `pane` options or advanced shows step 2.
+    private static func packagerPreview(pane: String?) -> Data? {
+        let root = temporaryDirectory("packager")
+        let skins = root.appendingPathComponent("Skins")
+        try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+        if let test = Paths.repositoryFolder("TestSkins") {
+            try? FileManager.default.copyItem(at: test.appendingPathComponent("Deskset"),
+                                              to: skins.appendingPathComponent("Deskset"))
+        }
+        let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                backupsDirectory: root.appendingPathComponent("Backups"),
+                                settingsDirectory: root.appendingPathComponent("Settings"), presentsWindows: false)
+        let previous = SkinPackagerWindowController.historyStorage
+        SkinPackagerWindowController.historyStorage = SkinPackagerHistory.Storage()
+        defer { SkinPackagerWindowController.historyStorage = previous }
+        guard let packager = SkinPackagerWindowController.show(app: app, rootConfig: skins.appendingPathComponent("Deskset"))
+        else { return nil }
+        if let pane { packager.showStepTwo(advanced: pane.lowercased() == "advanced") }
+        let data = packager.window?.contentView.flatMap(png)
+        packager.close()
         withExtendedLifetime(app) {}
         return data
     }

@@ -169,6 +169,9 @@ effect.workspace	Sources/Deskset/App/LayoutWallpaper.swift	2	LayoutWallpaper liv
 background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 event.notification	Sources/Deskset/App/SkinInstallFlow.swift	1	resume an installation after the active layout replacement completes; app lifecycle only
+background.global	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: writes the package off the main thread, outside any skin
+background.mainHop	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: writes the package off the main thread, outside any skin
+effect.workspace	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: Show in Finder after a package is made
 
 background.fileEvents	Sources/Deskset/App/SourceWatcher.swift	2	Skin Studio watches the files of the skin it edits
 
@@ -592,6 +595,9 @@ random.UUID	Sources/DesksetCore/Rmskin/RmskinFiles.swift	*	skin installer; runs 
 
 effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
 zone.localizedText	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
+effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
+random.UUID	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
+zone.localizedText	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
 
 background.global	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
 background.process	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
