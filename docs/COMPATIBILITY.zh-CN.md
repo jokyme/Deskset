@@ -1212,12 +1212,15 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 光标（`MouseActionCursor`、`MouseActionCursorName`）
 - **Windows：** 在有鼠标动作的 meter 上显示手形；MouseActionCursorName 接受 Windows 光标名称或 `@Resources\Cursors` 中的
   `.cur` / `.ani` 文件。
-- **Mac：** HAND、TEXT、CROSS、NO、SIZE_WE 和 SIZE_NS 映射为 macOS 光标；其他名称（HELP、BUSY、WAIT、PEN、SIZE_ALL、对角线
-  调整、UPARROW）和自定义 `.cur` / `.ani` 文件显示箭头。Button meter 显示手形；只有 MouseOverAction / MouseLeaveAction
-  这类鼠标动作的 meter 不显示手形（取舍判断）。
-- **原因：** macOS 没有这些光标的公开对应物；`.cur` / `.ani` 是 Windows 格式。
-- **对皮肤的影响：** 有些皮肤在 Windows 上显示自定义光标的地方显示箭头。
-- **状态：** 部分支持
+- **Mac：** 每个内置名称都有对应光标。HAND、TEXT、CROSS、NO、SIZE_WE、SIZE_NS 使用 macOS 光标，macOS 15 及以上的
+  SIZE_NWSE / SIZE_NESW 也是（窗口边框调整光标）。HELP 和 BUSY（箭头加问号或沙漏）、WAIT（沙漏）、PEN、UPARROW、SIZE_ALL，
+  以及 macOS 15 以前的对角线调整光标，用 SF Symbols 按系统光标的风格绘制；BUSY 和 WAIT 不会转动。`@Resources\Cursors` 中的
+  `.cur` 文件按其热点显示为 32 点大小（Windows 的标准尺寸；更小的图像保持原尺寸），文件里有更大的图像时在 Retina 屏幕上更清晰；
+  名称不区分大小写，且不能包含路径。`.ani` 显示其序列的第一帧，不播放动画。既不是内置名称、也不是可读文件的名称显示手形
+  （取舍判断）。Button meter 显示手形；只有 MouseOverAction / MouseLeaveAction 这类鼠标动作的 meter 不显示手形（取舍判断）。
+- **原因：** macOS 只为部分 Windows 光标提供了公开的对应光标，其余的按同样风格绘制。动画光标需要用定时器不断替换光标图像。
+- **对皮肤的影响：** 光标的外观是 Mac 风格而不是 Windows 风格；动画光标静止不动。
+- **状态：** 模拟实现
 
 #### 工具提示
 - **Windows：** ToolTipText / ToolTipTitle、ToolTipIcon、ToolTipType（气泡）、ToolTipWidth；`[Rainmeter]` 中的
@@ -2885,7 +2888,7 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
-| 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
+| 动画光标（`.ani`、BUSY、WAIT） | 部分支持 | 只显示第一帧，不播放动画 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |
 | 其他 Windows 插件 DLL | 不支持 | 数值为 0 / 空，皮肤的兼容性提示中有说明 |
 | 单个 App 的音量（AppVolume `SetVolume`） | 不支持 | macOS 没有单个 App 的音量 |

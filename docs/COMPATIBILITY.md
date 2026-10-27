@@ -1376,12 +1376,19 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Cursors (`MouseActionCursor`, `MouseActionCursorName`)
 - **Windows:** a hand over meters with mouse actions; MouseActionCursorName takes Windows cursor names or `.cur` / `.ani`
   files from `@Resources\Cursors`.
-- **Mac:** HAND, TEXT, CROSS, NO, SIZE_WE and SIZE_NS map to macOS cursors; other names (HELP, BUSY, WAIT, PEN,
-  SIZE_ALL, diagonal sizes, UPARROW) and custom `.cur` / `.ani` files show the arrow. A Button meter shows the hand;
-  a meter whose only mouse actions are MouseOverAction / MouseLeaveAction does not (judgment call).
-- **Why:** macOS has no public equivalents for those cursors; `.cur` / `.ani` are Windows formats.
-- **Skin impact:** some skins show the arrow where Windows shows a custom cursor.
-- **Status:** partial
+- **Mac:** every built-in name has a cursor. HAND, TEXT, CROSS, NO, SIZE_WE and SIZE_NS are the macOS cursors, and so
+  are SIZE_NWSE / SIZE_NESW on macOS 15 and later (the frame-resize cursors). HELP and BUSY (the arrow with a question
+  mark or an hourglass), WAIT (an hourglass), PEN, UPARROW, SIZE_ALL, and the diagonal sizes before macOS 15 are drawn
+  from SF Symbols in the style of the system cursors; BUSY and WAIT do not spin. `.cur` files in `@Resources\Cursors`
+  are shown with their hot spot at 32 points (Windows' standard size; smaller images keep their size), with a sharper
+  image on Retina displays when the file has one; the name is matched ignoring case and never contains a path. An
+  `.ani` shows the first frame of its sequence, without animation. A name that is neither a built-in cursor nor a
+  readable file shows the hand (judgment call). A Button meter shows the hand; a meter whose only mouse actions are
+  MouseOverAction / MouseLeaveAction does not (judgment call).
+- **Why:** macOS has public cursors only for some of the Windows ones; the rest are drawn to match. Animated cursors
+  would need a timer swapping the cursor image.
+- **Skin impact:** cursors look like their Mac counterparts rather than Windows', and animated cursors stay still.
+- **Status:** emulated
 
 #### Tooltips
 - **Windows:** ToolTipText / ToolTipTitle, ToolTipIcon, ToolTipType (balloon), ToolTipWidth; ToolTipHidden in
@@ -3313,7 +3320,7 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
 | Initial `!SetAnchor` timing | partial | Dynamic anchors are implemented; exact first-frame scheduling and commands before initial meter geometry remain unverified ([App](compat/app.md#dynamic-anchors-setanchor)) |
 | The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
-| Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
+| Animated cursors (`.ani`, BUSY, WAIT) | partial | The first frame is shown, without animation |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |
 | Other Windows plugin DLLs | not supported | Values 0 / empty, a note in the skin's Compatibility Notes |
 | Per-app volume (AppVolume `SetVolume`) | not supported | macOS has no per-app volume |
