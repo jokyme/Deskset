@@ -2684,11 +2684,13 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 - **Windows：** 手册记录了打包器的字段但没有写键名；头图必须是 400×60 的 `.bmp`；不满足最低 Rainmeter / Windows 版本的包会被
   安装器拒绝。
 - **Mac：** `[rmskin]` 的键为 Name、Author、Version、LoadType、Load、VariableFiles、MergeSkins（也接受 `Merge`）、
-  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。**不检查最低版本。** `RMSKIN.bmp` 只要是真正的位图且不超过
-  4096 像素就会显示（不要求精确尺寸）。
-- **原因：** Windows 版本号在 macOS 上没有意义；不支持的功能由引擎报告。
-- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包也能安装；不支持的功能会优雅降级。
-- **状态：** 完全一致 / 不支持（最低版本）
+  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。`MinimumRainmeter` 高于 5.0 时（5.0 的任何修订号都算 5.0；
+  老式安装包的 `MinRainmeterVer` 同样处理），安装确认里会显示一条警告，但仍然可以安装。`MinimumWindows` 被忽略。
+  `RMSKIN.bmp` 只要是真正的位图且不超过 4096 像素就会显示（不要求精确尺寸）。
+- **原因：** Deskset 实现的是 Rainmeter 5.0 的皮肤功能，要求更新版本的包可能用到尚未实现的功能；直接拒绝又会挡住其实用不到
+  这些功能的皮肤。Windows 版本号在 macOS 上没有意义。
+- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包在警告后照常安装；不支持的功能会优雅降级，并由引擎报告。
+- **状态：** 完全一致 / 模拟实现（最低 Rainmeter 版本只警告、不拒绝）/ 不支持（最低 Windows 版本）
 
 #### 根配置、备份与合并皮肤
 - **Windows：** 每个包一个根配置；Backup skins 控制替换时的备份；Merge skins 不删除无关文件，也不备份根配置。
