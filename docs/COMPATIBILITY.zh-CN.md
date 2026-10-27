@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势，Aero 模糊仍不支持；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
 
 ---
 
@@ -1166,11 +1166,17 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### Blur 和 BlurRegion（`[Rainmeter]`）以及模糊类 bang
-- **Windows：** “设为 1 以启用 Aero 模糊”；`!ShowBlur`、`!AddBlur`…… 可以修改它。
-- **Mac：** 不支持（FrostedGlass 插件是支持的，见 [§10.7](#107-窗口桌面与颜色插件第三方)）；这些 bang 会添加兼容性提示。
-- **原因：** 尚未实现。
-- **对皮肤的影响：** 皮肤没有模糊背景。
-- **状态：** 不支持
+- **Windows：** “设为 1 以在 Windows 7 上启用 Aero 模糊”；`!ShowBlur`、`!HideBlur`、`!ToggleBlur`、`!AddBlur`、
+  `!RemoveBlur` 可以修改它。手册另外写明它“在 Windows 8.1 和 Windows 10 上不起作用”，而 Rainmeter 5.0 要求 Windows 10
+  或更高版本，所以在现在的 Windows 上，这些选项和 bang 没有可见效果。
+- **Mac：** 相同：会读取 `Blur` 和 `BlurRegion`，但不绘制任何东西；这五个 bang 会被接受、不做任何事，动作里其余的部分照常执行。
+  它们不产生兼容性提示，也不写日志。想在 Mac 上要毛玻璃背景，请用 FrostedGlass 插件（见 [§10.7](#107-窗口桌面与颜色插件第三方)）
+  或 `MacGlass`（见 [§6.8](#68-deskset-扩展)）。
+- **原因：** 与 Windows 10、11 上的 Rainmeter 5.0 一致。如果画出 Windows 7 的模糊效果，仍写着 `Blur=1` 的皮肤会和现在
+  Windows 用户看到的不一样。
+- **对皮肤的影响：** 与现在的 Windows 相比没有差别；为 Windows 7 设计的皮肤不显示模糊背景，和 Windows 10、11 上一样。
+  尚未在 Windows 桌面上对照。
+- **状态：** 完全一致
 
 ### 7.2 鼠标
 
@@ -2875,7 +2881,6 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
-| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
