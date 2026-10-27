@@ -232,6 +232,9 @@ timer.dispatchSource	Sources/Deskset/NetworkStatistics.swift	1	lazy two-minute s
 
 timer.Timer	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
 timer.runLoopAdd	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
+event.pointerState	Sources/Deskset/ClickThroughOverride.swift	3	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.Timer	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.runLoopAdd	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
 background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
 event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
 event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer

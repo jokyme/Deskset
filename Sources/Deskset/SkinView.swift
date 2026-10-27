@@ -813,10 +813,12 @@ final class SkinView: NSView {
     }
 
     private func hover(_ c: SkinWindowController, x: Double, y: Double) {
-        guard !c.state.clickThrough, !c.isSelected else { return }
+        guard !c.passesMouseThrough, !c.isSelected else { return }
         c.runtime.send(.hover(x: x, y: y))
         guard !c.isStopped else { return }
-        c.app.skinToolTips.pointerMoved(in: self, info: toolTipInfo(x: x, y: y), at: SkinView.pointerLocation())
+        // A click-through skin reached with ⌘ or Control (ClickThroughOverride) still shows no tooltips.
+        c.app.skinToolTips.pointerMoved(in: self, info: c.isClickThrough ? nil : toolTipInfo(x: x, y: y),
+                                        at: SkinView.pointerLocation())
         let name = SkinView.cursorName(c, x: x, y: y)
         if name != cursorName || name != nil {
             cursorName = name

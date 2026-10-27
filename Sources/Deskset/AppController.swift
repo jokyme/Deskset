@@ -79,6 +79,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Ctrl–Option selection and the selected skins' shared move / zoom gesture.
     private(set) lazy var skinSelection = SkinSelectionController(app: self)
     private(set) lazy var skinToolTips = SkinToolTipPresenter(app: self)
+    private(set) lazy var clickThroughOverride = ClickThroughOverride(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var fileLoggingObserver: NSObjectProtocol?
     /// Only the primary desktop instance configures and stops the persistent statistics service.

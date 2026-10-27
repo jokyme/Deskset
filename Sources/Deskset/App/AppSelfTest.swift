@@ -135,6 +135,7 @@ enum AppSelfTest {
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SkinToolTipSelfTests.run(t)
+        ClickThroughOverrideSelfTests.run(t)
         SkinCursorsSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)

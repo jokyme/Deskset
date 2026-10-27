@@ -108,6 +108,18 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     var state: SkinState { app.state.skin(config) ?? SkinState(file: file) }
     var isSelected: Bool { app.skinSelection.contains(config) }
+    /// ClickThrough as it applies now (a selected skin takes the mouse).
+    var isClickThrough: Bool { windowSettings.effectiveClickThrough }
+    /// ⌘ or Control is held over this click-through skin, so it takes the mouse for now (`ClickThroughOverride`).
+    private(set) var clickThroughOverridden = false
+    /// Click-through and not overridden: the mouse passes through.
+    var passesMouseThrough: Bool { isClickThrough && !clickThroughOverridden }
+
+    func setClickThroughOverridden(_ overridden: Bool) {
+        guard overridden != clickThroughOverridden, !isStopped else { return }
+        clickThroughOverridden = overridden
+        applyMouseHandling()
+    }
     var zoomOverridePercent: Int? { state.zoomOverridePercent }
     var isZoomForced: Bool { app.state.forceDefaultZoom }
     var effectiveZoomFactor: Double {
@@ -553,7 +565,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// OnHover=Hide while hovered.
     private func applyMouseHandling() {
         let s = state
-        let ignore = windowSettings.effectiveClickThrough
+        if isClickThrough { app.clickThroughOverride.watch() } else { clickThroughOverridden = false }
+        let ignore = passesMouseThrough
             || (!isSelected && isHovering && SkinVisibility.passesClicksWhileHovering(onHover: s.onHover))
         if ignore {
             if !window.ignoresMouseEvents { window.ignoresMouseEvents = true }
