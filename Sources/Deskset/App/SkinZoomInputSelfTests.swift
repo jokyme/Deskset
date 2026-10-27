@@ -31,8 +31,8 @@ enum SkinZoomInputSelfTests {
                 c.view.updateToolTips()
                 t.check(c.view.toolTipRects.contains(CGRect(x: 10 * zoom, y: 10 * zoom,
                                                            width: 20 * zoom, height: 20 * zoom)))
-                t.equal(c.view.view(c.view, stringForToolTip: 0, point: NSPoint(x: 20 * zoom, y: 20 * zoom),
-                                    userData: nil), "Scaled target")
+                let target = c.view.logicalPoint(NSPoint(x: 20 * zoom, y: 20 * zoom))
+                t.equal(c.view.toolTipText(x: target.0, y: target.1), "Scaled target")
                 let screenPoint = c.window.convertPoint(toScreen: c.view.convert(NSPoint(x: 20 * zoom, y: 20 * zoom),
                                                                                 to: nil))
                 let logical = c.skinPoint(fromScreen: screenPoint)

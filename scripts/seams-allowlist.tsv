@@ -230,6 +230,8 @@ background.queue	Sources/Deskset/NetworkStatistics.swift	1	serial statistics fil
 effect.fileWrite	Sources/Deskset/NetworkStatistics.swift	2	atomic native statistics storage for the primary desktop instance; FileIO is injected in tests
 timer.dispatchSource	Sources/Deskset/NetworkStatistics.swift	1	lazy two-minute statistics collection for the active session; the repeating scheduler is injected in tests
 
+timer.Timer	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
+timer.runLoopAdd	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
 background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
 event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
 event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer

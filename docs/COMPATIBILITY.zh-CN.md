@@ -1216,14 +1216,17 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 工具提示
 - **Windows：** ToolTipText / ToolTipTitle、ToolTipIcon、ToolTipType（气泡）、ToolTipWidth；`[Rainmeter]` 中的
   ToolTipHidden。
-- **Mac：** 标准的 macOS 工具提示，每个 meter 一个区域，标题单独一行显示在文字上方。ToolTipIcon、ToolTipType 和
-  ToolTipWidth 会被读取但不显示。隐藏的 meter、隐藏容器中的内容、点击穿透的皮肤或 ToolTipHidden=1 时没有工具提示。工具提示
-  中的 `%1`、`%2`…… 在所有类型的 meter 上都使用手册规定的强制格式（AutoScale=1、不带小数）（取舍判断）。无论哪个 App
-  在前台，工具提示都会显示：皮肤窗口允许在后台显示工具提示（否则 macOS 只在窗口所属的 App 处于活跃状态时才显示，而 Deskset
-  作为菜单栏 App 几乎从不处于活跃状态）。鼠标停留半秒后显示，与 Windows 一致（AppKit 默认要等两三秒）。
-- **原因：** macOS 的工具提示没有图标、气泡样式和宽度设置。
-- **对皮肤的影响：** 工具提示与其他 Mac 工具提示外观相同。
-- **状态：** 部分支持
+- **Mac：** 由 Deskset 自己绘制工具提示，使用 macOS 工具提示的材质和字体，每个 meter 一个区域。标题加粗、单独一行
+  （不换行），ToolTipIcon 显示在标题前：Info、Warning、Error、Question、Shield 用对应颜色的 SF Symbols，也可以是图标文件
+  （`.ico` 或 macOS 能读取的任何图片；相对路径从皮肤所在文件夹算起）；按手册要求，只有设置了标题才显示图标。文字在
+  ToolTipWidth 处换行，单位是点（Windows 上是 100% 缩放下的像素）。ToolTipType=1 画成气泡，尖角指向指针；靠近屏幕底部时
+  显示在指针上方。指针在 meter 上停留半秒后，工具提示出现在指针下方（从另一个工具提示直接移过来时更快；用
+  `defaults write -g NSInitialToolTipDelay` 为所有 App 设置的值优先），指针留在该 meter 上时一直显示，按下鼠标、滚动或离开
+  该 meter 时消失。无论哪个 App 在前台都会显示。隐藏的 meter、隐藏容器中的内容、点击穿透的皮肤或 ToolTipHidden=1 时没有工具
+  提示。工具提示中的 `%1`、`%2`…… 在所有类型的 meter 上都使用手册规定的强制格式（AutoScale=1、不带小数）（取舍判断）。
+- **原因：** AppKit 自带的工具提示只能显示纯文字。
+- **对皮肤的影响：** 工具提示是 Mac 风格；气泡和图标按 macOS 的样式绘制，不是 Windows 的样式。
+- **状态：** 模拟实现
 
 ### 7.3 菜单与管理窗口
 

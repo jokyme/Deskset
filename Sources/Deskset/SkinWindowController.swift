@@ -414,6 +414,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil, keepsWindow: Bool = false) {
         guard !isStopped, !isClosing else { return }
         app.skinSelection.remove(self)
+        app.skinToolTips.hide(for: view)
         startWaiters = []
         hoverTimer?.invalidate()
         hoverTimer = nil
@@ -510,6 +511,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         applyAlpha(animated: animated)
         // A pending !HideFade may have been cut short by the new alpha: make sure a hidden skin is really gone.
         if isHiddenByBang && window.isVisible { window.orderOut(nil) }
+        if isHiddenByBang { app.skinToolTips.hide(for: view) }
         // ClickThrough has no tooltips.
         view.updateToolTips()
         publishFacts()
@@ -1265,6 +1267,11 @@ typealias SkinController = SkinWindowController
 /// before any tooltip is created.
 enum SkinTooltips {
     static let initialDelayMilliseconds = 500
+
+    /// How long the pointer rests over a meter before its tooltip appears (`SkinToolTipPresenter`).
+    static var initialDelay: TimeInterval {
+        Double(max(UserDefaults.standard.integer(forKey: "NSInitialToolTipDelay"), 0)) / 1000
+    }
 
     static func registerDelay(in defaults: UserDefaults = .standard) {
         defaults.register(defaults: ["NSInitialToolTipDelay": initialDelayMilliseconds])

@@ -109,6 +109,8 @@ open class Meter: SkinSection {
     public internal(set) var toolTipTitle = "" {
         didSet { if toolTipTitle != oldValue { noteMouseChange() } }
     }
+    /// `ToolTipIcon` names of the preset icons (any other value is an icon file).
+    public static let toolTipIconPresets: Set<String> = ["info", "warning", "error", "question", "shield"]
     public internal(set) var toolTipIcon = "" {
         didSet { if toolTipIcon != oldValue { noteMouseChange() } }
     }
@@ -300,7 +302,9 @@ open class Meter: SkinSection {
 
         toolTipText = string("ToolTipText")
         toolTipTitle = string("ToolTipTitle")
-        toolTipIcon = string("ToolTipIcon").trimmingCharacters(in: .whitespaces)
+        // A preset name, or an icon file's path made absolute here (relative paths start in the skin's folder).
+        let icon = string("ToolTipIcon").trimmingCharacters(in: .whitespaces)
+        toolTipIcon = icon.isEmpty || Meter.toolTipIconPresets.contains(icon.lowercased()) ? icon : skin.absolutePath(icon)
         toolTipBalloon = bool("ToolTipType", false)
         toolTipWidth = double("ToolTipWidth", 1000).clamped(1, 1e5)
         toolTipHidden = bool("ToolTipHidden", false)

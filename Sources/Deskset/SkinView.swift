@@ -37,7 +37,7 @@ final class SkinPanel: NSPanel {
 /// - `Plugin=Mouse` measures get every press, drag, release, wheel notch and move first (`Skin.pointerEvent`), except
 ///   ⌘-presses (the CTRL override) and Control-clicks (the skin menu). Input elsewhere on the screen reaches
 ///   `Plugin=Slider` measures through `OutsidePointerMonitor`, never this skin's own window's input.
-final class SkinView: NSView, NSViewToolTipOwner {
+final class SkinView: NSView {
     weak var controller: SkinWindowController?
     private var trackingArea: NSTrackingArea?
     private var dragOrigin: NSPoint?
@@ -285,6 +285,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func mouseDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped else { return }
+        c.app.skinToolTips.hide(for: self)
         textEditPress = false
         selectionPress = SkinSelectionController.isSelectionGesture(event.modifierFlags)
         if selectionPress { return }
@@ -464,6 +465,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func rightMouseDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped, !c.isSelected else { return }
+        c.app.skinToolTips.hide(for: self)
         pressed(1)
         c.bringToFrontOnClick()
         rightPressHandled = false
@@ -524,6 +526,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override func otherMouseDown(with event: NSEvent) {
         guard let c = controller, !c.isStopped, !c.isSelected,
               let kinds = SkinView.otherKinds(event.buttonNumber) else { return }
+        c.app.skinToolTips.hide(for: self)
         pressed(event.buttonNumber)
         c.bringToFrontOnClick()
         guard !SkinView.isOverride(event.modifierFlags) else { return }
@@ -561,6 +564,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     override func scrollWheel(with event: NSEvent) {
         guard let c = controller, !c.isStopped, !c.isSelected else { return }
+        c.app.skinToolTips.hide(for: self)
         let (x, y) = point(event)
         // Physical direction (wheel rolled away / fingers moved up = "up"), whatever the natural-scrolling setting.
         let sign: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
@@ -812,6 +816,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard !c.state.clickThrough, !c.isSelected else { return }
         c.runtime.send(.hover(x: x, y: y))
         guard !c.isStopped else { return }
+        c.app.skinToolTips.pointerMoved(in: self, info: toolTipInfo(x: x, y: y), at: SkinView.pointerLocation())
         let name = SkinView.cursorName(c, x: x, y: y)
         if name != cursorName || name != nil {
             cursorName = name
@@ -820,6 +825,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     private func leave(_ c: SkinWindowController) {
+        c.app.skinToolTips.hide(for: self)
         c.runtime.send(.exited)
         if cursorName != nil {
             cursorName = nil
@@ -854,11 +860,9 @@ final class SkinView: NSView, NSViewToolTipOwner {
 
     // MARK: Tooltips
 
-    /// Registers one tooltip area per meter that has a tooltip, so AppKit shows a new tooltip when the pointer moves
-    /// from one meter to another (a single view-wide tooltip keeps showing the first text). The areas come from the
-    /// snapshot (`SkinHitMap.toolTipAreas`: a meter's area includes its glass), the text is read when the tooltip
-    /// appears. Called when the snapshot's areas change and when the window follows a new size; AppKit is only touched
-    /// when the areas change.
+    /// The skin's tooltip areas, one per meter that has a tooltip, from the snapshot (`SkinHitMap.toolTipAreas`: a
+    /// meter's area includes its glass), in view coordinates. Called when the snapshot's areas change and when the window
+    /// follows a new size; a tooltip on screen goes when the areas change (`SkinToolTipPresenter`).
     func updateToolTips() {
         var rects: [CGRect] = []
         if let c = controller, !c.isStopped, !c.isSelected, !c.state.clickThrough {
@@ -871,24 +875,21 @@ final class SkinView: NSView, NSViewToolTipOwner {
         }
         guard rects != toolTipRects else { return }
         toolTipRects = rects
-        removeAllToolTips()
-        for r in rects { addToolTip(r, owner: self, userData: nil) }
+        controller?.app.skinToolTips.hide(for: self)
     }
 
-    /// Tooltip text at a skin point, from the snapshot: the title on its own line above the text.
-    func toolTipText(x: Double, y: Double) -> String? {
+    /// The tooltip at a skin point, from the snapshot.
+    func toolTipInfo(x: Double, y: Double) -> ToolTipInfo? {
         guard let c = controller, !c.isStopped, !c.isSelected else { return nil }
         let runtime = c.runtime
-        let info = SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
-                                       snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y, images: runtime),
-                                       live: { $0.toolTipInfo(at: x, y) })
-        guard let info else { return nil }
-        return info.title.isEmpty ? info.text : "\(info.title)\n\(info.text)"
+        return SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
+                                   snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y, images: runtime),
+                                   live: { $0.toolTipInfo(at: x, y) })
     }
 
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
-              userData data: UnsafeMutableRawPointer?) -> String {
-        let (x, y) = logicalPoint(point)
-        return toolTipText(x: x, y: y) ?? ""
+    /// Tooltip text at a skin point: the title on its own line above the text.
+    func toolTipText(x: Double, y: Double) -> String? {
+        guard let info = toolTipInfo(x: x, y: y) else { return nil }
+        return info.title.isEmpty ? info.text : "\(info.title)\n\(info.text)"
     }
 }
