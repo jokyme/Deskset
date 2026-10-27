@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
 
 ---
 
@@ -1048,7 +1048,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   保存的交互设置与选择期间的临时覆盖分开。
 - **原因：** Mac 使用 Control-Option 选择；普通 Command 拖动规则独立保留。位置使用点，边缘命中区域另行考虑显示器 backing scale。
 - **对皮肤的影响：** 可以一起摆放和缩放分组皮肤。尚未完成 Windows 桌面对照。
-- **状态：** 模拟实现 / 部分支持（点击穿透选择手势与平台几何差异）
+- **状态：** 模拟实现 / 部分支持（平台几何差异）
 
 #### SnapEdges 与 KeepOnScreen
 - **Windows：** 皮肤会吸附到屏幕边缘和其他皮肤；KeepOnScreen 让皮肤保持在屏幕范围内。
@@ -1061,11 +1061,14 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### ClickThrough（点击穿透）
 - **Windows：** 关闭鼠标检测，点击会穿透；“按住 CTRL 可暂时停用”。
-- **Mac：** 窗口完全忽略鼠标（没有点按、悬停、工具提示和滚动）。**不能**用 Ctrl / ⌘ 临时覆盖，因为 macOS 不会向这样的窗口
-  传递任何事件，Control-Option 点按选择也不可用。可以从皮肤菜单使用 Select skin，或在菜单／管理窗口中关闭点击穿透。
-- **原因：** macOS 的窗口模型。
-- **对皮肤的影响：** 仍不能直接按住 ⌘ 拖动；通过菜单选中后会暂时允许交互。
-- **状态：** 部分支持
+- **Mac：** 窗口完全忽略鼠标（没有点按、悬停、工具提示和滚动）。指针在皮肤上时按住 ⌘ 或 Control（Mac 上对应 Ctrl 的键），
+  按住期间鼠标就能作用于皮肤：⌘ 拖动可以移动它，Control 点按打开它的菜单，Control-Option 点按选中它，鼠标动作和悬停也照常
+  工作。覆盖期间按下的鼠标会一直保持覆盖，直到所有按键松开，所以松开修饰键后拖动不会中断。有点击穿透皮肤时，每秒读取 10 次
+  修饰键和指针位置，所以覆盖最多晚十分之一秒生效；工具提示仍然关闭。保存的设置不会改变。
+- **原因：** macOS 不会向忽略鼠标的窗口传递任何事件，而监听在其他 App 中按下的键需要辅助功能权限；读取当前的修饰键状态
+  不需要任何权限。
+- **对皮肤的影响：** 预期没有影响。
+- **状态：** 模拟实现
 
 #### AlphaValue、OnHover 与淡入淡出
 - **Windows：** AlphaValue 为 0…255；菜单提供 0 %…90 % 的透明度；OnHover 0 无、1 隐藏、2 淡入、3 淡出；FadeDuration（默认
@@ -2887,7 +2890,6 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
-| 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 动画光标（`.ani`、BUSY、WAIT） | 部分支持 | 只显示第一帧，不播放动画 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |
 | 其他 Windows 插件 DLL | 不支持 | 数值为 0 / 空，皮肤的兼容性提示中有说明 |

@@ -809,7 +809,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     }
 
     private func hover(_ c: SkinWindowController, x: Double, y: Double) {
-        guard !c.state.clickThrough, !c.isSelected else { return }
+        guard !c.passesMouseThrough, !c.isSelected else { return }
         c.runtime.send(.hover(x: x, y: y))
         guard !c.isStopped else { return }
         let name = SkinView.cursorName(c, x: x, y: y)
