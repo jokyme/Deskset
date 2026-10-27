@@ -1543,6 +1543,28 @@ private func runMeterGeneralTests(_ t: TestRunner) {
         t.check(skin.meter(named: "A")!.transformationMatrix == nil, "a blank value clears it too")
     }
 
+    t.suite("Engine: Aero blur has no effect, as on Windows 10 and later") {
+        let (skin, host, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        Blur=1
+        BlurRegion=2,0,0,40,20,5
+        OnRefreshAction=[!ShowBlur][!AddBlur "1,0,0,10,10"][!RemoveBlur "1,0,0,10,10" *][!HideBlur][!ToggleBlur Root\\Other][!SetVariable After 1]
+
+        [M]
+        Meter=Image
+        W=40
+        H=20
+        """)
+        skin.update()
+        t.equal(skin.variable("After"), "1", "the rest of the action runs")
+        t.check(skin.settings.blur && skin.settings.blurRegions == [[2, 0, 0, 40, 20, 5]], "the options are still read")
+        t.check(!host.handled.contains { $0.name.hasSuffix("blur") }, "nothing reaches the host: \(host.handled)")
+        t.check(!host.forwarded.contains { $0.0.name.hasSuffix("blur") }, "nor other skins")
+        t.check(!skin.issues.contains { $0.localizedCaseInsensitiveContains("blur") }, "not a compatibility note: \(skin.issues)")
+        t.check(!host.logs.contains { $0.localizedCaseInsensitiveContains("blur") }, "and not logged: \(host.logs)")
+        t.check(host.glassChanges.allSatisfy(\.isEmpty), "no glass is drawn for it")
+    }
+
     t.suite("Engine: hover actions of overlapping meters run in meter order") {
         // Entering or leaving several meters in one move: their MouseOverAction / MouseLeaveAction run in the order of
         // the meters, the same on every run (not in the order of a Set, which Swift seeds per process and instance).

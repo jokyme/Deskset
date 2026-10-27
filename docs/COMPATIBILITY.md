@@ -71,7 +71,7 @@ shipped with Deskset.
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins or Aero blur; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
 
 ---
 
@@ -1327,12 +1327,19 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** emulated
 
 #### Blur and BlurRegion (`[Rainmeter]`), blur bangs
-- **Windows:** "Set to 1 to enable Aero Blur"; `!ShowBlur`, `!AddBlur`… change it.
-- **Mac:** not supported (the FrostedGlass plugin is, see [§10.7](#107-window-desktop-and-color-plugins-third-party));
-  the bangs add a compatibility note.
-- **Why:** not implemented yet.
-- **Skin impact:** the skin is drawn without the blurred backdrop.
-- **Status:** not supported
+- **Windows:** "Set to 1 to enable Aero Blur on the Windows 7 operating system"; `!ShowBlur`, `!HideBlur`,
+  `!ToggleBlur`, `!AddBlur` and `!RemoveBlur` change it. The manual adds that it "will not work on Window 8.1 or
+  Windows 10", and Rainmeter 5.0 requires Windows 10 or later, so on current Windows these options and bangs have no
+  visible effect.
+- **Mac:** the same: `Blur` and `BlurRegion` are read and nothing is drawn; the five bangs are accepted, do nothing,
+  and the rest of the action runs. They add no compatibility note and no log line. For a frosted background on the Mac,
+  use the FrostedGlass plugin ([§10.7](#107-window-desktop-and-color-plugins-third-party)) or `MacGlass`
+  ([§6.8](#68-deskset-extensions)).
+- **Why:** matches Rainmeter 5.0 on Windows 10 and 11. Drawing the Windows 7 blur would make skins that still set
+  `Blur=1` look different from what Windows users see today.
+- **Skin impact:** none compared with current Windows; a skin designed on Windows 7 shows no blurred backdrop, as on
+  Windows 10 and 11. Not compared on a Windows desktop.
+- **Status:** identical
 
 ### 7.2 Mouse
 
