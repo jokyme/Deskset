@@ -2,6 +2,28 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.6.0
+
+This release speaks your language: Deskset's menus, windows and alerts are now available in 38 languages.
+
+### Added
+
+- **38 languages.** The menu bar menu, skin menus, Manage, Settings, About, the skin installer and the update, install and restart dialogs are translated into the same languages Rainmeter ships: Arabic, Bulgarian, Chinese (Simplified and Traditional), Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hebrew, Hungarian, Indonesian, Italian, Japanese, Korean, Latvian, Lithuanian, Malay, Norwegian Bokmål, Polish, Portuguese (Brazil and Portugal), Romanian, Russian, Serbian (Cyrillic and Latin), Slovak, Slovenian, Spanish, Swedish, Thai, Turkish, Ukrainian and Vietnamese. Permission prompts are translated too.
+- **Language setting.** Choose Deskset's language in Settings › General › Language, or follow the Mac. Deskset offers to restart to use the new language. System Settings › General › Language & Region › Applications sets the same choice.
+
+### Known limitations
+
+- The translations are first drafts. If you speak one of these languages, corrections are welcome — see [Translations](CONTRIBUTING.md#translations).
+- The skin editor (Skin Studio), compatibility notes and the Debug window are still in English.
+- What a skin draws is not translated: skins keep their own text, and the Time measure keeps Rainmeter's English default.
+- In Arabic and Hebrew the text is translated, but windows are laid out right to left only when the Mac's own language is right to left.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved. Deskset now shows the Mac's language if it has it; choose English in Settings › General › Language to keep the English interface. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.5.2...v0.6.0)
+
 ## 0.5.2
 
 This release brings more of Rainmeter 5.0's mouse and tooltip options to the Mac, and makes click-through skins reachable again.
