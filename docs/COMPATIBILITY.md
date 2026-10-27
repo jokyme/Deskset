@@ -3306,7 +3306,6 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | --- | --- | --- |
 | Hardware sensors (temperatures, fans, power, clocks) | emulated | Read directly without privileges (§9.3); Apple documents none of them, the values are approximations; M1–M3 and Intel Macs untested; HWiNFO skins still read nothing |
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
-| Aero blur (`Blur`, `BlurRegion`, blur bangs) | not supported | Use FrostedGlass for blur |
 | Initial `!SetAnchor` timing | partial | Dynamic anchors are implemented; exact first-frame scheduling and commands before initial meter geometry remain unverified ([App](compat/app.md#dynamic-anchors-setanchor)) |
 | The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |

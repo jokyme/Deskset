@@ -2881,7 +2881,6 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
-| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
 | 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
