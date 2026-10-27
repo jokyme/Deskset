@@ -121,9 +121,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   size change, following the 5.0 RC1 behavior; this does not hold the opposite edge fixed. Edge hit areas account
   for the display backing scale separately from skin zoom.
 - Why: Control-Option is the Mac selection chord; ordinary Command-drag keeps its existing override behavior.
-- Skin impact: group position, zoom and shared settings can be edited together. A click-through skin must first
-  be selected through the menu. Windows desktop comparison remains pending.
-- Status: emulated / partial (click-through selection gesture and platform geometry)
+- Skin impact: group position, zoom and shared settings can be edited together. A click-through skin is selected
+  with Control-Option-click like any other (see ClickThrough) or through the menu. Windows desktop comparison remains
+  pending.
+- Status: emulated / partial (platform geometry)
 
 ### SnapEdges
 - Windows (Rainmeter): skins snap to screen edges and other skins (default 1; CTRL disables it temporarily).
@@ -145,12 +146,16 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### ClickThrough
 - Windows (Rainmeter): mouse detection off, clicks pass through; "Hold CTRL to temporarily disable".
-- Mac (Deskset): the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). The CTRL / ⌘ override
-  and Control-Option selection gesture are **not** available: macOS does not deliver any event to a window that ignores
-  the mouse. Use Select skin in its menu to select it, or turn click-through off from the menu or Manage window.
-- Why: macOS window model.
-- Skin impact: direct dragging with ⌘ remains unavailable; menu selection temporarily permits interaction.
-- Status: partial
+- Mac (Deskset): the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). Holding ⌘ or Control
+  with the pointer over the skin lets the mouse reach it while the key is held (`ClickThroughOverride`): ⌘-drag moves
+  it, Control-click opens its menu, Control-Option-click selects it, mouse actions and hover work. A press made during
+  the override keeps it until every button is up; a press already under way elsewhere starts none. The modifier keys,
+  buttons and pointer are polled every 0.1 s, only while a skin is click-through. Tooltips stay off; the saved setting
+  is unchanged.
+- Why: macOS delivers no event to a window that ignores the mouse; watching keys in other apps needs Accessibility,
+  while reading the current modifier state does not.
+- Skin impact: none intended.
+- Status: emulated
 
 ### Clicks on transparent pixels
 - Windows (Rainmeter): fully transparent pixels are not part of the skin (skins use `SolidColor=0,0,0,1` to make an

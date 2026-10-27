@@ -71,7 +71,7 @@ shipped with Deskset.
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; no direct selection gesture on click-through skins or Aero blur; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
 
 ---
 
@@ -1189,7 +1189,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Why:** Mac selection uses Control-Option; ordinary Command-drag remains separate. Positions are points and edge
   hit targets account for display backing scale.
 - **Skin impact:** grouped skins can be positioned and scaled together. Windows desktop comparison remains pending.
-- **Status:** emulated / partial (click-through selection gesture and platform geometry)
+- **Status:** emulated / partial (platform geometry)
 
 #### SnapEdges and KeepOnScreen
 - **Windows:** skins snap to screen edges and other skins; KeepOnScreen keeps a skin within the screen.
@@ -1203,12 +1203,16 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### ClickThrough
 - **Windows:** mouse detection off, clicks pass through; "Hold CTRL to temporarily disable".
-- **Mac:** the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). The Ctrl / ⌘ override is
-  **not** available, nor is Control-Option-click selection, because macOS delivers no event to such a window. Use
-  Select skin in its menu, or turn click-through off in the menu or Manage window.
-- **Why:** macOS window model.
-- **Skin impact:** direct dragging with ⌘ remains unavailable; menu selection temporarily permits interaction.
-- **Status:** partial
+- **Mac:** the window ignores the mouse entirely (no clicks, hover, tooltips or scrolling). Holding ⌘ or Control (the
+  Mac's counterparts of Ctrl) while the pointer is over the skin lets the mouse reach it for as long as the key is
+  held: ⌘-drag moves it, Control-click opens its menu, Control-Option-click selects it, and its mouse actions and hover
+  work. A press made during the override keeps it until every mouse button is up, so a drag survives releasing the
+  key. The keys and the pointer are read 10 times a second while a skin is click-through, so the override can take
+  up to a tenth of a second to start; tooltips stay off. The saved setting does not change.
+- **Why:** macOS delivers no event to a window that ignores the mouse, and watching keys pressed in other apps would
+  need Accessibility; reading the current modifier keys needs no permission.
+- **Skin impact:** none intended.
+- **Status:** emulated
 
 #### AlphaValue, OnHover and fades
 - **Windows:** AlphaValue 0…255; menu and Manage transparency choices run from 0 % to 90 % in 10 % steps,
@@ -3301,7 +3305,6 @@ at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09
 | Layouts: wallpaper mapping and Windows parity checks | partial | Save/load, `!LoadLayout` and installer application are implemented; see [remaining limits](compat/layouts.md) |
 | Aero blur (`Blur`, `BlurRegion`, blur bangs) | not supported | Use FrostedGlass for blur |
 | Initial `!SetAnchor` timing | partial | Dynamic anchors are implemented; exact first-frame scheduling and commands before initial meter geometry remain unverified ([App](compat/app.md#dynamic-anchors-setanchor)) |
-| The Ctrl / ⌘ override and Control-Option selection gesture on click-through skins | not supported | Use Select skin in the skin menu, or turn click-through off in the menu or Manage window |
 | Custom cursors (`.cur` / `.ani`, most cursor names) | partial | The arrow is shown |
 | WindowMessage, VirtualDesktops | not supported | No macOS counterpart |
 | Other Windows plugin DLLs | not supported | Values 0 / empty, a note in the skin's Compatibility Notes |

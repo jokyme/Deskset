@@ -230,6 +230,9 @@ background.queue	Sources/Deskset/NetworkStatistics.swift	1	serial statistics fil
 effect.fileWrite	Sources/Deskset/NetworkStatistics.swift	2	atomic native statistics storage for the primary desktop instance; FileIO is injected in tests
 timer.dispatchSource	Sources/Deskset/NetworkStatistics.swift	1	lazy two-minute statistics collection for the active session; the repeating scheduler is injected in tests
 
+event.pointerState	Sources/Deskset/ClickThroughOverride.swift	3	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.Timer	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.runLoopAdd	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
 background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
 event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
 event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
