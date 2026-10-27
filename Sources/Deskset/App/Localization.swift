@@ -39,6 +39,54 @@ enum Localization {
                             "sr", "sr-Latn", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"]
 }
 
+/// The app's language as chosen in Settings › General: nil follows the Mac. It is the `AppleLanguages` key of
+/// Deskset's own defaults domain — the key System Settings › General › Language & Region › Applications writes too —
+/// so either place shows the other's choice; macOS reads it when Deskset starts.
+struct LanguagePreference {
+    let defaults: UserDefaults
+    /// Deskset's defaults domain (the self-tests use a temporary suite).
+    let domain: String
+
+    static var standard: LanguagePreference {
+        LanguagePreference(defaults: .standard, domain: Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName)
+    }
+
+    /// The chosen language, read from Deskset's own domain only: `defaults.object(forKey:)` would also find the
+    /// Mac's languages in the global domain.
+    var chosen: String? {
+        (defaults.persistentDomain(forName: domain)?["AppleLanguages"] as? [String])?.first
+    }
+
+    func choose(_ language: String?) {
+        if let language { defaults.set([language], forKey: "AppleLanguages") }
+        else { defaults.removeObject(forKey: "AppleLanguages") }
+    }
+
+    /// The language Deskset shows when it follows the Mac: the first of the Mac's languages it has.
+    static func systemLanguage(preferences: [String]) -> String {
+        Bundle.preferredLocalizations(from: ["en"] + Localization.languages, forPreferences: preferences).first ?? "en"
+    }
+
+    /// The Mac's own languages (the global domain, which a choice for Deskset alone does not change).
+    static var macLanguages: [String] {
+        UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"] as? [String]
+            ?? ["en"]
+    }
+
+    /// Every language Deskset has, each named in itself ("Deutsch", "日本語"), in alphabetical order.
+    static var choices: [(language: String, name: String)] {
+        (["en"] + Localization.languages).map { ($0, name(of: $0)) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// A language's name in that language, capitalised as a menu item ("français" → "Français").
+    static func name(of language: String) -> String {
+        let locale = Locale(identifier: language)
+        let name = locale.localizedString(forIdentifier: language) ?? language
+        return name.prefix(1).uppercased(with: locale) + name.dropFirst()
+    }
+}
+
 /// A made-up language for checking the app's UI (`--pseudo-language long|rtl`): `long` turns "Refresh All" into
 /// "⟦Ŕéƒŕéšĥ Åļļ~~~~⟧" — about 40% longer, as German or Finnish text often is, with marks that show where a text was
 /// cut or never went through `L`; `rtl` also lays the app out right to left, as Arabic and Hebrew do.

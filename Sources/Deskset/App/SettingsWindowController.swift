@@ -43,6 +43,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let liveReloadBox = NSButton(checkboxWithTitle: L("Refresh the skin when the file is saved elsewhere"),
                                  target: nil, action: nil)
     // General pane.
+    let languagePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    /// Where the language choice is kept (the self-tests use a temporary defaults suite).
+    var languagePreference = LanguagePreference.standard
     let loginBox = NSButton(checkboxWithTitle: L("Launch Deskset at login"), target: nil, action: nil)
     let automaticUpdatesBox = NSButton(checkboxWithTitle: L("Automatically check for updates"), target: nil, action: nil)
     let checkUpdatesButton = NSButton(title: L("Check for Updates…"), target: nil, action: nil)
@@ -180,6 +183,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     // MARK: Building
 
     private func configureControls() {
+        languagePopUp.target = self
+        languagePopUp.action = #selector(languageChosen)
+        refreshLanguagePopUp()
         editorPopUp.target = self
         editorPopUp.action = #selector(editorChosen)
         editorPopUp.setAccessibilityLabel(L("Edit code with"))
@@ -297,6 +303,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         let zoom = NSStackView(views: [defaultZoomField, defaultZoomStepper, NSTextField(labelWithString: "%")])
         zoom.spacing = 4
         return makePane(rows: [
+            [label(L("Language:")), languagePopUp],
             [label(L("Startup:")), loginBox],
             [NSGridCell.emptyContentView, loginNote],
             [label(L("Skins folder:")), folder],
@@ -308,7 +315,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             [NSGridCell.emptyContentView, note(L("Checks daily. Updates download here; you choose when to install and relaunch."))],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
-        ], spacingAfter: [1: 8, 2: 8, 4: 8])
+        ], spacingAfter: [0: 8, 2: 8, 3: 8, 5: 8])
     }
 
     // MARK: Editor list
@@ -468,6 +475,53 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         refreshEditorPopUp()
         updateControls()
+    }
+
+    // MARK: Language
+
+    /// "System default (<the language that follows the Mac>)", then every language in its own name. The represented
+    /// object is the language code; the default item has none.
+    func refreshLanguagePopUp() {
+        let menu = NSMenu()
+        let system = LanguagePreference.systemLanguage(preferences: LanguagePreference.macLanguages)
+        menu.addItem(NSMenuItem(title: L("System default (%@)", LanguagePreference.name(of: system)), action: nil,
+                                keyEquivalent: ""))
+        menu.addItem(.separator())
+        for choice in LanguagePreference.choices {
+            let item = NSMenuItem(title: choice.name, action: nil, keyEquivalent: "")
+            item.representedObject = choice.language
+            menu.addItem(item)
+        }
+        languagePopUp.menu = menu
+        let chosen = languagePreference.chosen
+        let index = menu.items.firstIndex { ($0.representedObject as? String).map { Self.sameLanguage($0, chosen) } ?? false }
+        languagePopUp.selectItem(at: chosen == nil ? 0 : index ?? 0)
+    }
+
+    /// Language codes as macOS writes them may differ in case or separator (`pt_BR`, `zh-hans`).
+    private static func sameLanguage(_ a: String, _ b: String?) -> Bool {
+        guard let b else { return false }
+        let normal = { (s: String) in s.replacingOccurrences(of: "_", with: "-").lowercased() }
+        return normal(a) == normal(b)
+    }
+
+    @objc func languageChosen() {
+        let language = languagePopUp.selectedItem?.representedObject as? String
+        let before = languagePreference.chosen
+        guard language != before, !(language.map { Self.sameLanguage($0, before) } ?? false) else { return }
+        languagePreference.choose(language)
+        Log.write("App language set to \(language ?? "the Mac's"); used after a restart")
+        guard app.presentsWindows, let window else { return }
+        // The new language shows only after a restart: macOS picks the app's language when it starts.
+        let alert = NSAlert()
+        alert.icon = AppIcon.image(size: 64)
+        alert.messageText = L("Restart Deskset now?")
+        alert.informativeText = L("The new language is used after Deskset restarts.")
+        alert.addButton(withTitle: L("Restart Now"))
+        alert.addButton(withTitle: L("Later"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.app.requestRestart() }
+        }
     }
 
     @objc private func liveReloadToggled() {
