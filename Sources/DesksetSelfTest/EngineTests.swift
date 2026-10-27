@@ -1498,6 +1498,51 @@ private func runMeterGeneralTests(_ t: TestRunner) {
         t.check(!skin.mouseEvent(.leftUp, x: 50, y: 35), "a hidden container hides its content")
     }
 
+    t.suite("Engine: an empty Container selects no meter (Rainmeter 5.0 fix)") {
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Empty]
+        Meter=Image
+        X=40
+        Y=5
+        W=10
+        H=10
+        Container=
+
+        [Spaces]
+        Meter=Image
+        X=60
+        W=10
+        H=10
+        Container=
+        """)
+        skin.update()
+        t.check(skin.meter(named: "Empty")!.container == nil)
+        t.check(skin.meter(named: "Spaces")!.container == nil)
+        t.check(!skin.meters.contains { $0.isContainer }, "no meter becomes a container")
+        t.equal(frame(skin, "Empty"), SkinRect(x: 40, y: 5, width: 10, height: 10), "positioned as ordinary content")
+    }
+
+    t.suite("Engine: removing or emptying TransformationMatrix clears it (Rainmeter 5.0 fix)") {
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [A]
+        Meter=Image
+        W=10
+        H=10
+        TransformationMatrix=2;0;0;2;0;0
+        """)
+        skin.update()
+        t.equal(skin.meter(named: "A")!.transformationMatrix ?? [], [2, 0, 0, 2, 0, 0])
+        run(skin, "[!SetOption A TransformationMatrix \"\"]")
+        skin.update()
+        t.check(skin.meter(named: "A")!.transformationMatrix == nil, "an empty value clears the previous matrix")
+        run(skin, "[!SetOption A TransformationMatrix \"1;0;0;1;5;5\"]")
+        skin.update()
+        t.equal(skin.meter(named: "A")!.transformationMatrix ?? [], [1, 0, 0, 1, 5, 5])
+        run(skin, "[!SetOption A TransformationMatrix \"   \"]")
+        skin.update()
+        t.check(skin.meter(named: "A")!.transformationMatrix == nil, "a blank value clears it too")
+    }
+
     t.suite("Engine: hover actions of overlapping meters run in meter order") {
         // Entering or leaving several meters in one move: their MouseOverAction / MouseLeaveAction run in the order of
         // the meters, the same on every run (not in the order of a Set, which Swift seeds per process and instance).

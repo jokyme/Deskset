@@ -2387,9 +2387,6 @@ public final class Skin {
         case ("mouse", "startcapture"): command = "StartCapture"
         case ("mouse", "stopcapture"): command = "StopCapture"
         case ("windowmessage", "send"): command = withExtra("SendMessage")
-        case ("textedit", "start"): command = "ExecuteBatch 1"
-        case ("textedit", "exit"): command = "Stop"
-        case ("textedit", "saveandexit"): command = "SaveAndExit"
         default: return nil
         }
         return (target, command, configTarget)
