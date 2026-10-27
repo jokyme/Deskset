@@ -26,11 +26,11 @@ final class FileTrashConfirmation: FileTrashConfirming {
     static func presentation(paths: [String]) -> (message: String, detail: String) {
         let names = paths.map { URL(fileURLWithPath: $0).lastPathComponent }
         if let name = names.first, names.count == 1 {
-            return ("Move “\(name)” to the Trash?", "You can restore this item from the Trash.")
+            return (L("Move “%@” to the Trash?", name), L("You can restore this item from the Trash."))
         }
         var detail = names.prefix(8).joined(separator: "\n")
-        if names.count > 8 { detail += "\n… and \(names.count - 8) more items." }
-        return ("Move \(names.count) items to the Trash?", detail)
+        if names.count > 8 { detail += "\n" + L("… and %lld more items.", names.count - 8) }
+        return (L("Move %lld items to the Trash?", names.count), detail)
     }
 
     static func makeAlert(paths: [String]) -> NSAlert {
@@ -40,10 +40,10 @@ final class FileTrashConfirmation: FileTrashConfirming {
         alert.alertStyle = .warning
         alert.messageText = content.message
         alert.informativeText = content.detail
-        let trash = alert.addButton(withTitle: "Move to Trash")
+        let trash = alert.addButton(withTitle: L("Move to Trash"))
         trash.keyEquivalent = "\r"
         trash.hasDestructiveAction = true
-        let cancel = alert.addButton(withTitle: "Cancel")
+        let cancel = alert.addButton(withTitle: L("Cancel"))
         cancel.keyEquivalent = "\u{1b}"
         return alert
     }

@@ -31,6 +31,11 @@ jobs:
       - name: Seam check
         run: swift scripts/check-seams.swift --check
 
+      # The app's text goes through L and the String Catalogs in Localization/: a key missing from them, a language
+      # without a text, a format that differs from the English one, or new untranslated text in a covered file fails.
+      - name: Localization check
+        run: swift scripts/localization.swift check
+
       - name: Build Core self-tests
         run: swift build --product DesksetSelfTest
 

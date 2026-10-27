@@ -193,10 +193,10 @@ enum SkinVisibility {
 
         var title: String {
             switch self {
-            case .none: return "Do Nothing"
-            case .hide: return "Hide"
-            case .fadeIn: return "Fade In"
-            case .fadeOut: return "Fade Out"
+            case .none: return L("Do Nothing")
+            case .hide: return L("Hide")
+            case .fadeIn: return L("Fade In")
+            case .fadeOut: return L("Fade Out")
             }
         }
     }

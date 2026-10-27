@@ -25,8 +25,8 @@ enum LaunchAtLogin {
     /// Flips the setting and explains problems (approval needed, registration failed) to the user.
     static func toggle(app: AppController) {
         guard isAvailable else {
-            app.alert("Launch at Login is unavailable",
-                      "Move Deskset to the Applications folder and open it from there to start it at login.")
+            app.alert(L("Launch at Login is unavailable"),
+                      L("Move Deskset to the Applications folder and open it from there to start it at login."))
             return
         }
         let enable = !isEnabled
@@ -41,7 +41,7 @@ enum LaunchAtLogin {
             if enable && status == .requiresApproval {
                 promptForApproval(app)
             } else {
-                app.alert(enable ? "Couldn’t turn on Launch at Login" : "Couldn’t turn off Launch at Login",
+                app.alert(enable ? L("Couldn’t turn on Launch at Login") : L("Couldn’t turn off Launch at Login"),
                           error.localizedDescription)
             }
         }
@@ -51,10 +51,10 @@ enum LaunchAtLogin {
         guard app.presentsWindows else { return }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Allow Deskset to open at login"
-        alert.informativeText = "macOS needs your approval. Turn on Deskset in System Settings › General › Login Items."
-        alert.addButton(withTitle: "Open System Settings")
-        alert.addButton(withTitle: "Later")
+        alert.messageText = L("Allow Deskset to open at login")
+        alert.informativeText = L("macOS needs your approval. Turn on Deskset in System Settings › General › Login Items.")
+        alert.addButton(withTitle: L("Open System Settings"))
+        alert.addButton(withTitle: L("Later"))
         if alert.runModal() == .alertFirstButtonReturn {
             SMAppService.openSystemSettingsLoginItems()
         }

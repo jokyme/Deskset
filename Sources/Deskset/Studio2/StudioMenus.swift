@@ -117,8 +117,8 @@ enum StudioMenus {
         let menu = previous ?? MainMenu.make(app: studio.app)
         previous = nil
         NSApp.mainMenu = menu
-        if let window = menu.items.first(where: { $0.submenu?.title == "Window" })?.submenu { NSApp.windowsMenu = window }
-        if let help = menu.items.first(where: { $0.submenu?.title == "Help" })?.submenu { NSApp.helpMenu = help }
+        if let window = menu.items.first(where: { $0.submenu?.title == L("Window") })?.submenu { NSApp.windowsMenu = window }
+        if let help = menu.items.first(where: { $0.submenu?.title == L("Help") })?.submenu { NSApp.helpMenu = help }
     }
 
     /// Every item of `menu` and its submenus.

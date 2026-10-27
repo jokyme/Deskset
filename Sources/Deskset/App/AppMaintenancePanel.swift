@@ -63,7 +63,7 @@ final class MaintenancePanelContent: NSView {
     private let dividerView = MaintenanceDividerView()
     private var leadingButtons: [NSButton] = []
     private var trailingButtons: [NSButton] = []
-    private let disabledCancelButton = MaintenanceActionButton(title: "Cancel", target: nil, action: nil)
+    private let disabledCancelButton = MaintenanceActionButton(title: L("Cancel"), target: nil, action: nil)
 
     override var isFlipped: Bool { true }
 
@@ -394,7 +394,7 @@ final class MaintenancePanelContent: NSView {
         case .singleRow:
             let leftW = ceil(cardLeftLabel.attributedStringValue.size().width)
             let rightW = cardRightMeta.stringValue.isEmpty ? 0 : ceil(cardRightMeta.attributedStringValue.size().width)
-            let defaultValX: CGFloat = cardLeftLabel.stringValue == "Installed version" ? 122 : (insetX + leftW + 10)
+            let defaultValX: CGFloat = cardLeftLabel.stringValue == L("Installed version") ? 122 : (insetX + leftW + 10)
             let valX = max(defaultValX, insetX + leftW + 8)
             let valWidth = max(60, width - insetX - rightW - valX - (rightW > 0 ? 8 : 0))
             let measuredValH = ceil(measureTextHeight(cardMainValue, width: valWidth))
@@ -766,7 +766,7 @@ private final class MaintenanceFlippedView: NSView {
 final class MaintenanceIconView: NSView {
     var showsWarningBadge = false {
         didSet {
-            setAccessibilityLabel(showsWarningBadge ? "Deskset warning" : "Deskset")
+            setAccessibilityLabel(showsWarningBadge ? L("Deskset warning") : "Deskset")
             needsDisplay = true
         }
     }
@@ -774,7 +774,7 @@ final class MaintenanceIconView: NSView {
 
     override func isAccessibilityElement() -> Bool { true }
     override func accessibilityRole() -> NSAccessibility.Role? { .image }
-    override func accessibilityLabel() -> String? { showsWarningBadge ? "Deskset warning" : "Deskset" }
+    override func accessibilityLabel() -> String? { showsWarningBadge ? L("Deskset warning") : "Deskset" }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -971,9 +971,9 @@ final class MaintenanceProgressBarView: NSView {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
-    var statusLabel: String = "Progress" {
+    var statusLabel: String = L("Progress") {
         didSet {
-            setAccessibilityLabel(statusLabel.isEmpty ? "Progress" : statusLabel)
+            setAccessibilityLabel(statusLabel.isEmpty ? L("Progress") : statusLabel)
             needsDisplay = true
         }
     }
@@ -983,7 +983,7 @@ final class MaintenanceProgressBarView: NSView {
                 let pct = Int((max(0, min(1, fraction)) * 100).rounded())
                 setAccessibilityValue(NSNumber(value: pct))
             } else {
-                setAccessibilityValue("Indeterminate" as NSString)
+                setAccessibilityValue(L("Indeterminate") as NSString)
             }
             updateAnimation()
             needsDisplay = true
@@ -1052,20 +1052,20 @@ final class MaintenanceProgressBarView: NSView {
 
     override func isAccessibilityElement() -> Bool { !isHidden }
     override func accessibilityRole() -> NSAccessibility.Role? { .progressIndicator }
-    override func accessibilityLabel() -> String? { statusLabel.isEmpty ? "Progress" : statusLabel }
+    override func accessibilityLabel() -> String? { statusLabel.isEmpty ? L("Progress") : statusLabel }
     override func accessibilityMinValue() -> Any? { 0 }
     override func accessibilityMaxValue() -> Any? { 100 }
     override func accessibilityValue() -> Any? {
         if let fraction {
             return Int((max(0, min(1, fraction)) * 100).rounded())
         }
-        return "Indeterminate"
+        return L("Indeterminate")
     }
     override func accessibilityValueDescription() -> String? {
         if let fraction {
             return "\(Int((max(0, min(1, fraction)) * 100).rounded()))%"
         }
-        return statusLabel.isEmpty ? "In progress" : statusLabel
+        return statusLabel.isEmpty ? L("In progress") : statusLabel
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -1196,23 +1196,26 @@ final class MaintenanceActionButton: NSButton {
         path.fill()
     }
 
+    /// The panel's designed widths for its buttons; a translated title wider than its design still gets 8 points on
+    /// either side (every English title fits its design with that margin).
     static func preferredWidth(for button: NSButton) -> CGFloat {
+        let isPrimary = (button as? MaintenanceActionButton)?.rendersAsPrimary ?? (button.keyEquivalent == "\r")
+        let font = NSFont.systemFont(ofSize: 13, weight: isPrimary ? .medium : .regular)
+        let w = ceil((button.title as NSString).size(withAttributes: [.font: font]).width)
+        let designed: CGFloat
         switch button.title {
-        case "Close", "Later", "Cancel", "Retry": return 84
-        case "Update": return 88
-        case "Skip This Version": return 128
-        case "Show in Finder": return 126
-        case "Replace and Open": return 136
-        case "Download Manually…": return 148
-        case "Install and Relaunch": return 156
-        case "Install to Applications": return 166
-        case "Show Installer in Finder": return 178
-        default:
-            let isPrimary = (button as? MaintenanceActionButton)?.rendersAsPrimary ?? (button.keyEquivalent == "\r")
-            let font = NSFont.systemFont(ofSize: 13, weight: isPrimary ? .medium : .regular)
-            let w = ceil((button.title as NSString).size(withAttributes: [.font: font]).width)
-            return max(84, w + 28)
+        case L("Close"), L("Later"), L("Cancel"), L("Retry"): designed = 84
+        case L("Update"): designed = 88
+        case L("Skip This Version"): designed = 128
+        case L("Show in Finder"): designed = 126
+        case L("Replace and Open"): designed = 136
+        case L("Download Manually…"): designed = 148
+        case L("Install and Relaunch"): designed = 156
+        case L("Install to Applications"): designed = 166
+        case L("Show Installer in Finder"): designed = 178
+        default: return max(84, w + 28)
         }
+        return max(designed, w + 16)
     }
 }
 

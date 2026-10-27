@@ -27,9 +27,9 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         let version = AppVersion.current
         if let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
            !build.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Deskset \(version) (build \(build)) - \(buildArchitecture)"
+            return L("Deskset %@ (build %@) - %@", version, build, buildArchitecture)
         }
-        return "Deskset \(version) - \(buildArchitecture)"
+        return L("Deskset %@ - %@", version, buildArchitecture)
     }
 
     private static var currentController: AboutWindowController?
@@ -63,11 +63,11 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         pathValueFields = fields
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 380),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        w.title = "About Deskset"; w.minSize = NSSize(width: 680, height: 360); w.isReleasedWhenClosed = false; w.center()
+        w.title = L("About Deskset"); w.minSize = NSSize(width: 680, height: 360); w.isReleasedWhenClosed = false; w.center()
         super.init(window: w); w.delegate = self
         guard let content = w.contentView else { return }
         let body = buildVersionTab()
-        let close = NSButton(title: "Close", target: self, action: #selector(closeButtonClicked))
+        let close = NSButton(title: L("Close"), target: self, action: #selector(closeButtonClicked))
         close.keyEquivalent = "\u{1b}"
         for v in [body, close] { v.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(v) }
         NSLayoutConstraint.activate([
@@ -98,7 +98,7 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         versionHeadlineField.font = .systemFont(ofSize: 13, weight: .medium)
         versionHeadlineField.isSelectable = true
 
-        let copyButton = NSButton(title: "Copy to Clipboard", target: self, action: #selector(copyVersionDetailsToClipboard))
+        let copyButton = NSButton(title: L("Copy to Clipboard"), target: self, action: #selector(copyVersionDetailsToClipboard))
         copyButton.translatesAutoresizingMaskIntoConstraints = false
 
         let headerTextStack = NSStackView(views: [titleField, versionHeadlineField])
@@ -145,8 +145,8 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         creditsBox.translatesAutoresizingMaskIntoConstraints = false
 
         let creditsText = NSTextField(wrappingLabelWithString:
-            "Desktop widgets for your Mac, compatible with Rainmeter skins.\n"
-            + "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.\n"
+            L("Desktop widgets for your Mac, compatible with Rainmeter skins.") + "\n"
+            + L("Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.") + "\n"
             + WeatherWiring.credits)
         creditsText.font = .systemFont(ofSize: 11)
         creditsText.textColor = .secondaryLabelColor

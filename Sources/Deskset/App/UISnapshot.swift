@@ -2,7 +2,9 @@ import AppKit
 import DesksetCore
 
 /// `Deskset --snapshot-ui <what> --out file.png [--dark] [--select Config] [--size WxH] [--skins-dir DIR]`: renders app UI
-/// off-screen so it can be checked without a visible screen.
+/// off-screen so it can be checked without a visible screen. `--pseudo-language long|rtl` shows the app's text in a
+/// made-up language (Localization.swift); a real one comes from the built app with its .lproj folders:
+/// `build/Deskset.app/Contents/MacOS/Deskset -AppleLanguages '(de)' --snapshot-ui manage`.
 ///
 /// - `manage`: the Manage window over a temporary copy of TestSkins/App and TestSkins/Deskset, the example skins of
 ///   Deskset 0.1 (or `--skins-dir`), with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus)
@@ -321,9 +323,9 @@ enum UISnapshot {
         let subtitle = NSTextField(labelWithString: summary.subtitle)
         subtitle.font = .systemFont(ofSize: 11)
         let icon = NSImageView(image: AppIcon.image(size: 64))
-        let install = NSButton(title: "Install", target: nil, action: nil)
+        let install = NSButton(title: L("Install"), target: nil, action: nil)
         install.keyEquivalent = "\r"
-        let cancel = NSButton(title: "Cancel", target: nil, action: nil)
+        let cancel = NSButton(title: L("Cancel"), target: nil, action: nil)
         let buttons = NSStackView(views: [cancel, install])
         let stack = NSStackView(views: [icon, title, subtitle, accessory, buttons])
         stack.orientation = .vertical

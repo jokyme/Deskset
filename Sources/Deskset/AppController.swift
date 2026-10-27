@@ -311,9 +311,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 Log.write("Safe Start could not save the startup layout: \(error.localizedDescription)", level: .error)
                 let alert = NSAlert()
                 alert.icon = AppIcon.image(size: 64)
-                alert.messageText = "Could not start with the default layout"
+                alert.messageText = L("Could not start with the default layout")
                 alert.informativeText = error.localizedDescription
-                alert.addButton(withTitle: "OK")
+                alert.addButton(withTitle: L("OK"))
                 _ = alert.runModal()
                 self.quitAction()
             }
@@ -509,7 +509,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard updateHandoff == nil, restartRequest == nil, !terminationDecisionInProgress, !isTerminating,
               let version = updateFlowStorage?.release?.version.description else {
             if !isTerminating, updateFlowStorage?.phase == .preparing {
-                updateFlowStorage?.installationCancelled("Installation was paused while Deskset was quitting or restarting.")
+                updateFlowStorage?.installationCancelled(L("Installation was paused while Deskset was quitting or restarting."))
             }
             return
         }
@@ -523,7 +523,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                       !self.terminationDecisionInProgress, self.restartRequest == nil else {
                     if case .success(let handoff) = result { handoff.cancel() }
                     if let self, !self.isTerminating, self.updateFlowStorage?.phase == .preparing {
-                        self.updateFlowStorage?.installationCancelled("Installation was paused while Deskset was quitting or restarting.")
+                        self.updateFlowStorage?.installationCancelled(L("Installation was paused while Deskset was quitting or restarting."))
                     }
                     return
                 }
@@ -543,7 +543,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let handoff = updateHandoff else { return }
         handoff.cancel()
         updateHandoff = nil
-        updateFlowStorage?.installationCancelled(message ?? "Installation was paused because quitting was cancelled. You can try again when ready.")
+        updateFlowStorage?.installationCancelled(message ?? L("Installation was paused because quitting was cancelled. You can try again when ready."))
     }
 
     /// Restarts only after the ordinary editor vetoes and the exact process's exit have completed.
@@ -1580,7 +1580,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateUpdateIndicator() {
         let release = updates.availableRelease
-        statusItem?.button?.toolTip = release.map { "Deskset \($0.version.description) is available" } ?? "Deskset"
+        statusItem?.button?.toolTip = release.map { L("Deskset %@ is available", $0.version.description) } ?? "Deskset"
         statusItem?.button?.title = release == nil ? "" : "•"
         statusItem?.length = release == nil ? NSStatusItem.squareLength : NSStatusItem.variableLength
         if let menu = NSApp.mainMenu?.items.first?.submenu {
@@ -1634,77 +1634,77 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var offersUpdate = false
         switch notice {
         case .available(let release):
-            title = "Deskset \(release.version.description) is available"
-            text = "A newer version is ready to download for this Mac. Version \(updates.currentVersion) → \(release.version.description). Asks before restart. Your skins, layouts, and settings will be kept."
+            title = L("Deskset %@ is available", release.version.description)
+            text = L("A newer version is ready to download for this Mac. Version %@ → %@. Asks before restart. Your skins, layouts, and settings will be kept.", updates.currentVersion, release.version.description)
             offersUpdate = true
         case .upToDate:
-            title = "Deskset is up to date"
-            text = "You’re running the latest release available for this Mac. Installed version \(updates.currentVersion)."
+            title = L("Deskset is up to date")
+            text = L("You’re running the latest release available for this Mac. Installed version %@.", updates.currentVersion)
         case .noRelease:
-            title = "No release available"
-            text = "There is no public release available yet. Please check again later."
+            title = L("No release available")
+            text = L("There is no public release available yet. Please check again later.")
         case .failed(let message):
             style = .warning
-            title = "Couldn’t check for updates"
-            text = message + "\n\nYour installed copy (\(updates.currentVersion)) has not been changed."
+            title = L("Couldn’t check for updates")
+            text = message + "\n\n" + L("Your installed copy (%@) has not been changed.", updates.currentVersion)
         }
         return UpdateNoticePresentation(title: title, text: text, style: style,
-                                        buttons: offersUpdate ? ["Update", "Skip This Version", "Close"] : ["Close"])
+                                        buttons: offersUpdate ? [L("Update"), L("Skip This Version"), L("Close")] : [L("Close")])
     }
 
     func makeUpdateAlert(_ notice: AppUpdateController.Notice) -> AppMaintenancePanel {
         let presentation = updateNoticePresentation(notice)
         let alert = AppMaintenancePanel()
-        alert.window.title = "Deskset Updates"
+        alert.window.title = L("Deskset Updates")
         alert.alertStyle = presentation.style
         alert.messageText = presentation.title
         switch notice {
         case .available(let release):
             alert.content.badgeText = AppUpdateAsset.processorName
-            alert.informativeText = "A newer version is ready to download for this Mac."
+            alert.informativeText = L("A newer version is ready to download for this Mac.")
             alert.content.configureTwoRowCard(
-                leftLabel: "Version",
+                leftLabel: L("Version"),
                 oldVersion: updates.currentVersion,
                 mainValue: "→  \(release.version.description)",
-                rightMeta: "Asks before restart",
+                rightMeta: L("Asks before restart"),
                 rightMetaAccent: true,
-                bottomNote: "Your skins, layouts, and settings will be kept."
+                bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
             alert.content.footnote.stringValue = ""
         case .upToDate:
             alert.content.badgeText = ""
-            alert.informativeText = "You’re running the latest release available for this Mac."
+            alert.informativeText = L("You’re running the latest release available for this Mac.")
             alert.content.configureSingleRowCard(
-                leftLabel: "Installed version",
+                leftLabel: L("Installed version"),
                 mainValue: updates.currentVersion,
                 rightMeta: AppUpdateAsset.processorName,
                 rightMetaAccent: false
             )
-            alert.content.footnote.stringValue = updates.automaticallyChecks ? "Checked just now" : "Automatic update checks are off"
+            alert.content.footnote.stringValue = updates.automaticallyChecks ? L("Checked just now") : L("Automatic update checks are off")
         case .noRelease:
             alert.content.badgeText = ""
-            alert.informativeText = "There is no public release available for this Mac yet."
+            alert.informativeText = L("There is no public release available for this Mac yet.")
             alert.content.configureSingleRowCard(
-                leftLabel: "Installed version",
+                leftLabel: L("Installed version"),
                 mainValue: updates.currentVersion,
                 rightMeta: AppUpdateAsset.processorName,
                 rightMetaAccent: false
             )
-            alert.content.footnote.stringValue = "Please check again later"
+            alert.content.footnote.stringValue = L("Please check again later")
         case .failed(let message):
             alert.content.badgeText = ""
-            alert.informativeText = "Your installed copy (\(updates.currentVersion)) has not been changed."
+            alert.informativeText = L("Your installed copy (%@) has not been changed.", updates.currentVersion)
             alert.content.configureErrorCard(
                 message: message,
-                bottomNote: "Try again later using Check for Updates."
+                bottomNote: L("Try again later using Check for Updates.")
             )
-            alert.content.footnote.stringValue = "Installed: \(updates.currentVersion)"
+            alert.content.footnote.stringValue = L("Installed: %@", updates.currentVersion)
         }
         for title in presentation.buttons { alert.addButton(withTitle: title) }
         if alert.buttons.count == 3 {
             alert.buttons[1].toolTip =
-                "Stop automatic reminders for this version. You can still use Check for Updates."
-            alert.buttons[2].toolTip = "Close for now. The next daily check can remind you again."
+                L("Stop automatic reminders for this version. You can still use Check for Updates.")
+            alert.buttons[2].toolTip = L("Close for now. The next daily check can remind you again.")
         }
         return alert
     }
@@ -1758,22 +1758,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func buildMainMenu(_ menu: NSMenu) {
         discoverSkins()
         menu.removeAllItems()
-        menu.addItem(item("Manage Skins…", #selector(manageAction), key: ","))
+        menu.addItem(item(L("Manage Skins…"), #selector(manageAction), key: ","))
         menu.items.last?.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
 
-        let skinsItem = NSMenuItem(title: "Skins", action: nil, keyEquivalent: "")
+        let skinsItem = NSMenuItem(title: L("Skins"), action: nil, keyEquivalent: "")
         skinsItem.submenu = skinsSubmenu()
         menu.addItem(skinsItem)
         menu.addItem(favoritesMenuItem())
-        let layoutsItem = NSMenuItem(title: "Layouts", action: nil, keyEquivalent: "")
+        let layoutsItem = NSMenuItem(title: L("Layouts"), action: nil, keyEquivalent: "")
         layoutsItem.submenu = layoutsMenu()
         menu.addItem(layoutsItem)
 
         let active = controllersByName
         if !active.isEmpty {
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Loaded Skins", action: nil, keyEquivalent: "").isEnabled = false
+            menu.addItem(withTitle: L("Loaded Skins"), action: nil, keyEquivalent: "").isEnabled = false
             for c in active {
                 let item = NSMenuItem(title: c.config, action: nil, keyEquivalent: "")
                 item.submenu = skinMenu(for: c, includeCustomItems: false, discoverLibrary: false)
@@ -1782,28 +1782,28 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        menu.addItem(item("Refresh All", #selector(refreshAllAction), key: "r"))
-        menu.addItem(item("Install Skin…", #selector(installSkinAction)))
-        menu.addItem(item("Open Skins Folder", #selector(openSkinsFolderAction)))
-        menu.addItem(item("Open Log", #selector(openLogAction)))
-        menu.addItem(item("Debug", #selector(debugAction)))
+        menu.addItem(item(L("Refresh All"), #selector(refreshAllAction), key: "r"))
+        menu.addItem(item(L("Install Skin…"), #selector(installSkinAction)))
+        menu.addItem(item(L("Open Skins Folder"), #selector(openSkinsFolderAction)))
+        menu.addItem(item(L("Open Log"), #selector(openLogAction)))
+        menu.addItem(item(L("Debug"), #selector(debugAction)))
         menu.addItem(.separator())
-        let login = item("Launch at Login", #selector(toggleLaunchAtLoginAction))
+        let login = item(L("Launch at Login"), #selector(toggleLaunchAtLoginAction))
         login.state = LaunchAtLogin.isEnabled ? .on : .off
         if !LaunchAtLogin.isAvailable {
             login.isEnabled = false
-            login.toolTip = "Available when Deskset runs as an installed app."
+            login.toolTip = L("Available when Deskset runs as an installed app.")
         }
         menu.addItem(login)
-        menu.addItem(item("Settings…", #selector(settingsAction), key: ","))
+        menu.addItem(item(L("Settings…"), #selector(settingsAction), key: ","))
         if let release = updates.availableRelease {
-            menu.addItem(item("Update to Deskset \(release.version.description)…", #selector(showAvailableUpdateAction)))
+            menu.addItem(item(L("Update to Deskset %@…", release.version.description), #selector(showAvailableUpdateAction)))
         }
         menu.addItem(item(updates.menuTitle, #selector(checkForUpdatesAction)))
-        menu.addItem(item("About Deskset", #selector(aboutAction)))
-        menu.addItem(item("Help", #selector(helpAction)))
-        menu.addItem(item("Quit Deskset", #selector(quitAction)))
-        let restart = item("Restart Deskset", #selector(restartAction))
+        menu.addItem(item(L("About Deskset"), #selector(aboutAction)))
+        menu.addItem(item(L("Help"), #selector(helpAction)))
+        menu.addItem(item(L("Quit Deskset"), #selector(quitAction)))
+        let restart = item(L("Restart Deskset"), #selector(restartAction))
         restart.isAlternate = true
         restart.keyEquivalentModifierMask = [.shift]
         menu.addItem(restart)
@@ -1813,7 +1813,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         let library = self.library
         if library.isEmpty {
-            menu.addItem(withTitle: "No skins installed", action: nil, keyEquivalent: "").isEnabled = false
+            menu.addItem(withTitle: L("No skins installed"), action: nil, keyEquivalent: "").isEnabled = false
         }
         var roots: [String: NSMenu] = [:]
         for entry in library {
@@ -1857,7 +1857,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 favorites.addItem(choice)
             }
         }
-        let holder = NSMenuItem(title: "Favorites", action: nil, keyEquivalent: "")
+        let holder = NSMenuItem(title: L("Favorites"), action: nil, keyEquivalent: "")
         holder.submenu = favorites
         holder.isEnabled = !favorites.items.isEmpty
         return holder
@@ -1955,7 +1955,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let configName = item(c.config, #selector(openSkinFolderAction(_:)))
         configName.representedObject = [c.config]
         menu.addItem(configName)
-        let selected = item("Select skin", #selector(selectSkinAction(_:)))
+        let selected = item(L("Select skin"), #selector(selectSkinAction(_:)))
         selected.representedObject = [c.config]
         selected.state = skinSelection.contains(c.config) ? .on : .off
         menu.addItem(selected)
@@ -1970,7 +1970,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if custom.count > 3 {
                 let submenu = NSMenu()
                 addCustomItems(custom, for: c, to: submenu)
-                let holder = NSMenuItem(title: "Custom Skin Actions", action: nil, keyEquivalent: "")
+                let holder = NSMenuItem(title: L("Custom Skin Actions"), action: nil, keyEquivalent: "")
                 holder.submenu = submenu
                 menu.addItem(holder)
             } else if !custom.isEmpty {
@@ -1983,12 +1983,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             menu.addItem(.separator())
             let appMenu = NSMenu()
-            appMenu.addItem(item("Manage", #selector(manageAction)))
-            appMenu.addItem(item("Debug", #selector(debugAction)))
-            appMenu.addItem(item("About", #selector(aboutAction)))
+            appMenu.addItem(item(L("Manage"), #selector(manageAction)))
+            appMenu.addItem(item(L("Debug"), #selector(debugAction)))
+            appMenu.addItem(item(L("About"), #selector(aboutAction)))
             appMenu.addItem(.separator())
             appMenu.addItem(favoritesMenuItem())
-            appMenu.addItem(item("Refresh All", #selector(refreshAllAction)))
+            appMenu.addItem(item(L("Refresh All"), #selector(refreshAllAction)))
             let appItem = NSMenuItem(title: "Deskset", action: nil, keyEquivalent: "")
             appItem.submenu = appMenu
             menu.addItem(appItem)
@@ -2003,21 +2003,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 i.state = file == c.file ? .on : .off
                 variants.addItem(i)
             }
-            let variantsItem = NSMenuItem(title: "Variants", action: nil, keyEquivalent: "")
+            let variantsItem = NSMenuItem(title: L("Variants"), action: nil, keyEquivalent: "")
             variantsItem.submenu = variants
             menu.addItem(variantsItem)
         }
 
         if let root = rootConfigMenu(for: c.config) { menu.addItem(root) }
 
-        let zoom = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
+        let zoom = NSMenuItem(title: L("Zoom"), action: nil, keyEquivalent: "")
         zoom.submenu = skinZoomMenu(for: c)
         zoom.isEnabled = !state.forceDefaultZoom
         menu.addItem(zoom)
 
         let settings = NSMenu()
         settings.autoenablesItems = false
-        let positionItem = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
+        let positionItem = NSMenuItem(title: L("Position"), action: nil, keyEquivalent: "")
         positionItem.submenu = skinPositionMenu(for: c)
         settings.addItem(positionItem)
 
@@ -2030,7 +2030,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 && ManageModel.transparencyChoiceIndex(forAlpha: $0) == index } == true ? .on : .off
             transparency.addItem(i)
         }
-        let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
+        let transparencyItem = NSMenuItem(title: L("Transparency"), action: nil, keyEquivalent: "")
         transparencyItem.submenu = transparency
         settings.addItem(transparencyItem)
 
@@ -2041,15 +2041,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             i.state = allMatch(\.onHover, mode.rawValue) ? .on : .off
             hover.addItem(i)
         }
-        let hoverItem = NSMenuItem(title: "On Hover", action: nil, keyEquivalent: "")
+        let hoverItem = NSMenuItem(title: L("On Hover"), action: nil, keyEquivalent: "")
         hoverItem.submenu = hover
         settings.addItem(hoverItem)
         settings.addItem(.separator())
 
         let flags: [(String, String, KeyPath<SkinState, Bool>)] = [
-            ("Draggable", "draggable", \.draggable), ("Click Through", "clickthrough", \.clickThrough),
-            ("Keep on Screen", "keeponscreen", \.keepOnScreen), ("Snap to Edges", "snapedges", \.snapEdges),
-            ("Save Position", "saveposition", \.savePosition)
+            (L("Draggable"), "draggable", \.draggable), (L("Click Through"), "clickthrough", \.clickThrough),
+            (L("Keep on Screen"), "keeponscreen", \.keepOnScreen), (L("Snap to Edges"), "snapedges", \.snapEdges),
+            (L("Save Position"), "saveposition", \.savePosition)
         ]
         for (title, key, path) in flags {
             let i = item(title, #selector(toggleSettingAction(_:)))
@@ -2057,11 +2057,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             i.state = allMatch(path, true) ? .on : .off
             settings.addItem(i)
         }
-        let favorite = item("Favorite", #selector(toggleFavoriteAction(_:)))
+        let favorite = item(L("Favorite"), #selector(toggleFavoriteAction(_:)))
         favorite.representedObject = [c.config, c.file]
         favorite.state = isFavorite(config: c.config, file: c.file) ? .on : .off
         settings.addItem(favorite)
-        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let settingsItem = NSMenuItem(title: L("Settings"), action: nil, keyEquivalent: "")
         settingsItem.submenu = settings
         menu.addItem(settingsItem)
 
@@ -2072,7 +2072,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for issue in skinIssues.prefix(50) {
                 issues.addItem(withTitle: issue, action: nil, keyEquivalent: "").isEnabled = false
             }
-            let issuesItem = NSMenuItem(title: "Compatibility Notes (\(skinIssues.count))", action: nil, keyEquivalent: "")
+            let issuesItem = NSMenuItem(title: L("Compatibility Notes (%lld)", skinIssues.count), action: nil, keyEquivalent: "")
             issuesItem.submenu = issues
             menu.addItem(issuesItem)
         }
@@ -2080,24 +2080,24 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         // Edit Skin… opens the Skin Studio (its Code view is the built-in code editor). A code editor app chosen in
         // Settings ▸ Editor gets an item of its own.
-        var entries: [(String, Selector)] = [("Manage Skin…", #selector(manageSkinAction(_:))),
-                                             ("Debug Skin", #selector(debugSkinAction(_:))),
-                                             ("Edit Skin…", #selector(inspectSkinAction(_:)))]
+        var entries: [(String, Selector)] = [(L("Manage Skin…"), #selector(manageSkinAction(_:))),
+                                             (L("Debug Skin"), #selector(debugSkinAction(_:))),
+                                             (L("Edit Skin…"), #selector(inspectSkinAction(_:)))]
         if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
                                                                   preferences: state.editor,
                                                                   locator: CodeEditorRouter.locator) {
-            entries.append(("Edit in \(editor.name)", #selector(editSkinAction(_:))))
+            entries.append((L("Edit in %@", editor.name), #selector(editSkinAction(_:))))
         }
-        entries += [("Refresh Skin", #selector(refreshSkinAction(_:))),
-                    ("Open Skin Folder", #selector(openSkinFolderAction(_:))),
-                    ("Unload Skin", #selector(unloadSkinAction(_:)))]
+        entries += [(L("Refresh Skin"), #selector(refreshSkinAction(_:))),
+                    (L("Open Skin Folder"), #selector(openSkinFolderAction(_:))),
+                    (L("Unload Skin"), #selector(unloadSkinAction(_:)))]
         for (title, selector) in entries {
             let i = item(title, selector)
             i.representedObject = [c.config]
             menu.addItem(i)
             if selector == #selector(refreshSkinAction(_:)) {
                 i.keyEquivalentModifierMask = []
-                let focus = item("Focus Skin", #selector(focusSkinAction(_:)))
+                let focus = item(L("Focus Skin"), #selector(focusSkinAction(_:)))
                 focus.isAlternate = true
                 focus.keyEquivalentModifierMask = [.shift]
                 focus.representedObject = FocusMenuAction(controller: c)
@@ -2139,17 +2139,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             choice.isEnabled = canEdit
             menu.addItem(choice)
         }
-        add("Use default: Primary monitor", change: .monitor(nil)) { state in
+        add(L("Use default: Primary monitor"), change: .monitor(nil)) { state in
             WindowPosition.parse(state.windowX ?? "0", endLetter: "R")?.screen == nil
                 && WindowPosition.parse(state.windowY ?? "0", endLetter: "B")?.screen == nil
         }
         menu.addItem(.separator())
         for monitor in 0...min(screens.count, 32) {
             let title: String
-            if monitor == 0 { title = "@0: Virtual screen" }
+            if monitor == 0 { title = L("@0: Virtual screen") }
             else {
                 let name = screens[monitor - 1].name
-                title = "@\(monitor): " + (name.isEmpty ? "Monitor \(monitor)" : name)
+                title = "@\(monitor): " + (name.isEmpty ? L("Monitor %lld", monitor) : name)
             }
             add(title, change: .monitor(monitor)) { state in
                 let x = WindowPosition.parse(state.windowX ?? "0", endLetter: "R")?.screen
@@ -2158,7 +2158,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         menu.addItem(.separator())
-        add("Auto-select based on window position", change: .automaticMonitor(
+        add(L("Auto-select based on window position"), change: .automaticMonitor(
             !targets.allSatisfy { $0.state.autoSelectScreen })) { $0.autoSelectScreen }
         return menu
     }
@@ -2168,7 +2168,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         let targets = skinMenuTargets(for: controller.config)
         let canEdit = !targets.isEmpty && targets.allSatisfy { $0.isStarted && !$0.isStopped }
-        let display = NSMenuItem(title: "Display monitor", action: nil, keyEquivalent: "")
+        let display = NSMenuItem(title: L("Display monitor"), action: nil, keyEquivalent: "")
         display.submenu = displayMonitorMenu(for: controller)
         display.isEnabled = canEdit
         menu.addItem(display)
@@ -2181,16 +2181,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
         let options: [(String, Bool, SkinPositionSettings.Change)] = [
-            ("From right", targets.allSatisfy {
+            (L("From right"), targets.allSatisfy {
                 WindowPosition.parse($0.state.windowX ?? "0", endLetter: "R")?.fromEnd == true
             }, .fromRight(true)),
-            ("From bottom", targets.allSatisfy {
+            (L("From bottom"), targets.allSatisfy {
                 WindowPosition.parse($0.state.windowY ?? "0", endLetter: "B")?.fromEnd == true
             }, .fromBottom(true)),
-            ("X as percentage", targets.allSatisfy {
+            (L("X as percentage"), targets.allSatisfy {
                 WindowPosition.parse($0.state.windowX ?? "0", endLetter: "R")?.percent == true
             }, .xAsPercentage(true)),
-            ("Y as percentage", targets.allSatisfy {
+            (L("Y as percentage"), targets.allSatisfy {
                 WindowPosition.parse($0.state.windowY ?? "0", endLetter: "B")?.percent == true
             }, .yAsPercentage(true)),
         ]
@@ -2245,8 +2245,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let values = targets.map { Int(($0.effectiveZoomFactor * 100).rounded()) }
         let common = values.first.flatMap { value in values.allSatisfy { $0 == value } ? value : nil }
         let current = allDefault ? nil : common
-        let useDefault = item("Default", #selector(skinZoomAction(_:)))
-        useDefault.representedObject = [controller.config, "Default"]
+        let useDefault = item(L("Default"), #selector(skinZoomAction(_:)))
+        useDefault.representedObject = [controller.config, "default"]
         useDefault.state = allDefault ? .on : .off
         useDefault.isEnabled = !state.forceDefaultZoom
         menu.addItem(useDefault)
@@ -2351,7 +2351,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func skinZoomAction(_ sender: NSMenuItem) {
         let values = args(sender)
         guard values.count == 2 else { return }
-        if values[1] == "Default" { setSkinZoom(config: values[0], percent: nil) }
+        if values[1] == "default" { setSkinZoom(config: values[0], percent: nil) }
         else if let percent = Int(values[1]) { setSkinZoom(config: values[0], percent: percent) }
     }
 

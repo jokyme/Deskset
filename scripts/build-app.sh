@@ -17,6 +17,7 @@ CALLER_DIR="$PWD"
 cd "$(dirname "$0")/.."
 
 APP_NAME="Deskset"
+LANGUAGES="ar bg cs da de el es et fi fr he hr hu id it ja ko lt lv ms nb nl pl pt-BR pt-PT ro ru sk sl sr sr-Latn sv th tr uk vi zh-Hans zh-Hant"
 BUNDLE_ID="app.deskset.Deskset"
 VERSION="$(sed -n 's/.*version = "\(.*\)".*/\1/p' Sources/DesksetCore/DesksetCore.swift)"
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
@@ -46,6 +47,10 @@ write_plist() {
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <!-- The languages of Localization/*.xcstrings (the same list as Localization.languages in the app; checked by
+         scripts/localization.swift). macOS shows the app in the first of the user's languages listed here. -->
+    <key>CFBundleLocalizations</key>
+    <array>$(for language in en $LANGUAGES; do printf '<string>%s</string>' "$language"; done)</array>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
@@ -159,6 +164,14 @@ cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 ditto DefaultSkins "$APP/Contents/Resources/DefaultSkins"
 # The offline place table of the weather plugins (GeoNames, CC BY 4.0; Data/Places/README.md).
 ditto Data/Places "$APP/Contents/Resources/Places"
+
+# The app's translations: each String Catalog becomes <language>.lproj/<name>.strings(dict) (Localizable: the app's
+# own text, InfoPlist: permission prompts and document type names). en.lproj always exists, so that English stays
+# the language of a Mac whose first language is English even when the catalog has no English-only entries.
+for catalog in Localization/*.xcstrings; do
+    xcrun xcstringstool compile "$catalog" --output-directory "$APP/Contents/Resources"
+done
+mkdir -p "$APP/Contents/Resources/en.lproj"
 
 # License texts travel with the app; the About panel shows Credits.html.
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"

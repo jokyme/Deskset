@@ -51,6 +51,7 @@ enum AppSelfTest {
         LayoutsUISelfTests.run(t)
         LayoutCommandsSelfTests.run(t)
         AboutSelfTests.run(t)
+        LocalizationSelfTests.run(t)
         DebugSelfTests.run(t)
         LoggingPersistenceSelfTests.run(t)
         StartupCrashWatcherSelfTests.run(t)

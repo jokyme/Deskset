@@ -1,0 +1,28 @@
+# Phrase-like literals in covered files that are not the app's UI text: file<TAB>literal<TAB>why (scripts/localization.swift).
+App/AboutWindowController.swift	64-bit (arm64)	architecture name, as in the system report
+App/AboutWindowController.swift	64-bit (x86_64)	architecture name, as in the system report
+App/AboutWindowController.swift	Path:	Rainmeter's About keys (ProgramPath, IniFile…), kept for bug reports
+App/AboutWindowController.swift	Path: ￼	the version report copied for bug reports stays English
+App/AppUpdateService.swift	Intel	brand name
+App/AppUpdateService.swift	Accept	HTTP header
+App/CodeEditorSettings.swift	Visual Studio Code	app name
+App/CodeEditorSettings.swift	Visual Studio Code - Insiders	app name
+App/CodeEditorSettings.swift	Cursor	app name
+App/CodeEditorSettings.swift	Windsurf	app name
+App/CodeEditorSettings.swift	Zed	app name
+App/CodeEditorSettings.swift	Sublime Text	app name
+App/CodeEditorSettings.swift	Nova	app name
+App/CodeEditorSettings.swift	Xcode	app name
+App/CodeEditorSettings.swift	JetBrains IDE	app family name
+App/ManageModel.swift	Metadata	INI section name
+App/NewSkinModel.swift	Templates	folder name in the settings folder
+AppController.swift	Deskset skin engine	thread name
+AppController.swift	Another Deskset instance is starting but has not published its process identifier.	command-line output (stderr)
+AppController.swift	; legacy ANSI skins use code page ￼	log line
+AppController.swift	Name	[Metadata] key
+AppController.swift	Desktop skins run on the main thread (￼=main)	log line
+AppController.swift	Unknown ￼ value "￼" (main, engine or pool): desktop skins run on the 	log line
+AppController.swift	engine thread	log line
+App/ManageWindowController.swift	restored to its minimum size; left as it is.	log line
+App/ManageWindowController.swift	Name	[Metadata] key
+App/SkinInstallFlow.swift	The package includes Windows plugins	prefix of DesksetCore's English warning, matched to replace it

@@ -5,8 +5,8 @@ enum LayoutOperationError: LocalizedError {
     case busy, terminating, wallpaper(String)
     var errorDescription: String? {
         switch self {
-        case .busy: return "Wait for the current layout to finish loading."
-        case .terminating: return "Deskset is closing."
+        case .busy: return L("Wait for the current layout to finish loading.")
+        case .terminating: return L("Deskset is closing.")
         case .wallpaper(let message): return message
         }
     }
@@ -155,7 +155,7 @@ final class LayoutController {
     private func fail(_ request: Request, error: Error) {
         Log.write("Could not load layout \(request.name): \(error.localizedDescription)", level: .error)
         if !app.isTerminating {
-            app.alert("Couldn’t load layout “\(request.name)”", error.localizedDescription, style: .warning)
+            app.alert(L("Couldn’t load layout “%@”", request.name), error.localizedDescription, style: .warning)
         }
         finish(request, success: false)
     }
@@ -326,7 +326,7 @@ extension AppController {
 
     func editLayout(named name: String) {
         do { CodeEditorRouter.open(file: try layoutStore.iniURL(named: name), app: self) }
-        catch { alert("Couldn’t edit layout “\(name)”", error.localizedDescription, style: .warning) }
+        catch { alert(L("Couldn’t edit layout “%@”", name), error.localizedDescription, style: .warning) }
     }
 
     /// Config requests stay within their desktop. Genuine close actions finish inside its closing barrier.
@@ -359,7 +359,7 @@ extension AppController {
             menu.addItem(item)
         }
         if names.isEmpty {
-            menu.addItem(withTitle: "No saved layouts", action: nil, keyEquivalent: "").isEnabled = false
+            menu.addItem(withTitle: L("No saved layouts"), action: nil, keyEquivalent: "").isEnabled = false
         }
         return menu
     }

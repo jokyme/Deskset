@@ -95,7 +95,7 @@ struct AppUpdateAsset: Equatable {
                                    isTranslated: sysctlFlag("sysctl.proc_translated"))
     }
 
-    static var processorName: String { currentArchitecture == "arm64" ? "Apple silicon" : "Intel" }
+    static var processorName: String { currentArchitecture == "arm64" ? L("Apple silicon") : "Intel" }
 
     static func resolveArchitecture(processIsARM64: Bool, supportsARM64: Bool, isTranslated: Bool) -> String {
         processIsARM64 || supportsARM64 || isTranslated ? "arm64" : "x86_64"
@@ -151,10 +151,10 @@ enum AppUpdateError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: return "The update server returned an invalid response. Please try again later."
-        case .rateLimited: return "GitHub is limiting update checks. Please try again later."
-        case .httpStatus(let status): return "The update server returned HTTP \(status). Please try again later."
-        case .invalidRelease: return "The update server returned invalid release information. Please try again later."
+        case .invalidResponse: return L("The update server returned an invalid response. Please try again later.")
+        case .rateLimited: return L("GitHub is limiting update checks. Please try again later.")
+        case .httpStatus(let status): return L("The update server returned HTTP %lld. Please try again later.", status)
+        case .invalidRelease: return L("The update server returned invalid release information. Please try again later.")
         }
     }
 }

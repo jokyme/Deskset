@@ -11,9 +11,9 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
     var detail: NSTextField { panelContent.detail }
     var progress: NSProgressIndicator { panelContent.progress }
     var progressText: NSTextField { panelContent.progressText }
-    let primary: NSButton = MaintenanceActionButton(title: "Retry", target: nil, action: nil)
-    let secondary: NSButton = MaintenanceActionButton(title: "Cancel", target: nil, action: nil)
-    let manualDownload: NSButton = MaintenanceActionButton(title: "Download Manually…", target: nil, action: nil)
+    let primary: NSButton = MaintenanceActionButton(title: L("Retry"), target: nil, action: nil)
+    let secondary: NSButton = MaintenanceActionButton(title: L("Cancel"), target: nil, action: nil)
+    let manualDownload: NSButton = MaintenanceActionButton(title: L("Download Manually…"), target: nil, action: nil)
     private let presentsWindows: Bool
     private let service: AppUpdateFetching
     private let downloader: AppUpdateDownloading
@@ -27,7 +27,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
         self.service = service
         self.downloader = downloader
         self.install = install
-        let window = MaintenancePanelContent.makeWindow(title: "Update Deskset")
+        let window = MaintenancePanelContent.makeWindow(title: L("Update Deskset"))
         super.init(window: window)
         window.delegate = self
         window.contentView = panelContent
@@ -70,7 +70,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
             switch result {
             case .success(let current):
                 guard let current, current.version >= offered.version else {
-                    self.fail("This update is no longer available. Use Check for Updates to try again.")
+                    self.fail(L("This update is no longer available. Use Check for Updates to try again."))
                     return
                 }
                 self.release = current
@@ -89,17 +89,17 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
             if let fraction {
                 let pct = "\(Int(max(0, min(1, fraction)) * 100))%"
                 self.panelContent.configureProgressCard(
-                    status: "Downloading update package…",
+                    status: L("Downloading update package…"),
                     rightMeta: pct,
                     fraction: fraction,
-                    bottomNote: "Verifies signature automatically before asking to restart."
+                    bottomNote: L("Verifies signature automatically before asking to restart.")
                 )
             } else {
                 self.panelContent.configureProgressCard(
-                    status: "Verifying signature and preparing update…",
-                    rightMeta: "Verifying",
+                    status: L("Verifying signature and preparing update…"),
+                    rightMeta: L("Verifying"),
                     fraction: nil,
-                    bottomNote: "Your skins, layouts, and settings will be kept."
+                    bottomNote: L("Your skins, layouts, and settings will be kept.")
                 )
             }
             self.fitWindow()
@@ -131,10 +131,10 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
     @objc private func openReleasePage() {
         guard let release else { return }
         if !NSWorkspace.shared.open(release.url) {
-            detail.stringValue = "Couldn’t open the download page. Visit \(release.url.absoluteString) in your browser."
+            detail.stringValue = L("Couldn’t open the download page. Visit %@ in your browser.", release.url.absoluteString)
             panelContent.configureErrorCard(
-                message: "Couldn’t open the download page.",
-                bottomNote: "Visit \(release.url.absoluteString) in your browser."
+                message: L("Couldn’t open the download page."),
+                bottomNote: L("Visit %@ in your browser.", release.url.absoluteString)
             )
             fitWindow()
         }
@@ -177,10 +177,10 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
         let version = release?.version.description ?? ""
         phase = .failed
         render()
-        detail.stringValue = "Your installed copy (\(AppVersion.current)) has not been changed."
+        detail.stringValue = L("Your installed copy (%@) has not been changed.", AppVersion.current)
         let fallback = version.isEmpty
-            ? "Try again now, or download the update directly in your browser."
-            : "Try again now, or download Deskset \(version) directly in your browser."
+            ? L("Try again now, or download the update directly in your browser.")
+            : L("Try again now, or download Deskset %@ directly in your browser.", version)
         panelContent.configureErrorCard(message: message, bottomNote: fallback)
         fitWindow()
     }
@@ -194,68 +194,68 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
         manualDownload.isHidden = phase != .failed
         secondary.isEnabled = phase != .preparing
         window?.standardWindowButton(.closeButton)?.isEnabled = phase != .preparing
-        secondary.title = phase == .ready ? "Later" : phase == .failed ? "Close" : "Cancel"
+        secondary.title = phase == .ready ? L("Later") : phase == .failed ? L("Close") : L("Cancel")
         panelContent.alertStyle = phase == .failed ? .warning : .informational
 
         switch phase {
         case .idle:
-            heading.stringValue = "Update Deskset"
+            heading.stringValue = L("Update Deskset")
             panelContent.badgeText = AppUpdateAsset.processorName
-            detail.stringValue = "A newer version is ready to download for this Mac."
-            panelContent.footnote.stringValue = "Installed: \(AppVersion.current)"
+            detail.stringValue = L("A newer version is ready to download for this Mac.")
+            panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .fetching:
-            heading.stringValue = version.isEmpty ? "Preparing update…" : "Downloading Deskset \(version)…"
+            heading.stringValue = version.isEmpty ? L("Preparing update…") : L("Downloading Deskset %@…", version)
             panelContent.badgeText = AppUpdateAsset.processorName
-            detail.stringValue = "You can keep working while the update downloads."
+            detail.stringValue = L("You can keep working while the update downloads.")
             panelContent.configureProgressCard(
-                status: "Getting the download for this Mac…",
+                status: L("Getting the download for this Mac…"),
                 rightMeta: "",
                 fraction: nil,
-                bottomNote: "Verifies signature automatically before asking to restart."
+                bottomNote: L("Verifies signature automatically before asking to restart.")
             )
-            panelContent.footnote.stringValue = "Installed: \(AppVersion.current)"
+            panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .downloading:
-            heading.stringValue = "Downloading Deskset \(version)…"
+            heading.stringValue = L("Downloading Deskset %@…", version)
             panelContent.badgeText = AppUpdateAsset.processorName
-            detail.stringValue = "You can keep working while the update downloads."
+            detail.stringValue = L("You can keep working while the update downloads.")
             panelContent.configureProgressCard(
-                status: "Downloading update package…",
+                status: L("Downloading update package…"),
                 rightMeta: "0%",
                 fraction: 0,
-                bottomNote: "Verifies signature automatically before asking to restart."
+                bottomNote: L("Verifies signature automatically before asking to restart.")
             )
-            panelContent.footnote.stringValue = "Installed: \(AppVersion.current)"
+            panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .ready:
-            heading.stringValue = "Deskset \(version) is ready to install"
-            panelContent.badgeText = "Verified"
-            detail.stringValue = "Deskset will quit, install the update, and reopen automatically."
+            heading.stringValue = L("Deskset %@ is ready to install", version)
+            panelContent.badgeText = L("Verified")
+            detail.stringValue = L("Deskset will quit, install the update, and reopen automatically.")
             panelContent.configureTwoRowCard(
-                leftLabel: "Ready to install",
+                leftLabel: L("Ready to install"),
                 oldVersion: AppVersion.current,
                 mainValue: "→  \(version)",
                 rightMeta: AppUpdateAsset.processorName,
                 rightMetaAccent: false,
-                bottomNote: "Your skins, layouts, and settings will be kept."
+                bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
-            panelContent.footnote.stringValue = "Prompts to save open edits"
-            primary.title = "Install and Relaunch"
+            panelContent.footnote.stringValue = L("Prompts to save open edits")
+            primary.title = L("Install and Relaunch")
         case .preparing:
-            heading.stringValue = "Preparing to restart…"
+            heading.stringValue = L("Preparing to restart…")
             panelContent.badgeText = ""
-            detail.stringValue = "Save your edits when prompted, then Deskset will restart."
+            detail.stringValue = L("Save your edits when prompted, then Deskset will restart.")
             panelContent.configureProgressCard(
-                status: "Staging update helper and verifying signature…",
+                status: L("Staging update helper and verifying signature…"),
                 rightMeta: "",
                 fraction: nil,
-                bottomNote: "Your skins, layouts, and settings will be kept."
+                bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
-            panelContent.footnote.stringValue = "Installed: \(AppVersion.current)"
+            panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .failed:
-            heading.stringValue = "Couldn’t update Deskset"
+            heading.stringValue = L("Couldn’t update Deskset")
             panelContent.badgeText = ""
-            detail.stringValue = "Your installed copy (\(AppVersion.current)) has not been changed."
+            detail.stringValue = L("Your installed copy (%@) has not been changed.", AppVersion.current)
             panelContent.footnote.stringValue = ""
-            primary.title = "Retry"
+            primary.title = L("Retry")
         }
         fitWindow()
     }

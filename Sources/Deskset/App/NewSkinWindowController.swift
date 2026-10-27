@@ -31,7 +31,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             if initialDirectory == nil { controller.requestRootName() }
             return controller
         } catch {
-            app.alert("Could not create a skin", error.localizedDescription)
+            app.alert(L("Could not create a skin"), error.localizedDescription)
             return nil
         }
     }
@@ -50,15 +50,15 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     private let pathField = NSTextField(string: "")
     private let outline = NSOutlineView()
     private let itemMenu = NSMenu()
-    private let addFolderButton = NSButton(title: "Add Folder", target: nil, action: nil)
+    private let addFolderButton = NSButton(title: L("Add Folder"), target: nil, action: nil)
     private let resourcesButton = NSButton(title: "@Resources", target: nil, action: nil)
-    private let addSkinButton = NSButton(title: "Add skin", target: nil, action: nil)
+    private let addSkinButton = NSButton(title: L("Add skin"), target: nil, action: nil)
     private let templatePopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let templateNameField = NSTextField()
-    private let saveTemplateButton = NSButton(title: "Save", target: nil, action: nil)
+    private let saveTemplateButton = NSButton(title: L("Save"), target: nil, action: nil)
     private let templateTable = NSTableView()
-    private let editTemplateButton = NSButton(title: "Edit", target: nil, action: nil)
-    private let deleteTemplateButton = NSButton(title: "Delete", target: nil, action: nil)
+    private let editTemplateButton = NSButton(title: L("Edit"), target: nil, action: nil)
+    private let deleteTemplateButton = NSButton(title: L("Delete"), target: nil, action: nil)
     private var contextIDForTesting: UUID?
 
     /// Tests supply responses without creating sheets or opening a modal run loop.
@@ -72,7 +72,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         self.model = model
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 510),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Create new skin"
+        window.title = L("Create new skin")
         window.minSize = NSSize(width: 580, height: 420)
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
@@ -113,14 +113,14 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     private func buildInterface() {
         guard let content = window?.contentView else { return }
         tabs.delegate = self
-        for (identifier, title, view) in [("skin", "New skin", buildSkinTab()),
-                                           ("template", "Template", buildTemplateTab())] {
+        for (identifier, title, view) in [("skin", L("New skin"), buildSkinTab()),
+                                           ("template", L("Template"), buildTemplateTab())] {
             let tab = NSTabViewItem(identifier: identifier)
             tab.label = title
             tab.view = view
             tabs.addTabViewItem(tab)
         }
-        let close = NSButton(title: "Close", target: self, action: #selector(closeClicked))
+        let close = NSButton(title: L("Close"), target: self, action: #selector(closeClicked))
         close.keyEquivalent = "\u{1b}"
         for view in [tabs, close] { view.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(view) }
         NSLayoutConstraint.activate([
@@ -137,9 +137,9 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     private func buildSkinTab() -> NSView {
         pathField.isEditable = false
         pathField.isSelectable = true
-        pathField.setAccessibilityLabel("Selected skin folder")
+        pathField.setAccessibilityLabel(L("Selected skin folder"))
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
-        column.title = "Name"
+        column.title = L("Name")
         outline.addTableColumn(column)
         outline.outlineTableColumn = column
         outline.headerView = nil
@@ -149,7 +149,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         outline.allowsEmptySelection = false
         outline.target = self
         outline.doubleAction = #selector(editSelectedSkin)
-        outline.setAccessibilityLabel("New skin folders and files")
+        outline.setAccessibilityLabel(L("New skin folders and files"))
         itemMenu.delegate = self
         itemMenu.autoenablesItems = false
         outline.menu = itemMenu
@@ -167,7 +167,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         templatePopup.target = self
         templatePopup.action = #selector(templateChosen(_:))
         templatePopup.menu?.autoenablesItems = false
-        templatePopup.setAccessibilityLabel("Template for new skins")
+        templatePopup.setAccessibilityLabel(L("Template for new skins"))
         let buttons = NSStackView(views: [addFolderButton, resourcesButton, addSkinButton, templatePopup, NSView()])
         buttons.orientation = .vertical
         buttons.alignment = .leading
@@ -193,26 +193,26 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         templateNameField.delegate = self
         templateNameField.target = self
         templateNameField.action = #selector(saveTemplateClicked)
-        templateNameField.setAccessibilityLabel("Template name")
+        templateNameField.setAccessibilityLabel(L("Template name"))
         saveTemplateButton.target = self
         saveTemplateButton.action = #selector(saveTemplateClicked)
-        let nameRow = NSStackView(views: [NSTextField(labelWithString: "Name:"), templateNameField, saveTemplateButton])
+        let nameRow = NSStackView(views: [NSTextField(labelWithString: L("Name:")), templateNameField, saveTemplateButton])
         nameRow.spacing = 10
         nameRow.alignment = .centerY
         let saveBox = NSBox()
-        saveBox.title = "Save new template"
+        saveBox.title = L("Save new template")
         saveBox.contentView = padded(nameRow)
         saveBox.heightAnchor.constraint(equalToConstant: 90).isActive = true
         templateNameField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("template"))
-        column.title = "Saved templates"
+        column.title = L("Saved templates")
         templateTable.addTableColumn(column)
         templateTable.headerView = nil
         templateTable.rowHeight = 24
         templateTable.dataSource = self
         templateTable.delegate = self
         templateTable.allowsEmptySelection = true
-        templateTable.setAccessibilityLabel("Saved templates")
+        templateTable.setAccessibilityLabel(L("Saved templates"))
         let scroll = NSScrollView()
         scroll.documentView = templateTable
         scroll.hasVerticalScroller = true
@@ -233,7 +233,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         listRow.spacing = 12
         scroll.heightAnchor.constraint(equalTo: listRow.heightAnchor).isActive = true
         let listBox = NSBox()
-        listBox.title = "Saved templates"
+        listBox.title = L("Saved templates")
         listBox.contentView = padded(listRow)
         listBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
         let stack = NSStackView(views: [saveBox, listBox])
@@ -301,8 +301,8 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
 
     private func updateTemplateMenu() {
         templatePopup.removeAllItems()
-        templatePopup.addItem(withTitle: "Template…")
-        for (title, template) in [("Use default template", NewSkinModel.TemplateID.standard)]
+        templatePopup.addItem(withTitle: L("Template…"))
+        for (title, template) in [(L("Use default template"), NewSkinModel.TemplateID.standard)]
             + templateNames.map({ ($0, NewSkinModel.TemplateID.named($0)) }) {
             let item = NSMenuItem(title: title, action: #selector(templateChosen(_:)), keyEquivalent: "")
             item.target = self
@@ -335,7 +335,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         catch {
             guard !finished else { return }
             if let errorForTesting { errorForTesting(error) }
-            else { app.alert("Could not complete the operation", error.localizedDescription) }
+            else { app.alert(L("Could not complete the operation"), error.localizedDescription) }
         }
     }
 
@@ -362,10 +362,10 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         alert.messageText = title
         let field = NSTextField(string: initial)
         field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
-        field.setAccessibilityLabel("Name")
+        field.setAccessibilityLabel(L("Name"))
         alert.accessoryView = field
-        alert.addButton(withTitle: kind == .rename ? "Rename" : "Create")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: kind == .rename ? L("Rename") : L("Create"))
+        alert.addButton(withTitle: L("Cancel"))
         nameSheet = alert
         alert.beginSheetModal(for: window) { [weak self, weak alert] response in
             guard let self, let alert, self.nameSheet === alert else { return }
@@ -377,7 +377,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
 
     private func requestRootName() {
         guard roots.isEmpty else { return }
-        askName(.root, title: "New Root Folder") { [weak self] name in
+        askName(.root, title: L("New Root Folder")) { [weak self] name in
             guard let self else { return }
             let id = try self.model.createRoot(named: name)
             try self.reload(selecting: id)
@@ -388,7 +388,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     @objc private func addFolderClicked() {
         if roots.isEmpty { requestRootName(); return }
         guard let parent = selectedFolder?.id else { return }
-        askName(.folder, title: "New Folder") { [weak self] name in
+        askName(.folder, title: L("New Folder")) { [weak self] name in
             guard let self else { return }
             let id = try self.model.addFolder(named: name, in: parent)
             try self.reload(selecting: id)
@@ -397,7 +397,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     @objc private func addSkinClicked() {
         guard let parent = selectedFolder?.id else { return }
         let template = chosenTemplate
-        askName(.skin, title: "New Skin") { [weak self] name in
+        askName(.skin, title: L("New Skin")) { [weak self] name in
             guard let self else { return }
             let id = try self.model.addSkin(named: name, in: parent, template: template)
             try self.reload(selecting: id)
@@ -447,7 +447,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     private func rename(_ id: UUID) {
         guard let item = model.item(id: id), model.canRenameOrDelete(item: id) else { return }
         let url = item.url, directory = item.kind == .folder
-        askName(.rename, title: "Rename", initial: url.lastPathComponent) { [weak self] name in
+        askName(.rename, title: L("Rename"), initial: url.lastPathComponent) { [weak self] name in
             guard let self, self.model.canRenameOrDelete(item: id) else { return }
             guard self.closeEditors(url, directory: directory), !self.finished, !self.app.isTerminating else { return }
             try self.model.rename(item: id, to: name)
@@ -502,10 +502,10 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         let clicked = outline.clickedRow >= 0 ? (outline.item(atRow: outline.clickedRow) as? NewSkinModel.Item)?.id : nil
         guard available, let id = contextIDForTesting ?? clicked,
               let item = model.item(id: id) else { return }
-        if item.kind == .skin { addContext("Edit skin", #selector(contextEdit(_:)), id, to: menu) }
+        if item.kind == .skin { addContext(L("Edit skin"), #selector(contextEdit(_:)), id, to: menu) }
         if model.canRenameOrDelete(item: id) {
-            addContext("Rename", #selector(contextRename(_:)), id, to: menu)
-            addContext("Delete", #selector(contextDelete(_:)), id, to: menu)
+            addContext(L("Rename"), #selector(contextRename(_:)), id, to: menu)
+            addContext(L("Delete"), #selector(contextDelete(_:)), id, to: menu)
         }
     }
     private func addContext(_ title: String, _ selector: Selector, _ id: UUID, to menu: NSMenu) {

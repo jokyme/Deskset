@@ -32,6 +32,8 @@ enum CommandLineTools {
                                            "--wallpaper", "--at",
                                            // Settings snapshot.
                                            "--pane",
+                                           // App UI snapshots in a made-up language (Localization.swift).
+                                           "--pseudo-language",
                                            // The Manage window snapshot.
                                            "--hidden", "--coordinates",
                                            // --weather-report.
@@ -74,7 +76,9 @@ enum CommandLineTools {
                Deskset --snapshot-ui manage|settings|about|debug|codeeditor|install|install-zip|icon|menubar
                       [--out x.png] [--dark] [--select NAME] [--size WxH] [--skins-dir DIR]
                       [--pane general|editor|skins|layouts|log|display|network|plugins|version] [--hidden] [--coordinates X,Y]
-                                        draw app UI off-screen into a PNG
+                      [--pseudo-language long|rtl]
+                                        draw app UI off-screen into a PNG (--pseudo-language: lengthened, marked
+                                        text, and with rtl a right-to-left layout, to check translations fit)
                Deskset --system-report   print every system reading skins can get
                Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
                       [--offline FILE] [--now ISO8601]

@@ -12,8 +12,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
 
         var title: String {
             switch self {
-            case .general: return "General"
-            case .editor: return "Editor"
+            case .general: return L("General")
+            case .editor: return L("Editor")
             }
         }
 
@@ -40,19 +40,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let helperLabel = NSTextField(wrappingLabelWithString: "")
     let fontField = NSTextField()
     let fontStepper = NSStepper()
-    let liveReloadBox = NSButton(checkboxWithTitle: "Refresh the skin when the file is saved elsewhere",
+    let liveReloadBox = NSButton(checkboxWithTitle: L("Refresh the skin when the file is saved elsewhere"),
                                  target: nil, action: nil)
     // General pane.
-    let loginBox = NSButton(checkboxWithTitle: "Launch Deskset at login", target: nil, action: nil)
-    let automaticUpdatesBox = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
-    let checkUpdatesButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
-    let viewUpdateButton = NSButton(title: "Update…", target: nil, action: nil)
+    let loginBox = NSButton(checkboxWithTitle: L("Launch Deskset at login"), target: nil, action: nil)
+    let automaticUpdatesBox = NSButton(checkboxWithTitle: L("Automatically check for updates"), target: nil, action: nil)
+    let checkUpdatesButton = NSButton(title: L("Check for Updates…"), target: nil, action: nil)
+    let viewUpdateButton = NSButton(title: L("Update…"), target: nil, action: nil)
     let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
     let defaultZoomField = NSTextField()
     let defaultZoomStepper = SkinZoomStepper()
-    let forceZoomBox = NSButton(checkboxWithTitle: "Force", target: nil, action: nil)
-    let disableDraggingBox = NSButton(checkboxWithTitle: "Disable dragging", target: nil, action: nil)
-    let resetStatisticsButton = NSButton(title: "Reset statistics", target: nil, action: nil)
+    let forceZoomBox = NSButton(checkboxWithTitle: L("Force"), target: nil, action: nil)
+    let disableDraggingBox = NSButton(checkboxWithTitle: L("Disable dragging"), target: nil, action: nil)
+    let resetStatisticsButton = NSButton(title: L("Reset statistics"), target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -182,7 +182,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private func configureControls() {
         editorPopUp.target = self
         editorPopUp.action = #selector(editorChosen)
-        editorPopUp.setAccessibilityLabel("Edit code with")
+        editorPopUp.setAccessibilityLabel(L("Edit code with"))
         helperLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         helperLabel.textColor = .secondaryLabelColor
         helperLabel.preferredMaxLayoutWidth = 340
@@ -198,7 +198,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontField.target = self
         fontField.action = #selector(fontFieldChanged)
         fontField.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        fontField.setAccessibilityLabel("Code font size")
+        fontField.setAccessibilityLabel(L("Code font size"))
         fontStepper.minValue = EditorPreferences.fontSizes.lowerBound
         fontStepper.maxValue = EditorPreferences.fontSizes.upperBound
         fontStepper.increment = 1
@@ -207,18 +207,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontStepper.action = #selector(fontStepperChanged)
         SkinZoomStepper.configure(field: defaultZoomField, stepper: defaultZoomStepper, target: self,
                                   fieldAction: #selector(defaultZoomFieldChanged),
-                                  stepperAction: #selector(defaultZoomStepperChanged), label: "Default zoom")
+                                  stepperAction: #selector(defaultZoomStepperChanged), label: L("Default zoom"))
         forceZoomBox.target = self
         forceZoomBox.action = #selector(forceZoomChanged)
-        forceZoomBox.toolTip = "Apply the default zoom to every skin."
-        forceZoomBox.setAccessibilityLabel("Force default zoom")
+        forceZoomBox.toolTip = L("Apply the default zoom to every skin.")
+        forceZoomBox.setAccessibilityLabel(L("Force default zoom"))
         disableDraggingBox.target = self
         disableDraggingBox.action = #selector(disableDraggingToggled)
-        disableDraggingBox.toolTip = "Prevent dragging skins with the mouse."
-        disableDraggingBox.setAccessibilityLabel("Disable dragging")
+        disableDraggingBox.toolTip = L("Prevent dragging skins with the mouse.")
+        disableDraggingBox.setAccessibilityLabel(L("Disable dragging"))
         resetStatisticsButton.target = self
         resetStatisticsButton.action = #selector(resetStatistics)
-        resetStatisticsButton.setAccessibilityLabel("Reset statistics")
+        resetStatisticsButton.setAccessibilityLabel(L("Reset statistics"))
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
         automaticUpdatesBox.target = self
@@ -270,14 +270,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     private func makeEditorPane() -> NSView {
-        let font = NSStackView(views: [fontField, fontStepper, NSTextField(labelWithString: "pt")])
+        let font = NSStackView(views: [fontField, fontStepper, NSTextField(labelWithString: L("pt"))])
         font.spacing = 4
         let empty = { NSGridCell.emptyContentView }
         return makePane(rows: [
-            [label("Edit code with:"), editorPopUp],
+            [label(L("Edit code with:")), editorPopUp],
             [empty(), helperLabel],
-            [label("Code font size:"), font],
-            [label("Live reload:"), liveReloadBox],
+            [label(L("Code font size:")), font],
+            [label(L("Live reload:")), liveReloadBox],
         ], spacingAfter: [1: 8])
     }
 
@@ -286,26 +286,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         path.lineBreakMode = .byTruncatingMiddle
         path.textColor = .secondaryLabelColor
         path.widthAnchor.constraint(lessThanOrEqualToConstant: 300).isActive = true
-        let reveal = NSButton(title: "Show in Finder", target: app, action: #selector(AppController.openSkinsFolderAction))
+        let reveal = NSButton(title: L("Show in Finder"), target: app, action: #selector(AppController.openSkinsFolderAction))
         reveal.controlSize = .small
         let folder = NSStackView(views: [path, reveal])
         folder.spacing = 8
-        let loginNote = note(LaunchAtLogin.isAvailable ? "Your skins come back when you log in."
-                                                       : "Available when Deskset runs from the Applications folder.")
+        let loginNote = note(LaunchAtLogin.isAvailable ? L("Your skins come back when you log in.")
+                                                       : L("Available when Deskset runs from the Applications folder."))
         let updateButtons = NSStackView(views: [checkUpdatesButton, viewUpdateButton])
         updateButtons.spacing = 8
         let zoom = NSStackView(views: [defaultZoomField, defaultZoomStepper, NSTextField(labelWithString: "%")])
         zoom.spacing = 4
         return makePane(rows: [
-            [label("Startup:"), loginBox],
+            [label(L("Startup:")), loginBox],
             [NSGridCell.emptyContentView, loginNote],
-            [label("Skins folder:"), folder],
-            [label("Default zoom:"), zoom],
+            [label(L("Skins folder:")), folder],
+            [label(L("Default zoom:")), zoom],
             [NSGridCell.emptyContentView, forceZoomBox],
             [NSGridCell.emptyContentView, disableDraggingBox],
             [NSGridCell.emptyContentView, resetStatisticsButton],
-            [label("Updates:"), automaticUpdatesBox],
-            [NSGridCell.emptyContentView, note("Checks daily. Updates download here; you choose when to install and relaunch.")],
+            [label(L("Updates:")), automaticUpdatesBox],
+            [NSGridCell.emptyContentView, note(L("Checks daily. Updates download here; you choose when to install and relaunch."))],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
         ], spacingAfter: [1: 8, 2: 8, 4: 8])
@@ -338,17 +338,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         if case .app(let id, let path) = preferences.codeEditor, selectedIndex(for: preferences.codeEditor) == nil {
             let name = path.isEmpty ? id : CodeEditorApp.displayName(of: URL(fileURLWithPath: path))
-            _ = add("\(name) (missing)", nil, .app(bundleID: id, lastKnownPath: path))
+            _ = add(L("%@ (missing)", name), nil, .app(bundleID: id, lastKnownPath: path))
         }
         menu.addItem(.separator())
-        _ = add("System default (\(systemDefault?.name ?? "TextEdit"))", systemDefault?.icon, .systemDefault)
+        _ = add(L("System default (%@)", systemDefault?.name ?? "TextEdit"), systemDefault?.icon, .systemDefault)
         otherIndex = menu.items.count
-        _ = add("Other…", nil, nil)
+        _ = add(L("Other…"), nil, nil)
         editorPopUp.menu = menu
         editorPopUp.selectItem(at: selectedIndex(for: preferences.codeEditor) ?? 0)
     }
 
-    static let builtInTitle = "Deskset (built-in, side by side)"
+    static var builtInTitle: String { L("Deskset (built-in, side by side)") }
 
     /// The pop-up item of a choice.
     private func selectedIndex(for choice: EditorPreferences.CodeEditor) -> Int? {
@@ -407,25 +407,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
                            systemDefault: CodeEditorApp?) -> String {
         switch choice {
         case .builtIn:
-            return "Opens the skin editor with the code next to the canvas, at the selected section. Other text files "
-                + "a skin opens (settings, scripts) open in a Deskset code window."
+            return L("Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window.")
         case .app(let id, let path):
             guard let url = CodeEditorDetector.resolve(bundleID: id, lastKnownPath: path, locator: locator) else {
                 let name = path.isEmpty ? id : CodeEditorApp.displayName(of: URL(fileURLWithPath: path))
-                return "\(name) is no longer installed — the built-in editor is used instead."
+                return L("%@ is no longer installed — the built-in editor is used instead.", name)
             }
             let editor = CodeEditorApp(url: url, bundleID: id.isEmpty ? nil : id)
             return lineText(editor)
         case .systemDefault:
-            guard let app = systemDefault else { return "Opens files in TextEdit, which can’t jump to a line." }
-            return "Opens each file in the app macOS uses for its type (\(app.name) for .ini files). " + lineText(app)
+            guard let app = systemDefault else { return L("Opens files in TextEdit, which can’t jump to a line.") }
+            return L("Opens each file in the app macOS uses for its type (%@ for .ini files).", app.name) + " " + lineText(app)
         }
     }
 
     private static func lineText(_ editor: CodeEditorApp) -> String {
-        guard editor.family.jumpsToLine else { return "\(editor.name) can’t jump to a line; files open at the top." }
-        return "Opens \(editor.name) at the selected line."
-            + (editor.family.confirmsURLOpens ? " The first time, \(editor.name) may ask to allow this." : "")
+        guard editor.family.jumpsToLine else { return L("%@ can’t jump to a line; files open at the top.", editor.name) }
+        return L("Opens %@ at the selected line.", editor.name)
+            + (editor.family.confirmsURLOpens ? " " + L("The first time, %@ may ask to allow this.", editor.name) : "")
     }
 
     // MARK: Actions
@@ -446,8 +445,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.prompt = "Choose"
-        panel.message = "Choose the app that edits skin code."
+        panel.prompt = L("Choose")
+        panel.message = L("Choose the app that edits skin code.")
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }
             guard response == .OK, let url = panel.url else { return self.updateControls() }
