@@ -805,7 +805,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
             c.app.skinSelection.cursor(for: c, point: convert(event.locationInWindow, from: nil)).set()
             return
         }
-        SkinView.cursor(named: cursorName).set()
+        SkinView.cursor(named: cursorName, in: controller).set()
     }
 
     private func hover(_ c: SkinWindowController, x: Double, y: Double) {
@@ -815,7 +815,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         let name = SkinView.cursorName(c, x: x, y: y)
         if name != cursorName || name != nil {
             cursorName = name
-            SkinView.cursor(named: name).set()
+            SkinView.cursor(named: name, in: c).set()
         }
     }
 
@@ -838,18 +838,12 @@ final class SkinView: NSView, NSViewToolTipOwner {
                                    live: { $0.pointerCursorName(x: x, y: y) })
     }
 
-    /// `MouseActionCursorName` values with a macOS equivalent; everything else (HELP, BUSY, custom .cur / .ani
-    /// files…) shows the arrow.
-    static func cursor(named name: String?) -> NSCursor {
-        switch name?.trimmingCharacters(in: .whitespaces).uppercased() {
-        case "HAND": return .pointingHand
-        case "TEXT": return .iBeam
-        case "CROSS": return .crosshair
-        case "NO": return .operationNotAllowed
-        case "SIZE_WE": return .resizeLeftRight
-        case "SIZE_NS": return .resizeUpDown
-        default: return .arrow
-        }
+    /// The cursor for a `MouseActionCursorName` value (`SkinCursors`); custom files come from the `@Resources\Cursors`
+    /// folder of the skin's root config.
+    static func cursor(named name: String?, in c: SkinWindowController?) -> NSCursor {
+        SkinCursors.cursor(named: name, cursorsDirectory: c.map {
+            CursorFile.directory(skinsDirectory: $0.app.skinsDirectory, config: $0.config)
+        })
     }
 
     // MARK: Tooltips
