@@ -3089,11 +3089,16 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
 - **Windows:** the manual documents the packager's fields but not the key names; the header must be a 400×60 `.bmp`;
   the installer refuses packages whose minimum Rainmeter / Windows version is not met.
 - **Mac:** `[rmskin]` keys Name, Author, Version, LoadType, Load, VariableFiles, MergeSkins (also `Merge`),
-  MinimumRainmeter, MinimumWindows (UTF-8 / UTF-16 / ANSI). **Minimum versions are not enforced.** `RMSKIN.bmp` is shown
-  when it is a real bitmap of at most 4096 px (exact size not required).
-- **Why:** Windows versions mean nothing on macOS; unsupported features are reported by the engine instead.
-- **Skin impact:** packages made for a newer Rainmeter install; unsupported features degrade.
-- **Status:** identical / not supported (minimum versions)
+  MinimumRainmeter, MinimumWindows (UTF-8 / UTF-16 / ANSI). A `MinimumRainmeter` newer than 5.0 (any revision of 5.0
+  counts as 5.0; legacy packages' `MinRainmeterVer` too) adds a warning to the install confirmation, but the package can
+  still be installed. `MinimumWindows` is ignored. `RMSKIN.bmp` is shown when it is a real bitmap of at most 4096 px
+  (exact size not required).
+- **Why:** Deskset implements Rainmeter 5.0's skin features, so a package asking for a newer release may use something
+  missing; refusing it outright would also block skins that do not need it. Windows versions mean nothing on macOS.
+- **Skin impact:** packages made for a newer Rainmeter install after the warning; unsupported features degrade and are
+  reported by the engine.
+- **Status:** identical / emulated (minimum Rainmeter version warns instead of refusing) / not supported (minimum
+  Windows version)
 
 #### Root configs, backups and Merge skins
 - **Windows:** one root config per package; Backup skins controls replacement backups; Merge skins does not remove
