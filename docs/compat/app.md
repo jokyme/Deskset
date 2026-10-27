@@ -294,11 +294,16 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Status: emulated
 
 ### Blur and BlurRegion ([Rainmeter]), blur bangs
-- Windows (Rainmeter): "Set to 1 to enable Aero Blur"; `!ShowBlur`, `!AddBlur`… change it.
-- Mac (Deskset): not supported (the FrostedGlass plugin is, see `media-ui.md`). The bangs add a compatibility note.
-- Why: not implemented yet.
-- Skin impact: the skin is drawn without the blurred backdrop.
-- Status: not supported
+- Windows (Rainmeter): "Set to 1 to enable Aero Blur on the Windows 7 operating system"; `!ShowBlur`, `!HideBlur`,
+  `!ToggleBlur`, `!AddBlur` and `!RemoveBlur` change it. The manual notes it "will not work on Window 8.1 or
+  Windows 10", and Rainmeter 5.0 requires Windows 10 or later, so on current Windows they have no visible effect.
+- Mac (Deskset): the same. `Blur` and `BlurRegion` are read and nothing is drawn; the five bangs are accepted with no
+  effect (the rest of the action runs), without a compatibility note or log line. The FrostedGlass plugin
+  (`media-ui.md`) and `MacGlass` (`engine.md`) draw frosted backgrounds on the Mac.
+- Why: matches Rainmeter 5.0 on Windows 10 and 11; drawing the Windows 7 blur would make skins that still set
+  `Blur=1` differ from current Windows.
+- Skin impact: none compared with current Windows. Not compared on a Windows desktop.
+- Status: identical
 
 ---
 
@@ -339,12 +344,15 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Cursors (MouseActionCursor, MouseActionCursorName)
 - Windows (Rainmeter): a hand over meters with mouse actions (MouseActionCursor=1 default); MouseActionCursorName takes
   Windows cursor names or `.cur` / `.ani` files from `@Resources\Cursors`.
-- Mac (Deskset): HAND, TEXT, CROSS, NO, SIZE_WE and SIZE_NS map to the macOS cursors; every other name (HELP, BUSY, WAIT,
-  PEN, SIZE_ALL, the diagonal sizes, UPARROW) and custom `.cur` / `.ani` files show the arrow. A Button meter's image
-  shows the hand.
-- Why: macOS has no public equivalents for those cursors; `.cur` / `.ani` are Windows formats.
-- Skin impact: some skins show the arrow where Windows shows a custom cursor.
-- Status: partial
+- Mac (Deskset): every built-in name has a cursor (`SkinCursors`). HAND, TEXT, CROSS, NO, SIZE_WE, SIZE_NS, and
+  SIZE_NWSE / SIZE_NESW on macOS 15 and later, are macOS cursors; HELP, BUSY, WAIT, PEN, UPARROW, SIZE_ALL and the
+  diagonal sizes before macOS 15 are drawn from SF Symbols (BUSY and WAIT do not spin). `.cur` files from
+  `@Resources\Cursors` show at 32 points with their hot spot (`CursorFile`); an `.ani` shows the first frame of its
+  sequence. Names ignore case and never contain a path; an unknown name or unreadable file shows the hand (judgment
+  call). A Button meter's image shows the hand.
+- Why: macOS has public cursors only for some of the Windows ones; animation would need a timer swapping images.
+- Skin impact: cursors look like their Mac counterparts; animated cursors stay still.
+- Status: emulated
 
 ### Tooltips
 - Windows (Rainmeter): ToolTipText / ToolTipTitle, ToolTipIcon, ToolTipType (balloon), ToolTipWidth; ToolTipHidden in

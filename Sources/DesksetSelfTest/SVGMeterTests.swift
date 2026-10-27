@@ -224,6 +224,17 @@ func runSVGMeterTests(_ t: TestRunner) {
         t.equal(gradient(svgPaths(first.nodes).first?.fill)?.stops.first?.color, RGBA(r: 0, g: 0, b: 255))
     }
 
+    t.suite("SVG: numbered Attribute options target ids, the root and every element") {
+        let (_, m) = try meter("<svg width=\"20\" height=\"20\"><rect id=\"r\" width=\"20\" height=\"20\" fill=\"red\"/><circle id=\"c\" cx=\"10\" cy=\"10\" r=\"5\" fill=\"blue\"/></svg>",
+                               "Attribute=r | fill | #00ff00\nAttribute2=c | fill | #ffff00\nAttribute3=* | stroke-width | 5\nAttribute4=svg | opacity | 0.5")
+        let paths = svgPaths(m.nodes)
+        t.equal(paths.count, 2)
+        t.equal(paths.first?.fill, .color(RGBA(r: 0, g: 255, b: 0)), "Attribute targets an id without #")
+        t.equal(paths.last?.fill, .color(RGBA(r: 255, g: 255, b: 0)), "Attribute2 applies too")
+        t.check(paths.allSatisfy { $0.strokeStyle.width == 5 }, "* applies to every element")
+        t.check(svgGroups(m.nodes).contains { abs($0.1 - 0.5) < 0.0001 }, "svg targets the root element")
+    }
+
     t.suite("SVG: malformed documents and excessive nesting are harmless") {
         for document in ["<svg><g></svg>", "<html><rect width=\"10\" height=\"10\"/></html>",
                          "<svg>" + String(repeating: "<g>", count: 70) + "<rect width=\"10\" height=\"10\"/>" + String(repeating: "</g>", count: 70) + "</svg>"] {

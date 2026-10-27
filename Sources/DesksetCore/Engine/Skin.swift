@@ -68,6 +68,8 @@ public struct SkinSettings {
     /// `DragGroup`: drag groups (lowercased).
     public var dragGroups: [String] = []
     /// `Blur` / `BlurRegion`, `BlurRegion2`…: `[Type, TopX, TopY, BottomX, BottomY, Radius?]` (Windows Aero blur).
+    /// Read but never drawn: the manual says Aero blur "will not work on Window 8.1 or Windows 10", and Rainmeter 5.0
+    /// runs only on Windows 10 and later, so the blur bangs do nothing either (`Skin.noEffectBangs`).
     public var blur = false
     public var blurRegions: [[Double]] = []
     /// Starting values for the per-config window settings (`DefaultWindowX`, `DefaultAlwaysOnTop`, …), keyed by
@@ -2235,6 +2237,11 @@ public final class Skin {
         "log",
     ]
 
+    /// Rainmeter bangs that are accepted and have no effect, as on Windows 10 and later: the Aero blur bangs (manual,
+    /// Blur: "will not work on Window 8.1 or Windows 10"; Rainmeter 5.0 requires Windows 10). They are not
+    /// compatibility notes.
+    static let noEffectBangs: Set<String> = ["showblur", "hideblur", "toggleblur", "addblur", "removeblur"]
+
     /// Performs one bang (arguments already resolved).
     ///
     /// Config argument (manual: "valid values are the config name of a currently loaded skin to be acted upon or
@@ -2274,6 +2281,7 @@ public final class Skin {
             perform(mapped, from: section, literalArguments: [])
             return
         }
+        if Skin.noEffectBangs.contains(bang.name) { return }
         guard Skin.localBangs.contains(bang.name) else {
             if bang.name != "delay" { forwardToHost(bang) }
             return
@@ -2387,9 +2395,6 @@ public final class Skin {
         case ("mouse", "startcapture"): command = "StartCapture"
         case ("mouse", "stopcapture"): command = "StopCapture"
         case ("windowmessage", "send"): command = withExtra("SendMessage")
-        case ("textedit", "start"): command = "ExecuteBatch 1"
-        case ("textedit", "exit"): command = "Stop"
-        case ("textedit", "saveandexit"): command = "SaveAndExit"
         default: return nil
         }
         return (target, command, configTarget)

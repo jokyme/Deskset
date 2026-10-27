@@ -135,6 +135,7 @@ enum AppSelfTest {
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SkinToolTipSelfTests.run(t)
+        SkinCursorsSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)
         ThreadStressSelfTests.run(t)
@@ -1016,7 +1017,7 @@ enum AppSelfTest {
             t.equal(focus.skin.updateCount, count + 1)
 
             // Unsupported host bangs are reported as such.
-            t.equal(focus.handleHostBang(Bang(name: "showblur", args: [])), false)
+            t.equal(focus.handleHostBang(Bang(name: "launch", args: [])), false)
             t.equal(focus.handleHostBang(Bang(name: "autoselectscreen", args: ["1"])), true)
         }
 

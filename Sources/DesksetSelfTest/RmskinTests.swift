@@ -680,6 +680,36 @@ private func rmskinInspectTests(_ t: TestRunner) {
         t.equal(temporaryLeftovers(t, since: before), [], "no temp leftovers")
     }
 
+    t.suite("Rmskin: a package requiring a newer Rainmeter than 5.0 is installable with a warning") {
+        func requires(_ minimum: String) -> Bool {
+            var m = RmskinManifest()
+            m.minimumRainmeter = minimum
+            return m.requiresNewerRainmeter
+        }
+        for ok in ["", "  ", "4", "4.2.0.3111", "5", "5.0", "5.0.0", "5.0.0.5291", "5000000", "4.5 beta", "x"] {
+            t.check(!requires(ok), "\(ok) is met: every 5.0 revision counts")
+        }
+        for newer in ["5.0.1", "5.1", "5.1.0.5000", "6", "5001000"] {
+            t.check(requires(newer), "\(newer) is newer than 5.0")
+        }
+
+        let dir = t.temporaryDirectory("rmskin-minimum")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let newer = try makePackage([("RMSKIN.ini", utf8("[rmskin]\nName=N\nMinimumRainmeter=5.1.0.6000\nMinimumWindows=10.0\n")),
+                                     ("Skins/N/N.ini", utf8("[Rainmeter]\n"))], in: dir, name: "newer.rmskin")
+        let a = try RmskinPackage.inspect(newer)
+        defer { a.cleanup() }
+        t.equal(a.rootConfigs, ["N"], "still installable")
+        t.equal(a.warnings.filter { $0.contains("Rainmeter 5.1.0.6000 or later") }.count, 1, "\(a.warnings)")
+        t.check(!a.warnings.contains { $0.contains("Windows") }, "MinimumWindows is not checked")
+
+        let current = try makePackage([("RMSKIN.ini", utf8("[rmskin]\nName=C\nMinimumRainmeter=5.0.0.5291\n")),
+                                       ("Skins/C/C.ini", utf8("[Rainmeter]\n"))], in: dir, name: "current.rmskin")
+        let b = try RmskinPackage.inspect(current)
+        defer { b.cleanup() }
+        t.equal(b.warnings, [])
+    }
+
     t.suite("Rmskin: inspect minimal / nested / missing manifest") {
         let dir = t.temporaryDirectory("rmskin-inspect2")
         defer { try? FileManager.default.removeItem(at: dir) }

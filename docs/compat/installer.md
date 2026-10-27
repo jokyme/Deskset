@@ -140,12 +140,14 @@ Skins folder) and `.severalPackages([names])`.
 
 ### Minimum Rainmeter / Windows version
 - Windows (Rainmeter): the installer refuses a package whose minimum Rainmeter or Windows version is not met.
-- Mac (Deskset): not enforced (neither for `MinRainmeterVer` of legacy packages). `RmskinManifest.version(_:isAtLeast:)`
-  exists if the app wants to show a note.
-- Why: Deskset is not Rainmeter and Windows versions mean nothing on macOS; features a skin needs are reported by the
-  engine instead.
-- Skin impact: a package made for a newer Rainmeter installs; unsupported features degrade.
-- Status: not supported
+- Mac (Deskset): a minimum Rainmeter version newer than 5.0 (`MinimumRainmeter`, or `MinRainmeterVer` of legacy
+  packages) adds a warning to the install confirmation; the package can still be installed. Revisions are ignored, so
+  `5.0.0.5291` counts as 5.0 (`RmskinManifest.requiresNewerRainmeter`). The minimum Windows version is ignored.
+- Why: Deskset implements Rainmeter 5.0's skin features, so a newer requirement may mean a missing feature, but refusing
+  the package would also block skins that do not need it. Windows versions mean nothing on macOS.
+- Skin impact: a package made for a newer Rainmeter installs after the warning; unsupported features degrade and are
+  reported by the engine.
+- Status: emulated (Rainmeter version) / not supported (Windows version)
 
 ### Header image
 - Windows (Rainmeter): "a valid 400x60 .bmp file" (enforced by the packager since 3.2.1).
@@ -309,7 +311,7 @@ Skins folder) and `.severalPackages([names])`.
   | Rainstaller.cfg `[Rainstaller]` | Deskset (.rmskin model) |
   | --- | --- |
   | `Name`, `Author`, `Version` | same |
-  | `MinRainmeterVer` | `minimumRainmeter` (not enforced) |
+  | `MinRainmeterVer` | `minimumRainmeter` (warns when newer than 5.0) |
   | `Merge=1` | `mergeSkins` |
   | `KeepVar` | see below |
   | `LaunchType`, `LaunchCommand` | `loadType`, `load` (see below) |

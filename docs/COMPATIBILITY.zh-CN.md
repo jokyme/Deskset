@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势，Aero 模糊仍不支持；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；点击穿透皮肤不支持直接选择手势；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
 
 ---
 
@@ -1166,11 +1166,17 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 模拟实现
 
 #### Blur 和 BlurRegion（`[Rainmeter]`）以及模糊类 bang
-- **Windows：** “设为 1 以启用 Aero 模糊”；`!ShowBlur`、`!AddBlur`…… 可以修改它。
-- **Mac：** 不支持（FrostedGlass 插件是支持的，见 [§10.7](#107-窗口桌面与颜色插件第三方)）；这些 bang 会添加兼容性提示。
-- **原因：** 尚未实现。
-- **对皮肤的影响：** 皮肤没有模糊背景。
-- **状态：** 不支持
+- **Windows：** “设为 1 以在 Windows 7 上启用 Aero 模糊”；`!ShowBlur`、`!HideBlur`、`!ToggleBlur`、`!AddBlur`、
+  `!RemoveBlur` 可以修改它。手册另外写明它“在 Windows 8.1 和 Windows 10 上不起作用”，而 Rainmeter 5.0 要求 Windows 10
+  或更高版本，所以在现在的 Windows 上，这些选项和 bang 没有可见效果。
+- **Mac：** 相同：会读取 `Blur` 和 `BlurRegion`，但不绘制任何东西；这五个 bang 会被接受、不做任何事，动作里其余的部分照常执行。
+  它们不产生兼容性提示，也不写日志。想在 Mac 上要毛玻璃背景，请用 FrostedGlass 插件（见 [§10.7](#107-窗口桌面与颜色插件第三方)）
+  或 `MacGlass`（见 [§6.8](#68-deskset-扩展)）。
+- **原因：** 与 Windows 10、11 上的 Rainmeter 5.0 一致。如果画出 Windows 7 的模糊效果，仍写着 `Blur=1` 的皮肤会和现在
+  Windows 用户看到的不一样。
+- **对皮肤的影响：** 与现在的 Windows 相比没有差别；为 Windows 7 设计的皮肤不显示模糊背景，和 Windows 10、11 上一样。
+  尚未在 Windows 桌面上对照。
+- **状态：** 完全一致
 
 ### 7.2 鼠标
 
@@ -1206,12 +1212,15 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 光标（`MouseActionCursor`、`MouseActionCursorName`）
 - **Windows：** 在有鼠标动作的 meter 上显示手形；MouseActionCursorName 接受 Windows 光标名称或 `@Resources\Cursors` 中的
   `.cur` / `.ani` 文件。
-- **Mac：** HAND、TEXT、CROSS、NO、SIZE_WE 和 SIZE_NS 映射为 macOS 光标；其他名称（HELP、BUSY、WAIT、PEN、SIZE_ALL、对角线
-  调整、UPARROW）和自定义 `.cur` / `.ani` 文件显示箭头。Button meter 显示手形；只有 MouseOverAction / MouseLeaveAction
-  这类鼠标动作的 meter 不显示手形（取舍判断）。
-- **原因：** macOS 没有这些光标的公开对应物；`.cur` / `.ani` 是 Windows 格式。
-- **对皮肤的影响：** 有些皮肤在 Windows 上显示自定义光标的地方显示箭头。
-- **状态：** 部分支持
+- **Mac：** 每个内置名称都有对应光标。HAND、TEXT、CROSS、NO、SIZE_WE、SIZE_NS 使用 macOS 光标，macOS 15 及以上的
+  SIZE_NWSE / SIZE_NESW 也是（窗口边框调整光标）。HELP 和 BUSY（箭头加问号或沙漏）、WAIT（沙漏）、PEN、UPARROW、SIZE_ALL，
+  以及 macOS 15 以前的对角线调整光标，用 SF Symbols 按系统光标的风格绘制；BUSY 和 WAIT 不会转动。`@Resources\Cursors` 中的
+  `.cur` 文件按其热点显示为 32 点大小（Windows 的标准尺寸；更小的图像保持原尺寸），文件里有更大的图像时在 Retina 屏幕上更清晰；
+  名称不区分大小写，且不能包含路径。`.ani` 显示其序列的第一帧，不播放动画。既不是内置名称、也不是可读文件的名称显示手形
+  （取舍判断）。Button meter 显示手形；只有 MouseOverAction / MouseLeaveAction 这类鼠标动作的 meter 不显示手形（取舍判断）。
+- **原因：** macOS 只为部分 Windows 光标提供了公开的对应光标，其余的按同样风格绘制。动画光标需要用定时器不断替换光标图像。
+- **对皮肤的影响：** 光标的外观是 Mac 风格而不是 Windows 风格；动画光标静止不动。
+- **状态：** 模拟实现
 
 #### 工具提示
 - **Windows：** ToolTipText / ToolTipTitle、ToolTipIcon、ToolTipType（气泡）、ToolTipWidth；`[Rainmeter]` 中的
@@ -2687,11 +2696,13 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 - **Windows：** 手册记录了打包器的字段但没有写键名；头图必须是 400×60 的 `.bmp`；不满足最低 Rainmeter / Windows 版本的包会被
   安装器拒绝。
 - **Mac：** `[rmskin]` 的键为 Name、Author、Version、LoadType、Load、VariableFiles、MergeSkins（也接受 `Merge`）、
-  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。**不检查最低版本。** `RMSKIN.bmp` 只要是真正的位图且不超过
-  4096 像素就会显示（不要求精确尺寸）。
-- **原因：** Windows 版本号在 macOS 上没有意义；不支持的功能由引擎报告。
-- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包也能安装；不支持的功能会优雅降级。
-- **状态：** 完全一致 / 不支持（最低版本）
+  MinimumRainmeter、MinimumWindows（UTF-8 / UTF-16 / ANSI）。`MinimumRainmeter` 高于 5.0 时（5.0 的任何修订号都算 5.0；
+  老式安装包的 `MinRainmeterVer` 同样处理），安装确认里会显示一条警告，但仍然可以安装。`MinimumWindows` 被忽略。
+  `RMSKIN.bmp` 只要是真正的位图且不超过 4096 像素就会显示（不要求精确尺寸）。
+- **原因：** Deskset 实现的是 Rainmeter 5.0 的皮肤功能，要求更新版本的包可能用到尚未实现的功能；直接拒绝又会挡住其实用不到
+  这些功能的皮肤。Windows 版本号在 macOS 上没有意义。
+- **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包在警告后照常安装；不支持的功能会优雅降级，并由引擎报告。
+- **状态：** 完全一致 / 模拟实现（最低 Rainmeter 版本只警告、不拒绝）/ 不支持（最低 Windows 版本）
 
 #### 根配置、备份与合并皮肤
 - **Windows：** 每个包一个根配置；Backup skins 控制替换时的备份；Merge skins 不删除无关文件，也不备份根配置。
@@ -2878,10 +2889,9 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 | --- | --- | --- |
 | 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局：壁纸映射与 Windows 对照 | 部分支持 | 保存／加载、`!LoadLayout` 和安装后应用已实现；[剩余限制](compat/layouts.md) |
-| Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang） | 不支持 | 模糊效果请用 FrostedGlass |
 | 初始 `!SetAnchor` 时序 | 部分支持 | 动态锚点已实现；首帧调度和初始 meter 几何确定前的命令时序尚待确认（[App](compat/app.md#dynamic-anchors-setanchor)） |
 | 点击穿透皮肤上的 Ctrl / ⌘ 临时覆盖及 Control-Option 选择手势 | 不支持 | 使用皮肤菜单 Select skin，或在菜单／管理窗口中关闭点击穿透 |
-| 自定义光标（`.cur` / `.ani`、大多数光标名称） | 部分支持 | 显示箭头 |
+| 动画光标（`.ani`、BUSY、WAIT） | 部分支持 | 只显示第一帧，不播放动画 |
 | WindowMessage、VirtualDesktops | 不支持 | macOS 上没有对应物 |
 | 其他 Windows 插件 DLL | 不支持 | 数值为 0 / 空，皮肤的兼容性提示中有说明 |
 | 单个 App 的音量（AppVolume `SetVolume`） | 不支持 | macOS 没有单个 App 的音量 |

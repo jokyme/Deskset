@@ -251,10 +251,10 @@ extension AppSelfTest {
             t.equal(SkinView.cursorName(c, x: 1, y: 1), nil)
             t.equal(SkinView.cursorName(c, x: 40, y: 10), "Text")
             t.equal(SkinView.cursorName(c, x: 65, y: 10), nil, "tooltips alone do not change the cursor")
-            t.check(SkinView.cursor(named: "HAND") === NSCursor.pointingHand)
-            t.check(SkinView.cursor(named: "text") === NSCursor.iBeam)
-            t.check(SkinView.cursor(named: nil) === NSCursor.arrow)
-            t.check(SkinView.cursor(named: "Custom.cur") === NSCursor.arrow)
+            t.check(SkinView.cursor(named: "HAND", in: c) === NSCursor.pointingHand)
+            t.check(SkinView.cursor(named: "text", in: c) === NSCursor.iBeam)
+            t.check(SkinView.cursor(named: nil, in: c) === NSCursor.arrow)
+            t.check(SkinView.cursor(named: "Custom.cur", in: c) === NSCursor.pointingHand, "a missing file shows the hand")
 
             // Tooltips: one area per meter with a tooltip, so moving between meters shows the other text.
             t.equal(view.toolTipRects, [CGRect(x: 60, y: 0, width: 20, height: 20), CGRect(x: 80, y: 0, width: 20, height: 20)])

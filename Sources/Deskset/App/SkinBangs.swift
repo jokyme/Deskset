@@ -16,7 +16,7 @@ enum HostBangs {
     }
 
     /// The kind of a bang the engine left to the host (`Bang.name`); nil when it is not supported on macOS
-    /// (blur bangs…). Executor-only commands are handled directly by `SkinRuntime`.
+    /// (`!Launch`…). Executor-only commands are handled directly by `SkinRuntime`.
     static func kind(of name: String) -> Kind? {
         switch name {
         case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
