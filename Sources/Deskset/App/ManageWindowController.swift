@@ -21,7 +21,7 @@ final class SkinZoomStepper: NSStepper {
         stepper.target = target
         stepper.action = stepperAction
         stepper.setAccessibilityLabel(label)
-        stepper.toolTip = "Hold Control to change zoom by 10 percentage points."
+        stepper.toolTip = L("Hold Control to change zoom by 10 percentage points.")
     }
 
     func useIncrement(for modifiers: NSEvent.ModifierFlags) {
@@ -57,13 +57,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private var layoutNames: [String] = []
     private var reloadingLayouts = false
     private let layoutNameField = NSTextField()
-    private let emptyLayoutBox = NSButton(checkboxWithTitle: "Save as empty layout", target: nil, action: nil)
-    private let excludeUnloadedBox = NSButton(checkboxWithTitle: "Exclude unloaded skins", target: nil, action: nil)
-    private let includeWallpaperBox = NSButton(checkboxWithTitle: "Include current wallpaper", target: nil, action: nil)
-    private let saveLayoutButton = NSButton(title: "Save", target: nil, action: nil)
-    private let loadLayoutButton = NSButton(title: "Load", target: nil, action: nil)
-    private let deleteLayoutButton = NSButton(title: "Delete", target: nil, action: nil)
-    private let editLayoutButton = NSButton(title: "Edit", target: nil, action: nil)
+    private let emptyLayoutBox = NSButton(checkboxWithTitle: L("Save as empty layout"), target: nil, action: nil)
+    private let excludeUnloadedBox = NSButton(checkboxWithTitle: L("Exclude unloaded skins"), target: nil, action: nil)
+    private let includeWallpaperBox = NSButton(checkboxWithTitle: L("Include current wallpaper"), target: nil, action: nil)
+    private let saveLayoutButton = NSButton(title: L("Save"), target: nil, action: nil)
+    private let loadLayoutButton = NSButton(title: L("Load"), target: nil, action: nil)
+    private let deleteLayoutButton = NSButton(title: L("Delete"), target: nil, action: nil)
+    private let editLayoutButton = NSButton(title: L("Edit"), target: nil, action: nil)
     private let layoutsStatus = NSTextField(wrappingLabelWithString: "")
     var layoutReplacementConfirmationForTesting: ((String) -> Bool)?
     var layoutDeletionConfirmationForTesting: ((String) -> Bool)?
@@ -71,25 +71,25 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let outline = NSOutlineView()
     private let activeSkinsPopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let newSkinButton = NSButton(image: NSImage(systemSymbolName: "folder.badge.plus",
-                                                       accessibilityDescription: "Create new skin") ?? NSImage(),
+                                                       accessibilityDescription: L("Create new skin")) ?? NSImage(),
                                          target: nil, action: nil)
     private let detailStack = NSStackView()
-    private let emptyLabel = NSTextField(labelWithString: "Select a skin to see its details.")
+    private let emptyLabel = NSTextField(labelWithString: L("Select a skin to see its details."))
 
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let loadButton = NSButton(title: "Load", target: nil, action: nil)
-    private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
-    private let editButton = NSButton(title: "Edit", target: nil, action: nil)
-    private let folderButton = NSButton(title: "Open Folder", target: nil, action: nil)
+    private let loadButton = NSButton(title: L("Load"), target: nil, action: nil)
+    private let refreshButton = NSButton(title: L("Refresh"), target: nil, action: nil)
+    private let editButton = NSButton(title: L("Edit"), target: nil, action: nil)
+    private let folderButton = NSButton(title: L("Open Folder"), target: nil, action: nil)
 
     private let metadataGrid = NSGridView()
     private var addMetadataButton: MetadataActionButton?
     private var metadataEmptyLabel: NSTextField?
     private let settingsGrid = NSGridView()
-    private let settingsNote = NSTextField(labelWithString: "Load the skin to change its settings.")
+    private let settingsNote = NSTextField(labelWithString: L("Load the skin to change its settings."))
     private let positionPopup = NSPopUpButton()
     private let displayMonitorPopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let transparencyPopup = NSPopUpButton()
@@ -100,12 +100,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let zoomStepper = SkinZoomStepper()
     private let xField = NSTextField()
     private let yField = NSTextField()
-    private let draggableBox = NSButton(checkboxWithTitle: "Draggable", target: nil, action: nil)
-    private let clickThroughBox = NSButton(checkboxWithTitle: "Click through", target: nil, action: nil)
-    private let keepOnScreenBox = NSButton(checkboxWithTitle: "Keep on screen", target: nil, action: nil)
-    private let snapEdgesBox = NSButton(checkboxWithTitle: "Snap to edges", target: nil, action: nil)
-    private let savePositionBox = NSButton(checkboxWithTitle: "Save position", target: nil, action: nil)
-    private let favoriteBox = NSButton(checkboxWithTitle: "Favorite", target: nil, action: nil)
+    private let draggableBox = NSButton(checkboxWithTitle: L("Draggable"), target: nil, action: nil)
+    private let clickThroughBox = NSButton(checkboxWithTitle: L("Click through"), target: nil, action: nil)
+    private let keepOnScreenBox = NSButton(checkboxWithTitle: L("Keep on screen"), target: nil, action: nil)
+    private let snapEdgesBox = NSButton(checkboxWithTitle: L("Snap to edges"), target: nil, action: nil)
+    private let savePositionBox = NSButton(checkboxWithTitle: L("Save position"), target: nil, action: nil)
+    private let favoriteBox = NSButton(checkboxWithTitle: L("Favorite"), target: nil, action: nil)
     private let issuesStack = NSStackView()
     /// A loaded skin that a skin action (or StartHidden) hid: says so, with a Show button.
     private let hiddenNotice = HiddenSkinNotice()
@@ -118,10 +118,17 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// changes while the window is on screen: skins hide and show themselves without telling the app's windows.
     private var hiddenConfigs: [String] = []
     private var hiddenWatch: Timer?
-    private let launchAtLoginBox = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
+    private let launchAtLoginBox = NSButton(checkboxWithTitle: L("Launch at login"), target: nil, action: nil)
     private var skinSections: [NSView] = []
-    /// Width of the label column shared by the metadata and settings grids, so their labels line up.
-    private static let labelColumnWidth: CGFloat = 104
+    /// Width of the label column shared by the metadata and settings grids, so their labels line up: 104 points, or
+    /// the widest label in a language whose labels are longer.
+    private static var labelColumnWidth: CGFloat {
+        let labels = [L("Position:"), L("Transparency:"), L("On hover:"), L("Coordinates:"), L("Zoom:"), L("Load order:"),
+                      L("Author:"), L("Version:"), L("License:"), L("Information:")]
+        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let widest = labels.map { ceil(($0 as NSString).size(withAttributes: [.font: font]).width) + 4 }.max() ?? 0
+        return max(104, widest)
+    }
     /// The window had no saved frame and was centered: `placeBeside` may still move it.
     private var placedByDefault = false
     /// A minimum-size check is queued for the next turn of the main run loop (`windowDidResize`).
@@ -136,7 +143,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 660),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = "Manage Skins"
+        window.title = L("Manage Skins")
         window.minSize = NSSize(width: 780, height: 520)
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
@@ -296,11 +303,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         ])
         let content = NSView()
         let skinsTab = NSTabViewItem(identifier: Tab.skins.rawValue)
-        skinsTab.label = "Skins"
+        skinsTab.label = L("Skins")
         skinsTab.view = content
         tabs.addTabViewItem(skinsTab)
         let layoutsTab = NSTabViewItem(identifier: Tab.layouts.rawValue)
-        layoutsTab.label = "Layouts"
+        layoutsTab.label = L("Layouts")
         layoutsTab.view = makeLayoutsView()
         tabs.addTabViewItem(layoutsTab)
 
@@ -321,7 +328,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let outlineMenu = NSMenu()
         outlineMenu.delegate = self
         outline.menu = outlineMenu
-        outline.setAccessibilityLabel("Installed skins")
+        outline.setAccessibilityLabel(L("Installed skins"))
         let outlineScroll = NSScrollView()
         outlineScroll.documentView = outline
         outlineScroll.hasVerticalScroller = true
@@ -362,8 +369,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         left.material = .sidebar
         left.blendingMode = .behindWindow
         left.addSubview(outlineScroll)
-        activeSkinsPopup.setAccessibilityLabel("Active skins")
-        activeSkinsPopup.toolTip = "Select a loaded skin in Manage."
+        activeSkinsPopup.setAccessibilityLabel(L("Active skins"))
+        activeSkinsPopup.toolTip = L("Select a loaded skin in Manage.")
         activeSkinsPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         activeSkinsPopup.translatesAutoresizingMaskIntoConstraints = false
         activeSkinsPopup.menu?.delegate = self
@@ -372,8 +379,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         newSkinButton.target = self
         newSkinButton.action = #selector(createNewSkin)
         newSkinButton.bezelStyle = .texturedRounded
-        newSkinButton.toolTip = "Create new skin"
-        newSkinButton.setAccessibilityLabel("Create new skin")
+        newSkinButton.toolTip = L("Create new skin")
+        newSkinButton.setAccessibilityLabel(L("Create new skin"))
         newSkinButton.translatesAutoresizingMaskIntoConstraints = false
         left.addSubview(newSkinButton)
         NSLayoutConstraint.activate([
@@ -400,11 +407,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         split.autosaveName = "DesksetManageSplit"
 
         // Bottom bar.
-        let install = NSButton(title: "Install Skin…", target: app, action: #selector(AppController.installSkinAction))
-        let openFolder = NSButton(title: "Open Skins Folder", target: app,
+        let install = NSButton(title: L("Install Skin…"), target: app, action: #selector(AppController.installSkinAction))
+        let openFolder = NSButton(title: L("Open Skins Folder"), target: app,
                                   action: #selector(AppController.openSkinsFolderAction))
-        let refreshAll = NSButton(title: "Refresh All", target: app, action: #selector(AppController.refreshAllAction))
-        let openLog = NSButton(title: "Open Log", target: app, action: #selector(AppController.openLogAction))
+        let refreshAll = NSButton(title: L("Refresh All"), target: app, action: #selector(AppController.refreshAllAction))
+        let openLog = NSButton(title: L("Open Log"), target: app, action: #selector(AppController.openLogAction))
         launchAtLoginBox.target = self
         launchAtLoginBox.action = #selector(launchAtLoginChanged)
         let spacer = NSView()
@@ -438,10 +445,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// Rainmeter's Layouts tab: saving options on the left and saved layouts on the right.
     private func makeLayoutsView() -> NSView {
         let view = NSView()
-        let saveTitle = sectionTitle("Save new layout")
-        let nameLabel = formLabel("Name:")
+        let saveTitle = sectionTitle(L("Save new layout"))
+        let nameLabel = formLabel(L("Name:"))
         layoutNameField.delegate = self
-        layoutNameField.setAccessibilityLabel("Layout name")
+        layoutNameField.setAccessibilityLabel(L("Layout name"))
         layoutNameField.target = self
         layoutNameField.action = #selector(saveLayoutClicked)
         layoutNameField.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -469,7 +476,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         layoutsTable.allowsEmptySelection = true
         layoutsTable.dataSource = self
         layoutsTable.delegate = self
-        layoutsTable.setAccessibilityLabel("Saved layouts")
+        layoutsTable.setAccessibilityLabel(L("Saved layouts"))
         let scroll = NSScrollView()
         scroll.documentView = layoutsTable
         scroll.hasVerticalScroller = true
@@ -487,7 +494,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         buttons.spacing = 8
         layoutsStatus.textColor = .secondaryLabelColor
         layoutsStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let saved = NSStackView(views: [sectionTitle("Saved layouts"), scroll, layoutsStatus, buttons])
+        let saved = NSStackView(views: [sectionTitle(L("Saved layouts")), scroll, layoutsStatus, buttons])
         saved.orientation = .vertical
         saved.alignment = .leading
         saved.spacing = 12
@@ -542,10 +549,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         defer { reloadingLayouts = false }
         do {
             layoutNames = try app.layoutStore.list()
-            layoutsStatus.stringValue = layoutNames.isEmpty ? "No saved layouts." : ""
+            layoutsStatus.stringValue = layoutNames.isEmpty ? L("No saved layouts.") : ""
         } catch {
             layoutNames = []
-            layoutsStatus.stringValue = "Could not read saved layouts: \(error.localizedDescription)"
+            layoutsStatus.stringValue = L("Could not read saved layouts: %@", error.localizedDescription)
         }
         layoutsStatus.isHidden = layoutsStatus.stringValue.isEmpty
         layoutsTable.reloadData()
@@ -595,7 +602,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                 try self.app.saveLayout(named: name, options: options)
                 self.reloadLayouts(selecting: name)
             } catch {
-                self.app.alert("Could not save layout", error.localizedDescription)
+                self.app.alert(L("Could not save layout"), error.localizedDescription)
             }
         }
         guard app.layoutStore.contains(named: name) else { save(); return }
@@ -605,11 +612,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         guard app.presentsWindows else { save(); return }
         let alert = NSAlert()
-        alert.messageText = "Replace layout \"\(name)\"?"
-        alert.informativeText = "A layout with this name already exists. Replace its saved settings?"
+        alert.messageText = L("Replace layout “%@”?", name)
+        alert.informativeText = L("A layout with this name already exists. Replace its saved settings?")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Replace")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: L("Replace"))
+        alert.addButton(withTitle: L("Cancel"))
         if let window {
             alert.beginSheetModal(for: window) { response in
                 if response == .alertFirstButtonReturn { save() }
@@ -631,7 +638,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                 try self.app.deleteLayout(named: name)
                 self.reloadLayouts()
             } catch {
-                self.app.alert("Could not delete layout", error.localizedDescription)
+                self.app.alert(L("Could not delete layout"), error.localizedDescription)
             }
         }
         if let confirm = layoutDeletionConfirmationForTesting {
@@ -640,11 +647,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         guard app.presentsWindows else { remove(); return }
         let alert = NSAlert()
-        alert.messageText = "Delete layout \"\(name)\"?"
-        alert.informativeText = "This moves the saved layout to the Trash. Your skin files are kept."
+        alert.messageText = L("Delete layout “%@”?", name)
+        alert.informativeText = L("This moves the saved layout to the Trash. Your skin files are kept.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: L("Delete"))
+        alert.addButton(withTitle: L("Cancel"))
         if let window {
             alert.beginSheetModal(for: window) { response in
                 if response == .alertFirstButtonReturn { remove() }
@@ -768,12 +775,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         positionPopup.target = self
         positionPopup.action = #selector(settingsChanged(_:))
-        displayMonitorPopup.setAccessibilityLabel("Display monitor")
-        displayMonitorPopup.toolTip = "Select the display monitor for this skin."
+        displayMonitorPopup.setAccessibilityLabel(L("Display monitor"))
+        displayMonitorPopup.toolTip = L("Select the display monitor for this skin.")
         displayMonitorPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         displayMonitorPopup.menu?.delegate = self
         displayMonitorPopup.menu?.autoenablesItems = false
-        displayMonitorPopup.addItem(withTitle: "Display monitor")
+        displayMonitorPopup.addItem(withTitle: L("Display monitor"))
         for mode in SkinVisibility.HoverMode.allCases {
             hoverPopup.addItem(withTitle: mode.title)
             hoverPopup.lastItem?.tag = mode.rawValue
@@ -786,27 +793,27 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
         transparencyPopup.target = self
         transparencyPopup.action = #selector(settingsChanged(_:))
-        transparencyPopup.setAccessibilityLabel("Transparency")
+        transparencyPopup.setAccessibilityLabel(L("Transparency"))
         numberField(fadeField, width: 60, action: #selector(settingsChanged(_:)))
         numberField(loadOrderField, width: 60, action: #selector(settingsChanged(_:)))
         SkinZoomStepper.configure(field: zoomField, stepper: zoomStepper, target: self,
                                   fieldAction: #selector(zoomFieldChanged), stepperAction: #selector(zoomStepperChanged),
-                                  label: "Skin zoom")
+                                  label: L("Skin zoom"))
         numberField(xField, width: 70, action: #selector(positionFieldChanged(_:)))
         numberField(yField, width: 70, action: #selector(positionFieldChanged(_:)))
         for box in [draggableBox, clickThroughBox, keepOnScreenBox, snapEdgesBox, savePositionBox] {
             box.target = self
             box.action = #selector(settingsChanged(_:))
         }
-        draggableBox.toolTip = "Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable."
-        clickThroughBox.toolTip = "Clicks pass through the skin to whatever is below it."
-        keepOnScreenBox.toolTip = "Keep the whole skin inside the screen it is on."
-        snapEdgesBox.toolTip = "Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override."
-        savePositionBox.toolTip = "Remember where the skin is when it is moved."
+        draggableBox.toolTip = L("Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable.")
+        clickThroughBox.toolTip = L("Clicks pass through the skin to whatever is below it.")
+        keepOnScreenBox.toolTip = L("Keep the whole skin inside the screen it is on.")
+        snapEdgesBox.toolTip = L("Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override.")
+        savePositionBox.toolTip = L("Remember where the skin is when it is moved.")
         favoriteBox.target = self
         favoriteBox.action = #selector(favoriteChanged)
-        favoriteBox.toolTip = "Add this skin to the Favorites menu."
-        hoverPopup.toolTip = "What the skin does while the pointer is over it."
+        favoriteBox.toolTip = L("Add this skin to the Favorites menu.")
+        hoverPopup.toolTip = L("What the skin does while the pointer is over it.")
 
         func row(_ views: [NSView]) -> NSStackView {
             let s = NSStackView(views: views)
@@ -815,14 +822,14 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             s.alignment = .centerY
             return s
         }
-        let ms = NSTextField(labelWithString: "ms")
+        let ms = NSTextField(labelWithString: L("ms"))
         ms.textColor = .secondaryLabelColor
         settingsGrid.rowSpacing = 10
         settingsGrid.columnSpacing = 12
-        settingsGrid.addRow(with: [formLabel("Position:"), row([positionPopup])])
-        settingsGrid.addRow(with: [formLabel("Transparency:"), row([transparencyPopup])])
-        settingsGrid.addRow(with: [formLabel("On hover:"), row([hoverPopup, formLabel("Fade duration:"), fadeField, ms])])
-        settingsGrid.addRow(with: [formLabel("Coordinates:"),
+        settingsGrid.addRow(with: [formLabel(L("Position:")), row([positionPopup])])
+        settingsGrid.addRow(with: [formLabel(L("Transparency:")), row([transparencyPopup])])
+        settingsGrid.addRow(with: [formLabel(L("On hover:")), row([hoverPopup, formLabel(L("Fade duration:")), fadeField, ms])])
+        settingsGrid.addRow(with: [formLabel(L("Coordinates:")),
                                   row([formLabel("X"), xField, formLabel("Y"), yField, displayMonitorPopup])])
         coordinatesHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         coordinatesHint.textColor = .secondaryLabelColor
@@ -838,8 +845,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         coordinatesHintRow = settingsGrid.addRow(with: [NSGridCell.emptyContentView, hint])
         coordinatesHintRow?.topPadding = -4
         coordinatesHintRow?.isHidden = true
-        settingsGrid.addRow(with: [formLabel("Zoom:"), row([zoomField, zoomStepper, NSTextField(labelWithString: "%")])])
-        settingsGrid.addRow(with: [formLabel("Load order:"), row([loadOrderField])])
+        settingsGrid.addRow(with: [formLabel(L("Zoom:")), row([zoomField, zoomStepper, NSTextField(labelWithString: "%")])])
+        settingsGrid.addRow(with: [formLabel(L("Load order:")), row([loadOrderField])])
         let checks = NSGridView(views: [[draggableBox, clickThroughBox], [keepOnScreenBox, snapEdgesBox],
                                         [savePositionBox, favoriteBox]])
         checks.rowSpacing = 6
@@ -863,7 +870,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         hiddenNotice.showButton.action = #selector(showClicked)
 
         skinSections = [header, buttons, hiddenNotice, separatorLine(), metadataGrid, separatorLine(),
-                        sectionTitle("Settings"), settingsGrid, settingsNote, separatorLine(), sectionTitle("Compatibility"),
+                        sectionTitle(L("Settings")), settingsGrid, settingsNote, separatorLine(), sectionTitle(L("Compatibility")),
                         issuesStack]
         for view in skinSections {
             detailStack.addArrangedSubview(view)
@@ -916,7 +923,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private func updateActiveSkinsMenu() {
         guard let menu = activeSkinsPopup.menu else { return }
         menu.removeAllItems()
-        menu.addItem(withTitle: "Active skins", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: L("Active skins"), action: nil, keyEquivalent: "")
         for controller in app.controllersByName.filter({ !$0.isStopped }) {
             let item = NSMenuItem(title: "\(controller.config)\\\(controller.file)",
                                   action: #selector(activeSkinSelected(_:)), keyEquivalent: "")
@@ -930,7 +937,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private func updateDisplayMonitorMenu() {
         guard let menu = displayMonitorPopup.menu else { return }
         menu.removeAllItems()
-        menu.addItem(withTitle: "Display monitor", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: L("Display monitor"), action: nil, keyEquivalent: "")
         guard let target = detailTarget(), target.loaded, let controller = target.running,
               controller.isStarted, !controller.isStopped else {
             displayMonitorPopup.isEnabled = false
@@ -1000,8 +1007,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private func updateDetail() {
         launchAtLoginBox.state = LaunchAtLogin.isEnabled ? .on : .off
         launchAtLoginBox.isEnabled = LaunchAtLogin.isAvailable
-        launchAtLoginBox.toolTip = LaunchAtLogin.isAvailable ? "Start Deskset when you log in."
-            : "Available when Deskset runs as an installed app."
+        launchAtLoginBox.toolTip = LaunchAtLogin.isAvailable ? L("Start Deskset when you log in.")
+            : L("Available when Deskset runs as an installed app.")
 
         guard let target = detailTarget() else {
             addMetadataButton = nil
@@ -1033,7 +1040,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                                  accessibilityDescription: nil)
         iconView.contentTintColor = loaded ? .controlAccentColor : .secondaryLabelColor
 
-        loadButton.title = loaded ? "Unload" : "Load"
+        loadButton.title = loaded ? L("Unload") : L("Load")
         loadButton.isEnabled = file != nil
         refreshButton.isEnabled = loaded
         editButton.isEnabled = file != nil
@@ -1054,13 +1061,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         // that pins the grid, and through it the window, far below `minSize`.
         while metadataGrid.numberOfColumns > 0 { metadataGrid.removeColumn(at: 0) }
         var rows = 0
-        for key in ["Author", "Version", "License", "Information"] {
+        // [Metadata] keys (any case) and their labels.
+        for (key, title) in [("author", L("Author:")), ("version", L("Version:")), ("license", L("License:")),
+                             ("information", L("Information:"))] {
             guard var value = ManageModel.metadataValue(metadata, key) else { continue }
-            if key == "Information" { value = ManageModel.informationText(value) }
+            if key == "information" { value = ManageModel.informationText(value) }
             let label = NSTextField(wrappingLabelWithString: value)
             label.isSelectable = true
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            metadataGrid.addRow(with: [formLabel(key + ":"), label])
+            metadataGrid.addRow(with: [formLabel(title), label])
             rows += 1
         }
         if rows == 0 {
@@ -1070,11 +1079,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                 let message: String
                 switch hasSection {
                 case false:
-                    message = "This skin has no [Metadata] section."
+                    message = L("This skin has no [Metadata] section.")
                 case true:
-                    message = "This skin has no metadata values."
+                    message = L("This skin has no metadata values.")
                 case nil:
-                    message = "No metadata available."
+                    message = L("No metadata available.")
                 }
                 let none = NSTextField(labelWithString: message)
                 none.textColor = .secondaryLabelColor
@@ -1093,7 +1102,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                     metadataGrid.addRow(with: [none])
                 }
             } else {
-                let none = NSTextField(labelWithString: "Contains \(config.files.count) skin\(config.files.count == 1 ? "" : "s").")
+                let none = NSTextField(labelWithString: L("Contains %lld skins.", config.files.count))
                 none.textColor = .secondaryLabelColor
                 metadataEmptyLabel = none
                 metadataGrid.addRow(with: [none])
@@ -1115,7 +1124,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             transparencyPopup.select(nil)
         }
         let percent = ManageModel.transparencyPercent(forAlpha: s.alphaValue)
-        let transparencyDescription = "Transparency: \(percent)%"
+        let transparencyDescription = L("Transparency: %lld%%", percent)
         transparencyPopup.toolTip = transparencyDescription
         transparencyPopup.setAccessibilityHelp(transparencyDescription)
         hoverPopup.selectItem(withTag: s.onHover)
@@ -1151,8 +1160,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             for control in [draggableBox, clickThroughBox, keepOnScreenBox] { control.isEnabled = false }
         }
         settingsNote.isHidden = editable
-        settingsNote.stringValue = file == nil ? "Select a skin file to see its settings."
-            : "Load the skin to change its settings."
+        settingsNote.stringValue = file == nil ? L("Select a skin file to see its settings.")
+            : L("Load the skin to change its settings.")
 
         // Compatibility
         issuesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1165,18 +1174,18 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             issues = []
         }
         if file == nil {
-            issuesStack.addArrangedSubview(note("Select a skin file to check it."))
+            issuesStack.addArrangedSubview(note(L("Select a skin file to check it.")))
         } else if issues.isEmpty {
-            issuesStack.addArrangedSubview(issueRow("No compatibility problems found.", symbol: "checkmark.circle",
+            issuesStack.addArrangedSubview(issueRow(L("No compatibility problems found."), symbol: "checkmark.circle",
                                                     tint: .systemGreen))
         } else {
             for issue in issues.prefix(100) {
                 issuesStack.addArrangedSubview(issueRow(issue, symbol: "exclamationmark.triangle", tint: .systemOrange))
             }
-            if issues.count > 100 { issuesStack.addArrangedSubview(note("… and \(issues.count - 100) more.")) }
+            if issues.count > 100 { issuesStack.addArrangedSubview(note(L("… and %lld more.", issues.count - 100))) }
         }
         if !loaded && file != nil {
-            issuesStack.addArrangedSubview(note("Checked without loading; some problems only show up while the skin runs."))
+            issuesStack.addArrangedSubview(note(L("Checked without loading; some problems only show up while the skin runs.")))
         }
         updateHiddenState()
     }
@@ -1207,16 +1216,16 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         let (_, file, running, loaded) = target
         let hidden = running.map { !$0.isStopped && $0.isHiddenByBang } ?? false
         if file == nil {
-            statusLabel.stringValue = "Folder"
+            statusLabel.stringValue = L("Folder")
             statusLabel.textColor = .secondaryLabelColor
         } else if loaded {
-            statusLabel.stringValue = hidden ? ManageModel.Hidden.status : "● Loaded"
+            statusLabel.stringValue = hidden ? ManageModel.Hidden.status : "● " + L("Loaded")
             statusLabel.textColor = hidden ? .systemOrange : .systemGreen
         } else if let running {
-            statusLabel.stringValue = "\(running.file) is loaded" + (hidden ? ", hidden" : "")
+            statusLabel.stringValue = hidden ? L("%@ is loaded, hidden", running.file) : L("%@ is loaded", running.file)
             statusLabel.textColor = .secondaryLabelColor
         } else {
-            statusLabel.stringValue = "Not loaded"
+            statusLabel.stringValue = L("Not loaded")
             statusLabel.textColor = .secondaryLabelColor
         }
         // The notice for the file that runs; the settings (and so the coordinates) belong to the config, whichever
@@ -1324,7 +1333,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         do {
             _ = try MetadataEditing.addIfMissing(to: sender.fileURL, app: app)
         } catch {
-            app.alert("Could not add metadata", error.localizedDescription)
+            app.alert(L("Could not add metadata"), error.localizedDescription)
         }
         updateDetail()
     }
@@ -1483,14 +1492,14 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                                             accessibilityDescription: nil)
             cell.imageView?.contentTintColor = hasLoaded ? .controlAccentColor : .secondaryLabelColor
             cell.textField?.font = .systemFont(ofSize: NSFont.systemFontSize)
-            cell.setAccessibilityLabel(node.name + (hasLoaded ? ", has loaded skins" : ""))
+            cell.setAccessibilityLabel(hasLoaded ? L("%@, has loaded skins", node.name) : node.name)
         case .file:
             let loaded = running.map { $0.file.caseInsensitiveCompare(node.file ?? "") == .orderedSame } ?? false
             // Loaded but hidden by a skin action: an orange crossed-out eye instead of the green tick.
             let hidden = loaded && running.map { !$0.isStopped && $0.isHiddenByBang } ?? false
             cell.imageView?.image = NSImage(systemSymbolName: hidden ? "eye.slash.circle.fill"
                                                 : loaded ? "checkmark.circle.fill" : "doc.text",
-                                            accessibilityDescription: hidden ? "Loaded, hidden" : loaded ? "Loaded" : nil)
+                                            accessibilityDescription: hidden ? L("Loaded, hidden") : loaded ? L("Loaded") : nil)
             cell.imageView?.contentTintColor = hidden ? .systemOrange : loaded ? .systemGreen : .secondaryLabelColor
             cell.textField?.font = loaded ? .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
                 : .systemFont(ofSize: NSFont.systemFontSize)
@@ -1538,7 +1547,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }) else { return }
         if node.kind == .file, let file = node.file {
             let loaded = app.controller(for: node.path)?.file.caseInsensitiveCompare(file) == .orderedSame
-            let toggle = NSMenuItem(title: loaded ? "Unload" : "Load", action: #selector(contextToggle(_:)),
+            let toggle = NSMenuItem(title: loaded ? L("Unload") : L("Load"), action: #selector(contextToggle(_:)),
                                     keyEquivalent: "")
             toggle.representedObject = [node.path, file]
             toggle.target = self
@@ -1550,19 +1559,19 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                 show.target = self
                 menu.addItem(show)
             }
-            let edit = NSMenuItem(title: "Edit", action: #selector(contextEdit(_:)), keyEquivalent: "")
+            let edit = NSMenuItem(title: L("Edit"), action: #selector(contextEdit(_:)), keyEquivalent: "")
             edit.representedObject = [node.path, file]
             edit.target = self
             menu.addItem(edit)
         }
         if node.kind == .folder {
-            let create = NSMenuItem(title: "Create new skin", action: #selector(contextCreateSkin(_:)),
+            let create = NSMenuItem(title: L("Create new skin"), action: #selector(contextCreateSkin(_:)),
                                     keyEquivalent: "")
             create.representedObject = [node.path]
             create.target = self
             menu.addItem(create)
         }
-        let folder = NSMenuItem(title: "Show in Finder", action: #selector(contextFolder(_:)), keyEquivalent: "")
+        let folder = NSMenuItem(title: L("Show in Finder"), action: #selector(contextFolder(_:)), keyEquivalent: "")
         folder.representedObject = [node.path]
         folder.target = self
         menu.addItem(folder)
@@ -1881,7 +1890,7 @@ final class MetadataActionButton: NSButton {
     init(fileURL: URL, target: AnyObject?, action: Selector?) {
         self.fileURL = fileURL
         super.init(frame: .zero)
-        self.title = "Add metadata"
+        self.title = L("Add metadata")
         self.target = target
         self.action = action
         self.isBordered = false
@@ -1892,8 +1901,8 @@ final class MetadataActionButton: NSButton {
             .foregroundColor: NSColor.linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
         ]
-        self.attributedTitle = NSAttributedString(string: "Add metadata", attributes: attributes)
-        self.setAccessibilityLabel("Add metadata")
+        self.attributedTitle = NSAttributedString(string: L("Add metadata"), attributes: attributes)
+        self.setAccessibilityLabel(L("Add metadata"))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

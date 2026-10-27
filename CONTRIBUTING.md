@@ -87,6 +87,24 @@ bash scripts/build-app.sh            # build/Deskset.app
   stalls, `defaults write app.deskset.Deskset MainThreadStallLog -int 50` logs every main-thread step of 50 ms or more to
   `~/Library/Logs/Deskset/Deskset.log`, with what was running (read at launch; `defaults delete` to turn it off).
 
+## Translations
+
+The app's own text (menus, windows, alerts) is translated into the same 38 languages Rainmeter ships. Text a skin
+draws is the skin's and is never translated by the app.
+
+- In code, user-visible text goes through `L("English text")`, with a printf format for values:
+  `L("Deskset %@ is available", version)`, never an interpolation. A count that changes the wording is a plural key
+  (`L("Contains %lld skins.", count)`) with forms in the catalog. Log lines, command-line output, INI keys and bang
+  names stay in English.
+- The translations live in `Localization/Localizable.xcstrings` (and `InfoPlist.xcstrings` for permission prompts),
+  String Catalogs that Xcode edits directly. Machine-drafted texts are marked **Needs Review**; when you have checked
+  one in your language, mark it reviewed. Please keep to Apple's own terms for your language (Settings, Quit, Trash…).
+- `swift scripts/localization.swift sync` adds new keys after code changes; `check` (run by CI) reports missing keys,
+  languages without a text, mismatched format specifiers and untranslated text in the files it covers; `report` shows
+  each language's progress.
+- To check that layouts fit longer languages and right-to-left ones, render a window in a made-up language:
+  `.build/debug/Deskset --snapshot-ui manage --pseudo-language long|rtl --out manage.png`.
+
 ## Weather requests
 
 The weather plugins identify Deskset to MET Norway in their User-Agent (`METNorway.userAgentProduct` and

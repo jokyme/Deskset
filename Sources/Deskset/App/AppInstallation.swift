@@ -14,14 +14,14 @@ enum AppInstallation {
 
         var errorDescription: String? {
             switch self {
-            case .invalidApp: return "This is not a complete Deskset application. Download a fresh copy and try again."
-            case .invalidVersion: return "The application’s version could not be verified. Use Finder to inspect the installed copy."
-            case .olderVersion(let version): return "Deskset \(version) is already installed. This older copy will not replace it."
+            case .invalidApp: return L("This is not a complete Deskset application. Download a fresh copy and try again.")
+            case .invalidVersion: return L("The application’s version could not be verified. Use Finder to inspect the installed copy.")
+            case .olderVersion(let version): return L("Deskset %@ is already installed. This older copy will not replace it.", version)
             case .notWritable(let url):
-                return "Deskset cannot write to \(url.deletingLastPathComponent().path). Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace."
-            case .running: return "Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again."
-            case .signature: return "The copied application’s signature could not be verified. Download a fresh copy and try again."
-            case .recovery(let url): return "The installation could not finish. Your previous application is kept at \(url.path). Restore it with Finder before trying again."
+                return L("Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace.", url.deletingLastPathComponent().path)
+            case .running: return L("Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again.")
+            case .signature: return L("The copied application’s signature could not be verified. Download a fresh copy and try again.")
+            case .recovery(let url): return L("The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again.", url.path)
             }
         }
     }
@@ -254,64 +254,64 @@ enum AppInstallation {
         alert.content.badgeText = AppUpdateAsset.processorName
         let parentPath = destination.deletingLastPathComponent().path
         if let installedVersion {
-            alert.messageText = "Replace Deskset \(installedVersion)?"
-            alert.informativeText = "Update the installed app in \(parentPath) and reopen Deskset."
+            alert.messageText = L("Replace Deskset %@?", installedVersion)
+            alert.informativeText = L("Update the installed app in %@ and reopen Deskset.", parentPath)
             alert.content.configureTwoRowCard(
-                leftLabel: "Replacing",
+                leftLabel: L("Replacing"),
                 oldVersion: installedVersion,
                 mainValue: "→  \(sourceVersion)",
                 rightMeta: parentPath,
                 rightMetaAccent: false,
-                bottomNote: "Your skins, layouts, and settings will be kept."
+                bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
-            alert.addButton(withTitle: "Replace and Open")
+            alert.addButton(withTitle: L("Replace and Open"))
         } else {
-            alert.messageText = "Install Deskset \(sourceVersion)?"
-            alert.informativeText = "Copy Deskset to your Applications folder and open it there."
+            alert.messageText = L("Install Deskset %@?", sourceVersion)
+            alert.informativeText = L("Copy Deskset to your Applications folder and open it there.")
             alert.content.configureTwoRowCard(
-                leftLabel: "Destination",
+                leftLabel: L("Destination"),
                 oldVersion: nil,
                 mainValue: destination.path,
                 rightMeta: "v\(sourceVersion)",
                 rightMetaAccent: false,
-                bottomNote: "Your skins, layouts, and settings will be kept."
+                bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
-            alert.addButton(withTitle: "Install to Applications")
+            alert.addButton(withTitle: L("Install to Applications"))
         }
-        alert.content.footnote.stringValue = "Running from Disk Image"
-        alert.addButton(withTitle: "Cancel")
+        alert.content.footnote.stringValue = L("Running from Disk Image")
+        alert.addButton(withTitle: L("Cancel"))
         return alert
     }
 
     static func makeRunningConflict(sourceVersion: String = AppVersion.current, destination: URL) -> AppMaintenancePanel {
         let running = AppMaintenancePanel()
         running.content.badgeText = "v\(sourceVersion)"
-        running.messageText = "Quit the running copy of Deskset"
-        running.informativeText = "Another copy of Deskset is currently open."
+        running.messageText = L("Quit the running copy of Deskset")
+        running.informativeText = L("Another copy of Deskset is currently open.")
         running.content.configureTwoRowCard(
-            leftLabel: "Status",
+            leftLabel: L("Status"),
             oldVersion: nil,
-            mainValue: "Deskset is running",
+            mainValue: L("Deskset is running"),
             rightMeta: destination.deletingLastPathComponent().path,
             rightMetaAccent: false,
-            bottomNote: "Choose Quit Deskset from its menu and save any edits, then click Retry."
+            bottomNote: L("Choose Quit Deskset from its menu and save any edits, then click Retry.")
         )
-        running.content.footnote.stringValue = "Running from Disk Image"
-        running.addButton(withTitle: "Retry")
-        running.addButton(withTitle: "Cancel")
+        running.content.footnote.stringValue = L("Running from Disk Image")
+        running.addButton(withTitle: L("Retry"))
+        running.addButton(withTitle: L("Cancel"))
         return running
     }
 
     static func makeProgress(sourceVersion: String? = nil, destination: URL) -> AppMaintenancePanel {
         let progress = AppMaintenancePanel()
         progress.content.badgeText = ""
-        progress.messageText = sourceVersion.map { "Installing Deskset \($0)…" } ?? "Installing Deskset…"
-        progress.informativeText = "Deskset will open when installation finishes."
+        progress.messageText = sourceVersion.map { L("Installing Deskset %@…", $0) } ?? L("Installing Deskset…")
+        progress.informativeText = L("Deskset will open when installation finishes.")
         progress.content.configureProgressCard(
-            status: "Copying application and verifying signature…",
+            status: L("Copying application and verifying signature…"),
             rightMeta: "",
             fraction: nil,
-            bottomNote: "Your skins and settings are kept in place."
+            bottomNote: L("Your skins and settings are kept in place.")
         )
         progress.content.footnote.stringValue = destination.path
         progress.content.showsDisabledCancelPlaceholder = true
@@ -323,31 +323,31 @@ enum AppInstallation {
         let alert = AppMaintenancePanel()
         alert.alertStyle = .warning
         alert.content.badgeText = ""
-        alert.messageText = "Couldn’t install Deskset"
-        alert.informativeText = "Your skins, layouts, and settings are kept."
+        alert.messageText = L("Couldn’t install Deskset")
+        alert.informativeText = L("Your skins, layouts, and settings are kept.")
         alert.content.configureErrorCard(
             message: error.localizedDescription,
-            bottomNote: "Reveal the installer in Finder to copy Deskset manually."
+            bottomNote: L("Reveal the installer in Finder to copy Deskset manually.")
         )
-        alert.content.footnote.stringValue = "Running from Disk Image"
-        alert.addButton(withTitle: "Show Installer in Finder")
-        alert.addButton(withTitle: "Cancel")
+        alert.content.footnote.stringValue = L("Running from Disk Image")
+        alert.addButton(withTitle: L("Show Installer in Finder"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert
     }
 
     static func makeLaunchFailure(error: Error, destination: URL) -> AppMaintenancePanel {
         let alert = AppMaintenancePanel()
         let parentPath = destination.deletingLastPathComponent().path
-        alert.content.badgeText = "Installed"
-        alert.messageText = "Deskset was installed"
-        alert.informativeText = "Open Deskset from \(parentPath)."
+        alert.content.badgeText = L("Installed")
+        alert.messageText = L("Deskset was installed")
+        alert.informativeText = L("Open Deskset from %@.", parentPath)
         alert.content.configureErrorCard(
             message: error.localizedDescription,
-            bottomNote: "Use Show in Finder to open the installed application."
+            bottomNote: L("Use Show in Finder to open the installed application.")
         )
         alert.content.footnote.stringValue = parentPath
-        alert.addButton(withTitle: "Show in Finder")
-        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: L("Show in Finder"))
+        alert.addButton(withTitle: L("Close"))
         return alert
     }
 

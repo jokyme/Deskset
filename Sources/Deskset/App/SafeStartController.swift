@@ -171,10 +171,9 @@ final class SafeStartController {
     }
 
     static var promptPresentation: PromptPresentation {
-        PromptPresentation(title: "Deskset Safe Start",
-            text: "Deskset will start with its bundled default layout. "
-                + "Your current layout will be saved as @Backup.\n\nYour skin files will be kept.",
-            buttons: ["Safe Start", "Cancel"])
+        PromptPresentation(title: L("Deskset Safe Start"),
+            text: L("Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept."),
+            buttons: [L("Safe Start"), L("Cancel")])
     }
 
     static func makeAlert() -> NSAlert {

@@ -30,14 +30,14 @@ final class SystemLayoutWallpaper: LayoutWallpaper {
     static func readPicture(at source: URL) throws -> Data {
         let data = try Data(contentsOf: source)
         guard NSBitmapImageRep(data: data) != nil else {
-            throw LayoutOperationError.wallpaper("The current desktop picture is not a readable image.")
+            throw LayoutOperationError.wallpaper(L("The current desktop picture is not a readable image."))
         }
         return data
     }
 
     func apply(_ bitmap: Data) throws {
         guard NSBitmapImageRep(data: bitmap) != nil else {
-            throw LayoutOperationError.wallpaper("Wallpaper.bmp is not a readable image.")
+            throw LayoutOperationError.wallpaper(L("Wallpaper.bmp is not a readable image."))
         }
         let oldFile = try? Data(contentsOf: file)
         let desktops = NSScreen.screens.map { screen in

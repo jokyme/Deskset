@@ -8,9 +8,9 @@ enum MetadataEditingError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unsavedChanges(let name):
-            return "Changes to “\(name)” must be saved before adding metadata."
+            return L("Changes to “%@” must be saved before adding metadata.", name)
         case .operationAborted(let name):
-            return "Could not add metadata to “\(name)” while an editor save was still in progress."
+            return L("Could not add metadata to “%@” while an editor save was still in progress.", name)
         }
     }
 }

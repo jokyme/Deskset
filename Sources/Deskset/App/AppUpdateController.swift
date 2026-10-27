@@ -54,16 +54,16 @@ final class AppUpdateController {
 
     var automaticallyChecks: Bool { state.updates.automaticallyChecks }
     var isChecking: Bool { status == .checking }
-    var menuTitle: String { isChecking ? "Checking for Updates…" : "Check for Updates…" }
+    var menuTitle: String { isChecking ? L("Checking for Updates…") : L("Check for Updates…") }
 
     var statusText: String {
         switch status {
-        case .idle: return "Installed version: \(currentVersion)."
-        case .checking: return "Checking for updates…"
-        case .upToDate: return "Deskset \(currentVersion) is up to date."
-        case .noRelease: return "No public release is available yet."
-        case .available(let release): return "Deskset \(release.version.description) is available. You have \(currentVersion)."
-        case .failed(let message): return "Couldn’t check for updates. \(message)"
+        case .idle: return L("Installed version: %@.", currentVersion)
+        case .checking: return L("Checking for updates…")
+        case .upToDate: return L("Deskset %@ is up to date.", currentVersion)
+        case .noRelease: return L("No public release is available yet.")
+        case .available(let release): return L("Deskset %@ is available. You have %@.", release.version.description, currentVersion)
+        case .failed(let message): return L("Couldn’t check for updates. %@", message)
         }
     }
 
@@ -143,9 +143,9 @@ final class AppUpdateController {
             return
         }
         guard let installed = ReleaseVersion(currentVersion) else {
-            status = .failed("The installed version could not be read.")
+            status = .failed(L("The installed version could not be read."))
             changed()
-            if manual { _ = onNotice?(.failed("The installed version could not be read."), false) }
+            if manual { _ = onNotice?(.failed(L("The installed version could not be read.")), false) }
             return
         }
         generation += 1

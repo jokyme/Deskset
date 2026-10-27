@@ -26,12 +26,12 @@ final class NewSkinModel {
 
         var errorDescription: String? {
             switch self {
-            case .invalidName(let name): return "Invalid name: \(name)"
-            case .collision(let name): return "An item named \(name) already exists."
-            case .unsafeItem(let name): return "The item is no longer a regular file or folder: \(name)"
-            case .unavailable: return "The selected folder is no longer available."
-            case .notCreated: return "Only items created in this New skin window can be renamed or deleted."
-            case .defaultTemplate: return "The default template cannot be deleted."
+            case .invalidName(let name): return L("Invalid name: %@", name)
+            case .collision(let name): return L("An item named %@ already exists.", name)
+            case .unsafeItem(let name): return L("The item is no longer a regular file or folder: %@", name)
+            case .unavailable: return L("The selected folder is no longer available.")
+            case .notCreated: return L("Only items created in this New skin window can be renamed or deleted.")
+            case .defaultTemplate: return L("The default template cannot be deleted.")
             }
         }
     }
@@ -199,7 +199,7 @@ final class NewSkinModel {
         } catch {
             do { try fm.moveItem(at: staged, to: old) }
             catch { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: staged.path,
-                NSLocalizedDescriptionKey: "The rename could not be completed. The original item remains at \(staged.path)."] ) }
+                NSLocalizedDescriptionKey: L("The rename could not be completed. The original item remains at %@.", staged.path)] ) }
             throw error
         }
         moveRecords(from: old, to: destination)

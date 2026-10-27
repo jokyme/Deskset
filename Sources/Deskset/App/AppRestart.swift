@@ -58,12 +58,12 @@ enum AppRestart {
         case unavailable, invalidJob, helperFailed, cancelled, parentChanged, timedOut
         var errorDescription: String? {
             switch self {
-            case .unavailable: return "This copy of Deskset could not prepare an automatic restart."
-            case .invalidJob: return "The prepared restart could not be verified."
-            case .helperFailed: return "The restart helper could not start. Deskset is still running."
-            case .cancelled: return "The restart was cancelled."
-            case .parentChanged: return "The running process changed before the restart could finish."
-            case .timedOut: return "Deskset did not finish preparing or quitting in time."
+            case .unavailable: return L("This copy of Deskset could not prepare an automatic restart.")
+            case .invalidJob: return L("The prepared restart could not be verified.")
+            case .helperFailed: return L("The restart helper could not start. Deskset is still running.")
+            case .cancelled: return L("The restart was cancelled.")
+            case .parentChanged: return L("The running process changed before the restart could finish.")
+            case .timedOut: return L("Deskset did not finish preparing or quitting in time.")
             }
         }
     }

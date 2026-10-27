@@ -118,7 +118,7 @@ enum CodeEditorRouter {
             Log.write("\(name) is no longer installed; opening \(file.lastPathComponent) in the built-in editor",
                       level: .warning)
             let notice = reportedMissing.insert(name).inserted
-                ? "\(name) is no longer installed — using the built-in editor" : nil
+                ? L("%@ is no longer installed — using the built-in editor", name) : nil
             if !openBuiltIn(file: file, line: line, app: app, notice: notice, loadUnloadedSkin: loadUnloadedSkin) {
                 openOutsideSkins(file: file, line: line, app: app)
             }

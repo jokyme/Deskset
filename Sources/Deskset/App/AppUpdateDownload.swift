@@ -21,15 +21,15 @@ enum AppUpdateDownloadError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .missingAsset: return "This release has no verified download for this Mac. You can download it from GitHub instead."
-        case .invalidResponse: return "The download server returned an invalid response."
-        case .httpStatus(let code): return "The download server returned HTTP \(code). Please try again."
-        case .unsafeRedirect: return "The download redirected outside the expected GitHub servers."
-        case .wrongSize: return "The downloaded file does not match the release size. Please try again."
-        case .checksum: return "The downloaded file failed its SHA-256 check. Please try again."
-        case .invalidApp: return "The downloaded application does not match this Deskset release."
-        case .architecture: return "The downloaded application does not support this Mac’s processor."
-        case .systemVersion(let version): return "This update requires macOS \(version) or later. Your installed version of Deskset has been kept."
+        case .missingAsset: return L("This release has no verified download for this Mac. You can download it from GitHub instead.")
+        case .invalidResponse: return L("The download server returned an invalid response.")
+        case .httpStatus(let code): return L("The download server returned HTTP %lld. Please try again.", code)
+        case .unsafeRedirect: return L("The download redirected outside the expected GitHub servers.")
+        case .wrongSize: return L("The downloaded file does not match the release size. Please try again.")
+        case .checksum: return L("The downloaded file failed its SHA-256 check. Please try again.")
+        case .invalidApp: return L("The downloaded application does not match this Deskset release.")
+        case .architecture: return L("The downloaded application does not support this Mac’s processor.")
+        case .systemVersion(let version): return L("This update requires macOS %@ or later. Your installed version of Deskset has been kept.", version)
         }
     }
 }

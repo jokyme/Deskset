@@ -21,12 +21,12 @@ enum AppUpdateInstaller {
 
         var errorDescription: String? {
             switch self {
-            case .invalidJob: return "The prepared update could not be verified. Download the update again."
-            case .unavailable: return "This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again."
-            case .parentChanged: return "Deskset’s running process changed before the update could finish. The installed application was kept."
-            case .timedOut: return "Deskset did not finish quitting in time. The installed application was kept."
-            case .helperFailed: return "The update helper could not start. Deskset has not been replaced."
-            case .launchFailed: return "Deskset was installed, but could not be opened automatically. Open it from its application folder."
+            case .invalidJob: return L("The prepared update could not be verified. Download the update again.")
+            case .unavailable: return L("This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again.")
+            case .parentChanged: return L("Deskset’s running process changed before the update could finish. The installed application was kept.")
+            case .timedOut: return L("Deskset did not finish quitting in time. The installed application was kept.")
+            case .helperFailed: return L("The update helper could not start. Deskset has not been replaced.")
+            case .launchFailed: return L("Deskset was installed, but could not be opened automatically. Open it from its application folder.")
             }
         }
     }
@@ -306,14 +306,14 @@ enum AppUpdateInstaller {
         let alert = AppMaintenancePanel()
         alert.alertStyle = .warning
         alert.content.badgeText = ""
-        alert.messageText = "Couldn’t finish updating Deskset"
-        alert.informativeText = "Your skins, layouts, and settings are kept."
+        alert.messageText = L("Couldn’t finish updating Deskset")
+        alert.informativeText = L("Your skins, layouts, and settings are kept.")
         alert.content.configureErrorCard(
             message: error.localizedDescription,
-            bottomNote: "Application location: \(destination.path)"
+            bottomNote: L("Application location: %@", destination.path)
         )
         alert.content.footnote.stringValue = destination.deletingLastPathComponent().path
-        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: L("Close"))
         return alert
     }
 

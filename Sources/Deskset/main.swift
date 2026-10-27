@@ -12,6 +12,9 @@ CommandLineTools.makeHashingDeterministic(for: CommandLine.arguments)
 // under --self-test; set before anything can load a skin.
 CommandLineTools.useANSICodePage(for: CommandLine.arguments)
 
+// --pseudo-language rtl: the layout direction is read when the app object is made.
+PseudoLanguage.configure(for: CommandLine.arguments)
+
 // One symbol renderer for the shared image cache in every command-line mode and the interactive app.
 Images.configure(symbols: AppSymbolRasterizer())
 

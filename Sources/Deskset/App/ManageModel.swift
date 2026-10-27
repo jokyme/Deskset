@@ -4,9 +4,9 @@ import DesksetCore
 /// Data behind the Manage window and the skin menus (kept separate from the views so it can be tested).
 enum ManageModel {
     /// Position choices, top layer first (the manual lists "Stay Topmost, Topmost, Normal, Bottom or On Desktop").
-    static let positions: [(title: String, value: Int)] = [
-        ("Stay Topmost", 2), ("Topmost", 1), ("Normal", 0), ("Bottom", -1), ("On Desktop", -2),
-    ]
+    static var positions: [(title: String, value: Int)] {
+        [(L("Stay Topmost"), 2), (L("Topmost"), 1), (L("Normal"), 0), (L("Bottom"), -1), (L("On Desktop"), -2)]
+    }
 
     /// Transparency percentage shown in the UI (0% = opaque) → AlphaValue 0…255.
     static func alpha(forTransparencyPercent percent: Int) -> Int {
@@ -48,30 +48,29 @@ enum ManageModel {
     /// a widget's own "hide when idle") or StartHidden hid it: moving it or changing its settings does not bring it
     /// back, only a show does (the notice's Show button, `!Show`).
     enum Hidden {
-        static let status = "● Loaded, hidden"
-        static let title = "Hidden by the skin"
-        static let showTitle = "Show"
+        static var status: String { "● " + L("Loaded, hidden") }
+        static var title: String { L("Hidden by the skin") }
+        static var showTitle: String { L("Show") }
 
         /// The notice's text. `startHidden`: the skin's settings say StartHidden, so it may never have been shown.
         static func explanation(startHidden: Bool) -> String {
             let why = startHidden
-                ? "It is set to start hidden (StartHidden), or a skin action (!Hide) took it off the desktop."
-                : "It is loaded and running, but a skin action (!Hide) took it off the desktop, as some widgets do "
-                    + "while they have nothing to show."
-            let after = startHidden ? "Moving it does not bring it back; Show does, until it is loaded again."
-                : "Moving it does not bring it back; Show does, until the skin hides itself again."
+                ? L("It is set to start hidden (StartHidden), or a skin action (!Hide) took it off the desktop.")
+                : L("It is loaded and running, but a skin action (!Hide) took it off the desktop, as some widgets do while they have nothing to show.")
+            let after = startHidden ? L("Moving it does not bring it back; Show does, until it is loaded again.")
+                : L("Moving it does not bring it back; Show does, until the skin hides itself again.")
             return why + " " + after
         }
 
         /// Under the coordinates of a hidden skin; `moved`: coordinates were just typed for it.
         static func coordinatesHint(moved: Bool) -> String {
-            moved ? "Moved, but still hidden: click Show above to see it."
-                : "The skin is hidden: it moves, but stays out of sight."
+            moved ? L("Moved, but still hidden: click Show above to see it.")
+                : L("The skin is hidden: it moves, but stays out of sight.")
         }
 
         /// The outline row's accessibility label of a loaded file.
         static func accessibilityLabel(name: String, loaded: Bool, hidden: Bool) -> String {
-            name + (loaded ? (hidden ? ", loaded, hidden" : ", loaded") : "")
+            loaded ? (hidden ? L("%@, loaded, hidden", name) : L("%@, loaded", name)) : name
         }
     }
 
@@ -117,7 +116,7 @@ enum ManageModel {
         do {
             try skin.load()
         } catch {
-            return ["The skin cannot be loaded: \(error)"]
+            return [L("The skin cannot be loaded: %@", "\(error)")]
         }
         return withExtendedLifetime(host) { skin.issues }
     }
