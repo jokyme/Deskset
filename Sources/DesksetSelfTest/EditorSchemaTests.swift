@@ -266,8 +266,7 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.issue(for: "-3", property: p("FontSize", string)), "-3 is less than 0")
         t.equal(S.issue(for: "300", property: p("ImageAlpha", S.meterGroups("Image"))),
                 "300 is outside 0–255 — it is limited to that range")
-        t.equal(S.issue(for: "HELP", property: p("MouseActionCursorName", string)),
-                "“Help” has no effect on the Mac — the Mac shows the arrow")
+        t.equal(S.issue(for: "HELP", property: p("MouseActionCursorName", string)), nil, "every built-in cursor has a Mac cursor")
         t.equal(S.issue(for: "MyCursor.cur", property: p("MouseActionCursorName", string)), nil, "cursor files")
         t.equal(S.issue(for: "Diagonal", property: p("BarOrientation", S.meterGroups("Bar"))),
                 "“Diagonal” is not one of the choices for Fills toward — anything but Horizontal fills upward")

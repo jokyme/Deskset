@@ -339,12 +339,15 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Cursors (MouseActionCursor, MouseActionCursorName)
 - Windows (Rainmeter): a hand over meters with mouse actions (MouseActionCursor=1 default); MouseActionCursorName takes
   Windows cursor names or `.cur` / `.ani` files from `@Resources\Cursors`.
-- Mac (Deskset): HAND, TEXT, CROSS, NO, SIZE_WE and SIZE_NS map to the macOS cursors; every other name (HELP, BUSY, WAIT,
-  PEN, SIZE_ALL, the diagonal sizes, UPARROW) and custom `.cur` / `.ani` files show the arrow. A Button meter's image
-  shows the hand.
-- Why: macOS has no public equivalents for those cursors; `.cur` / `.ani` are Windows formats.
-- Skin impact: some skins show the arrow where Windows shows a custom cursor.
-- Status: partial
+- Mac (Deskset): every built-in name has a cursor (`SkinCursors`). HAND, TEXT, CROSS, NO, SIZE_WE, SIZE_NS, and
+  SIZE_NWSE / SIZE_NESW on macOS 15 and later, are macOS cursors; HELP, BUSY, WAIT, PEN, UPARROW, SIZE_ALL and the
+  diagonal sizes before macOS 15 are drawn from SF Symbols (BUSY and WAIT do not spin). `.cur` files from
+  `@Resources\Cursors` show at 32 points with their hot spot (`CursorFile`); an `.ani` shows the first frame of its
+  sequence. Names ignore case and never contain a path; an unknown name or unreadable file shows the hand (judgment
+  call). A Button meter's image shows the hand.
+- Why: macOS has public cursors only for some of the Windows ones; animation would need a timer swapping images.
+- Skin impact: cursors look like their Mac counterparts; animated cursors stay still.
+- Status: emulated
 
 ### Tooltips
 - Windows (Rainmeter): ToolTipText / ToolTipTitle, ToolTipIcon, ToolTipType (balloon), ToolTipWidth; ToolTipHidden in

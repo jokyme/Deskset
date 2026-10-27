@@ -361,18 +361,14 @@ public enum EditorSchema {
     /// `UpdateDivider` of a layer ("Redraw"): every Nth update; other numbers are accepted and shown as written.
     static let redraw: [Choice] = [Choice("1", "Every update"), Choice("2", "Every 2nd update"),
                                    Choice("5", "Every 5th update"), Choice("-1", "Only once")]
-    /// `MouseActionCursorName`: only six names have a Mac cursor (SkinView.cursor(named:)); the rest show the arrow.
-    public static let cursorNames: [Choice] = {
-        let mac: Set<String> = ["HAND", "TEXT", "CROSS", "NO", "SIZE_NS", "SIZE_WE"]
-        let titles: [(String, String)] = [
-            ("HAND", "Pointing hand"), ("TEXT", "Text (I-beam)"), ("CROSS", "Crosshair"), ("NO", "Not allowed"),
-            ("SIZE_NS", "Resize up/down"), ("SIZE_WE", "Resize left/right"), ("HELP", "Help"), ("BUSY", "Busy"),
-            ("PEN", "Pen"), ("SIZE_ALL", "Move"), ("SIZE_NESW", "Resize diagonal ↗"), ("SIZE_NWSE", "Resize diagonal ↘"),
-            ("UPARROW", "Up arrow"), ("WAIT", "Wait"),
-        ]
-        return titles.map { Choice($0.0, $0.1, supportedOnMac: mac.contains($0.0),
-                                   note: mac.contains($0.0) ? "" : "the Mac shows the arrow") }
-    }()
+    /// `MouseActionCursorName`: every built-in name has a Mac cursor (SkinCursors in the app); a `.cur` / `.ani` file
+    /// name from the skin's `@Resources\Cursors` can be typed instead.
+    public static let cursorNames: [Choice] = [
+        ("HAND", "Pointing hand"), ("TEXT", "Text (I-beam)"), ("CROSS", "Crosshair"), ("NO", "Not allowed"),
+        ("SIZE_NS", "Resize up/down"), ("SIZE_WE", "Resize left/right"), ("HELP", "Help"), ("BUSY", "Busy"),
+        ("PEN", "Pen"), ("SIZE_ALL", "Move"), ("SIZE_NESW", "Resize diagonal ↗"), ("SIZE_NWSE", "Resize diagonal ↘"),
+        ("UPARROW", "Up arrow"), ("WAIT", "Wait"),
+    ].map { Choice($0.0, $0.1) }
 
     public static let timeFormats = ["%H:%M", "%H:%M:%S", "%#I:%M %p", "%A", "%a, %b %#d", "%B %#d, %Y", "%Y-%m-%d",
                                      "%#d/%#m/%Y", "locale-time", "locale-date"]
