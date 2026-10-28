@@ -22,7 +22,6 @@ final class SkinCanvasView: NSView {
     var paintsSurface = true { didSet { needsDisplay = true } }
     var glassDrawing: SkinRenderer.GlassDrawing? { didSet { needsDisplay = true } }
     var isEditable = false
-    var drawsPartFocusRing = false
     var showsContentOutside = true {
         didSet {
             guard showsContentOutside != oldValue else { return }

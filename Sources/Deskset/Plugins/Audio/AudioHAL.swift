@@ -130,10 +130,6 @@ enum AudioHAL {
         (get(device, address(kAudioDevicePropertyIsHidden), as: UInt32.self) ?? 0) != 0
     }
 
-    static func isAlive(_ device: AudioObjectID) -> Bool {
-        (get(device, address(kAudioDevicePropertyDeviceIsAlive), as: UInt32.self) ?? 0) != 0
-    }
-
     /// Virtual format of the first input stream (the format IOProcs see), or the device's stream format.
     static func inputStreamFormat(of device: AudioObjectID) -> AudioStreamBasicDescription? {
         let streams = array(device, address(kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput),

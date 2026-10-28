@@ -7,7 +7,6 @@ import DesksetCore
 /// side margins. The serif is the signature, and only titles use it: New York, or Songti SC in Chinese.
 enum StudioPageStyle {
     static let margin: CGFloat = 16
-    static let labelWidth: CGFloat = 76
 
     // MARK: Type
 
@@ -17,11 +16,8 @@ enum StudioPageStyle {
         return base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) } ?? base
     }
 
-    static let headingFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
     static let labelFont = NSFont.systemFont(ofSize: 12)
-    static let valueFont = NSFont.systemFont(ofSize: 12.5)
     static let noteFont = NSFont.systemFont(ofSize: 11.5)
-    static let smallFont = NSFont.systemFont(ofSize: 11)
 
     static func monospaced(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         NSFont.monospacedSystemFont(ofSize: size, weight: weight)
@@ -34,23 +30,9 @@ enum StudioPageStyle {
         isDark(appearance) ? NSColor(white: 1, alpha: 0.62) : NSColor(white: 0, alpha: 0.58)
     }
 
-    /// Placeholders and chevrons only.
-    static let faintInk = NSColor(name: "StudioFaintInk") { appearance in
-        isDark(appearance) ? NSColor(white: 1, alpha: 0.40) : NSColor(white: 0, alpha: 0.36)
-    }
-
-    /// The fill of fields, capsules and tracks.
-    static let fieldFill = NSColor(name: "StudioFieldFill") { appearance in
-        isDark(appearance) ? NSColor(white: 1, alpha: 0.09) : NSColor(white: 0, alpha: 0.05)
-    }
-
     static let hairline = NSColor.separatorColor
     static let okGreen = NSColor(srgbRed: 0.20, green: 0.66, blue: 0.33, alpha: 1)
     static let attention = NSColor(srgbRed: 0.93, green: 0.58, blue: 0.10, alpha: 1)
-    static let attentionText = NSColor(name: "StudioAttentionText") { appearance in
-        isDark(appearance) ? NSColor(srgbRed: 1, green: 0.72, blue: 0.35, alpha: 1)
-            : NSColor(srgbRed: 0.62, green: 0.34, blue: 0, alpha: 1)
-    }
 
     static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua

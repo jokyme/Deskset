@@ -227,17 +227,6 @@ final class MaintenancePanelContent: NSView {
         applyAppearanceColors()
     }
 
-    /// Backwards-compatible helper mapping to two-row card.
-    func configureContext(title: String, value: String, detail: String, symbol: String) {
-        configureTwoRowCard(leftLabel: title, mainValue: value, rightMeta: "", bottomNote: detail)
-    }
-
-    func hideContext() {
-        cardMode = .none
-        cardView.isHidden = true
-        updateCardVisibility()
-    }
-
     func setProgress(visible: Bool, fraction: Double?, text: String, rightMeta: String? = nil) {
         progressText.stringValue = text
         if let rightMeta {

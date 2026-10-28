@@ -36,7 +36,6 @@ final class MainThreadSteps {
     private var displayed = false
     /// When a turn first found the run loop not about to wait since the last: it waits so long at most.
     private var waitingSince: UInt64?
-    private var completions: [() -> Void] = []
     private(set) var isCancelled = false
     /// Turns of the run loop that ran steps (self-tests).
     private(set) var turns = 0
@@ -58,13 +57,6 @@ final class MainThreadSteps {
     func add(_ label: String, _ work: @escaping () -> Void) {
         guard !isCancelled else { return }
         if isRunningStep { added.append((label, work)) } else { queue.append((label, work)) }
-    }
-
-    /// Runs `work` when every step has run (now when none is left); never when the steps are cancelled.
-    func whenDone(_ work: @escaping () -> Void) {
-        guard !isCancelled else { return }
-        guard isDone else { return completions.append(work) }
-        work()
     }
 
     /// The time between two turns.
@@ -99,14 +91,13 @@ final class MainThreadSteps {
         stopObserving()
     }
 
-    /// Drops the steps left, and what waits for them.
+    /// Drops the steps left.
     func cancel() {
         isCancelled = true
         timer?.invalidate()
         timer = nil
         queue = []
         added = []
-        completions = []
         stopObserving()
     }
 
@@ -159,9 +150,5 @@ final class MainThreadSteps {
             }
         } while finishing || more()
         finishing = false
-        guard isDone, !isCancelled, !completions.isEmpty else { return }
-        let done = completions
-        completions = []
-        for work in done { work() }
     }
 }

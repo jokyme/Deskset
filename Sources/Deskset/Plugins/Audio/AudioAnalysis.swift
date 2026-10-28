@@ -171,12 +171,6 @@ struct AudioBandLayout {
 
     var count: Int { max(edges.count - 1, 0) }
 
-    /// Geometric centre of band `i` (BandFreq).
-    func centerFrequency(_ i: Int) -> Double {
-        guard i >= 0, i < count else { return 0 }
-        return (edges[i] * edges[i + 1]).squareRoot()
-    }
-
     static func edges(bands: Int, freqMin: Double, freqMax: Double) -> [Double] {
         guard bands > 0 else { return [] }
         let ratio = log(freqMax / freqMin)

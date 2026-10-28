@@ -169,17 +169,6 @@ final class DesktopLink {
 
     // MARK: Changes that reach beyond the widget's own files
 
-    /// The desktop runs another variant of the widget (`Small.ini`, `Large.ini`): loaded in place of this one; the
-    /// session follows it (`desktopChanged`, once it started: at once with the main executor). False when the variant
-    /// is not there.
-    @discardableResult
-    func switchVariant(to file: String) -> Bool {
-        guard session.fileURL?.lastPathComponent.caseInsensitiveCompare(file) != .orderedSame else { return false }
-        guard app.activate(config: config, file: file) != nil else { return false }
-        desktopChanged()
-        return true
-    }
-
     /// The other widgets on the desktop that read one of `files` (a file a suite shares, such as its look) load again,
     /// so they show what was written there. Found from this widget's files (which configs of its root include them),
     /// never from the other widgets' skins.

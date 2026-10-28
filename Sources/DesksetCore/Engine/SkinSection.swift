@@ -108,22 +108,6 @@ open class SkinSection {
         return foundEmpty ? "" : nil
     }
 
-    /// The value of `key` the section's MeterStyles / `@Inherit` parents give it (the last listed first) — what
-    /// `fileOption(key)` becomes when the section's own key is removed. nil when no style sets it; `""` for an empty
-    /// value.
-    public func styleFileOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        guard !SkinSection.nonInheritableOptions.contains(lower) else { return nil }
-        var foundEmpty = false
-        for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
-    }
-
     /// Where `fileOption(key)` is defined: the section itself or the MeterStyle / `@Inherit` parent it inherits it
     /// from (nil when no file sets it). Unlike `optionOrigin`, never `.setOption`.
     public func fileOrigin(_ key: String) -> OptionOrigin? {

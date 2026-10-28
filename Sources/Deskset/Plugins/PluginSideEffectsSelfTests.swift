@@ -48,7 +48,7 @@ enum PluginSideEffectsSelfTests {
             let center = NowPlayingCenter(backend: backend)
             center.forceLive = true
             center.interval = 3600
-            try MediaUITests.inline([center.worker]) {
+            MediaUITests.inline([center.worker]) {
                 let nowPlaying = NowPlayingMeasure(name: "N", section: section("N", [("PlayerType", "Title")]),
                                                    skin: skin, type: "nowplaying")
                 nowPlaying.center = center
@@ -93,7 +93,7 @@ enum PluginSideEffectsSelfTests {
             t.equal(output.calls, ["mute true"], "live: the output device is changed")
             key.execute(command: "NextTrack")
             t.equal(sent, [.nextTrack], "live: the key is sent")
-            try MediaUITests.inline([center.worker]) {
+            MediaUITests.inline([center.worker]) {
                 center.poll()
                 let web = WebNowPlayingMeasure(name: "WNP2", section: section("WNP2", [("PlayerType", "Title")]),
                                                skin: skin, type: "webnowplaying")

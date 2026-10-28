@@ -29,31 +29,6 @@ enum StudioInk {
     }
 }
 
-/// Whether the Studio's controls change at once (Reduce Motion) rather than animating.
-enum StudioMotion {
-    /// Set by the self-tests; nil: the system setting.
-    static var reduceOverride: Bool?
-
-    static var isReduced: Bool {
-        reduceOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    }
-
-    /// Runs `changes` animated over `duration` (at once with Reduce Motion), then `done`.
-    static func animate(_ duration: TimeInterval = 0.15, _ changes: @escaping (Bool) -> Void,
-                        done: (() -> Void)? = nil) {
-        guard !isReduced else {
-            changes(false)
-            done?()
-            return
-        }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = duration
-            context.allowsImplicitAnimation = true
-            changes(true)
-        }, completionHandler: done)
-    }
-}
-
 // MARK: - Glass capsules
 
 /// A capsule of glass floating over the canvas (the preview bar, the zoom capsule, the status capsules): Liquid Glass

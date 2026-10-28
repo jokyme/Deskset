@@ -391,8 +391,6 @@ event.notification	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window
 timer.Timer	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-timer.animation	Sources/Deskset/Studio2/StudioPreviewBar.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 timer.Timer	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 

@@ -137,12 +137,7 @@ enum Fonts {
     /// Registers font files for this process (`LocalFont…` options, `@Resources/Fonts`). A file registered before is
     /// skipped unless it changed on disk since then (it is then registered again, so an edited font shows up). The
     /// same font in two skins is registered from both files (Core Text accepts that; unregistering one copy leaves
-    /// the other). Any thread; it waits for the fonts queue.
-    static func registerLocalFonts(_ paths: [String]) {
-        onQueue { registerFiles(paths) }
-    }
-
-    /// `registerLocalFonts`. Runs on the fonts queue.
+    /// the other). Runs on the fonts queue.
     private static func registerFiles(_ paths: [String]) {
         var changed = false
         for path in paths {
@@ -613,14 +608,6 @@ enum Fonts {
         lock.lock()
         defer { lock.unlock() }
         return installedFamily(name.lowercased())
-    }
-
-    /// The installed families (hidden ones left out), in no particular order.
-    static var installedFamilyNames: [String] {
-        lock.lock()
-        defer { lock.unlock() }
-        _ = installedFamily("")
-        return familyIndex.map { Array($0.values) } ?? []
     }
 
     /// Call with `lock` held.

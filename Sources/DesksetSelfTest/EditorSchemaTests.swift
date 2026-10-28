@@ -158,7 +158,7 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.describeMeasure(type: "Memory").title, "Memory used (Windows-style)")
         t.equal(S.describeMeasure(type: "Memory", total: true).title, "Total memory (Windows-style)")
         t.equal(S.describeMeasure(type: "PhysicalMemory", invert: true).title, "Memory free")
-        // SwapMemory is memory and swap together (as LayerNaming names it; real swap is a formula of two items).
+        // SwapMemory is memory and swap together (real swap is a formula of two items).
         t.equal(S.describeMeasure(type: "SwapMemory").title, "Memory and swap used")
         t.equal(S.describeMeasure(type: "SwapMemory", total: true).title, "Total memory and swap")
         t.equal(S.describeMeasure(type: "FreeDiskSpace").title, "Free disk space")

@@ -51,7 +51,7 @@ enum SkinPackagerSelfTests {
             defer { packager.close() }
             var messages: [(String, String)] = []
             packager.messageForTesting = { messages.append(($0, $1)) }
-            var answers: [SkinPackagerWindowController.Choice: URL] = [
+            let answers: [SkinPackagerWindowController.Choice: URL] = [
                 .skin: app.skinsDirectory.appendingPathComponent("Deskset"),
                 .plugin: dir.appendingPathComponent("64bit/Glow.dll"), .output: output,
             ]

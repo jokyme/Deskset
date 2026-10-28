@@ -64,8 +64,6 @@ final class EditingSession {
     private(set) var config: String
     unowned let app: AppController
     let buffers = SourceBuffers()
-    /// What the Studio's instance reads: the text in memory, and typed code not written yet (`showTypedCode`).
-    lazy var studioSources = StudioSources(buffers: buffers)
     let diskSync: DiskSync
     /// The widget's undo stack (the Studio window uses it as its own: ⌘Z, the toolbar, the toasts).
     let undoStack = EditorUndoManager()
@@ -195,7 +193,7 @@ final class EditingSession {
         for url in studioSkin?.includedFiles ?? [] { _ = try? buffers.load(url) }
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: app.skinsDirectory, system: SystemMonitor.shared,
                         host: host)
-        skin.sourceProvider = studioSources
+        skin.sourceProvider = buffers
         skin.actionPolicy = host.policy
         skin.measureValues = measureValues
         if let studioClock { skin.skinClock = studioClock }
@@ -227,7 +225,6 @@ final class EditingSession {
         takeOwnWrites(since: stamps)
         if let seed { skin.seedGraphs(from: seed) }
         studioSkin = skin
-        studioSources.waiting = nil
         startUpdates(skin)
         old?.close()
         watcher.watch(skin.sourceFiles)
@@ -676,12 +673,6 @@ final class EditingSession {
         return HeldDesktopChange(files: [], place: placeAfterRefresh, reload: true)
     }
 
-    /// Runs a reload of the desktop copy that waits for its turn now.
-    func flushDesktopRefresh() {
-        guard scheduledRefresh != nil else { return }
-        refreshDesktop()
-    }
-
     /// Whether a reload of the desktop copy the session asked for is still on its way — waiting for its turn, or open:
     /// not every copy it touched has reported yet (changes on disk wait for it: they may be what it writes as it loads).
     var isAwaitingOwnReload: Bool { scheduledRefresh != nil || ownReload != nil }
@@ -736,9 +727,6 @@ final class EditingSession {
         if let buffer = buffers.buffer(url), buffer.isDirty { return buffer.data }
         return try Data(contentsOf: SourceFileID(url).url)
     }
-
-    /// Whether FSEvents watches the widget's files.
-    var isWatchingFiles: Bool { watcher.isWatching }
 }
 
 /// A step the color panel grows while the user picks (docs/editor-friendly.md §7.4 "one undo step"): later picks fold

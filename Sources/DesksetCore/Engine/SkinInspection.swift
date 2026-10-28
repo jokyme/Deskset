@@ -245,48 +245,6 @@ extension Skin {
         return SkinEditTarget(file: sources.location(section: sectionName)?.file ?? fileURL, section: sectionName)
     }
 
-    /// Where a change meant for this widget alone writes `key` of `section` (docs/editor-friendly.md §7.5, P6): the
-    /// section's own definition when one of the widget's own files holds it (`ownTarget`). A definition in a file
-    /// other widgets share (`@Resources`) is never rewritten from here; this widget's own .ini holds an override
-    /// instead, which wins because it is read after the include (SkinFileLoader rule 5): the section's block there
-    /// when it has one, or — for a section that isn't drawn or run (a look, `[Rainmeter]`) — a new block at the end.
-    /// nil for a layer or data item only a shared file defines: a block of its own here would move it in the drawing
-    /// (or update) order, so it can't change for this widget alone.
-    public func localTarget(section name: String, key: String) -> SkinEditTarget? {
-        let target = ownTarget(section: name, key: key)
-        if isOwnFile(target.file) { return target }
-        if let header = sources.location(section: target.section)?.file, isOwnFile(header) {
-            return SkinEditTarget(file: header, section: target.section)
-        }
-        if meter(named: target.section) != nil || measure(named: target.section) != nil { return nil }
-        return SkinEditTarget(file: fileURL, section: target.section)
-    }
-
-    /// Looks (MeterStyle) layers name that no file defines, each with the layers naming it, in file order.
-    public var missingLooks: [(look: String, layers: [String])] {
-        var result: [(look: String, layers: [String])] = []
-        for m in meters {
-            for look in m.styles where styleSection(named: look) == nil {
-                if let i = result.firstIndex(where: { $0.look.caseInsensitiveCompare(look) == .orderedSame }) {
-                    result[i].layers.append(m.name)
-                } else {
-                    result.append((look, [m.name]))
-                }
-            }
-        }
-        return result
-    }
-
-    /// The files an `@Include` names that aren't there (from `loadWarnings`), by file name.
-    public var missingIncludeFiles: [String] {
-        loadWarnings.compactMap { w -> String? in
-            guard let r = w.range(of: "file not found: ") else { return nil }
-            let path = w[r.upperBound...].split(separator: " ").first.map(String.init) ?? ""
-            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
-            return name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-        }
-    }
-
     /// The file other widgets share that defines `key` of `section` (default `[Variables]`), whether or not this
     /// widget's own value overrides it (the theme's color a "This Widget" edit overrides): the last included shared
     /// file defining it; nil when none does.
@@ -298,9 +256,6 @@ extension Skin {
         }
         return nil
     }
-
-    /// `sharedDefinition` of a `[Rainmeter]` key.
-    public func sharedRainmeterDefinition(_ key: String) -> URL? { sharedDefinition(ofVariable: key, section: "Rainmeter") }
 
     /// Shows option values without writing them (the editor's live preview while dragging or picking a color):
     /// they act like `!SetOption` values until `endPreview`. Re-reads the section and recomputes the layout.

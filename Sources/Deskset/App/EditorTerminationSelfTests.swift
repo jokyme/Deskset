@@ -250,9 +250,7 @@ enum EditorTerminationSelfTests {
             host = .studio(studio)
         }
         host.editor.onCommit = nil
-        host.editor.onTypedText = nil
         host.editor.idleCommitDelay = 60
-        host.editor.typedTextDelay = 60
         host.editor.caretRestDelay = 60
         let fixture = Fixture(app: app, file: file, host: host)
         t.atSuiteEnd {

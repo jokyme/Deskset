@@ -46,8 +46,6 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
     })
     /// The last fix, rounded, and when it came (memory only).
     private let lastFix = Guarded<(coordinate: RoundedCoordinate, at: Date)?>(nil)
-    /// Requests sent to Location Services (tests).
-    private let counters = Guarded((questions: 0, fixes: 0))
 
     init(makeManager: @escaping () -> LocationManaging = { CLLocationManager() }, fixTimeout: TimeInterval = 30) {
         self.makeManager = makeManager
@@ -61,9 +59,6 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
     var status: CLAuthorizationStatus { published.value() }
 
     var isDenied: Bool { status == .denied || status == .restricted }
-
-    /// Permission questions and location requests made so far (tests).
-    var requestCounts: (questions: Int, fixes: Int) { counters.current }
 
     /// Asks when the user has not decided yet (the Wi-Fi skins): on the main thread, at once when the caller is there,
     /// else queued there.
@@ -109,7 +104,6 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
         let m = managerOnMain()
         guard !asked, m.authorizationStatus == .notDetermined else { return }
         asked = true
-        counters.access { $0.questions += 1 }
         m.requestWhenInUseAuthorization()
     }
 
@@ -134,7 +128,6 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
     private func startLocating() {
         guard !locating, let m = manager else { return }
         locating = true
-        counters.access { $0.fixes += 1 }
         m.requestLocation()
         scheduleTimeout(fixTimeout)
     }
