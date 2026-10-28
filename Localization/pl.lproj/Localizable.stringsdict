@@ -12,12 +12,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>(+%lld inna)</string>
 			<key>few</key>
 			<string>(+%lld inne)</string>
 			<key>many</key>
 			<string>(+%lld innych)</string>
-			<key>one</key>
-			<string>(+%lld inna)</string>
 			<key>other</key>
 			<string>(+%lld innej)</string>
 		</dict>
@@ -32,12 +32,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>Zawiera %lld skórkę.</string>
 			<key>few</key>
 			<string>Zawiera %lld skórki.</string>
 			<key>many</key>
 			<string>Zawiera %lld skórek.</string>
-			<key>one</key>
-			<string>Zawiera %lld skórkę.</string>
 			<key>other</key>
 			<string>Zawiera %lld skórki.</string>
 		</dict>
@@ -52,12 +52,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>Przenieść %lld rzecz do kosza?</string>
 			<key>few</key>
 			<string>Przenieść %lld rzeczy do kosza?</string>
 			<key>many</key>
 			<string>Przenieść %lld rzeczy do kosza?</string>
-			<key>one</key>
-			<string>Przenieść %lld rzecz do kosza?</string>
 			<key>other</key>
 			<string>Przenieść %lld rzeczy do kosza?</string>
 		</dict>
@@ -72,12 +72,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… i jeszcze %lld rzecz.</string>
 			<key>few</key>
 			<string>… i jeszcze %lld rzeczy.</string>
 			<key>many</key>
 			<string>… i jeszcze %lld rzeczy.</string>
-			<key>one</key>
-			<string>… i jeszcze %lld rzecz.</string>
 			<key>other</key>
 			<string>… i jeszcze %lld rzeczy.</string>
 		</dict>
@@ -92,12 +92,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… i jeszcze %lld uwaga.</string>
 			<key>few</key>
 			<string>… i jeszcze %lld uwagi.</string>
 			<key>many</key>
 			<string>… i jeszcze %lld uwag.</string>
-			<key>one</key>
-			<string>… i jeszcze %lld uwaga.</string>
 			<key>other</key>
 			<string>… i jeszcze %lld uwagi.</string>
 		</dict>
@@ -112,11 +112,11 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… i jeszcze %lld.</string>
 			<key>few</key>
 			<string>… i jeszcze %lld.</string>
 			<key>many</key>
-			<string>… i jeszcze %lld.</string>
-			<key>one</key>
 			<string>… i jeszcze %lld.</string>
 			<key>other</key>
 			<string>… i jeszcze %lld.</string>

@@ -12,9 +12,9 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>(još %lld)</string>
 			<key>one</key>
+			<string>(još %lld)</string>
+			<key>few</key>
 			<string>(još %lld)</string>
 			<key>other</key>
 			<string>(još %lld)</string>
@@ -30,10 +30,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Sadrži %lld skina.</string>
 			<key>one</key>
 			<string>Sadrži %lld skin.</string>
+			<key>few</key>
+			<string>Sadrži %lld skina.</string>
 			<key>other</key>
 			<string>Sadrži %lld skinova.</string>
 		</dict>
@@ -48,10 +48,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Želite li da premestite %lld stavke u smeće?</string>
 			<key>one</key>
 			<string>Želite li da premestite %lld stavku u smeće?</string>
+			<key>few</key>
+			<string>Želite li da premestite %lld stavke u smeće?</string>
 			<key>other</key>
 			<string>Želite li da premestite %lld stavki u smeće?</string>
 		</dict>
@@ -66,10 +66,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… i još %lld stavke.</string>
 			<key>one</key>
 			<string>… i još %lld stavka.</string>
+			<key>few</key>
+			<string>… i još %lld stavke.</string>
 			<key>other</key>
 			<string>… i još %lld stavki.</string>
 		</dict>
@@ -84,10 +84,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… i još %lld napomene.</string>
 			<key>one</key>
 			<string>… i još %lld napomena.</string>
+			<key>few</key>
+			<string>… i još %lld napomene.</string>
 			<key>other</key>
 			<string>… i još %lld napomena.</string>
 		</dict>
@@ -102,9 +102,9 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… i još %lld.</string>
 			<key>one</key>
+			<string>… i još %lld.</string>
+			<key>few</key>
 			<string>… i još %lld.</string>
 			<key>other</key>
 			<string>… i još %lld.</string>

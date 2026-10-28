@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Arabic.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "مجلد";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "تسأل الواجهات تطبيق الموسيقى أو Spotify عما يُشغَّل لعرض المقطع الحالي والتحكم في التشغيل، وتطلب من Finder إفراغ سلة المهملات أو فتح نافذة «معلومات» عند استخدامك لواجهة كهذه.";
+NSAppleEventsUsageDescription = "تسأل الواجهات تطبيق الموسيقى أو Spotify عما يُشغَّل لعرض المقطع الحالي والتحكم في التشغيل، وتطلب من Finder إفراغ سلة المهملات أو فتح نافذة «معلومات» عند استخدامك لواجهة كهذه.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "تعرض واجهات تصوير الصوت مستوى وطيف الصوت الذي يشغّله الـ Mac. يُحلَّل الصوت على الـ Mac أثناء تحميل واجهة كهذه؛ ولا يُسجَّل أو يُحفظ أو يُرسل إلى أي مكان أبدًا.";
+NSAudioCaptureUsageDescription = "تعرض واجهات تصوير الصوت مستوى وطيف الصوت الذي يشغّله الـ Mac. يُحلَّل الصوت على الـ Mac أثناء تحميل واجهة كهذه؛ ولا يُسجَّل أو يُحفظ أو يُرسل إلى أي مكان أبدًا.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد سطح المكتب أو تكتبها (مثل واجهة لقائمة ملفات أو ملاحظات أو لتشغيل التطبيقات).";
+NSDesktopFolderUsageDescription = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد سطح المكتب أو تكتبها (مثل واجهة لقائمة ملفات أو ملاحظات أو لتشغيل التطبيقات).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد المستندات أو تكتبها (مثل واجهة لقائمة ملفات أو ملاحظات أو لتشغيل التطبيقات).";
+NSDocumentsFolderUsageDescription = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد المستندات أو تكتبها (مثل واجهة لقائمة ملفات أو ملاحظات أو لتشغيل التطبيقات).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد التنزيلات أو تكتبها (مثل واجهة لقائمة ملفات أو لتشغيل التطبيقات).";
+NSDownloadsFolderUsageDescription = "تقرأ واجهة أو نصها البرمجي ملفات في مجلد التنزيلات أو تكتبها (مثل واجهة لقائمة ملفات أو لتشغيل التطبيقات).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "برنامج حر بموجب GNU GPL v3. يشغّل واجهات مصمَّمة لـ Rainmeter؛ وهو غير تابع لـ Rainmeter. Rainmeter علامة تجارية لمالكيها.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "تقرأ واجهة معلومات من جهاز على شبكتك المحلية، مثل صفحة حالة جهاز التوجيه أو خادم منزلي.";
+NSLocalNetworkUsageDescription = "تقرأ واجهة معلومات من جهاز على شبكتك المحلية، مثل صفحة حالة جهاز التوجيه أو خادم منزلي.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "تقرأ الواجهات التي ضبطتها لاستخدام موقعك الحالي موقعك التقريبي لعرض الطقس المحلي ومواعيد الشروق والغروب. يُقرَّب الموقع إلى نحو 1 كم، ويُرسل إلى خدمة الطقس (MET Norway) فقط للحصول على التوقعات، ولا يُخزَّن أبدًا. ويتطلب macOS هذا الإذن أيضًا كي تعرض واجهات Wi-Fi أسماء الشبكات.";
+NSLocationUsageDescription = "تقرأ الواجهات التي ضبطتها لاستخدام موقعك الحالي موقعك التقريبي لعرض الطقس المحلي ومواعيد الشروق والغروب. يُقرَّب الموقع إلى نحو 1 كم، ويُرسل إلى خدمة الطقس (MET Norway) فقط للحصول على التوقعات، ولا يُخزَّن أبدًا. ويتطلب macOS هذا الإذن أيضًا كي تعرض واجهات Wi-Fi أسماء الشبكات.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "تقرأ الواجهات التي ضبطتها لاستخدام موقعك الحالي موقعك التقريبي لعرض الطقس المحلي ومواعيد الشروق والغروب. يُقرَّب الموقع إلى نحو 1 كم، ويُرسل إلى خدمة الطقس (MET Norway) فقط للحصول على التوقعات، ولا يُخزَّن أبدًا. ويتطلب macOS هذا الإذن أيضًا كي تعرض واجهات Wi-Fi أسماء الشبكات.";
+NSLocationWhenInUseUsageDescription = "تقرأ الواجهات التي ضبطتها لاستخدام موقعك الحالي موقعك التقريبي لعرض الطقس المحلي ومواعيد الشروق والغروب. يُقرَّب الموقع إلى نحو 1 كم، ويُرسل إلى خدمة الطقس (MET Norway) فقط للحصول على التوقعات، ولا يُخزَّن أبدًا. ويتطلب macOS هذا الإذن أيضًا كي تعرض واجهات Wi-Fi أسماء الشبكات.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "تريد واجهة عرض مستوى دخل صوتي (ميكروفون أو واجهة صوت). يُحلَّل الصوت على الـ Mac أثناء تحميل الواجهة؛ ولا يُسجَّل أو يُحفظ أو يُرسل إلى أي مكان أبدًا.";
+NSMicrophoneUsageDescription = "تريد واجهة عرض مستوى دخل صوتي (ميكروفون أو واجهة صوت). يُحلَّل الصوت على الـ Mac أثناء تحميل الواجهة؛ ولا يُسجَّل أو يُحفظ أو يُرسل إلى أي مكان أبدًا.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "تقرأ واجهة أو نصها البرمجي ملفات على وحدة تخزين شبكية (مثل واجهة لقرص أو لقائمة ملفات).";
+NSNetworkVolumesUsageDescription = "تقرأ واجهة أو نصها البرمجي ملفات على وحدة تخزين شبكية (مثل واجهة لقرص أو لقائمة ملفات).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "تقرأ واجهة أو نصها البرمجي ملفات على محرك أقراص قابل للإزالة (مثل واجهة لقرص أو لقائمة ملفات).";
+NSRemovableVolumesUsageDescription = "تقرأ واجهة أو نصها البرمجي ملفات على محرك أقراص قابل للإزالة (مثل واجهة لقرص أو لقائمة ملفات).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "حزمة واجهات";

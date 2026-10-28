@@ -5,40 +5,40 @@
 "Folder" = "Folder";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Skins ask Music or Spotify what is playing to show the current track and control playback, and ask Finder to empty the Trash or open a Get Info window when you use such a skin.";
+NSAppleEventsUsageDescription = "Skins ask Music or Spotify what is playing to show the current track and control playback, and ask Finder to empty the Trash or open a Get Info window when you use such a skin.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Audio visualizer skins show the level and spectrum of the sound your Mac is playing. The audio is analysed on your Mac while such a skin is loaded; it is never recorded, saved or sent anywhere.";
+NSAudioCaptureUsageDescription = "Audio visualizer skins show the level and spectrum of the sound your Mac is playing. The audio is analysed on your Mac while such a skin is loaded; it is never recorded, saved or sent anywhere.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "A skin or its script reads or writes files in your Desktop folder (for example a file list, notes or launcher skin).";
+NSDesktopFolderUsageDescription = "A skin or its script reads or writes files in your Desktop folder (for example a file list, notes or launcher skin).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "A skin or its script reads or writes files in your Documents folder (for example a file list, notes or launcher skin).";
+NSDocumentsFolderUsageDescription = "A skin or its script reads or writes files in your Documents folder (for example a file list, notes or launcher skin).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "A skin or its script reads or writes files in your Downloads folder (for example a file list or launcher skin).";
+NSDownloadsFolderUsageDescription = "A skin or its script reads or writes files in your Downloads folder (for example a file list or launcher skin).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Free software under the GNU GPL v3. Runs skins made for Rainmeter; not affiliated with Rainmeter. Rainmeter is a trademark of its respective owners.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "A skin reads information from a device on your local network, such as a router status page or a home server.";
+NSLocalNetworkUsageDescription = "A skin reads information from a device on your local network, such as a router status page or a home server.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.";
+NSLocationUsageDescription = "Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.";
+NSLocationWhenInUseUsageDescription = "Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "A skin wants to show the level of an audio input (a microphone or an audio interface). The audio is analysed on your Mac while the skin is loaded; it is never recorded, saved or sent anywhere.";
+NSMicrophoneUsageDescription = "A skin wants to show the level of an audio input (a microphone or an audio interface). The audio is analysed on your Mac while the skin is loaded; it is never recorded, saved or sent anywhere.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "A skin or its script reads files on a network volume (for example a disk or file list skin).";
+NSNetworkVolumesUsageDescription = "A skin or its script reads files on a network volume (for example a disk or file list skin).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "A skin or its script reads files on a removable drive (for example a disk or file list skin).";
+NSRemovableVolumesUsageDescription = "A skin or its script reads files on a removable drive (for example a disk or file list skin).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Skin Package";

@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Chinese, Traditional.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "檔案夾";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "皮膚會向「音樂」或 Spotify 詢問正在播放的內容，以顯示目前的曲目並控制播放；使用相應的皮膚時，也會要求 Finder 清空垃圾桶或打開「取得資訊」視窗。";
+NSAppleEventsUsageDescription = "皮膚會向「音樂」或 Spotify 詢問正在播放的內容，以顯示目前的曲目並控制播放；使用相應的皮膚時，也會要求 Finder 清空垃圾桶或打開「取得資訊」視窗。";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "音訊視覺化皮膚會顯示 Mac 正在播放之聲音的音量和頻譜。只有在載入此類皮膚時，音訊才會在你的 Mac 上進行分析，且絕不會被錄製、儲存或傳送到任何地方。";
+NSAudioCaptureUsageDescription = "音訊視覺化皮膚會顯示 Mac 正在播放之聲音的音量和頻譜。只有在載入此類皮膚時，音訊才會在你的 Mac 上進行分析，且絕不會被錄製、儲存或傳送到任何地方。";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "皮膚或其腳本需要讀取或寫入「桌面」檔案夾中的檔案（例如檔案列表、備忘或啟動器皮膚）。";
+NSDesktopFolderUsageDescription = "皮膚或其腳本需要讀取或寫入「桌面」檔案夾中的檔案（例如檔案列表、備忘或啟動器皮膚）。";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "皮膚或其腳本需要讀取或寫入「文件」檔案夾中的檔案（例如檔案列表、備忘或啟動器皮膚）。";
+NSDocumentsFolderUsageDescription = "皮膚或其腳本需要讀取或寫入「文件」檔案夾中的檔案（例如檔案列表、備忘或啟動器皮膚）。";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "皮膚或其腳本需要讀取或寫入「下載項目」檔案夾中的檔案（例如檔案列表或啟動器皮膚）。";
+NSDownloadsFolderUsageDescription = "皮膚或其腳本需要讀取或寫入「下載項目」檔案夾中的檔案（例如檔案列表或啟動器皮膚）。";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "以 GNU GPL v3 授權的自由軟體。可執行為 Rainmeter 製作的皮膚；與 Rainmeter 並無關聯。Rainmeter 是其各自所有者的商標。";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "皮膚需要讀取區域網路中裝置的資訊，例如路由器狀態頁面或家用伺服器。";
+NSLocalNetworkUsageDescription = "皮膚需要讀取區域網路中裝置的資訊，例如路由器狀態頁面或家用伺服器。";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "設為使用目前位置的皮膚會讀取你的大概位置，以顯示當地天氣和日出日落時間。位置會概略到約 1 公里，只會傳送給天氣服務（MET Norway）用於預報，且絕不會被儲存。此外，macOS 要求取得此權限後，Wi-Fi 皮膚才能顯示網路名稱。";
+NSLocationUsageDescription = "設為使用目前位置的皮膚會讀取你的大概位置，以顯示當地天氣和日出日落時間。位置會概略到約 1 公里，只會傳送給天氣服務（MET Norway）用於預報，且絕不會被儲存。此外，macOS 要求取得此權限後，Wi-Fi 皮膚才能顯示網路名稱。";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "設為使用目前位置的皮膚會讀取你的大概位置，以顯示當地天氣和日出日落時間。位置會概略到約 1 公里，只會傳送給天氣服務（MET Norway）用於預報，且絕不會被儲存。此外，macOS 要求取得此權限後，Wi-Fi 皮膚才能顯示網路名稱。";
+NSLocationWhenInUseUsageDescription = "設為使用目前位置的皮膚會讀取你的大概位置，以顯示當地天氣和日出日落時間。位置會概略到約 1 公里，只會傳送給天氣服務（MET Norway）用於預報，且絕不會被儲存。此外，macOS 要求取得此權限後，Wi-Fi 皮膚才能顯示網路名稱。";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "皮膚需要顯示音訊輸入（麥克風或音訊介面）的音量。只有在載入該皮膚時，音訊才會在你的 Mac 上進行分析，且絕不會被錄製、儲存或傳送到任何地方。";
+NSMicrophoneUsageDescription = "皮膚需要顯示音訊輸入（麥克風或音訊介面）的音量。只有在載入該皮膚時，音訊才會在你的 Mac 上進行分析，且絕不會被錄製、儲存或傳送到任何地方。";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "皮膚或其腳本需要讀取網路卷宗上的檔案（例如磁碟或檔案列表皮膚）。";
+NSNetworkVolumesUsageDescription = "皮膚或其腳本需要讀取網路卷宗上的檔案（例如磁碟或檔案列表皮膚）。";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "皮膚或其腳本需要讀取可移除磁碟上的檔案（例如磁碟或檔案列表皮膚）。";
+NSRemovableVolumesUsageDescription = "皮膚或其腳本需要讀取可移除磁碟上的檔案（例如磁碟或檔案列表皮膚）。";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "皮膚套件";

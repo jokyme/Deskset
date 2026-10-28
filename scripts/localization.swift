@@ -41,6 +41,8 @@ import Foundation
 // MARK: - Settings
 
 var localizationPath = "Localization"
+/// Where the translations are made (each language file says so in its header).
+let weblateURL = "https://hosted.weblate.org/projects/deskset/"
 var ignorePath = "scripts/localization-ignore.tsv"
 var sourcesPath = "Sources/Deskset"
 
@@ -465,8 +467,11 @@ func readStrings(_ path: String) -> StringsFile? {
             guard i + 1 < c.count else { stop("unfinished comment") }
             i += 2
             comment = body.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
-        } else if c[i] == "\"" {
-            let key = quoted()
+        } else if c[i] == "\"" || c[i].isLetter {
+            var key = ""
+            if c[i] == "\"" { key = quoted() } else {
+                while i < c.count && (c[i].isLetter || c[i].isNumber || c[i] == "_" || c[i] == ".") { key.append(c[i]); i += 1 }
+            }
             skipSpace()
             guard i < c.count, c[i] == "=" else { stop("expected =") }
             i += 1
@@ -484,6 +489,11 @@ func readStrings(_ path: String) -> StringsFile? {
     return StringsFile(status: status, entries: entries)
 }
 
+/// A key as Weblate's .strings writer puts it: NS…Description keys (Info.plist) bare, every other key quoted.
+func keyText(_ key: String) -> String {
+    key.range(of: "^NS.*Description$", options: .regularExpression) != nil ? key : quote(key)
+}
+
 func quote(_ s: String) -> String {
     "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         .replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\t", with: "\\t") + "\""
@@ -499,8 +509,8 @@ func writeStrings(_ file: StringsFile, language: String, table: String) {
     if language == "en" {
         out += "// The keys are the app's English text. `swift scripts/localization.swift sync` writes this file from the code.\n"
     } else {
-        out += "// Translate the text after \"=\"; keep %@, %lld and the like (or number them, %2$@, to change their order).\n"
-        out += "// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).\n"
+        out += "// Translated on Weblate: \(weblateURL)\n"
+        out += "// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).\n"
     }
     if let status = file.status { out += "// Status: \(status)\n" }
     var section = ""
@@ -511,7 +521,7 @@ func writeStrings(_ file: StringsFile, language: String, table: String) {
         }
         out += "\n"
         if !entry.comment.isEmpty { out += "/* " + entry.comment.replacingOccurrences(of: "\n", with: "\n   ") + " */\n" }
-        out += "\(quote(entry.key)) = \(quote(entry.value));\n"
+        out += "\(keyText(entry.key)) = \(quote(entry.value));\n"
     }
     let path = stringsPath(language, table)
     try? FileManager.default.createDirectory(atPath: lproj(language), withIntermediateDirectories: true)
@@ -533,25 +543,47 @@ func readPlurals(_ language: String) -> [String: [String: String]] {
     return result
 }
 
+/// The CLDR order of plural forms, the order Weblate writes them in.
+let pluralOrder = ["zero", "one", "two", "few", "many", "other"]
+
+/// Writes a .stringsdict byte for byte as Weblate does (Python's plistlib: tabs, keys in this order, forms in CLDR
+/// order), so that a file Weblate saved and one this script wrote only differ where a text does.
 func writePlurals(_ plurals: [String: [String: String]], language: String) {
     let path = pluralPath(language)
     if plurals.isEmpty { try? FileManager.default.removeItem(atPath: path); return }
-    var plist: [String: Any] = [:]
-    for (key, forms) in plurals {
+    func xml(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+    var out = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+
+    """
+    for key in plurals.keys.sorted() {
         // The value type of the number the forms choose by: the key's first integer specifier (lld for %lld).
         let ns = key as NSString
         let m = specifier.matches(in: key, range: NSRange(location: 0, length: ns.length))
             .first { ns.substring(with: $0.range(at: 3)) != "@" && ns.substring(with: $0.range(at: 3)) != "%" }
         let type = m.map { ($0.range(at: 2).location == NSNotFound ? "" : ns.substring(with: $0.range(at: 2)))
             + ns.substring(with: $0.range(at: 3)) } ?? "lld"
-        var rule: [String: Any] = ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType", "NSStringFormatValueTypeKey": type]
-        for (category, text) in forms { rule[category] = text }
-        plist[key] = ["NSStringLocalizedFormatKey": "%#@value@", "value": rule]
+        out += "\t<key>\(xml(key))</key>\n\t<dict>\n"
+        out += "\t\t<key>NSStringLocalizedFormatKey</key>\n\t\t<string>%#@value@</string>\n"
+        out += "\t\t<key>value</key>\n\t\t<dict>\n"
+        out += "\t\t\t<key>NSStringFormatSpecTypeKey</key>\n\t\t\t<string>NSStringPluralRuleType</string>\n"
+        out += "\t\t\t<key>NSStringFormatValueTypeKey</key>\n\t\t\t<string>\(type)</string>\n"
+        let forms = plurals[key]!
+        for category in pluralOrder where !(forms[category] ?? "").isEmpty {
+            out += "\t\t\t<key>\(category)</key>\n\t\t\t<string>\(xml(forms[category]!))</string>\n"
+        }
+        out += "\t\t</dict>\n\t</dict>\n"
     }
+    out += "</dict>\n</plist>\n"
     do {
-        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try FileManager.default.createDirectory(atPath: lproj(language), withIntermediateDirectories: true)
-        try data.write(to: URL(fileURLWithPath: path))
+        try out.write(toFile: path, atomically: true, encoding: .utf8)
     } catch { fail(usage: "cannot write \(path)") }
 }
 
@@ -840,9 +872,8 @@ case "report":
         let file = readStrings(stringsPath(language, "Localizable"))
         let present = Set((file?.entries ?? []).map(\.key)).union(readPlurals(language).keys)
         let missing = english.filter { !present.contains($0.key) }.count
-        let status = file?.status ?? "no status"
         print("\(language.padding(toLength: 8, withPad: " ", startingAt: 0)) \(english.count - missing) of \(english.count) "
-              + "(\(pluralKeys.count) plural)  \(status)")
+              + "(\(pluralKeys.count) plural)" + (file?.status.map { "  \($0)" } ?? ""))
     }
     var perFile: [String: Int] = [:]
     for p in scanned.uncovered { perFile[p.file, default: 0] += 1 }

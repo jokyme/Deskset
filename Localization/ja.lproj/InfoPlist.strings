@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Japanese.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "フォルダ";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "スキンは、再生中の曲を表示したり再生を操作したりするために“ミュージック”や Spotify に再生中の内容を問い合わせます。また、そのようなスキンを使うと、Finder にゴミ箱を空にしたり“情報を見る”ウインドウを開いたりするよう依頼します。";
+NSAppleEventsUsageDescription = "スキンは、再生中の曲を表示したり再生を操作したりするために“ミュージック”や Spotify に再生中の内容を問い合わせます。また、そのようなスキンを使うと、Finder にゴミ箱を空にしたり“情報を見る”ウインドウを開いたりするよう依頼します。";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "オーディオビジュアライザのスキンは、Mac で再生中のサウンドのレベルとスペクトラムを表示します。オーディオは、そのようなスキンがロードされているあいだ Mac 上で解析されるだけで、録音、保存、送信されることはありません。";
+NSAudioCaptureUsageDescription = "オーディオビジュアライザのスキンは、Mac で再生中のサウンドのレベルとスペクトラムを表示します。オーディオは、そのようなスキンがロードされているあいだ Mac 上で解析されるだけで、録音、保存、送信されることはありません。";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "スキンまたはそのスクリプトが、“デスクトップ”フォルダのファイルを読み書きします（ファイルリスト、メモ、ランチャーのスキンなど）。";
+NSDesktopFolderUsageDescription = "スキンまたはそのスクリプトが、“デスクトップ”フォルダのファイルを読み書きします（ファイルリスト、メモ、ランチャーのスキンなど）。";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "スキンまたはそのスクリプトが、“書類”フォルダのファイルを読み書きします（ファイルリスト、メモ、ランチャーのスキンなど）。";
+NSDocumentsFolderUsageDescription = "スキンまたはそのスクリプトが、“書類”フォルダのファイルを読み書きします（ファイルリスト、メモ、ランチャーのスキンなど）。";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "スキンまたはそのスクリプトが、“ダウンロード”フォルダのファイルを読み書きします（ファイルリストやランチャーのスキンなど）。";
+NSDownloadsFolderUsageDescription = "スキンまたはそのスクリプトが、“ダウンロード”フォルダのファイルを読み書きします（ファイルリストやランチャーのスキンなど）。";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "GNU GPL v3 のもとで配布されるフリーソフトウェアです。Rainmeter 用に作られたスキンを実行しますが、Rainmeter とは関係ありません。Rainmeter は各所有者の商標です。";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "スキンが、ルータのステータスページやホームサーバなど、ローカルネットワーク上のデバイスから情報を読み取ります。";
+NSLocalNetworkUsageDescription = "スキンが、ルータのステータスページやホームサーバなど、ローカルネットワーク上のデバイスから情報を読み取ります。";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "現在地を使うように設定したスキンは、地域の天気や日の出・日の入りの時刻を表示するために、おおよその現在地を読み取ります。位置は約 1 km 単位に丸められ、予報のために天気サービス（MET Norway）にのみ送信され、保存されることはありません。また macOS では、Wi-Fi のスキンがネットワーク名を表示するためにもこの許可が必要です。";
+NSLocationUsageDescription = "現在地を使うように設定したスキンは、地域の天気や日の出・日の入りの時刻を表示するために、おおよその現在地を読み取ります。位置は約 1 km 単位に丸められ、予報のために天気サービス（MET Norway）にのみ送信され、保存されることはありません。また macOS では、Wi-Fi のスキンがネットワーク名を表示するためにもこの許可が必要です。";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "現在地を使うように設定したスキンは、地域の天気や日の出・日の入りの時刻を表示するために、おおよその現在地を読み取ります。位置は約 1 km 単位に丸められ、予報のために天気サービス（MET Norway）にのみ送信され、保存されることはありません。また macOS では、Wi-Fi のスキンがネットワーク名を表示するためにもこの許可が必要です。";
+NSLocationWhenInUseUsageDescription = "現在地を使うように設定したスキンは、地域の天気や日の出・日の入りの時刻を表示するために、おおよその現在地を読み取ります。位置は約 1 km 単位に丸められ、予報のために天気サービス（MET Norway）にのみ送信され、保存されることはありません。また macOS では、Wi-Fi のスキンがネットワーク名を表示するためにもこの許可が必要です。";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "スキンがオーディオ入力（マイクやオーディオインターフェイス）のレベルを表示しようとしています。オーディオは、スキンがロードされているあいだ Mac 上で解析されるだけで、録音、保存、送信されることはありません。";
+NSMicrophoneUsageDescription = "スキンがオーディオ入力（マイクやオーディオインターフェイス）のレベルを表示しようとしています。オーディオは、スキンがロードされているあいだ Mac 上で解析されるだけで、録音、保存、送信されることはありません。";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "スキンまたはそのスクリプトが、ネットワークボリューム上のファイルを読み取ります（ディスクやファイルリストのスキンなど）。";
+NSNetworkVolumesUsageDescription = "スキンまたはそのスクリプトが、ネットワークボリューム上のファイルを読み取ります（ディスクやファイルリストのスキンなど）。";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "スキンまたはそのスクリプトが、リムーバブルドライブ上のファイルを読み取ります（ディスクやファイルリストのスキンなど）。";
+NSRemovableVolumesUsageDescription = "スキンまたはそのスクリプトが、リムーバブルドライブ上のファイルを読み取ります（ディスクやファイルリストのスキンなど）。";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "スキンパッケージ";

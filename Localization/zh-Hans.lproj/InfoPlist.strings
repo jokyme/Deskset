@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Chinese, Simplified.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "文件夹";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "皮肤会询问“音乐”或 Spotify 正在播放的内容，以显示当前曲目并控制播放；使用相应皮肤时，还会请访达倾倒废纸篓或打开“简介”窗口。";
+NSAppleEventsUsageDescription = "皮肤会询问“音乐”或 Spotify 正在播放的内容，以显示当前曲目并控制播放；使用相应皮肤时，还会请访达倾倒废纸篓或打开“简介”窗口。";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "音频可视化皮肤会显示 Mac 正在播放的声音的音量和频谱。只有在加载此类皮肤时，音频才会在你的 Mac 上进行分析，且绝不会被录制、存储或发送到任何地方。";
+NSAudioCaptureUsageDescription = "音频可视化皮肤会显示 Mac 正在播放的声音的音量和频谱。只有在加载此类皮肤时，音频才会在你的 Mac 上进行分析，且绝不会被录制、存储或发送到任何地方。";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "皮肤或其脚本需要读取或写入“桌面”文件夹中的文件（例如文件列表、便笺或启动器皮肤）。";
+NSDesktopFolderUsageDescription = "皮肤或其脚本需要读取或写入“桌面”文件夹中的文件（例如文件列表、便笺或启动器皮肤）。";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "皮肤或其脚本需要读取或写入“文稿”文件夹中的文件（例如文件列表、便笺或启动器皮肤）。";
+NSDocumentsFolderUsageDescription = "皮肤或其脚本需要读取或写入“文稿”文件夹中的文件（例如文件列表、便笺或启动器皮肤）。";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "皮肤或其脚本需要读取或写入“下载”文件夹中的文件（例如文件列表或启动器皮肤）。";
+NSDownloadsFolderUsageDescription = "皮肤或其脚本需要读取或写入“下载”文件夹中的文件（例如文件列表或启动器皮肤）。";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "基于 GNU GPL v3 的自由软件。可运行为 Rainmeter 制作的皮肤；与 Rainmeter 无关联。Rainmeter 是其各自所有者的商标。";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "皮肤需要读取本地网络中设备的信息，例如路由器状态页或家庭服务器。";
+NSLocalNetworkUsageDescription = "皮肤需要读取本地网络中设备的信息，例如路由器状态页或家庭服务器。";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "设为使用当前位置的皮肤会读取你的大致位置，以显示本地天气和日出日落时间。位置会精确到约 1 公里，仅发送给天气服务（MET Norway）用于预报，且绝不会被存储。此外，macOS 要求获得此权限后，Wi-Fi 皮肤才能显示网络名称。";
+NSLocationUsageDescription = "设为使用当前位置的皮肤会读取你的大致位置，以显示本地天气和日出日落时间。位置会精确到约 1 公里，仅发送给天气服务（MET Norway）用于预报，且绝不会被存储。此外，macOS 要求获得此权限后，Wi-Fi 皮肤才能显示网络名称。";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "设为使用当前位置的皮肤会读取你的大致位置，以显示本地天气和日出日落时间。位置会精确到约 1 公里，仅发送给天气服务（MET Norway）用于预报，且绝不会被存储。此外，macOS 要求获得此权限后，Wi-Fi 皮肤才能显示网络名称。";
+NSLocationWhenInUseUsageDescription = "设为使用当前位置的皮肤会读取你的大致位置，以显示本地天气和日出日落时间。位置会精确到约 1 公里，仅发送给天气服务（MET Norway）用于预报，且绝不会被存储。此外，macOS 要求获得此权限后，Wi-Fi 皮肤才能显示网络名称。";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "皮肤需要显示音频输入（麦克风或音频接口）的音量。只有在加载该皮肤时，音频才会在你的 Mac 上进行分析，且绝不会被录制、存储或发送到任何地方。";
+NSMicrophoneUsageDescription = "皮肤需要显示音频输入（麦克风或音频接口）的音量。只有在加载该皮肤时，音频才会在你的 Mac 上进行分析，且绝不会被录制、存储或发送到任何地方。";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "皮肤或其脚本需要读取网络宗卷上的文件（例如磁盘或文件列表皮肤）。";
+NSNetworkVolumesUsageDescription = "皮肤或其脚本需要读取网络宗卷上的文件（例如磁盘或文件列表皮肤）。";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "皮肤或其脚本需要读取可移除磁盘上的文件（例如磁盘或文件列表皮肤）。";
+NSRemovableVolumesUsageDescription = "皮肤或其脚本需要读取可移除磁盘上的文件（例如磁盘或文件列表皮肤）。";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "皮肤安装包";

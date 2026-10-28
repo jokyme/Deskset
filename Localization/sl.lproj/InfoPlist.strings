@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Slovenian.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Mapa";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Preobleke vprašajo program Glasba ali Spotify, kaj se predvaja, da prikažejo trenutno skladbo in upravljajo predvajanje, ter Finder prosijo, naj izprazni smetnjak ali odpre okno Informacije, ko uporabljate takšno preobleko.";
+NSAppleEventsUsageDescription = "Preobleke vprašajo program Glasba ali Spotify, kaj se predvaja, da prikažejo trenutno skladbo in upravljajo predvajanje, ter Finder prosijo, naj izprazni smetnjak ali odpre okno Informacije, ko uporabljate takšno preobleko.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Preobleke za vizualizacijo zvoka prikazujejo raven in spekter zvoka, ki ga predvaja vaš Mac. Zvok se analizira na vašem Macu, dokler je takšna preobleka naložena; nikoli se ne snema, shranjuje ali kamor koli pošilja.";
+NSAudioCaptureUsageDescription = "Preobleke za vizualizacijo zvoka prikazujejo raven in spekter zvoka, ki ga predvaja vaš Mac. Zvok se analizira na vašem Macu, dokler je takšna preobleka naložena; nikoli se ne snema, shranjuje ali kamor koli pošilja.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Namizje (na primer preobleka s seznamom datotek, zapiski ali zaganjalnikom).";
+NSDesktopFolderUsageDescription = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Namizje (na primer preobleka s seznamom datotek, zapiski ali zaganjalnikom).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Dokumenti (na primer preobleka s seznamom datotek, zapiski ali zaganjalnikom).";
+NSDocumentsFolderUsageDescription = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Dokumenti (na primer preobleka s seznamom datotek, zapiski ali zaganjalnikom).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Prenosi (na primer preobleka s seznamom datotek ali zaganjalnikom).";
+NSDownloadsFolderUsageDescription = "Preobleka ali njen skript bere ali zapisuje datoteke v mapi Prenosi (na primer preobleka s seznamom datotek ali zaganjalnikom).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Prosto programje z licenco GNU GPL v3. Izvaja preobleke, izdelane za Rainmeter; ni povezano s programom Rainmeter. Rainmeter je blagovna znamka ustreznih lastnikov.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Preobleka bere podatke z naprave v vašem lokalnem omrežju, na primer s strani stanja usmerjevalnika ali domačega strežnika.";
+NSLocalNetworkUsageDescription = "Preobleka bere podatke z naprave v vašem lokalnem omrežju, na primer s strani stanja usmerjevalnika ali domačega strežnika.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Preobleke, ki ste jim nastavili uporabo trenutne lokacije, berejo vašo približno lokacijo, da prikažejo lokalno vreme in čas sončnega vzhoda in zahoda. Lokacija se zaokroži na približno 1 km, pošlje se samo vremenski storitvi (MET Norway) za napoved in se nikoli ne shrani. macOS to dovoljenje zahteva tudi zato, da lahko preobleke za Wi-Fi prikazujejo imena omrežij.";
+NSLocationUsageDescription = "Preobleke, ki ste jim nastavili uporabo trenutne lokacije, berejo vašo približno lokacijo, da prikažejo lokalno vreme in čas sončnega vzhoda in zahoda. Lokacija se zaokroži na približno 1 km, pošlje se samo vremenski storitvi (MET Norway) za napoved in se nikoli ne shrani. macOS to dovoljenje zahteva tudi zato, da lahko preobleke za Wi-Fi prikazujejo imena omrežij.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Preobleke, ki ste jim nastavili uporabo trenutne lokacije, berejo vašo približno lokacijo, da prikažejo lokalno vreme in čas sončnega vzhoda in zahoda. Lokacija se zaokroži na približno 1 km, pošlje se samo vremenski storitvi (MET Norway) za napoved in se nikoli ne shrani. macOS to dovoljenje zahteva tudi zato, da lahko preobleke za Wi-Fi prikazujejo imena omrežij.";
+NSLocationWhenInUseUsageDescription = "Preobleke, ki ste jim nastavili uporabo trenutne lokacije, berejo vašo približno lokacijo, da prikažejo lokalno vreme in čas sončnega vzhoda in zahoda. Lokacija se zaokroži na približno 1 km, pošlje se samo vremenski storitvi (MET Norway) za napoved in se nikoli ne shrani. macOS to dovoljenje zahteva tudi zato, da lahko preobleke za Wi-Fi prikazujejo imena omrežij.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Preobleka želi prikazovati raven zvočnega vhoda (mikrofona ali zvočnega vmesnika). Zvok se analizira na vašem Macu, dokler je preobleka naložena; nikoli se ne snema, shranjuje ali kamor koli pošilja.";
+NSMicrophoneUsageDescription = "Preobleka želi prikazovati raven zvočnega vhoda (mikrofona ali zvočnega vmesnika). Zvok se analizira na vašem Macu, dokler je preobleka naložena; nikoli se ne snema, shranjuje ali kamor koli pošilja.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Preobleka ali njen skript bere datoteke na omrežnem nosilcu (na primer preobleka za disk ali seznam datotek).";
+NSNetworkVolumesUsageDescription = "Preobleka ali njen skript bere datoteke na omrežnem nosilcu (na primer preobleka za disk ali seznam datotek).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Preobleka ali njen skript bere datoteke na izmenljivem pogonu (na primer preobleka za disk ali seznam datotek).";
+NSRemovableVolumesUsageDescription = "Preobleka ali njen skript bere datoteke na izmenljivem pogonu (na primer preobleka za disk ali seznam datotek).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Paket preoblek";

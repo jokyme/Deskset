@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Serbian (Latin).
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Fascikla";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Skinovi pitaju aplikaciju Muzika ili Spotify šta se pušta da bi prikazali trenutnu pesmu i upravljali reprodukcijom, a kada koristite takav skin, traže od Findera da isprazni smeće ili otvori prozor „Informacije“.";
+NSAppleEventsUsageDescription = "Skinovi pitaju aplikaciju Muzika ili Spotify šta se pušta da bi prikazali trenutnu pesmu i upravljali reprodukcijom, a kada koristite takav skin, traže od Findera da isprazni smeće ili otvori prozor „Informacije“.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Skinovi za vizuelizaciju zvuka prikazuju nivo i spektar zvuka koji reprodukuje vaš Mac. Zvuk se analizira na vašem Mac računaru dok je takav skin učitan; nikada se ne snima, ne čuva i ne šalje nigde.";
+NSAudioCaptureUsageDescription = "Skinovi za vizuelizaciju zvuka prikazuju nivo i spektar zvuka koji reprodukuje vaš Mac. Zvuk se analizira na vašem Mac računaru dok je takav skin učitan; nikada se ne snima, ne čuva i ne šalje nigde.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Radna površina (na primer skin sa listom datoteka, beleškama ili za pokretanje aplikacija).";
+NSDesktopFolderUsageDescription = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Radna površina (na primer skin sa listom datoteka, beleškama ili za pokretanje aplikacija).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Dokumenti (na primer skin sa listom datoteka, beleškama ili za pokretanje aplikacija).";
+NSDocumentsFolderUsageDescription = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Dokumenti (na primer skin sa listom datoteka, beleškama ili za pokretanje aplikacija).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Preuzimanja (na primer skin sa listom datoteka ili za pokretanje aplikacija).";
+NSDownloadsFolderUsageDescription = "Skin ili njegova skripta čita ili upisuje datoteke u fascikli Preuzimanja (na primer skin sa listom datoteka ili za pokretanje aplikacija).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Slobodan softver pod licencom GNU GPL v3. Pokreće skinove napravljene za Rainmeter; nije povezan sa Rainmeter-om. Rainmeter je zaštitni znak odgovarajućih vlasnika.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Skin čita informacije sa uređaja u vašoj lokalnoj mreži, kao što je stranica statusa rutera ili kućnog servera.";
+NSLocalNetworkUsageDescription = "Skin čita informacije sa uređaja u vašoj lokalnoj mreži, kao što je stranica statusa rutera ili kućnog servera.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Skinovi koje ste podesili da koriste vašu trenutnu lokaciju čitaju vašu približnu lokaciju da bi prikazali lokalno vreme i vreme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne čuva. macOS ovu dozvolu zahteva i da bi Wi-Fi skinovi mogli da prikazuju nazive mreža.";
+NSLocationUsageDescription = "Skinovi koje ste podesili da koriste vašu trenutnu lokaciju čitaju vašu približnu lokaciju da bi prikazali lokalno vreme i vreme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne čuva. macOS ovu dozvolu zahteva i da bi Wi-Fi skinovi mogli da prikazuju nazive mreža.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Skinovi koje ste podesili da koriste vašu trenutnu lokaciju čitaju vašu približnu lokaciju da bi prikazali lokalno vreme i vreme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne čuva. macOS ovu dozvolu zahteva i da bi Wi-Fi skinovi mogli da prikazuju nazive mreža.";
+NSLocationWhenInUseUsageDescription = "Skinovi koje ste podesili da koriste vašu trenutnu lokaciju čitaju vašu približnu lokaciju da bi prikazali lokalno vreme i vreme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne čuva. macOS ovu dozvolu zahteva i da bi Wi-Fi skinovi mogli da prikazuju nazive mreža.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Skin želi da prikazuje nivo audio ulaza (mikrofona ili audio interfejsa). Zvuk se analizira na vašem Mac računaru dok je skin učitan; nikada se ne snima, ne čuva i ne šalje nigde.";
+NSMicrophoneUsageDescription = "Skin želi da prikazuje nivo audio ulaza (mikrofona ili audio interfejsa). Zvuk se analizira na vašem Mac računaru dok je skin učitan; nikada se ne snima, ne čuva i ne šalje nigde.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Skin ili njegova skripta čita datoteke na mrežnom volumenu (na primer skin za disk ili listu datoteka).";
+NSNetworkVolumesUsageDescription = "Skin ili njegova skripta čita datoteke na mrežnom volumenu (na primer skin za disk ili listu datoteka).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Skin ili njegova skripta čita datoteke na prenosivoj jedinici (na primer skin za disk ili listu datoteka).";
+NSRemovableVolumesUsageDescription = "Skin ili njegova skripta čita datoteke na prenosivoj jedinici (na primer skin za disk ili listu datoteka).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Paket skinova";

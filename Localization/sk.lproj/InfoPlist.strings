@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Slovak.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Priečinok";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Skiny sa pýtajú aplikácie Hudba alebo Spotify, čo hrá, aby mohli zobraziť aktuálnu skladbu a ovládať prehrávanie, a pri použití takého skinu žiadajú Finder o vyprázdnenie koša alebo otvorenie okna Informácie.";
+NSAppleEventsUsageDescription = "Skiny sa pýtajú aplikácie Hudba alebo Spotify, čo hrá, aby mohli zobraziť aktuálnu skladbu a ovládať prehrávanie, a pri použití takého skinu žiadajú Finder o vyprázdnenie koša alebo otvorenie okna Informácie.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Skiny vizualizácie zvuku zobrazujú úroveň a spektrum zvuku, ktorý Mac prehráva. Zvuk sa analyzuje na vašom Macu, kým je taký skin načítaný; nikdy sa nenahráva, neukladá ani nikam neposiela.";
+NSAudioCaptureUsageDescription = "Skiny vizualizácie zvuku zobrazujú úroveň a spektrum zvuku, ktorý Mac prehráva. Zvuk sa analyzuje na vašom Macu, kým je taký skin načítaný; nikdy sa nenahráva, neukladá ani nikam neposiela.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Plocha (napríklad skin so zoznamom súborov, poznámkami alebo spúšťačom).";
+NSDesktopFolderUsageDescription = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Plocha (napríklad skin so zoznamom súborov, poznámkami alebo spúšťačom).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Dokumenty (napríklad skin so zoznamom súborov, poznámkami alebo spúšťačom).";
+NSDocumentsFolderUsageDescription = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Dokumenty (napríklad skin so zoznamom súborov, poznámkami alebo spúšťačom).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Stiahnuté (napríklad skin so zoznamom súborov alebo spúšťačom).";
+NSDownloadsFolderUsageDescription = "Skin alebo jeho skript číta alebo zapisuje súbory v priečinku Stiahnuté (napríklad skin so zoznamom súborov alebo spúšťačom).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Slobodný softvér pod licenciou GNU GPL v3. Spúšťa skiny vytvorené pre Rainmeter; s Rainmeterom nie je nijako spojený. Rainmeter je ochranná známka príslušných vlastníkov.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Skin číta informácie zo zariadenia v miestnej sieti, napríklad stavovú stránku routera alebo domáci server.";
+NSLocalNetworkUsageDescription = "Skin číta informácie zo zariadenia v miestnej sieti, napríklad stavovú stránku routera alebo domáci server.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Skiny, pri ktorých ste nastavili použitie aktuálnej polohy, čítajú vašu približnú polohu, aby zobrazili miestne počasie a časy východu a západu slnka. Poloha sa zaokrúhli približne na 1 km, posiela sa len meteorologickej službe (MET Norway) kvôli predpovedi a nikdy sa neukladá. macOS toto povolenie vyžaduje aj preto, aby skiny Wi-Fi mohli zobrazovať názvy sietí.";
+NSLocationUsageDescription = "Skiny, pri ktorých ste nastavili použitie aktuálnej polohy, čítajú vašu približnú polohu, aby zobrazili miestne počasie a časy východu a západu slnka. Poloha sa zaokrúhli približne na 1 km, posiela sa len meteorologickej službe (MET Norway) kvôli predpovedi a nikdy sa neukladá. macOS toto povolenie vyžaduje aj preto, aby skiny Wi-Fi mohli zobrazovať názvy sietí.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Skiny, pri ktorých ste nastavili použitie aktuálnej polohy, čítajú vašu približnú polohu, aby zobrazili miestne počasie a časy východu a západu slnka. Poloha sa zaokrúhli približne na 1 km, posiela sa len meteorologickej službe (MET Norway) kvôli predpovedi a nikdy sa neukladá. macOS toto povolenie vyžaduje aj preto, aby skiny Wi-Fi mohli zobrazovať názvy sietí.";
+NSLocationWhenInUseUsageDescription = "Skiny, pri ktorých ste nastavili použitie aktuálnej polohy, čítajú vašu približnú polohu, aby zobrazili miestne počasie a časy východu a západu slnka. Poloha sa zaokrúhli približne na 1 km, posiela sa len meteorologickej službe (MET Norway) kvôli predpovedi a nikdy sa neukladá. macOS toto povolenie vyžaduje aj preto, aby skiny Wi-Fi mohli zobrazovať názvy sietí.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Skin chce zobrazovať úroveň zvukového vstupu (mikrofónu alebo zvukového rozhrania). Zvuk sa analyzuje na vašom Macu, kým je skin načítaný; nikdy sa nenahráva, neukladá ani nikam neposiela.";
+NSMicrophoneUsageDescription = "Skin chce zobrazovať úroveň zvukového vstupu (mikrofónu alebo zvukového rozhrania). Zvuk sa analyzuje na vašom Macu, kým je skin načítaný; nikdy sa nenahráva, neukladá ani nikam neposiela.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Skin alebo jeho skript číta súbory na sieťovom zväzku (napríklad skin disku alebo zoznamu súborov).";
+NSNetworkVolumesUsageDescription = "Skin alebo jeho skript číta súbory na sieťovom zväzku (napríklad skin disku alebo zoznamu súborov).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Skin alebo jeho skript číta súbory na vymeniteľnom disku (napríklad skin disku alebo zoznamu súborov).";
+NSRemovableVolumesUsageDescription = "Skin alebo jeho skript číta súbory na vymeniteľnom disku (napríklad skin disku alebo zoznamu súborov).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Balík skinov";

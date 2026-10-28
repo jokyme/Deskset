@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Bulgarian.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Папка";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Скиновете питат „Музика“ или Spotify какво свири, за да покажат текущата песен и да управляват възпроизвеждането, и молят Finder да изпразни Кошчето или да отвори прозорец „Информация“, когато използвате такъв скин.";
+NSAppleEventsUsageDescription = "Скиновете питат „Музика“ или Spotify какво свири, за да покажат текущата песен и да управляват възпроизвеждането, и молят Finder да изпразни Кошчето или да отвори прозорец „Информация“, когато използвате такъв скин.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Скиновете за визуализация на звука показват нивото и спектъра на звука, който възпроизвежда вашият Mac. Звукът се анализира на вашия Mac, докато такъв скин е зареден; той никога не се записва, не се запазва и не се изпраща никъде.";
+NSAudioCaptureUsageDescription = "Скиновете за визуализация на звука показват нивото и спектъра на звука, който възпроизвежда вашият Mac. Звукът се анализира на вашия Mac, докато такъв скин е зареден; той никога не се записва, не се запазва и не се изпраща никъде.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Скин или неговият скрипт чете или записва файлове в папка „Работен плот“ (например скин със списък с файлове, бележки или за стартиране на програми).";
+NSDesktopFolderUsageDescription = "Скин или неговият скрипт чете или записва файлове в папка „Работен плот“ (например скин със списък с файлове, бележки или за стартиране на програми).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Скин или неговият скрипт чете или записва файлове в папка „Документи“ (например скин със списък с файлове, бележки или за стартиране на програми).";
+NSDocumentsFolderUsageDescription = "Скин или неговият скрипт чете или записва файлове в папка „Документи“ (например скин със списък с файлове, бележки или за стартиране на програми).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Скин или неговият скрипт чете или записва файлове в папка „Изтегляния“ (например скин със списък с файлове или за стартиране на програми).";
+NSDownloadsFolderUsageDescription = "Скин или неговият скрипт чете или записва файлове в папка „Изтегляния“ (например скин със списък с файлове или за стартиране на програми).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Свободен софтуер под лиценза GNU GPL v3. Изпълнява скинове, създадени за Rainmeter; не е свързан с Rainmeter. Rainmeter е търговска марка на съответните ѝ притежатели.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Скин чете информация от устройство в локалната ви мрежа, например страницата за състояние на рутер или домашен сървър.";
+NSLocalNetworkUsageDescription = "Скин чете информация от устройство в локалната ви мрежа, например страницата за състояние на рутер или домашен сървър.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Скиновете, които сте настроили да използват текущото ви местоположение, четат приблизителното ви местоположение, за да показват местното време и часовете на изгрев и залез. То се закръглява до около 1 км, изпраща се само до метеорологичната услуга (MET Norway) за прогнозата и никога не се запазва. macOS изисква това разрешение и за да могат скиновете за Wi-Fi да показват имената на мрежите.";
+NSLocationUsageDescription = "Скиновете, които сте настроили да използват текущото ви местоположение, четат приблизителното ви местоположение, за да показват местното време и часовете на изгрев и залез. То се закръглява до около 1 км, изпраща се само до метеорологичната услуга (MET Norway) за прогнозата и никога не се запазва. macOS изисква това разрешение и за да могат скиновете за Wi-Fi да показват имената на мрежите.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Скиновете, които сте настроили да използват текущото ви местоположение, четат приблизителното ви местоположение, за да показват местното време и часовете на изгрев и залез. То се закръглява до около 1 км, изпраща се само до метеорологичната услуга (MET Norway) за прогнозата и никога не се запазва. macOS изисква това разрешение и за да могат скиновете за Wi-Fi да показват имената на мрежите.";
+NSLocationWhenInUseUsageDescription = "Скиновете, които сте настроили да използват текущото ви местоположение, четат приблизителното ви местоположение, за да показват местното време и часовете на изгрев и залез. То се закръглява до около 1 км, изпраща се само до метеорологичната услуга (MET Norway) за прогнозата и никога не се запазва. macOS изисква това разрешение и за да могат скиновете за Wi-Fi да показват имената на мрежите.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Скин иска да показва нивото на аудиовход (микрофон или аудиоинтерфейс). Звукът се анализира на вашия Mac, докато скинът е зареден; той никога не се записва, не се запазва и не се изпраща никъде.";
+NSMicrophoneUsageDescription = "Скин иска да показва нивото на аудиовход (микрофон или аудиоинтерфейс). Звукът се анализира на вашия Mac, докато скинът е зареден; той никога не се записва, не се запазва и не се изпраща никъде.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Скин или неговият скрипт чете файлове от мрежов том (например скин за диск или списък с файлове).";
+NSNetworkVolumesUsageDescription = "Скин или неговият скрипт чете файлове от мрежов том (например скин за диск или списък с файлове).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Скин или неговият скрипт чете файлове от сменяемо устройство (например скин за диск или списък с файлове).";
+NSRemovableVolumesUsageDescription = "Скин или неговият скрипт чете файлове от сменяемо устройство (например скин за диск или списък с файлове).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Пакет със скинове";

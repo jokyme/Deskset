@@ -12,9 +12,9 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>(+%lld další)</string>
 			<key>one</key>
+			<string>(+%lld další)</string>
+			<key>few</key>
 			<string>(+%lld další)</string>
 			<key>other</key>
 			<string>(+%lld dalších)</string>
@@ -30,10 +30,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Obsahuje %lld skiny.</string>
 			<key>one</key>
 			<string>Obsahuje %lld skin.</string>
+			<key>few</key>
+			<string>Obsahuje %lld skiny.</string>
 			<key>other</key>
 			<string>Obsahuje %lld skinů.</string>
 		</dict>
@@ -48,10 +48,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Přesunout %lld položky do koše?</string>
 			<key>one</key>
 			<string>Přesunout %lld položku do koše?</string>
+			<key>few</key>
+			<string>Přesunout %lld položky do koše?</string>
 			<key>other</key>
 			<string>Přesunout %lld položek do koše?</string>
 		</dict>
@@ -66,10 +66,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld další položky.</string>
 			<key>one</key>
 			<string>… a %lld další položka.</string>
+			<key>few</key>
+			<string>… a %lld další položky.</string>
 			<key>other</key>
 			<string>… a %lld dalších položek.</string>
 		</dict>
@@ -84,10 +84,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld další poznámky.</string>
 			<key>one</key>
 			<string>… a %lld další poznámka.</string>
+			<key>few</key>
+			<string>… a %lld další poznámky.</string>
 			<key>other</key>
 			<string>… a %lld dalších poznámek.</string>
 		</dict>
@@ -102,9 +102,9 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld další.</string>
 			<key>one</key>
+			<string>… a %lld další.</string>
+			<key>few</key>
 			<string>… a %lld další.</string>
 			<key>other</key>
 			<string>… a %lld dalších.</string>

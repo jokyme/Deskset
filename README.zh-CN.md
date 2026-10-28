@@ -130,6 +130,7 @@ open build/Deskset.app
 ## 参与贡献
 
 欢迎贡献，请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，尤其是其中的 clean-room 规则。
+想改进 Deskset 在你的语言里的翻译，可以直接在 [Weblate](https://hosted.weblate.org/projects/deskset/) 上修改，不需要会用 Git。
 
 ## 许可证
 

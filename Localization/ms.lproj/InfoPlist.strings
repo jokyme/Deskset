@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Malay.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Folder";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Skin bertanya kepada Muzik atau Spotify apa yang sedang dimainkan untuk memaparkan trek semasa dan mengawal main balik, dan meminta Finder mengosongkan Tong Sampah atau membuka tetingkap Dapatkan Maklumat apabila anda menggunakan skin sedemikian.";
+NSAppleEventsUsageDescription = "Skin bertanya kepada Muzik atau Spotify apa yang sedang dimainkan untuk memaparkan trek semasa dan mengawal main balik, dan meminta Finder mengosongkan Tong Sampah atau membuka tetingkap Dapatkan Maklumat apabila anda menggunakan skin sedemikian.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Skin visualisasi audio memaparkan aras dan spektrum bunyi yang dimainkan oleh Mac anda. Audio dianalisis pada Mac anda semasa skin sedemikian dimuatkan; ia tidak pernah dirakam, disimpan atau dihantar ke mana-mana.";
+NSAudioCaptureUsageDescription = "Skin visualisasi audio memaparkan aras dan spektrum bunyi yang dimainkan oleh Mac anda. Audio dianalisis pada Mac anda semasa skin sedemikian dimuatkan; ia tidak pernah dirakam, disimpan atau dihantar ke mana-mana.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Skin atau skripnya membaca atau menulis fail dalam folder Desktop anda (contohnya skin senarai fail, nota atau pelancar).";
+NSDesktopFolderUsageDescription = "Skin atau skripnya membaca atau menulis fail dalam folder Desktop anda (contohnya skin senarai fail, nota atau pelancar).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Skin atau skripnya membaca atau menulis fail dalam folder Dokumen anda (contohnya skin senarai fail, nota atau pelancar).";
+NSDocumentsFolderUsageDescription = "Skin atau skripnya membaca atau menulis fail dalam folder Dokumen anda (contohnya skin senarai fail, nota atau pelancar).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Skin atau skripnya membaca atau menulis fail dalam folder Muat Turun anda (contohnya skin senarai fail atau pelancar).";
+NSDownloadsFolderUsageDescription = "Skin atau skripnya membaca atau menulis fail dalam folder Muat Turun anda (contohnya skin senarai fail atau pelancar).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Perisian bebas di bawah GNU GPL v3. Menjalankan skin yang dibuat untuk Rainmeter; tidak bergabung dengan Rainmeter. Rainmeter ialah tanda dagangan pemilik masing-masing.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Skin membaca maklumat daripada peranti dalam rangkaian setempat anda, seperti halaman status penghala atau pelayan rumah.";
+NSLocalNetworkUsageDescription = "Skin membaca maklumat daripada peranti dalam rangkaian setempat anda, seperti halaman status penghala atau pelayan rumah.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Skin yang anda tetapkan untuk menggunakan lokasi semasa membaca anggaran lokasi anda untuk memaparkan cuaca tempatan serta waktu matahari terbit dan terbenam. Lokasi dibundarkan kepada kira-kira 1 km, dihantar hanya kepada perkhidmatan cuaca (MET Norway) untuk ramalan, dan tidak pernah disimpan. macOS juga memerlukan kebenaran ini supaya skin Wi-Fi boleh memaparkan nama rangkaian.";
+NSLocationUsageDescription = "Skin yang anda tetapkan untuk menggunakan lokasi semasa membaca anggaran lokasi anda untuk memaparkan cuaca tempatan serta waktu matahari terbit dan terbenam. Lokasi dibundarkan kepada kira-kira 1 km, dihantar hanya kepada perkhidmatan cuaca (MET Norway) untuk ramalan, dan tidak pernah disimpan. macOS juga memerlukan kebenaran ini supaya skin Wi-Fi boleh memaparkan nama rangkaian.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Skin yang anda tetapkan untuk menggunakan lokasi semasa membaca anggaran lokasi anda untuk memaparkan cuaca tempatan serta waktu matahari terbit dan terbenam. Lokasi dibundarkan kepada kira-kira 1 km, dihantar hanya kepada perkhidmatan cuaca (MET Norway) untuk ramalan, dan tidak pernah disimpan. macOS juga memerlukan kebenaran ini supaya skin Wi-Fi boleh memaparkan nama rangkaian.";
+NSLocationWhenInUseUsageDescription = "Skin yang anda tetapkan untuk menggunakan lokasi semasa membaca anggaran lokasi anda untuk memaparkan cuaca tempatan serta waktu matahari terbit dan terbenam. Lokasi dibundarkan kepada kira-kira 1 km, dihantar hanya kepada perkhidmatan cuaca (MET Norway) untuk ramalan, dan tidak pernah disimpan. macOS juga memerlukan kebenaran ini supaya skin Wi-Fi boleh memaparkan nama rangkaian.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Skin ingin memaparkan aras input audio (mikrofon atau antara muka audio). Audio dianalisis pada Mac anda semasa skin dimuatkan; ia tidak pernah dirakam, disimpan atau dihantar ke mana-mana.";
+NSMicrophoneUsageDescription = "Skin ingin memaparkan aras input audio (mikrofon atau antara muka audio). Audio dianalisis pada Mac anda semasa skin dimuatkan; ia tidak pernah dirakam, disimpan atau dihantar ke mana-mana.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Skin atau skripnya membaca fail pada volum rangkaian (contohnya skin cakera atau senarai fail).";
+NSNetworkVolumesUsageDescription = "Skin atau skripnya membaca fail pada volum rangkaian (contohnya skin cakera atau senarai fail).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Skin atau skripnya membaca fail pada pemacu boleh tanggal (contohnya skin cakera atau senarai fail).";
+NSRemovableVolumesUsageDescription = "Skin atau skripnya membaca fail pada pemacu boleh tanggal (contohnya skin cakera atau senarai fail).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Pakej Skin";

@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Turkish.
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Klasör";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "Skinler, geçerli parçayı göstermek ve çalmayı denetlemek için Müzik'e veya Spotify'a neyin çaldığını sorar; böyle bir skin kullandığınızda da Finder'dan Çöp Sepeti'ni boşaltmasını ya da bir Bilgi Al penceresi açmasını ister.";
+NSAppleEventsUsageDescription = "Skinler, geçerli parçayı göstermek ve çalmayı denetlemek için Müzik'e veya Spotify'a neyin çaldığını sorar; böyle bir skin kullandığınızda da Finder'dan Çöp Sepeti'ni boşaltmasını ya da bir Bilgi Al penceresi açmasını ister.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "Ses görselleştirme skinleri, Mac'inizin çaldığı sesin düzeyini ve spektrumunu gösterir. Ses, böyle bir skin yüklü olduğu sürece Mac'inizde analiz edilir; asla kaydedilmez, saklanmaz veya herhangi bir yere gönderilmez.";
+NSAudioCaptureUsageDescription = "Ses görselleştirme skinleri, Mac'inizin çaldığı sesin düzeyini ve spektrumunu gösterir. Ses, böyle bir skin yüklü olduğu sürece Mac'inizde analiz edilir; asla kaydedilmez, saklanmaz veya herhangi bir yere gönderilmez.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Bir skin veya betiği, Masaüstü klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi, not veya başlatıcı skini).";
+NSDesktopFolderUsageDescription = "Bir skin veya betiği, Masaüstü klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi, not veya başlatıcı skini).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Bir skin veya betiği, Belgeler klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi, not veya başlatıcı skini).";
+NSDocumentsFolderUsageDescription = "Bir skin veya betiği, Belgeler klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi, not veya başlatıcı skini).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Bir skin veya betiği, İndirilenler klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi veya başlatıcı skini).";
+NSDownloadsFolderUsageDescription = "Bir skin veya betiği, İndirilenler klasörünüzdeki dosyaları okur ya da yazar (örneğin bir dosya listesi veya başlatıcı skini).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "GNU GPL v3 kapsamında özgür yazılım. Rainmeter için hazırlanmış skinleri çalıştırır; Rainmeter ile bağlantılı değildir. Rainmeter, ilgili sahiplerinin ticari markasıdır.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Bir skin, yerel ağınızdaki bir aygıttan (örneğin bir yönlendiricinin durum sayfasından veya bir ev sunucusundan) bilgi okur.";
+NSLocalNetworkUsageDescription = "Bir skin, yerel ağınızdaki bir aygıttan (örneğin bir yönlendiricinin durum sayfasından veya bir ev sunucusundan) bilgi okur.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "Geçerli konumunuzu kullanacak şekilde ayarladığınız skinler, yerel hava durumunu ve gün doğumu ile gün batımı saatlerini göstermek için yaklaşık konumunuzu okur. Konum yaklaşık 1 km'ye yuvarlanır, yalnızca tahminler için hava durumu hizmetine (MET Norway) gönderilir ve asla saklanmaz. macOS, Wi-Fi skinlerinin ağ adlarını gösterebilmesi için de bu izni gerektirir.";
+NSLocationUsageDescription = "Geçerli konumunuzu kullanacak şekilde ayarladığınız skinler, yerel hava durumunu ve gün doğumu ile gün batımı saatlerini göstermek için yaklaşık konumunuzu okur. Konum yaklaşık 1 km'ye yuvarlanır, yalnızca tahminler için hava durumu hizmetine (MET Norway) gönderilir ve asla saklanmaz. macOS, Wi-Fi skinlerinin ağ adlarını gösterebilmesi için de bu izni gerektirir.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "Geçerli konumunuzu kullanacak şekilde ayarladığınız skinler, yerel hava durumunu ve gün doğumu ile gün batımı saatlerini göstermek için yaklaşık konumunuzu okur. Konum yaklaşık 1 km'ye yuvarlanır, yalnızca tahminler için hava durumu hizmetine (MET Norway) gönderilir ve asla saklanmaz. macOS, Wi-Fi skinlerinin ağ adlarını gösterebilmesi için de bu izni gerektirir.";
+NSLocationWhenInUseUsageDescription = "Geçerli konumunuzu kullanacak şekilde ayarladığınız skinler, yerel hava durumunu ve gün doğumu ile gün batımı saatlerini göstermek için yaklaşık konumunuzu okur. Konum yaklaşık 1 km'ye yuvarlanır, yalnızca tahminler için hava durumu hizmetine (MET Norway) gönderilir ve asla saklanmaz. macOS, Wi-Fi skinlerinin ağ adlarını gösterebilmesi için de bu izni gerektirir.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Bir skin, bir ses girişinin (mikrofon veya ses arabirimi) düzeyini göstermek istiyor. Ses, skin yüklü olduğu sürece Mac'inizde analiz edilir; asla kaydedilmez, saklanmaz veya herhangi bir yere gönderilmez.";
+NSMicrophoneUsageDescription = "Bir skin, bir ses girişinin (mikrofon veya ses arabirimi) düzeyini göstermek istiyor. Ses, skin yüklü olduğu sürece Mac'inizde analiz edilir; asla kaydedilmez, saklanmaz veya herhangi bir yere gönderilmez.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Bir skin veya betiği, bir ağ birimindeki dosyaları okur (örneğin bir disk veya dosya listesi skini).";
+NSNetworkVolumesUsageDescription = "Bir skin veya betiği, bir ağ birimindeki dosyaları okur (örneğin bir disk veya dosya listesi skini).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Bir skin veya betiği, çıkarılabilir bir sürücüdeki dosyaları okur (örneğin bir disk veya dosya listesi skini).";
+NSRemovableVolumesUsageDescription = "Bir skin veya betiği, çıkarılabilir bir sürücüdeki dosyaları okur (örneğin bir disk veya dosya listesi skini).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Skin Paketi";

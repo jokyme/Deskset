@@ -1,46 +1,45 @@
 // Deskset — Info.plist texts, Portuguese (Portugal).
-// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
-// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
-// Status: translated, not yet reviewed by a native speaker
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
 
 /* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
 "Folder" = "Pasta";
 
 /* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
-"NSAppleEventsUsageDescription" = "As skins perguntam à Música ou ao Spotify o que está a tocar para mostrar a faixa atual e controlar a reprodução, e pedem ao Finder que esvazie o Lixo ou abra uma janela Obter informações quando usa uma skin deste tipo.";
+NSAppleEventsUsageDescription = "As skins perguntam à Música ou ao Spotify o que está a tocar para mostrar a faixa atual e controlar a reprodução, e pedem ao Finder que esvazie o Lixo ou abra uma janela Obter informações quando usa uma skin deste tipo.";
 
 /* macOS permission prompt (system audio recording) for audio visualizer skins. */
-"NSAudioCaptureUsageDescription" = "As skins de visualização de áudio mostram o nível e o espetro do som que o Mac está a reproduzir. O áudio é analisado no Mac enquanto uma skin deste tipo está carregada; nunca é gravado, guardado nem enviado para lado nenhum.";
+NSAudioCaptureUsageDescription = "As skins de visualização de áudio mostram o nível e o espetro do som que o Mac está a reproduzir. O áudio é analisado no Mac enquanto uma skin deste tipo está carregada; nunca é gravado, guardado nem enviado para lado nenhum.";
 
 /* macOS permission prompt (Files and Folders › Desktop). */
-"NSDesktopFolderUsageDescription" = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Secretária (por exemplo, uma skin de lista de ficheiros, notas ou lançador).";
+NSDesktopFolderUsageDescription = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Secretária (por exemplo, uma skin de lista de ficheiros, notas ou lançador).";
 
 /* macOS permission prompt (Files and Folders › Documents). */
-"NSDocumentsFolderUsageDescription" = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Documentos (por exemplo, uma skin de lista de ficheiros, notas ou lançador).";
+NSDocumentsFolderUsageDescription = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Documentos (por exemplo, uma skin de lista de ficheiros, notas ou lançador).";
 
 /* macOS permission prompt (Files and Folders › Downloads). */
-"NSDownloadsFolderUsageDescription" = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Descargas (por exemplo, uma skin de lista de ficheiros ou lançador).";
+NSDownloadsFolderUsageDescription = "Uma skin ou o respetivo script lê ou escreve ficheiros na pasta Descargas (por exemplo, uma skin de lista de ficheiros ou lançador).";
 
 /* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
 "NSHumanReadableCopyright" = "Software livre ao abrigo da GNU GPL v3. Executa skins criadas para o Rainmeter; não está afiliado ao Rainmeter. Rainmeter é uma marca comercial dos respetivos proprietários.";
 
 /* macOS permission prompt (Local Network). */
-"NSLocalNetworkUsageDescription" = "Uma skin lê informações de um dispositivo na rede local, como a página de estado de um router ou um servidor doméstico.";
+NSLocalNetworkUsageDescription = "Uma skin lê informações de um dispositivo na rede local, como a página de estado de um router ou um servidor doméstico.";
 
 /* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
-"NSLocationUsageDescription" = "As skins configuradas para usar a localização atual leem a sua localização aproximada para mostrar a meteorologia local e as horas do sol. A localização é arredondada a cerca de 1 km, enviada apenas ao serviço meteorológico (MET Norway) para as previsões e nunca é guardada. O macOS também exige esta autorização para que as skins de Wi-Fi possam mostrar os nomes das redes.";
+NSLocationUsageDescription = "As skins configuradas para usar a localização atual leem a sua localização aproximada para mostrar a meteorologia local e as horas do sol. A localização é arredondada a cerca de 1 km, enviada apenas ao serviço meteorológico (MET Norway) para as previsões e nunca é guardada. O macOS também exige esta autorização para que as skins de Wi-Fi possam mostrar os nomes das redes.";
 
 /* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
-"NSLocationWhenInUseUsageDescription" = "As skins configuradas para usar a localização atual leem a sua localização aproximada para mostrar a meteorologia local e as horas do sol. A localização é arredondada a cerca de 1 km, enviada apenas ao serviço meteorológico (MET Norway) para as previsões e nunca é guardada. O macOS também exige esta autorização para que as skins de Wi-Fi possam mostrar os nomes das redes.";
+NSLocationWhenInUseUsageDescription = "As skins configuradas para usar a localização atual leem a sua localização aproximada para mostrar a meteorologia local e as horas do sol. A localização é arredondada a cerca de 1 km, enviada apenas ao serviço meteorológico (MET Norway) para as previsões e nunca é guardada. O macOS também exige esta autorização para que as skins de Wi-Fi possam mostrar os nomes das redes.";
 
 /* macOS permission prompt (Microphone). */
-"NSMicrophoneUsageDescription" = "Uma skin pretende mostrar o nível de uma entrada de áudio (um microfone ou uma interface de áudio). O áudio é analisado no Mac enquanto a skin está carregada; nunca é gravado, guardado nem enviado para lado nenhum.";
+NSMicrophoneUsageDescription = "Uma skin pretende mostrar o nível de uma entrada de áudio (um microfone ou uma interface de áudio). O áudio é analisado no Mac enquanto a skin está carregada; nunca é gravado, guardado nem enviado para lado nenhum.";
 
 /* macOS permission prompt (Files and Folders › Network Volumes). */
-"NSNetworkVolumesUsageDescription" = "Uma skin ou o respetivo script lê ficheiros num volume de rede (por exemplo, uma skin de disco ou de lista de ficheiros).";
+NSNetworkVolumesUsageDescription = "Uma skin ou o respetivo script lê ficheiros num volume de rede (por exemplo, uma skin de disco ou de lista de ficheiros).";
 
 /* macOS permission prompt (Files and Folders › Removable Volumes). */
-"NSRemovableVolumesUsageDescription" = "Uma skin ou o respetivo script lê ficheiros numa unidade amovível (por exemplo, uma skin de disco ou de lista de ficheiros).";
+NSRemovableVolumesUsageDescription = "Uma skin ou o respetivo script lê ficheiros numa unidade amovível (por exemplo, uma skin de disco ou de lista de ficheiros).";
 
 /* Document type name of .rmskin files (Finder's Kind column). */
 "Skin Package" = "Pacote de skins";

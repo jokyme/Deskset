@@ -12,11 +12,11 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>(еще %lld)</string>
 			<key>few</key>
 			<string>(еще %lld)</string>
 			<key>many</key>
-			<string>(еще %lld)</string>
-			<key>one</key>
 			<string>(еще %lld)</string>
 			<key>other</key>
 			<string>(еще %lld)</string>
@@ -32,12 +32,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>Содержит %lld скин.</string>
 			<key>few</key>
 			<string>Содержит %lld скина.</string>
 			<key>many</key>
 			<string>Содержит %lld скинов.</string>
-			<key>one</key>
-			<string>Содержит %lld скин.</string>
 			<key>other</key>
 			<string>Содержит %lld скина.</string>
 		</dict>
@@ -52,12 +52,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>Переместить %lld объект в Корзину?</string>
 			<key>few</key>
 			<string>Переместить %lld объекта в Корзину?</string>
 			<key>many</key>
 			<string>Переместить %lld объектов в Корзину?</string>
-			<key>one</key>
-			<string>Переместить %lld объект в Корзину?</string>
 			<key>other</key>
 			<string>Переместить %lld объекта в Корзину?</string>
 		</dict>
@@ -72,12 +72,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld объект.</string>
 			<key>few</key>
 			<string>… и еще %lld объекта.</string>
 			<key>many</key>
 			<string>… и еще %lld объектов.</string>
-			<key>one</key>
-			<string>… и еще %lld объект.</string>
 			<key>other</key>
 			<string>… и еще %lld объекта.</string>
 		</dict>
@@ -92,12 +92,12 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld заметка.</string>
 			<key>few</key>
 			<string>… и еще %lld заметки.</string>
 			<key>many</key>
 			<string>… и еще %lld заметок.</string>
-			<key>one</key>
-			<string>… и еще %lld заметка.</string>
 			<key>other</key>
 			<string>… и еще %lld заметки.</string>
 		</dict>
@@ -112,11 +112,11 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld.</string>
 			<key>few</key>
 			<string>… и еще %lld.</string>
 			<key>many</key>
-			<string>… и еще %lld.</string>
-			<key>one</key>
 			<string>… и еще %lld.</string>
 			<key>other</key>
 			<string>… и еще %lld.</string>

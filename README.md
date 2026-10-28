@@ -152,6 +152,7 @@ them. The Finder layout and Retina background are generated without a desktop se
 ## Contributing
 
 Contributions are welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) first, especially the clean-room rule.
+To improve the app in your language, translate on [Weblate](https://hosted.weblate.org/projects/deskset/) — no Git needed.
 
 ## License
 

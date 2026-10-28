@@ -12,10 +12,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>(+%lld ďalšie)</string>
 			<key>one</key>
 			<string>(+%lld ďalší)</string>
+			<key>few</key>
+			<string>(+%lld ďalšie)</string>
 			<key>other</key>
 			<string>(+%lld ďalších)</string>
 		</dict>
@@ -30,10 +30,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Obsahuje %lld skiny.</string>
 			<key>one</key>
 			<string>Obsahuje %lld skin.</string>
+			<key>few</key>
+			<string>Obsahuje %lld skiny.</string>
 			<key>other</key>
 			<string>Obsahuje %lld skinov.</string>
 		</dict>
@@ -48,10 +48,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>Presunúť %lld položky do koša?</string>
 			<key>one</key>
 			<string>Presunúť %lld položku do koša?</string>
+			<key>few</key>
+			<string>Presunúť %lld položky do koša?</string>
 			<key>other</key>
 			<string>Presunúť %lld položiek do koša?</string>
 		</dict>
@@ -66,10 +66,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld ďalšie položky.</string>
 			<key>one</key>
 			<string>… a %lld ďalšia položka.</string>
+			<key>few</key>
+			<string>… a %lld ďalšie položky.</string>
 			<key>other</key>
 			<string>… a %lld ďalších položiek.</string>
 		</dict>
@@ -84,10 +84,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld ďalšie poznámky.</string>
 			<key>one</key>
 			<string>… a %lld ďalšia poznámka.</string>
+			<key>few</key>
+			<string>… a %lld ďalšie poznámky.</string>
 			<key>other</key>
 			<string>… a %lld ďalších poznámok.</string>
 		</dict>
@@ -102,10 +102,10 @@
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>lld</string>
-			<key>few</key>
-			<string>… a %lld ďalšie.</string>
 			<key>one</key>
 			<string>… a %lld ďalší.</string>
+			<key>few</key>
+			<string>… a %lld ďalšie.</string>
 			<key>other</key>
 			<string>… a %lld ďalších.</string>
 		</dict>
