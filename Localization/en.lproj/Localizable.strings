@@ -593,9 +593,6 @@
 /* Manage window: text. */
 "No metadata available." = "No metadata available.";
 
-/* Manage window: label. Plural forms: Localizable.stringsdict. */
-"Contains %lld skins." = "Contains %lld skins.";
-
 /* Manage window: text. */
 "Transparency: %lld%%" = "Transparency: %lld%%";
 
@@ -607,9 +604,6 @@
 
 /* Manage window: text. */
 "No compatibility problems found." = "No compatibility problems found.";
-
-/* Manage window: note under a panel or list. Plural forms: Localizable.stringsdict. */
-"… and %lld more." = "… and %lld more.";
 
 /* Manage window: note under a panel or list. */
 "Checked without loading; some problems only show up while the skin runs." = "Checked without loading; some problems only show up while the skin runs.";
@@ -1163,18 +1157,12 @@
 /* Skin installer: label. */
 "Layouts: %@" = "Layouts: %@";
 
-/* Skin installer: text. Plural forms: Localizable.stringsdict. */
-"(+%lld more)" = "(+%lld more)";
-
 /* Skin installer: text.
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Fonts included for these skins (not installed system-wide): %@";
 
 /* Skin installer: VoiceOver description. */
 "Warning" = "Warning";
-
-/* Skin installer: label. Plural forms: Localizable.stringsdict. */
-"… and %lld more notes." = "… and %lld more notes.";
 
 // MARK: Skin Packager window
 
@@ -1350,12 +1338,6 @@
 
 /* Move to Trash confirmation: text. */
 "You can restore this item from the Trash." = "You can restore this item from the Trash.";
-
-/* Move to Trash confirmation: text. Plural forms: Localizable.stringsdict. */
-"… and %lld more items." = "… and %lld more items.";
-
-/* Move to Trash confirmation: text. Plural forms: Localizable.stringsdict. */
-"Move %lld items to the Trash?" = "Move %lld items to the Trash?";
 
 /* Move to Trash confirmation: button. */
 "Move to Trash" = "Move to Trash";
