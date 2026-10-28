@@ -155,10 +155,6 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(skin.width, 40, "BackgroundMode=0 draws the symbol at its size")
         t.check(skin.issues.isEmpty, "\(skin.issues)")
         t.check(host.logs.allSatisfy { !$0.contains("Unable to open image") }, "\(host.logs)")
-        // The editor names a symbol layer after the symbol.
-        let named = LayerNaming.layer(image("Meter1"), in: skin)
-        t.check(named.title.hasPrefix("Cpu fill"), named.title)
-        t.equal(named.subtitle, "Picture · symbol")
         // Changing the symbol by a bang works as for a file.
         skin.execute("[!SetOption Symbol ImageName sf:power][!SetOption Symbol MacSymbolSize 8]", from: nil)
         skin.update()
@@ -369,16 +365,11 @@ func runMacLookTests(_ t: TestRunner) {
         let sliced: (String) -> String? = { ["ImageName": "sf:capsule.fill", "ScaleMargins": "10,4,10,4"][$0] }
         t.equal(S.defaultValue(of: fit, in: image, values: sliced), "0", "with ScaleMargins, as the engine")
         t.check(S.isVisible(S.property("ScaleMargins", in: image)!, in: image, values: sliced), "ScaleMargins is shown")
-        let skin = S.skinGroups
-        t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.kind, .action)
-        t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.defaultValue, Skin.defaultAppearanceChangeAction)
-        t.check(S.property("MacSymbolSize", in: skin) != nil, "the background can be a symbol")
         // Every label reads as plain words.
         for key in ["MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering", "MacSymbolColors"] {
             let p = S.property(key, in: S.meterGroups("Image"))
             t.equal(S.engineWord(in: (p?.label ?? "") + " " + (p?.help ?? "")), nil, key)
         }
-        t.equal(S.engineWord(in: S.property("MacOnAppearanceChangeAction", in: skin)?.label ?? ""), nil)
     }
 
     t.suite("Mac look: appearance variables") {

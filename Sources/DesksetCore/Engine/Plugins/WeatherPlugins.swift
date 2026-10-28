@@ -220,20 +220,6 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             default: return false
             }
         }
-
-        /// Needs forecast data (the others are about the place, the sun, the state or the units).
-        var needsForecast: Bool {
-            switch self {
-            case .sunrise, .sunset, .solarNoon, .dayLength, .daylightProgress, .place, .placeDetail, .country,
-                 .countryCode, .latitude, .longitude, .timeZone, .updatedAt, .status, .statusSymbol, .attribution,
-                 .attributionShort, .attributionURL, .licenseURL, .temperatureUnit, .windUnit, .precipitationUnit,
-                 .pressureUnit, .locationSource:
-                return false
-            default: return true
-            }
-        }
-
-        var isTime: Bool { [.time, .sunrise, .sunset, .solarNoon, .updatedAt, .forecastTime].contains(self) }
     }
 
     /// What the root measure (the one with the Location) knows; its children read it.

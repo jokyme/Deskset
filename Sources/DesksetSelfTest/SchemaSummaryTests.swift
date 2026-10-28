@@ -1,8 +1,8 @@
 import Foundation
 @testable import DesksetCore
 
-/// The schema's essentials and "More" summaries, and action sentences. Suites: "Editor: schema levels …",
-/// "Editor: live data catalogue", "Editor: action summaries …" (WP-C).
+/// The schema's essentials and "More" summaries. Suites: "Editor: schema levels …", "Editor: live data
+/// catalogue" (WP-C).
 func runSchemaSummaryTests(_ t: TestRunner) {
     typealias S = EditorSchema
 
@@ -81,47 +81,4 @@ func runSchemaSummaryTests(_ t: TestRunner) {
         t.check(S.extraLiveDataTypes(details: true).contains { $0.name == "Registry" })
     }
 
-    t.suite("Editor: action summaries") {
-        func sentence(_ action: String, section: String? = nil) -> String? {
-            ActionSummary.sentence(for: action, section: section, name: { $0 == "MeterTitle" ? "“Audio”" : $0 },
-                                   color: { $0 == "#Accent#" ? "Bar color" : "a new color" })
-        }
-        t.equal(sentence(#"["/System/Applications/Utilities/Activity Monitor.app"]"#), "Opens “Activity Monitor”")
-        t.equal(sentence(#"["https://example.com"]"#), "Opens example.com")
-        t.equal(sentence(#"["https://www.example.com/path"]"#), "Opens example.com")
-        t.equal(sentence("[!ToggleMeter MeterTitle]"), "Shows or hides “Audio”")
-        t.equal(sentence("[!ToggleMeter MeterTitle][!Redraw]"), "Shows or hides “Audio”", "the redraw is part of it")
-        t.equal(sentence("[!Refresh][!SetVariable A 1]"), "Runs 2 commands")
-        t.equal(sentence("[!SetOption MeterTitle FontColor #Accent#][!UpdateMeter MeterTitle][!Redraw]", section: "MeterTitle"),
-                "Turns its text Bar color")
-        // A look's hover (System's StyleLink): the layer as #CURRENTSECTION#; an empty value is its own color again.
-        t.equal(sentence("[!SetOption #CURRENTSECTION# FontColor \"#Accent#\"][!UpdateMeter #CURRENTSECTION#][!Redraw]",
-                         section: "MeterTitle"), "Turns its text Bar color")
-        t.equal(sentence("[!SetOption #CURRENTSECTION# FontColor \"\"][!UpdateMeter #CURRENTSECTION#][!Redraw]"),
-                "Turns its text back to its usual color")
-        t.equal(sentence("[!SetOption #CURRENTSECTION# X 10][!UpdateMeter #CURRENTSECTION#]"), "Changes one of its settings")
-        t.equal(sentence("[!Refresh]"), "Reloads the widget")
-        t.equal(sentence(""), nil)
-        // With a skin: its layer names.
-        let (skin, _) = try makeSkin(t, "[Rainmeter]\n[MeterTitle]\nMeter=String\nText=Audio\n")
-        t.equal(ActionSummary.sentence(for: "[!HideMeter MeterTitle]", in: skin),
-                "Hides \(LayerNaming.layer(skin.meter(named: "MeterTitle")!, in: skin).title)")
-
-        // The click picker reads back only what it writes.
-        t.equal(ClickAction.parse(#"["https://example.com"]"#), .openWebsite("https://example.com"))
-        t.equal(ClickAction.openWebsite("https://example.com").text, #"["https://example.com"]"#)
-        t.equal(ClickAction.parse(#"["/Applications/Calculator.app"]"#), .openApp("/Applications/Calculator.app"))
-        t.equal(ClickAction.parse("[!ToggleMeter MeterTitle][!Redraw]"), .toggleLayer("MeterTitle"))
-        t.equal(ClickAction.parse("[!Refresh]"), .reload)
-        t.equal(ClickAction.parse(""), .nothing)
-        let custom = "[!ToggleMeter MeterTitle][!SetVariable A 1]"
-        t.equal(ClickAction.parse(custom), .custom(custom), "anything else stays as written")
-        t.equal(ClickAction.parse("[!ToggleMeter MeterTitle]"), .custom("[!ToggleMeter MeterTitle]"),
-                "without its redraw it would be written differently: kept")
-        for a in [ClickAction.openWebsite("https://a.b/c"), .toggleLayer("Meter Two"), .reload,
-                  .toggleWidget(config: "Deskset\\Clock", file: "Clock.ini"),
-                  .changeColor(section: "MeterTitle", key: "FontColor", color: "255,0,0,255"), .showLayer("M")] {
-            t.equal(ClickAction.parse(a.text), a, "round trip: \(a.text)")
-        }
-    }
 }

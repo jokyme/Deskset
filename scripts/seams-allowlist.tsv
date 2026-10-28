@@ -445,8 +445,6 @@ effect.iniWrite	Sources/DesksetCore/Editor/EditorModel.swift	*	Skin Studio editi
 effect.fileWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
 effect.iniWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
-effect.fileWrite	Sources/DesksetCore/Editor/EditorSupport.swift	*	Skin Studio editing (Core half); never runs inside a skin
-
 effect.fileWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
 effect.iniWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
 

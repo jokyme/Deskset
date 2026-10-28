@@ -10,8 +10,6 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         for m in S.measureTypes {
             result.append(("Measure \(m.name)", m.isPlugin ? S.measureGroups("Plugin", plugin: m.name) : S.measureGroups(m.name)))
         }
-        result.append(("[Rainmeter]", S.skinGroups))
-        result.append(("[Metadata]", [S.aboutGroup]))
         return result
     }
 
@@ -346,28 +344,11 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         let sys = S.measureGroups("SysInfo")
         t.check(S.isVisible(S.property("SysInfoData", in: sys)!, in: sys, values: { $0 == "SysInfoType" ? "ip_address" : nil }))
         t.check(!S.isVisible(S.property("SysInfoData", in: sys)!, in: sys, values: { $0 == "SysInfoType" ? "OS_VERSION" : nil }))
-        let skin = S.skinGroups
-        t.check(!S.isVisible(S.property("SolidColor", in: skin)!, in: skin, values: { _ in nil }), "transparent by default")
-        t.check(S.isVisible(S.property("SolidColor", in: skin)!, in: skin, values: { $0 == "BackgroundMode" ? "2" : nil }))
-        // A background image without BackgroundMode is shown (the engine's mode 0): its row stays and "Image" is in
-        // effect; an explicit mode wins.
-        let background = S.property("Background", in: skin)!, mode = S.property("BackgroundMode", in: skin)!
-        let withImage: [String: String] = ["Background": "#@#bg.png"]
-        t.check(S.isVisible(background, in: skin, values: { withImage[$0] }), "Background= alone shows the image")
-        t.equal(S.defaultValue(of: mode, in: skin, values: { withImage[$0] }), "0")
-        t.equal(S.defaultValue(of: mode, in: skin, values: { _ in nil }), "1")
-        t.check(!S.isVisible(background, in: skin, values: { _ in nil }))
-        let transparent: [String: String] = ["Background": "#@#bg.png", "BackgroundMode": "1"]
-        t.check(!S.isVisible(background, in: skin, values: { transparent[$0] }), "an explicit mode wins")
-        let resolved = S.visibleGroups(skin, values: { withImage[$0] }).flatMap(\.properties)
-        t.equal(resolved.first { $0.key == "BackgroundMode" }?.defaultValue, "0", "controls mark Image as in effect")
-        t.check(resolved.contains { $0.key == "Background" })
-        t.equal(S.resolvingDefaults(skin, values: { _ in nil }), skin, "nothing changes without Background")
-        // The engine agrees.
+        // Without BackgroundMode, a background image is drawn (mode 0); with none, the skin is transparent (mode 1).
         let (bgSkin, _) = try makeSkin(t, "[Rainmeter]\nBackground=bg.png\n[M]\nMeter=String\n")
-        t.equal(String(bgSkin.settings.backgroundMode), S.defaultValue(of: mode, in: skin, values: { withImage[$0] }))
+        t.equal(String(bgSkin.settings.backgroundMode), "0")
         let (plainSkin, _) = try makeSkin(t, "[Rainmeter]\n[M]\nMeter=String\n")
-        t.equal(String(plainSkin.settings.backgroundMode), mode.defaultValue)
+        t.equal(String(plainSkin.settings.backgroundMode), "1")
         let visibleMeasure = S.measureGroups("Time", values: { _ in nil }).flatMap(\.properties).map(\.key)
         t.check(!visibleMeasure.contains("DaylightSavingTime") && !visibleMeasure.contains("TimeStampFormat"))
         t.check(S.measureGroups("Time", values: { $0 == "TimeZone" ? "5.5" : nil }).flatMap(\.properties)

@@ -794,68 +794,6 @@ private func runWeatherEditorTests(_ t: TestRunner) {
                                             "daylightsavingtime"]))
         t.check(!visible("Format", ["type": "MoonPhase"], sun))
         t.check(S.liveDataCatalogue.last?.items.flatMap(\.children).allSatisfy { $0.measureType != nil } == true)
-
-        // Names in the layer list and the data page.
-        let (skin, _) = try makeSkin(t, """
-        [Rainmeter]
-        [W]
-        Measure=Plugin
-        Plugin=MacWeather
-        Type=Temperature
-        [H3]
-        Measure=Plugin
-        Plugin=MacWeather
-        Parent=W
-        Hour=3
-        [Tomorrow]
-        Measure=Plugin
-        Plugin=MacWeather
-        Parent=W
-        Type=High
-        Day=1
-        [High3]
-        Measure=Plugin
-        Plugin=MacWeather
-        Parent=W
-        Type=High
-        Day=3
-        [Rise]
-        Measure=Plugin
-        Plugin=MacSun
-        Type=Sunrise
-        [Moon]
-        Measure=Plugin
-        Plugin=MacSun
-        Type=MoonPhase
-        [Far]
-        Measure=Plugin
-        Plugin=MacWeather
-        Parent=W
-        Type=High
-        Day=1e20
-        [Late]
-        Measure=Plugin
-        Plugin=MacWeather
-        Parent=W
-        Hour=1e20
-        [Before]
-        Measure=Plugin
-        Plugin=MacSun
-        Type=Sunset
-        Day=-1e20
-        """)
-        func name(_ m: String) -> String { skin.measure(named: m).map { LayerNaming.data($0, in: skin).name } ?? "?" }
-        t.equal(name("W"), "Temperature (weather)")
-        t.equal(name("H3"), "Temperature in 3 hours")
-        t.equal(name("Tomorrow"), "Tomorrow's high")
-        t.equal(name("High3"), "High, in 3 days")
-        t.equal(name("Rise"), "Sunrise")
-        t.equal(name("Moon"), "Moon phase")
-        // Numbers too large for an Int are clamped as the plugins clamp them.
-        t.equal(name("Far"), "High, in 9 days")
-        t.equal(name("Late"), "Temperature in 47 hours")
-        t.equal(name("Before"), "Yesterday's sunset")
-        skin.close()
     }
 
     t.suite("Weather: reports") {
