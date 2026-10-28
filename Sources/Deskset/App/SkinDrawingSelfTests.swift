@@ -592,6 +592,7 @@ enum SkinDrawingSelfTests {
         t.equal(shown.position, .zero, "\(label): at the view's top-left corner", line: line)
         t.equal(shown.anchorPoint, .zero, line: line)
         t.check(shown.superlayer === host, "\(label): in the view's layer", line: line)
+        t.check(shown.isHitTestedByAlpha, "\(label): clicks on its transparent pixels go through", line: line)
         guard let found = differenceFromFullDrawing(image, skin, scale: scale, space: space) else {
             return t.check(false, "\(label): compared with a full drawing", line: line)
         }
@@ -856,6 +857,12 @@ enum SkinDrawingSelfTests {
             t.check(view.layer?.contents == nil, "its layer has no contents")
             t.equal(view.layer?.sublayers?.count, 1)
             t.check(view.layer?.sublayers?.first.map(c.content.isContentLayer) == true, "only the content layer")
+            // The window server finds the window a click is for by its layers: AppKit's layers for views by the alpha of
+            // their pixels, and the content layer the same way, so a click on a transparent pixel of the skin reaches
+            // what is below it (desktop icons).
+            t.check(view.layer.map(LayerContentProvider.isHitTestedByAlpha) == true,
+                    "AppKit's layer for the view is hit-tested by alpha")
+            t.check(c.content.shown.isHitTestedByAlpha, "and so is the content layer")
             // Snapshots of the view (`cacheDisplay`) draw the skin with draw(_:) and leave the layer without contents.
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: rep)
@@ -930,6 +937,8 @@ enum SkinDrawingSelfTests {
             c.skin.execute("[!ClickThrough 1][!ClickThrough 0]", from: nil)
             t.check(c.window !== firstPanel, "a new panel")
             t.check(c.content.shown.superlayer === view.layer, "the content layer went with the view")
+            t.check(!c.window.ignoresMouseEvents && c.content.shown.isHitTestedByAlpha,
+                    "and clicks on its transparent pixels go through again")
             endTurn()
             t.equal(frames.framesDrawn, drawn + 1, "and is drawn again, as the view was")
 
