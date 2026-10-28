@@ -1,73 +1,10 @@
 import Foundation
 @testable import DesksetCore
 
-/// The Number and Format menus of rendered examples (docs/editor-friendly.md §8.2), the schema's essentials and
-/// "More" summaries, and action sentences. Suites: "Editor: format presets …", "Editor: schema levels …",
-/// "Editor: action summaries …" (WP-C).
-func runFormatPresetsTests(_ t: TestRunner) {
+/// The schema's essentials and "More" summaries, and action sentences. Suites: "Editor: schema levels …",
+/// "Editor: live data catalogue", "Editor: action summaries …" (WP-C).
+func runSchemaSummaryTests(_ t: TestRunner) {
     typealias S = EditorSchema
-
-    t.suite("Editor: format presets for numbers") {
-        let titles = FormatPresets.numberPresets(for: 13268.00443).map(\.title)
-        for expected in ["13268", "13268.0", "13.3 k"] { t.check(titles.contains(expected), "\(expected) in \(titles)") }
-        t.equal(titles.first, "13268", "the plain number first")
-        // What each choice writes renders as its title with the engine's own formatting.
-        for preset in FormatPresets.numberPresets(for: 48.24) {
-            let o = FormatPresets.parse(preset.options)
-            t.equal(NumberFormatting.format(48.24, minValue: 0, maxValue: 1, options: o).trimmingCharacters(in: .whitespaces),
-                    preset.title, "renders as its title")
-        }
-        t.equal(FormatPresets.numberPresets(for: 48.24).map(\.title), ["48", "48.2", "48.24", "0.05 k"], "§8.2's example")
-        // Bytes.
-        t.equal(FormatPresets.numberPresets(for: 3_221_225_472, unit: .bytes).map(\.title),
-                ["3 GB", "3.2 GB", "3,221,225,472"])
-        t.equal(FormatPresets.numberPresets(for: 2_400_000, unit: .bytesPerSecond).first?.title, "2 MB/s")
-        // A text that shortens by 1024s (System's memory: AutoScale=1) keeps its base: its format is a choice, and
-        // no choice changes 17.9 GB into 19.2 GB.
-        t.equal(FormatPresets.base(ofAutoScale: "1"), .binary)
-        t.equal(FormatPresets.base(ofAutoScale: " 1k "), .binary)
-        t.equal(FormatPresets.base(ofAutoScale: "2"), .thousands)
-        t.equal(FormatPresets.base(ofAutoScale: nil), .thousands)
-        let memory = 19_220_000_000.0
-        let binary = FormatPresets.numberPresets(for: memory, unit: .bytes, base: .binary)
-        t.equal(binary.map(\.title), ["18 GB", "17.9 GB", "19,220,000,000"])
-        t.check(binary.prefix(2).allSatisfy { ($0.options["AutoScale"] ?? nil) == "1" }, "written AutoScale=1")
-        t.equal(FormatPresets.index(of: ["AutoScale": "1", "NumOfDecimals": "1"], in: binary), 1, "System's RAM text is a choice")
-        t.equal(FormatPresets.numberPresets(for: memory, unit: .bytes).map(\.title), ["19 GB", "19.2 GB", "19,220,000,000"])
-        t.equal(FormatPresets.index(of: ["AutoScale": "1", "NumOfDecimals": "1"],
-                                    in: FormatPresets.numberPresets(for: memory, unit: .bytes)), nil, "not among 1000s")
-        t.equal(FormatPresets.numberPresets(for: 13268.00443, base: .binary).last?.options["AutoScale"] ?? nil, "1k")
-        // Percent of the range, when there is a range.
-        let ranged = FormatPresets.numberPresets(for: 0.83, range: (0, 1))
-        t.equal(ranged.last?.title, "Percent of range — 83%")
-        t.equal(ranged.last?.options["Percentual"] ?? nil, "1")
-        t.check(!FormatPresets.numberPresets(for: 5, range: (1, 1)).contains { $0.title.hasPrefix("Percent") }, "empty range")
-        // The current options find their choice; unknown combinations find none.
-        let presets = FormatPresets.numberPresets(for: 13268.00443)
-        t.equal(FormatPresets.index(of: [:], in: presets), 0, "nothing set: the plain number")
-        t.equal(FormatPresets.index(of: ["NumOfDecimals": "0"], in: presets), 0, "0 is the default")
-        t.equal(FormatPresets.index(of: ["NumOfDecimals": "1"], in: presets), 1)
-        t.equal(FormatPresets.index(of: ["AutoScale": "2k", "NumOfDecimals": "1"], in: presets), 3)
-        t.equal(FormatPresets.index(of: ["AutoScale": "2k"], in: presets), 3, "AutoScale's default is one decimal")
-        t.equal(FormatPresets.index(of: ["Scale": "1000"], in: presets), nil, "a custom combination")
-        // Units by type.
-        t.equal(FormatPresets.unit(forMeasureType: "PhysicalMemory"), .bytes)
-        t.equal(FormatPresets.unit(forMeasureType: "NetIn"), .bytesPerSecond)
-        t.equal(FormatPresets.unit(forMeasureType: "Plugin", plugin: "AudioLevel"), .plain)
-    }
-
-    t.suite("Editor: format presets for times") {
-        var c = DateComponents()
-        (c.year, c.month, c.day, c.hour, c.minute, c.second) = (2026, 9, 24, 14, 5, 9)
-        c.timeZone = TimeZone(identifier: "UTC")
-        guard let date = Calendar(identifier: .gregorian).date(from: c), let utc = TimeZone(identifier: "UTC") else {
-            return t.check(false, "date")
-        }
-        let presets = FormatPresets.timePresets(at: date, timeZone: utc)
-        t.equal(presets.first?.format, "%H:%M")
-        t.equal(presets.first?.title, "14:05", "%H:%M renders 14:05 at 14:05")
-        t.equal(presets.map(\.title), ["14:05", "2:05 PM", "14:05:09", "Thu 24 Sep", "September 24, 2026"])
-    }
 
     t.suite("Editor: schema levels") {
         var all: [(String, [S.Group])] = S.meterTypes.map { ("Meter=\($0)", S.meterGroups($0)) }

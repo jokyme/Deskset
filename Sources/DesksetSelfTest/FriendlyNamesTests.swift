@@ -197,32 +197,6 @@ func runFriendlyNamesTests(_ t: TestRunner) {
         t.equal(named.layer("MeterBlock")?.subtitle, "Color block · 10 × 10", "never the title again")
     }
 
-    t.suite("Editor: friendly names — colour roles say what they paint") {
-        let system = try load("TestSkins", "Deskset\\System")
-        let index = system.valueUsages()
-        t.equal(index.variable("PanelBorderHover")?.role, "Background panel outline when pointed at",
-                "what the hover action colors, not \"Widget when pointed at\"")
-        t.equal(index.variable("PanelBorder")?.role, "Background panel outline", "leaving puts the usual color back")
-        t.equal(index.variable("TrackColor")?.role, "Empty part of bars", "the grey tracks under the memory and swap bars")
-        t.equal(index.variable("PanelHighlight")?.role, "Background panel line", "a line's stroke is the line, not an outline")
-        let names = index.colorGroups().map(\.name)
-        t.equal(Set(names).count, names.count, "every row has its own name: \(names)")
-        t.check(index.variable("SubtleColor")?.roles.contains { $0.name == "Dimmed parts of texts" } == true,
-                "the grey \" / 16 GB\": \(index.variable("SubtleColor")?.roles ?? [])")
-        let battery = try load("TestSkins", "Deskset\\Battery")
-        t.equal(battery.valueUsages().variable("CriticalColor")?.role, "Battery bar in some states")
-        for config in ["Deskset\\System", "Deskset\\Clock", "Deskset\\Battery", "Deskset\\Calendar", "Deskset\\Network"] {
-            let skin = try load("TestSkins", config)
-            for value in skin.valueUsages().values {
-                for role in value.roles {
-                    t.check(!role.name.contains("Widget when") && !role.name.contains("(live data)")
-                            && !role.name.contains("fade start") && !role.name.contains("wi-Fi"),
-                            "\(config) \(value.source): \(role.name)")
-                }
-            }
-        }
-    }
-
     t.suite("Editor: friendly names — a big widget is named without a pause") {
         var ini = "[Rainmeter]\n[Variables]\nColor=200,100,50\n"
         for i in 0..<300 {
@@ -233,10 +207,8 @@ func runFriendlyNamesTests(_ t: TestRunner) {
         let (skin, _) = try makeSkin(t, ini)
         skin.update()
         let start = Date()
-        let index = skin.valueUsages()
         _ = LayerNaming.catalog(of: skin)
         let seconds = Date().timeIntervalSince(start)
-        t.equal(index.variable("Color")?.sections.count, 300)
         t.check(seconds < 2, "300 layers and 300 data items named in \(seconds) s")
     }
 

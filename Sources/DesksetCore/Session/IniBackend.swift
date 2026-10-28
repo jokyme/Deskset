@@ -42,8 +42,8 @@ public enum EditOp: Equatable {
 
 /// The INI backend of an editing session: turns edits into changes of the files' text with today's write-back rules —
 /// `IniWriter` (encoding, BOM and line endings byte for byte, first block wins, new keys at the end of the block),
-/// `IniKeyRemoval`, `LayerReorder`'s section moves — applied to the text in memory. The first edit reads a file into the
-/// buffers; later edits of one plan see what the earlier ones made.
+/// `IniKeyRemoval`, `Skin.moveSection`'s section moves — applied to the text in memory. The first edit reads a file
+/// into the buffers; later edits of one plan see what the earlier ones made.
 public enum IniBackend {
     /// What `ops` do to the buffers' files, in order, as one change per file (nothing is changed yet: see
     /// `SourceBuffers.apply`). Files that end up as they were are left out. Throws what the file versions throw: a

@@ -156,7 +156,7 @@ public final class Skin {
     public var executor: SkinExecutor = MainSkinExecutor.shared
     /// Where the skin's files are read from before the disk (nil: the disk): the Studio's instance of a widget loads the
     /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
-    /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
+    /// files (`definingFiles`, `sharedDefinition`).
     public var sourceProvider: SourceProvider?
     /// Counts the patches that gave this skin object new source text (`patch(sources:)`): anything kept per skin object
     /// that was read from its files (a layer's name, a thumbnail, where a value is used) is out of date once it moves.

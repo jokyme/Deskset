@@ -5,8 +5,8 @@ import Foundation
 /// EditorSchema.swift so the widget page and the selection pages can change independently.
 ///
 /// Labels use the editor's words (§3.2: "Update speed", "Behind everything", "When someone else installs it"); the
-/// widget page builds its cards from them with outcome presets (`WidgetPresets`), and every key listed here counts as
-/// shown there (it never lands in "Lines Deskset Can't Show as Controls").
+/// widget page builds its cards from them, and every key listed here counts as shown there (it never lands in "Lines
+/// Deskset Can't Show as Controls").
 extension EditorSchema {
     // MARK: - Choice lists
 

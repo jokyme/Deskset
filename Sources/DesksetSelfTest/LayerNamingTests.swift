@@ -1,9 +1,8 @@
 import Foundation
 @testable import DesksetCore
 
-/// Names of layers and live data (`LayerNaming`, docs/editor-friendly.md §6), the runs of repeated layers and data
-/// (`LayerSeries`, §5.2) and the reorder guard (`LayerReorder`, §5.2). Suites: "Editor: layer names …",
-/// "Editor: layer series …", "Editor: reorder guard …" (WP-A).
+/// Names of layers and live data (`LayerNaming`, docs/editor-friendly.md §6) and the runs of repeated layers and
+/// data (`LayerSeries`, §5.2). Suites: "Editor: layer names …", "Editor: layer series …" (WP-A).
 func runLayerNamingTests(_ t: TestRunner) {
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -594,69 +593,4 @@ func runLayerNamingTests(_ t: TestRunner) {
         t.equal(try runs("[Box]\nMeter=Image\nW=40\nH=40\n" + bar("B1", "Container=Box") + bar("B2", "Container=Box")
                          + bar("B3", "Container=Box")), [], "not in a container")
     }
-
-    t.suite("Editor: reorder guard") {
-        let skin = try visualizer()
-        let before = Dictionary(uniqueKeysWithValues: skin.meters.map { ($0.name, $0.frame) })
-
-        // "13268 Hz" is placed "Y=0r": under "48 Hz". Moving "48 Hz" to the front gives it a fixed Y.
-        let edits = LayerReorder.fixups(skin: skin, moving: ["MeterLowFreq"], to: nil)
-        t.equal(edits, [LayerReorder.Edit(section: "MeterHighFreq", key: "Y", value: "136")])
-        for e in edits { _ = try skin.writeOwnOption(section: e.section, key: e.key, value: e.value) }
-        _ = try skin.moveSection("MeterLowFreq", before: nil)
-        let moved = Skin(config: skin.config, fileURL: skin.fileURL, skinsDirectory: skin.skinsDirectory,
-                         system: FakeSystem(), host: reorderHost)
-        try moved.load()
-        moved.update()
-        for name in ["MeasureLowFreq", "MeasureHighFreq", "MeasureDevice"] {
-            moved.measure(named: name)?.value = skin.measure(named: name)?.value ?? 0
-            moved.measure(named: name)?.rawString = skin.measure(named: name)?.rawString
-            moved.measure(named: name)?.paused = true
-        }
-        moved.update()
-        t.equal(moved.meters.last?.name, "MeterLowFreq", "in front")
-        t.equal(moved.meters.filter { before[$0.name] != $0.frame }.map(\.name), [], "every frame is unchanged")
-
-        // A run moved as one block keeps its chain; a bar moved alone takes and leaves a fixed X.
-        let fresh = try visualizer()
-        let bands = (0...15).map { "MeterBand\($0)" }
-        t.equal(LayerReorder.fixups(skin: fresh, moving: bands, to: nil), [], "the whole run: nothing to fix")
-        t.equal(LayerReorder.fixups(skin: fresh, moving: ["MeterBand5"], to: nil),
-                [LayerReorder.Edit(section: "MeterBand5", key: "X", value: "74"),
-                 LayerReorder.Edit(section: "MeterBand6", key: "X", value: "86")])
-        t.equal(LayerReorder.fixups(skin: fresh, moving: ["MeterTitle"], to: "MeterTitle"), [], "no move")
-        t.equal(LayerReorder.order(of: ["A", "B", "C", "D"], moving: ["B", "C"], before: nil), ["A", "D", "B", "C"])
-        t.equal(LayerReorder.order(of: ["A", "B", "C", "D"], moving: ["D"], before: "B"), ["A", "D", "B", "C"])
-
-        // A position that reads another layer is fixed when the two change places.
-        let (linked, _) = try makeSkin(t, """
-            [Rainmeter]
-            [Base]
-            Meter=Image
-            SolidColor=0,0,0
-            X=10
-            W=30
-            H=10
-            [Follower]
-            Meter=Image
-            SolidColor=0,0,0
-            X=([Base:X] + 40)
-            W=10
-            H=10
-            DynamicVariables=1
-            [Other]
-            Meter=Image
-            SolidColor=0,0,0
-            X=100
-            W=10
-            H=10
-            """)
-        linked.update()
-        t.equal(LayerReorder.fixups(skin: linked, moving: ["Base"], to: nil),
-                [LayerReorder.Edit(section: "Follower", key: "X", value: "50")])
-        t.equal(LayerReorder.fixups(skin: linked, moving: ["Other"], to: "Base"), [], "their order stays")
-    }
 }
-
-/// The host of the skin reloaded by the reorder guard test (`Skin.host` is weak).
-private let reorderHost = FakeHost()
