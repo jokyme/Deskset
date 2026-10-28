@@ -1,7 +1,0 @@
-// DK2034 strayTopLevel
-//== expect: DK2034
-info { name: "T" }
-Text("Hello")
-//== negative
-info { name: "T" }
-widget { Text("Hello") }

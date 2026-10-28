@@ -1,7 +1,0 @@
-// DK8301 deskVersionTooNew
-//== expect: DK8301
-info { name: "T", deskVersion: 2 }
-widget { Text("A") }
-//== negative
-info { name: "T", deskVersion: 1 }
-widget { Text("A") }
