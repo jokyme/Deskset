@@ -55,17 +55,17 @@ enum ManageModel {
         /// The notice's text. `startHidden`: the skin's settings say StartHidden, so it may never have been shown.
         static func explanation(startHidden: Bool) -> String {
             let why = startHidden
-                ? L("It is set to start hidden (StartHidden), or a skin action (!Hide) took it off the desktop.")
-                : L("It is loaded and running, but a skin action (!Hide) took it off the desktop, as some widgets do while they have nothing to show.")
-            let after = startHidden ? L("Moving it does not bring it back; Show does, until it is loaded again.")
-                : L("Moving it does not bring it back; Show does, until the skin hides itself again.")
+                ? L("It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it.")
+                : L("It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show.")
+            let after = startHidden ? L("Moving it won’t make it appear. Click Show to see it until it is loaded again.")
+                : L("Moving it won’t make it appear. Click Show to see it until it hides itself again.")
             return why + " " + after
         }
 
         /// Under the coordinates of a hidden skin; `moved`: coordinates were just typed for it.
         static func coordinatesHint(moved: Bool) -> String {
-            moved ? L("Moved, but still hidden: click Show above to see it.")
-                : L("The skin is hidden: it moves, but stays out of sight.")
+            moved ? L("Moved, but still hidden. Click Show above to see it.")
+                : L("The skin is hidden, so you won’t see it move.")
         }
 
         /// The outline row's accessibility label of a loaded file.

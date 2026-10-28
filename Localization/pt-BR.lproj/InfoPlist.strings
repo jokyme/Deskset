@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Portuguese (Brazil).
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Pasta";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "As skins perguntam ao Música ou ao Spotify o que está tocando para mostrar a faixa atual e controlar a reprodução, e pedem ao Finder que esvazie o Lixo ou abra uma janela Obter Informações quando você usa uma skin desse tipo.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Skins de visualização de áudio mostram o nível e o espectro do som que o seu Mac está reproduzindo. O áudio é analisado no seu Mac enquanto uma skin desse tipo está carregada; ele nunca é gravado, salvo nem enviado a lugar nenhum.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Uma skin ou o script dela lê ou grava arquivos na sua pasta Mesa (por exemplo, uma skin de lista de arquivos, notas ou lançador).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Uma skin ou o script dela lê ou grava arquivos na sua pasta Documentos (por exemplo, uma skin de lista de arquivos, notas ou lançador).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Uma skin ou o script dela lê ou grava arquivos na sua pasta Downloads (por exemplo, uma skin de lista de arquivos ou lançador).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Software livre sob a GNU GPL v3. Executa skins feitas para o Rainmeter; não é afiliado ao Rainmeter. Rainmeter é uma marca registrada de seus respectivos proprietários.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Uma skin lê informações de um dispositivo da sua rede local, como a página de status de um roteador ou um servidor doméstico.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "As skins que você configura para usar sua localização atual leem sua localização aproximada para mostrar o clima local e os horários do sol. Ela é arredondada para cerca de 1 km, enviada apenas ao serviço de meteorologia (MET Norway) para as previsões e nunca é armazenada. O macOS também exige esta permissão para que as skins de Wi-Fi mostrem os nomes das redes.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "As skins que você configura para usar sua localização atual leem sua localização aproximada para mostrar o clima local e os horários do sol. Ela é arredondada para cerca de 1 km, enviada apenas ao serviço de meteorologia (MET Norway) para as previsões e nunca é armazenada. O macOS também exige esta permissão para que as skins de Wi-Fi mostrem os nomes das redes.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Uma skin quer mostrar o nível de uma entrada de áudio (um microfone ou uma interface de áudio). O áudio é analisado no seu Mac enquanto a skin está carregada; ele nunca é gravado, salvo nem enviado a lugar nenhum.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Uma skin ou o script dela lê arquivos em um volume de rede (por exemplo, uma skin de disco ou de lista de arquivos).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Uma skin ou o script dela lê arquivos em uma unidade removível (por exemplo, uma skin de disco ou de lista de arquivos).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Pacote de Skins";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Arquivo ZIP";

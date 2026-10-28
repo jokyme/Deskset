@@ -1,40 +1,46 @@
 // Keeps the app's translations in step with its code. The app's own text goes through `L("English text")`
-// (Sources/Deskset/App/Localization.swift); the English text is the key of Localization/Localizable.xcstrings, a
-// String Catalog (Xcode opens and edits it; scripts/build-app.sh compiles it into Contents/Resources/<language>.lproj).
-// Localization/InfoPlist.xcstrings translates the Info.plist texts macOS shows (permission prompts, document types).
+// (Sources/Deskset/App/Localization.swift); the English text is the key. Every language has its own folder,
+// Localization/<language>.lproj, as macOS expects them in the app bundle (scripts/build-app.sh copies them):
+//   Localizable.strings      "English text" = "translation"; each entry has a comment saying where the text appears
+//   Localizable.stringsdict  the texts that change with a number (one file, two files…), in the language's plural forms
+//   InfoPlist.strings        the Info.plist texts macOS shows (permission prompts, the copyright line, document types)
+// en.lproj is the source: its Localizable.strings lists every key in the order the app shows them, grouped by window,
+// with the comments; `sync` writes it from the code and gives every language file the same order and comments.
+// A comment line that starts with "Note:" is written by hand (what a placeholder stands for, where a short text sits)
+// and survives `sync`.
 //
-//     swift scripts/localization.swift check        exit 1 when the code and the catalogs disagree (CI runs this)
-//     swift scripts/localization.swift sync         add the code's new keys to the catalog and drop the ones it no
-//                                                   longer uses (their translations go with them)
-//     swift scripts/localization.swift report       per language: translated, needing review, missing; and the
-//                                                   phrase-like strings left in files the catalog does not cover yet
-//     swift scripts/localization.swift export DIR   write DIR/source.tsv (number<TAB>English text) for translators
-//     swift scripts/localization.swift import DIR LANGUAGE…
+//     swift scripts/localization.swift check        exit 1 when the code and the language files disagree (CI runs it)
+//     swift scripts/localization.swift sync         write en.lproj from the code; re-order every language file and
+//                                                   drop the keys the code no longer uses
+//     swift scripts/localization.swift report       per language: texts present and missing; and the phrase-like
+//                                                   strings left in files not covered yet
+//     swift scripts/localization.swift export DIR [--table InfoPlist]
+//                                                   write DIR/source.tsv: number<TAB>English<TAB>plural?<TAB>context
+//     swift scripts/localization.swift import DIR LANGUAGE… [--table InfoPlist]
 //                                                   read DIR/<language>.tsv (number<TAB>text, numbers from
-//                                                   source.tsv) into the catalog as "needs review"; a text marked
-//                                                   reviewed ("translated") is kept. A plural key's text is written
-//                                                   {one}… {few}… {other}… with the language's CLDR categories.
-//     swift scripts/localization.swift --catalog FILE --sources DIR …   (any command) another catalog or source tree
+//                                                   source.tsv) into that language's files; a plural text is written
+//                                                   {one}… {few}… {other}… with the language's CLDR categories
+//     --localization DIR, --sources DIR             (any command) another Localization folder or source tree
 //
 // `check` fails when
-//   - a key in the code is missing from the catalog, or the catalog keeps a key the code no longer uses (run sync);
+//   - a key in the code is missing from en.lproj, or en.lproj keeps a key the code no longer uses (run sync);
 //   - L is called with anything but one plain string literal (an interpolation \(…) cannot be looked up: write a
 //     format, L("Version %@", version));
-//   - a key lacks a text in one of the languages (Localization.languages), or a text's format specifiers (%@, %d, %1$@…)
-//     differ from the English key's — a mismatch would crash or print garbage at run time;
+//   - a language lacks a text, keeps one for a key that is gone, or a text's format specifiers (%@, %d, %1$@…) differ
+//     from the English — a mismatch would crash or print garbage at run time; a plural text lacks one of its forms;
+//   - a file is not one macOS can read, or the language folders differ from Localization.languages;
 //   - a covered file (`covered` below: the files whose every user-visible text is translated) has a phrase-like
 //     string literal outside L, other than those listed in scripts/localization-ignore.tsv (file<TAB>literal<TAB>why:
 //     identifiers, file names, text that stays English such as log lines);
-//   - InfoPlist.xcstrings and the Info.plist that build-app.sh writes disagree (an English text, a permission key with
-//     no translation, CFBundleLocalizations).
+//   - InfoPlist.strings and the Info.plist that build-app.sh writes disagree (an English text, a key with no
+//     translation, CFBundleLocalizations).
 // Self-test files (names ending in Tests.swift, SelfTest.swift or SelfTests.swift) are skipped: their text is checked
 // in English. Exit status: 0 fine, 1 a problem (check), 2 a usage error or an unreadable file.
 import Foundation
 
 // MARK: - Settings
 
-var catalogPath = "Localization/Localizable.xcstrings"
-var infoPlistCatalogPath = "Localization/InfoPlist.xcstrings"
+var localizationPath = "Localization"
 var ignorePath = "scripts/localization-ignore.tsv"
 var sourcesPath = "Sources/Deskset"
 
@@ -106,14 +112,15 @@ func fail(usage message: String) -> Never {
     FileHandle.standardError.write(Data("localization: \(message)\n".utf8))
     exit(2)
 }
-if let value = takeOption("--catalog") { catalogPath = value }
+if let value = takeOption("--localization") { localizationPath = value }
+let table = takeOption("--table") ?? "Localizable"
 if let value = takeOption("--sources") { sourcesPath = value }
 let command = arguments.first ?? "check"
 let commandArguments = Array(arguments.dropFirst())
 
 // MARK: - Source scanning
 
-struct Use { let key: String; let file: String; let line: Int }
+struct Use { let key: String; let file: String; let line: Int; let kind: String }
 struct Problem { let file: String; let line: Int; let message: String }
 
 func swiftFiles() -> [String] {
@@ -293,7 +300,8 @@ func scanSources() -> (uses: [Use], problems: [Problem], uncovered: [Problem], i
             } else if literal.isRaw {
                 problems.append(Problem(file: file, line: literal.line, message: "L key must be a plain literal, not #\"…\"#"))
             } else {
-                uses.append(Use(key: literal.text, file: file, line: literal.line))
+                let before = String(ns.substring(to: match.range.location).split(separator: "\n", omittingEmptySubsequences: false).last ?? "")
+                uses.append(Use(key: literal.text, file: file, line: literal.line, kind: kind(before: before)))
             }
         }
         // Phrase-like literals outside L.
@@ -319,48 +327,232 @@ func scanSources() -> (uses: [Use], problems: [Problem], uncovered: [Problem], i
     return (uses, problems, uncovered, ignoredUsed)
 }
 
-// MARK: - Catalog
+// MARK: - Where a text appears
 
-func loadCatalog(_ path: String) -> NSMutableDictionary {
-    guard let data = FileManager.default.contents(atPath: path) else {
-        return ["sourceLanguage": "en", "strings": NSMutableDictionary(), "version": "1.0"] as NSMutableDictionary
-    }
-    guard let object = try? JSONSerialization.jsonObject(with: data, options: [.mutableContainers]),
-          let catalog = object as? NSMutableDictionary else { fail(usage: "\(path) is not a String Catalog") }
-    if catalog["strings"] == nil { catalog["strings"] = NSMutableDictionary() }
-    return catalog
+/// The windows the covered files draw, in the order en.lproj lists them (a file not named here comes last, by name).
+let areas: [(file: String, name: String)] = [
+    ("App/MainMenu.swift", "Main menu"),
+    ("AppController.swift", "Menu bar menu, skin menus and update alerts"),
+    ("App/WindowGeometry.swift", "Skin settings (Manage window and skin menu)"),
+    ("App/ManageWindowController.swift", "Manage window"),
+    ("App/ManageModel.swift", "Manage window"),
+    ("App/MetadataEditing.swift", "Manage window"),
+    ("App/LayoutController.swift", "Layouts"),
+    ("App/LayoutWallpaper.swift", "Layouts"),
+    ("App/SettingsWindowController.swift", "Settings window"),
+    ("App/CodeEditorSettings.swift", "Settings window"),
+    ("App/CodeEditorRouter.swift", "Code editor"),
+    ("App/AboutWindowController.swift", "About window"),
+    ("App/NewSkinWindowController.swift", "New Skin window"),
+    ("App/NewSkinModel.swift", "New Skin window"),
+    ("App/SkinInstallFlow.swift", "Skin installer"),
+    ("App/SkinPackagerWindowController.swift", "Skin Packager window"),
+    ("App/FileTrashConfirmation.swift", "Move to Trash confirmation"),
+    ("App/LaunchAtLogin.swift", "Launch at Login"),
+    ("App/SafeStartController.swift", "Safe Start"),
+    ("App/AppUpdateController.swift", "App updates"),
+    ("App/AppUpdateFlow.swift", "App updates"),
+    ("App/AppUpdateService.swift", "App updates"),
+    ("App/AppUpdateDownload.swift", "App updates"),
+    ("App/AppUpdateInstaller.swift", "App updates"),
+    ("App/AppInstallation.swift", "Installing Deskset in Applications"),
+    ("App/AppMaintenancePanel.swift", "Install and update panels"),
+    ("App/AppRestart.swift", "Restarting Deskset"),
+]
+
+func area(of file: String) -> (order: Int, name: String) {
+    if let i = areas.firstIndex(where: { $0.file == file }) { return (i, areas[i].name) }
+    return (areas.count, (file as NSString).deletingPathExtension.components(separatedBy: "/").last ?? file)
 }
 
-func saveCatalog(_ catalog: NSDictionary, to path: String) {
-    do {
-        var data = try JSONSerialization.data(withJSONObject: catalog,
-                                              options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        data.append(contentsOf: Array("\n".utf8))
-        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
-                                                withIntermediateDirectories: true)
-        try data.write(to: URL(fileURLWithPath: path))
-    } catch {
-        fail(usage: "cannot write \(path): \(error.localizedDescription)")
-    }
+/// What a text is on screen, from the code before `L(` on its line ("text" when the code does not say).
+func kind(before code: String) -> String {
+    let rules: [(String, String)] = [
+        (#"addButton\(withTitle:\s*$|(NSButton|ActionButton|Button)\(title:\s*$|\.prompt\s*=\s*$|primary\.title\s*=\s*$"#,
+         "button"),
+        (#"checkboxWithTitle:\s*$"#, "checkbox"),
+        (#"(\bitem|findItem)\(\s*$|addItem\(withTitle:\s*$|NSMenuItem\(title:\s*$"#, "menu item"),
+        (#"NSMenu\(title:\s*$"#, "menu title"),
+        (#"messageText\s*=\s*$|\balert\(\s*$"#, "alert title"),
+        (#"informativeText\s*=\s*$|\balert\(L\(.*\),\s*$|panel\.message\s*=\s*$"#, "alert or dialog message"),
+        (#"[tT]oolTip\s*[:=]\s*$"#, "tooltip"),
+        (#"accessibilityDescription:\s*$|setAccessibility\w*\(\s*$"#, "VoiceOver description"),
+        (#"placeholderString\s*=\s*$"#, "placeholder in an empty field"),
+        (#"(window|w)\.title\s*=\s*$|makeWindow\(title:\s*$"#, "window title"),
+        (#"column\.title\s*=\s*$"#, "column heading"),
+        (#"heading\.stringValue\s*=\s*$"#, "heading"),
+        (#"(labelWithString:|formLabel\(|\blabel\(|leftLabel:)\s*$"#, "label"),
+        (#"(footnote\.stringValue\s*=|bottomNote:|note\()\s*$"#, "note under a panel or list"),
+        (#"(detail|statusLabel|status)\S*\s*[:=]\s*$|rightMeta:\s*$"#, "status or description line"),
+        (#"\breturn\s*$|throw .*\(\s*$"#, "message (an error or a status)"),
+    ]
+    for (pattern, name) in rules where code.range(of: pattern, options: .regularExpression) != nil { return name }
+    return "text"
 }
 
-func strings(_ catalog: NSDictionary) -> NSMutableDictionary { catalog["strings"] as! NSMutableDictionary }
-
-/// The texts of one language for a key: ["": text] for a plain text, [category: text] for plural variations.
-func texts(_ entry: NSDictionary?, _ language: String) -> [String: (value: String, state: String)] {
-    guard let localization = (entry?["localizations"] as? NSDictionary)?[language] as? NSDictionary else { return [:] }
-    if let unit = localization["stringUnit"] as? NSDictionary, let value = unit["value"] as? String {
-        return ["": (value, unit["state"] as? String ?? "")]
+/// "Area: kind; Area: kind." for a key's uses, in area order.
+func context(_ uses: [Use]) -> String {
+    var seen: [(Int, String, String)] = []
+    for use in uses {
+        let a = area(of: use.file)
+        if !seen.contains(where: { $0.1 == a.name && $0.2 == use.kind }) { seen.append((a.order, a.name, use.kind)) }
     }
-    var result: [String: (value: String, state: String)] = [:]
-    if let plural = (localization["variations"] as? NSDictionary)?["plural"] as? NSDictionary {
-        for case let (category as String, form as NSDictionary) in plural {
-            if let unit = form["stringUnit"] as? NSDictionary, let value = unit["value"] as? String {
-                result[category] = (value, unit["state"] as? String ?? "")
-            }
+    seen.sort { $0.0 < $1.0 }
+    var byArea: [(String, [String])] = []
+    for (_, name, kind) in seen {
+        if let i = byArea.firstIndex(where: { $0.0 == name }) { byArea[i].1.append(kind) } else { byArea.append((name, [kind])) }
+    }
+    return byArea.map { "\($0.0): \($0.1.joined(separator: ", "))" }.joined(separator: "; ") + "."
+}
+
+// MARK: - Language files
+
+struct Entry { var key: String; var value: String; var comment: String; var section: String = "" }
+struct StringsFile { var status: String?; var entries: [Entry] }
+
+func lproj(_ language: String) -> String { "\(localizationPath)/\(language).lproj" }
+func stringsPath(_ language: String, _ table: String) -> String { "\(lproj(language))/\(table).strings" }
+func pluralPath(_ language: String) -> String { "\(lproj(language))/Localizable.stringsdict" }
+
+/// Reads a .strings file as this script writes it: `/* comment */` before `"key" = "value";`, `//` lines for
+/// section titles and the status line. nil when there is no file.
+func readStrings(_ path: String) -> StringsFile? {
+    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+    let c = Array(text)
+    var i = 0, comment = "", status: String?, entries: [Entry] = []
+    func stop(_ why: String) -> Never {
+        let line = c[..<min(i, c.count)].filter { $0 == "\n" }.count + 1
+        fail(usage: "\(path):\(line): \(why)")
+    }
+    func skipSpace() { while i < c.count && c[i].isWhitespace { i += 1 } }
+    func quoted() -> String {
+        guard i < c.count, c[i] == "\"" else { stop("expected a quoted string") }
+        i += 1
+        var out = ""
+        while i < c.count && c[i] != "\"" {
+            if c[i] == "\\" {
+                i += 1
+                guard i < c.count else { stop("unfinished escape") }
+                switch c[i] {
+                case "n": out.append("\n")
+                case "t": out.append("\t")
+                case "r": out.append("\r")
+                case "U", "u":
+                    let hex = String(c[(i + 1)..<min(i + 5, c.count)])
+                    guard let v = UInt32(hex, radix: 16), let s = Unicode.Scalar(v) else { stop("bad \\U escape") }
+                    out.unicodeScalars.append(s)
+                    i += 4
+                default: out.append(c[i])
+                }
+            } else { out.append(c[i]) }
+            i += 1
+        }
+        guard i < c.count else { stop("unfinished string") }
+        i += 1
+        return out
+    }
+    while true {
+        skipSpace()
+        guard i < c.count else { break }
+        if c[i] == "/" && i + 1 < c.count && c[i + 1] == "/" {
+            var line = ""
+            while i < c.count && c[i] != "\n" { line.append(c[i]); i += 1 }
+            if line.hasPrefix("// Status:") { status = String(line.dropFirst("// Status:".count)).trimmingCharacters(in: .whitespaces) }
+        } else if c[i] == "/" && i + 1 < c.count && c[i + 1] == "*" {
+            i += 2
+            var body = ""
+            while i + 1 < c.count && !(c[i] == "*" && c[i + 1] == "/") { body.append(c[i]); i += 1 }
+            guard i + 1 < c.count else { stop("unfinished comment") }
+            i += 2
+            comment = body.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n")
+        } else if c[i] == "\"" {
+            let key = quoted()
+            skipSpace()
+            guard i < c.count, c[i] == "=" else { stop("expected =") }
+            i += 1
+            skipSpace()
+            let value = quoted()
+            skipSpace()
+            guard i < c.count, c[i] == ";" else { stop("expected ;") }
+            i += 1
+            entries.append(Entry(key: key, value: value, comment: comment))
+            comment = ""
+        } else {
+            stop("unexpected \"\(c[i])\"")
         }
     }
+    return StringsFile(status: status, entries: entries)
+}
+
+func quote(_ s: String) -> String {
+    "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        .replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\t", with: "\\t") + "\""
+}
+
+func languageName(_ language: String) -> String {
+    Locale(identifier: "en").localizedString(forIdentifier: language) ?? language
+}
+
+func writeStrings(_ file: StringsFile, language: String, table: String) {
+    var out = "// Deskset — \(table == "InfoPlist" ? "Info.plist texts" : "the app's own text"), "
+        + "\(language == "en" ? "English (the source)" : languageName(language)).\n"
+    if language == "en" {
+        out += "// The keys are the app's English text. `swift scripts/localization.swift sync` writes this file from the code.\n"
+    } else {
+        out += "// Translate the text after \"=\"; keep %@, %lld and the like (or number them, %2$@, to change their order).\n"
+        out += "// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).\n"
+    }
+    if let status = file.status { out += "// Status: \(status)\n" }
+    var section = ""
+    for entry in file.entries {
+        if !entry.section.isEmpty && entry.section != section {
+            section = entry.section
+            out += "\n// MARK: \(section)\n"
+        }
+        out += "\n"
+        if !entry.comment.isEmpty { out += "/* " + entry.comment.replacingOccurrences(of: "\n", with: "\n   ") + " */\n" }
+        out += "\(quote(entry.key)) = \(quote(entry.value));\n"
+    }
+    let path = stringsPath(language, table)
+    try? FileManager.default.createDirectory(atPath: lproj(language), withIntermediateDirectories: true)
+    do { try out.write(toFile: path, atomically: true, encoding: .utf8) } catch { fail(usage: "cannot write \(path)") }
+}
+
+func readPlurals(_ language: String) -> [String: [String: String]] {
+    guard let data = FileManager.default.contents(atPath: pluralPath(language)) else { return [:] }
+    guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+        fail(usage: "\(pluralPath(language)) is not a property list")
+    }
+    var result: [String: [String: String]] = [:]
+    for (key, value) in plist {
+        guard let rule = (value as? [String: Any])?["value"] as? [String: Any] else { continue }
+        var forms: [String: String] = [:]
+        for (category, text) in rule where !category.hasPrefix("NSString") { forms[category] = text as? String }
+        result[key] = forms
+    }
     return result
+}
+
+func writePlurals(_ plurals: [String: [String: String]], language: String) {
+    let path = pluralPath(language)
+    if plurals.isEmpty { try? FileManager.default.removeItem(atPath: path); return }
+    var plist: [String: Any] = [:]
+    for (key, forms) in plurals {
+        // The value type of the number the forms choose by: the key's first integer specifier (lld for %lld).
+        let ns = key as NSString
+        let m = specifier.matches(in: key, range: NSRange(location: 0, length: ns.length))
+            .first { ns.substring(with: $0.range(at: 3)) != "@" && ns.substring(with: $0.range(at: 3)) != "%" }
+        let type = m.map { ($0.range(at: 2).location == NSNotFound ? "" : ns.substring(with: $0.range(at: 2)))
+            + ns.substring(with: $0.range(at: 3)) } ?? "lld"
+        var rule: [String: Any] = ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType", "NSStringFormatValueTypeKey": type]
+        for (category, text) in forms { rule[category] = text }
+        plist[key] = ["NSStringLocalizedFormatKey": "%#@value@", "value": rule]
+    }
+    do {
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try FileManager.default.createDirectory(atPath: lproj(language), withIntermediateDirectories: true)
+        try data.write(to: URL(fileURLWithPath: path))
+    } catch { fail(usage: "cannot write \(path)") }
 }
 
 let specifier = try! NSRegularExpression(pattern:
@@ -384,57 +576,137 @@ func specifiers(_ text: String) -> [String] {
     return found.keys.sorted().map { found[$0]! }
 }
 
-func catalogProblems(_ catalog: NSDictionary, uses: [Use], requireAllLanguages: Bool) -> [Problem] {
-    var problems: [Problem] = []
-    let entries = strings(catalog)
-    let usedKeys = Set(uses.map(\.key))
-    for use in uses where entries[use.key] == nil {
-        problems.append(Problem(file: use.file, line: use.line,
-                                message: "\"\(use.key)\" is not in \(catalogPath) (run: swift scripts/localization.swift sync)"))
-    }
-    for case let key as String in entries.allKeys where !usedKeys.contains(key) {
-        problems.append(Problem(file: catalogPath, line: 0, message: "\"\(key)\" is no longer used (run sync)"))
-    }
-    for case let (key as String, entry as NSDictionary) in entries {
-        let english = texts(entry, "en")
-        let expected = specifiers(english["other"]?.value ?? key)
-        for language in languages + ["en"] {
-            let forms = texts(entry, language)
-            if forms.isEmpty {
-                if language != "en" && requireAllLanguages {
-                    problems.append(Problem(file: catalogPath, line: 0, message: "\"\(key)\" has no \(language) text"))
-                }
-                continue
-            }
-            if forms[""] == nil {
-                // Plural variations: every category of the language, each with the key's specifiers (a form may leave
-                // the number out, as "one" often does, but not add or change one).
-                let needed = pluralCategories[language] ?? ["one", "other"]
-                for category in needed where forms[category] == nil {
-                    problems.append(Problem(file: catalogPath, line: 0,
-                                            message: "\"\(key)\" \(language) lacks the plural form \(category)"))
-                }
-                for (category, form) in forms {
-                    let found = specifiers(form.value)
-                    if category == "other" ? found != expected : !isSubsequence(found, of: expected) {
-                        problems.append(Problem(file: catalogPath, line: 0,
-                                                message: "\"\(key)\" \(language) \(category): format \(found) ≠ \(expected)"))
-                    }
-                }
-            } else if let text = forms[""], specifiers(text.value) != expected {
-                problems.append(Problem(file: catalogPath, line: 0,
-                                        message: "\"\(key)\" \(language): format \(specifiers(text.value)) ≠ \(expected)"))
-            } else if let text = forms[""], text.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                problems.append(Problem(file: catalogPath, line: 0, message: "\"\(key)\" \(language) text is empty"))
-            }
-        }
-    }
-    return problems
-}
-
 func isSubsequence(_ a: [String], of b: [String]) -> Bool {
     // Positions matter: a form without the number keeps the other arguments' kinds in order.
     a.isEmpty || a == b || (a.count < b.count && b.dropFirst(b.count - a.count).elementsEqual(a)) || b.starts(with: a)
+}
+
+/// The English a key shows: the key without its `|context` (`Edit|menu` shows "Edit").
+func shownText(_ key: String) -> String {
+    key.split(separator: "|", maxSplits: 1).first.map(String.init) ?? key
+}
+
+/// en.lproj's entries for the code's keys: first use first (in area order), comments made from every use, the hand-
+/// written "Note:" lines of the existing file kept.
+func englishEntries(_ uses: [Use], existing: StringsFile?, plurals: Set<String>) -> [Entry] {
+    var byKey: [String: [Use]] = [:]
+    for use in uses { byKey[use.key, default: []].append(use) }
+    let notes = Dictionary((existing?.entries ?? []).map { entry in
+        (entry.key, entry.comment.split(separator: "\n").filter { $0.hasPrefix("Note:") }.joined(separator: "\n"))
+    }, uniquingKeysWith: { a, _ in a })
+    let ordered = byKey.keys.sorted { a, b in
+        let ua = byKey[a]!.min { (area(of: $0.file).order, $0.file, $0.line) < (area(of: $1.file).order, $1.file, $1.line) }!
+        let ub = byKey[b]!.min { (area(of: $0.file).order, $0.file, $0.line) < (area(of: $1.file).order, $1.file, $1.line) }!
+        return (area(of: ua.file).order, ua.file, ua.line, a) < (area(of: ub.file).order, ub.file, ub.line, b)
+    }
+    return ordered.map { key in
+        let uses = byKey[key]!
+        let first = uses.min { (area(of: $0.file).order, $0.file, $0.line) < (area(of: $1.file).order, $1.file, $1.line) }!
+        var comment = context(uses)
+        if plurals.contains(key) { comment += " Plural forms: Localizable.stringsdict." }
+        if let note = notes[key], !note.isEmpty { comment += "\n" + note }
+        return Entry(key: key, value: shownText(key), comment: comment, section: area(of: first.file).name)
+    }
+}
+
+/// A language's entries in en's order and with en's comments; a key the language lacks is left out.
+func reordered(_ file: StringsFile?, like english: [Entry], skipping: Set<String> = []) -> StringsFile {
+    let values = Dictionary((file?.entries ?? []).map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+    return StringsFile(status: file?.status, entries: english.compactMap { e in
+        guard !skipping.contains(e.key), let value = values[e.key] else { return nil }
+        return Entry(key: e.key, value: value, comment: e.comment, section: e.section)
+    })
+}
+
+/// Whether macOS reads the file as this script does (the old-style plist parser behind Bundle).
+func appleReads(_ path: String, _ file: StringsFile) -> Bool {
+    guard let data = FileManager.default.contents(atPath: path),
+          let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String] else {
+        return false
+    }
+    return plist == Dictionary(file.entries.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+}
+
+func textProblems(_ key: String, _ language: String, _ value: String, expected: [String], file: String) -> [Problem] {
+    if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return [Problem(file: file, line: 0, message: "\"\(key)\" \(language) text is empty")]
+    }
+    let found = specifiers(value)
+    return found == expected ? []
+        : [Problem(file: file, line: 0, message: "\"\(key)\": format \(found) ≠ \(expected)")]
+}
+
+func languageFileProblems(uses: [Use]) -> [Problem] {
+    var problems: [Problem] = []
+    let enPath = stringsPath("en", "Localizable")
+    guard let english = readStrings(enPath) else { return [Problem(file: enPath, line: 0, message: "missing")] }
+    if !appleReads(enPath, english) { problems.append(Problem(file: enPath, line: 0, message: "macOS cannot read it")) }
+    let englishKeys = english.entries.map(\.key)
+    let used = Set(uses.map(\.key))
+    for use in uses where !englishKeys.contains(use.key) {
+        problems.append(Problem(file: use.file, line: use.line,
+                                message: "\"\(use.key)\" is not in \(enPath) (run: swift scripts/localization.swift sync)"))
+    }
+    for key in englishKeys where !used.contains(key) {
+        problems.append(Problem(file: enPath, line: 0, message: "\"\(key)\" is no longer used (run sync)"))
+    }
+    for e in english.entries where e.value != shownText(e.key) {
+        problems.append(Problem(file: enPath, line: 0, message: "\"\(e.key)\": the English text must equal its key"))
+    }
+    let englishPlurals = readPlurals("en")
+    for key in englishPlurals.keys where !used.contains(key) {
+        problems.append(Problem(file: pluralPath("en"), line: 0, message: "\"\(key)\" is no longer used"))
+    }
+    if Set(englishKeys) != used { return problems }   // sync first; the languages are compared with en's keys
+    let pluralKeys = Set(englishPlurals.keys)
+    for language in languages {
+        let path = stringsPath(language, "Localizable")
+        guard let file = readStrings(path) else {
+            problems.append(Problem(file: path, line: 0, message: "missing"))
+            continue
+        }
+        if !appleReads(path, file) { problems.append(Problem(file: path, line: 0, message: "macOS cannot read it")) }
+        let values = Dictionary(file.entries.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+        for key in englishKeys where !pluralKeys.contains(key) {
+            guard let value = values[key] else {
+                problems.append(Problem(file: path, line: 0, message: "\"\(key)\" has no \(language) text"))
+                continue
+            }
+            problems += textProblems(key, language, value, expected: specifiers(key), file: path)
+        }
+        for key in values.keys where !used.contains(key) || pluralKeys.contains(key) {
+            problems.append(Problem(file: path, line: 0, message: "\"\(key)\" should not be here (run sync)"))
+        }
+        let plurals = readPlurals(language)
+        for key in pluralKeys {
+            guard let forms = plurals[key] else {
+                problems.append(Problem(file: pluralPath(language), line: 0, message: "\"\(key)\" has no plural forms"))
+                continue
+            }
+            let expected = specifiers(englishPlurals[key]?["other"] ?? key)
+            for category in pluralCategories[language] ?? ["one", "other"] where forms[category] == nil {
+                problems.append(Problem(file: pluralPath(language), line: 0, message: "\"\(key)\" lacks the form \(category)"))
+            }
+            for (category, form) in forms {
+                let found = specifiers(form)
+                if category == "other" ? found != expected : !isSubsequence(found, of: expected) {
+                    problems.append(Problem(file: pluralPath(language), line: 0,
+                                            message: "\"\(key)\" \(category): format \(found) ≠ \(expected)"))
+                }
+            }
+        }
+        for key in plurals.keys where !pluralKeys.contains(key) {
+            problems.append(Problem(file: pluralPath(language), line: 0, message: "\"\(key)\" is not a plural key in en"))
+        }
+    }
+    // Exactly the folders of the languages, and nothing that the app would load besides them.
+    let folders = ((try? FileManager.default.contentsOfDirectory(atPath: localizationPath)) ?? [])
+        .filter { $0.hasSuffix(".lproj") }.map { String($0.dropLast(".lproj".count)) }
+    if Set(folders) != Set(["en"] + languages) {
+        problems.append(Problem(file: localizationPath, line: 0,
+                                message: "language folders \(folders.sorted()) ≠ en + Localization.languages"))
+    }
+    return problems
 }
 
 // MARK: - Info.plist
@@ -453,8 +725,6 @@ func infoPlistProblems() -> [Problem] {
           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
         return [Problem(file: "scripts/build-app.sh", line: 0, message: "--plist did not write a readable Info.plist")]
     }
-    let catalog = loadCatalog(infoPlistCatalogPath)
-    let entries = strings(catalog)
     let localizations = (plist["CFBundleLocalizations"] as? [String]) ?? []
     if Set(localizations) != Set(["en"] + languages) {
         problems.append(Problem(file: "scripts/build-app.sh", line: 0,
@@ -473,22 +743,26 @@ func infoPlistProblems() -> [Problem] {
     for type in (plist["UTImportedTypeDeclarations"] as? [[String: Any]]) ?? [] {
         if let name = type["UTTypeDescription"] as? String { shown[name] = name }
     }
-    for (key, english) in shown {
-        guard let entry = entries[key] as? NSDictionary else {
-            problems.append(Problem(file: infoPlistCatalogPath, line: 0, message: "\"\(key)\" is missing"))
+    for language in ["en"] + languages {
+        let path = stringsPath(language, "InfoPlist")
+        guard let file = readStrings(path) else {
+            problems.append(Problem(file: path, line: 0, message: "missing"))
             continue
         }
-        let catalogEnglish = texts(entry, "en")[""]?.value ?? key
-        if catalogEnglish != english {
-            problems.append(Problem(file: infoPlistCatalogPath, line: 0,
-                                    message: "\"\(key)\": the English text differs from build-app.sh's Info.plist"))
+        if !appleReads(path, file) { problems.append(Problem(file: path, line: 0, message: "macOS cannot read it")) }
+        let values = Dictionary(file.entries.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+        for (key, english) in shown {
+            guard let value = values[key], !value.trimmingCharacters(in: .whitespaces).isEmpty else {
+                problems.append(Problem(file: path, line: 0, message: "\"\(key)\" has no text"))
+                continue
+            }
+            if language == "en" && value != english {
+                problems.append(Problem(file: path, line: 0, message: "\"\(key)\" differs from build-app.sh's Info.plist"))
+            }
         }
-        for language in languages where texts(entry, language).isEmpty {
-            problems.append(Problem(file: infoPlistCatalogPath, line: 0, message: "\"\(key)\" has no \(language) text"))
+        for key in values.keys where shown[key] == nil {
+            problems.append(Problem(file: path, line: 0, message: "\"\(key)\" is not in the Info.plist"))
         }
-    }
-    for case let key as String in entries.allKeys where shown[key] == nil {
-        problems.append(Problem(file: infoPlistCatalogPath, line: 0, message: "\"\(key)\" is not in the Info.plist"))
     }
     return problems
 }
@@ -532,8 +806,7 @@ func printProblems(_ problems: [Problem]) {
 switch command {
 case "check":
     let scanned = scanSources()
-    let catalog = loadCatalog(catalogPath)
-    var problems = scanned.problems + catalogProblems(catalog, uses: scanned.uses, requireAllLanguages: true)
+    var problems = scanned.problems + languageFileProblems(uses: scanned.uses)
     problems += infoPlistProblems() + languageListProblems()
     printProblems(problems)
     let keys = Set(scanned.uses.map(\.key)).count
@@ -543,33 +816,33 @@ case "check":
 
 case "sync":
     let scanned = scanSources()
-    let catalog = loadCatalog(catalogPath)
-    let entries = strings(catalog)
-    let used = Set(scanned.uses.map(\.key))
-    var added = 0, removed = 0
-    for key in used where entries[key] == nil {
-        entries[key] = ["extractionState": "manual"] as NSMutableDictionary
-        added += 1
+    let plurals = readPlurals("en")
+    let english = englishEntries(scanned.uses, existing: readStrings(stringsPath("en", "Localizable")),
+                                 plurals: Set(plurals.keys))
+    writeStrings(StringsFile(status: nil, entries: english), language: "en", table: "Localizable")
+    let used = Set(english.map(\.key))
+    writePlurals(plurals.filter { used.contains($0.key) }, language: "en")
+    let enInfo = readStrings(stringsPath("en", "InfoPlist"))?.entries ?? []
+    for language in languages {
+        let file = readStrings(stringsPath(language, "Localizable"))
+        writeStrings(reordered(file, like: english, skipping: Set(plurals.keys)), language: language, table: "Localizable")
+        writePlurals(readPlurals(language).filter { used.contains($0.key) }, language: language)
+        let info = readStrings(stringsPath(language, "InfoPlist"))
+        writeStrings(reordered(info, like: enInfo), language: language, table: "InfoPlist")
     }
-    for case let key as String in entries.allKeys where !used.contains(key) {
-        entries.removeObject(forKey: key)
-        removed += 1
-    }
-    saveCatalog(catalog, to: catalogPath)
-    print("\(catalogPath): \(added) added, \(removed) removed, \(entries.count) keys")
+    print("\(lproj("en")): \(english.count) keys, \(plurals.count) with plural forms; \(languages.count) languages re-ordered")
 
 case "report":
     let scanned = scanSources()
-    let catalog = loadCatalog(catalogPath)
-    let entries = strings(catalog)
+    let english = readStrings(stringsPath("en", "Localizable"))?.entries ?? []
+    let pluralKeys = Set(readPlurals("en").keys)
     for language in languages {
-        var reviewed = 0, review = 0, missing = 0
-        for case let entry as NSDictionary in entries.allValues {
-            let forms = texts(entry, language)
-            if forms.isEmpty { missing += 1 } else if forms.values.allSatisfy({ $0.state == "translated" }) { reviewed += 1 }
-            else { review += 1 }
-        }
-        print("\(language.padding(toLength: 8, withPad: " ", startingAt: 0)) reviewed \(reviewed), needs review \(review), missing \(missing)")
+        let file = readStrings(stringsPath(language, "Localizable"))
+        let present = Set((file?.entries ?? []).map(\.key)).union(readPlurals(language).keys)
+        let missing = english.filter { !present.contains($0.key) }.count
+        let status = file?.status ?? "no status"
+        print("\(language.padding(toLength: 8, withPad: " ", startingAt: 0)) \(english.count - missing) of \(english.count) "
+              + "(\(pluralKeys.count) plural)  \(status)")
     }
     var perFile: [String: Int] = [:]
     for p in scanned.uncovered { perFile[p.file, default: 0] += 1 }
@@ -578,18 +851,15 @@ case "report":
 
 case "export":
     guard let directory = commandArguments.first else { fail(usage: "export needs a directory") }
-    let entries = strings(loadCatalog(catalogPath))
-    let keys = (entries.allKeys as! [String]).sorted()
+    let english = readStrings(stringsPath("en", table))?.entries ?? []
+    let pluralKeys = table == "Localizable" ? Set(readPlurals("en").keys) : []
     var lines: [String] = []
-    for (n, key) in keys.enumerated() {
-        let plural = !(texts(entries[key] as? NSDictionary, "en")["other"]?.value ?? "").isEmpty
-        // The English text: the key, or the English value of a key that names its text (InfoPlist's NS…Description).
-        let english = texts(entries[key] as? NSDictionary, "en")[""]?.value ?? key
-        lines.append("\(n + 1)\t\(escapeTSV(english))" + (plural ? "\tplural" : ""))
+    for (n, e) in english.enumerated() {
+        lines.append("\(n + 1)\t\(escapeTSV(e.value))\t\(pluralKeys.contains(e.key) ? "plural" : "")\t\(escapeTSV(e.comment))")
     }
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     try! (lines.joined(separator: "\n") + "\n").write(toFile: directory + "/source.tsv", atomically: true, encoding: .utf8)
-    print("wrote \(directory)/source.tsv (\(keys.count) keys)")
+    print("wrote \(directory)/source.tsv (\(english.count) \(table) texts)")
 
 case "import":
     guard commandArguments.count >= 2 else { fail(usage: "import needs a directory and languages") }
@@ -597,62 +867,64 @@ case "import":
     guard let source = try? String(contentsOfFile: directory + "/source.tsv", encoding: .utf8) else {
         fail(usage: "cannot read \(directory)/source.tsv")
     }
-    let catalog = loadCatalog(catalogPath)
-    let entries = strings(catalog)
-    // Numbers count the catalog's keys in export order; source.tsv's English must still match (no key was added or
-    // changed since the export).
-    let sortedKeys = (entries.allKeys as! [String]).sorted()
-    var keyByNumber: [Int: String] = [:]
+    let english = readStrings(stringsPath("en", table))?.entries ?? []
+    // The numbers count en's entries; source.tsv's English must still match (nothing changed since the export).
     for row in source.split(separator: "\n") {
         let fields = row.split(separator: "\t", omittingEmptySubsequences: false)
         guard fields.count >= 2, let n = Int(fields[0]) else { continue }
-        guard n >= 1, n <= sortedKeys.count,
-              unescapeTSV(String(fields[1])) == (texts(entries[sortedKeys[n - 1]] as? NSDictionary, "en")[""]?.value
-                                                 ?? sortedKeys[n - 1]) else {
-            fail(usage: "\(directory)/source.tsv no longer matches the catalog (line \(n)): export again")
+        guard n >= 1, n <= english.count, unescapeTSV(String(fields[1])) == english[n - 1].value else {
+            fail(usage: "\(directory)/source.tsv no longer matches en.lproj (line \(n)): export again")
         }
-        keyByNumber[n] = sortedKeys[n - 1]
     }
+    let pluralKeys = table == "Localizable" ? Set(readPlurals("en").keys) : []
     let categoryPattern = try! NSRegularExpression(pattern: #"\{(zero|one|two|few|many|other)\}"#)
     var failed = false
     for language in commandArguments.dropFirst() {
         guard let text = try? String(contentsOfFile: directory + "/\(language).tsv", encoding: .utf8) else {
             fail(usage: "cannot read \(directory)/\(language).tsv")
         }
-        var imported = 0, kept = 0
+        var file = readStrings(stringsPath(language, table)) ?? StringsFile(status: nil, entries: [])
+        var values = Dictionary(file.entries.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a })
+        var plurals = table == "Localizable" ? readPlurals(language) : [:]
+        var imported = 0
         for row in text.split(separator: "\n") {
             let fields = row.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard fields.count == 2, let n = Int(fields[0].trimmingCharacters(in: .whitespaces)),
-                  let key = keyByNumber[n], let entry = entries[key] as? NSMutableDictionary else {
+                  n >= 1, n <= english.count else {
                 print("\(language).tsv: skipped line \(row.prefix(40))")
                 failed = true
                 continue
             }
+            let key = english[n - 1].key
             let value = unescapeTSV(String(fields[1]))
-            let existing = texts(entry, language)
-            if !existing.isEmpty && existing.values.allSatisfy({ $0.state == "translated" }) { kept += 1; continue }
-            let localizations = (entry["localizations"] as? NSMutableDictionary) ?? NSMutableDictionary()
-            entry["localizations"] = localizations
-            let ns = value as NSString
-            let marks = categoryPattern.matches(in: value, range: NSRange(location: 0, length: ns.length))
-            if marks.isEmpty {
-                localizations[language] = ["stringUnit": ["state": "needs_review", "value": value]]
-            } else {
-                let plural = NSMutableDictionary()
+            if pluralKeys.contains(key) {
+                let ns = value as NSString
+                let marks = categoryPattern.matches(in: value, range: NSRange(location: 0, length: ns.length))
+                guard !marks.isEmpty else {
+                    print("\(language).tsv: line \(n) is a plural key; write {one}… {other}…")
+                    failed = true
+                    continue
+                }
+                var forms: [String: String] = [:]
                 for (index, mark) in marks.enumerated() {
                     let start = mark.range.location + mark.range.length
                     let end = index + 1 < marks.count ? marks[index + 1].range.location : ns.length
-                    let form = ns.substring(with: NSRange(location: start, length: end - start))
+                    forms[ns.substring(with: mark.range(at: 1))] = ns.substring(with: NSRange(location: start, length: end - start))
                         .trimmingCharacters(in: .whitespaces)
-                    plural[ns.substring(with: mark.range(at: 1))] = ["stringUnit": ["state": "needs_review", "value": form]]
                 }
-                localizations[language] = ["variations": ["plural": plural]]
+                plurals[key] = forms
+            } else {
+                values[key] = value
             }
             imported += 1
         }
-        print("\(language): \(imported) imported as needs review, \(kept) reviewed texts kept")
+        file.entries = english.compactMap { e in
+            values[e.key].map { Entry(key: e.key, value: $0, comment: e.comment, section: e.section) }
+        }
+        writeStrings(file, language: language, table: table)
+        if table == "Localizable" { writePlurals(plurals, language: language) }
+        print("\(language): \(imported) \(table) texts imported")
     }
-    saveCatalog(catalog, to: catalogPath)
     exit(failed ? 1 : 0)
 
 default:

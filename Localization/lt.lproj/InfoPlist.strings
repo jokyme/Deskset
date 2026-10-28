@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Lithuanian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Aplankas";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Apvalkalai klausia programos „Muzika“ arba Spotify, kas groja, kad parodytų dabartinį takelį ir valdytų atkūrimą, o naudojant tokį apvalkalą prašo „Finder“ išvalyti šiukšlinę arba atidaryti informacijos langą.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Garso vizualizavimo apvalkalai rodo jūsų „Mac“ kompiuterio atkuriamo garso lygį ir spektrą. Garsas analizuojamas jūsų „Mac“ kompiuteryje, kol toks apvalkalas įkeltas; jis niekada neįrašomas, nesaugomas ir niekur nesiunčiamas.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Apvalkalas arba jo scenarijus skaito arba rašo failus jūsų aplanke „Darbalaukis“ (pvz., failų sąrašo, užrašų ar paleidiklio apvalkalas).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Apvalkalas arba jo scenarijus skaito arba rašo failus jūsų aplanke „Dokumentai“ (pvz., failų sąrašo, užrašų ar paleidiklio apvalkalas).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Apvalkalas arba jo scenarijus skaito arba rašo failus jūsų aplanke „Atsisiuntimai“ (pvz., failų sąrašo ar paleidiklio apvalkalas).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Laisvoji programinė įranga pagal GNU GPL v3. Paleidžia Rainmeter sukurtus apvalkalus; nesusijusi su Rainmeter. Rainmeter yra atitinkamų savininkų prekių ženklas.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Apvalkalas skaito informaciją iš įrenginio jūsų vietiniame tinkle, pvz., maršruto parinktuvo būsenos puslapio ar namų serverio.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Apvalkalai, kuriems nustatėte naudoti dabartinę buvimo vietą, nuskaito apytikslę jūsų buvimo vietą, kad parodytų vietinius orus ir saulės tekėjimo bei laidos laiką. Ji suapvalinama maždaug iki 1 km, siunčiama tik orų tarnybai (MET Norway) prognozėms gauti ir niekada nesaugoma. „macOS“ šio leidimo taip pat reikia, kad „Wi-Fi“ apvalkalai galėtų rodyti tinklų pavadinimus.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Apvalkalai, kuriems nustatėte naudoti dabartinę buvimo vietą, nuskaito apytikslę jūsų buvimo vietą, kad parodytų vietinius orus ir saulės tekėjimo bei laidos laiką. Ji suapvalinama maždaug iki 1 km, siunčiama tik orų tarnybai (MET Norway) prognozėms gauti ir niekada nesaugoma. „macOS“ šio leidimo taip pat reikia, kad „Wi-Fi“ apvalkalai galėtų rodyti tinklų pavadinimus.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Apvalkalas nori rodyti garso įvesties (mikrofono ar garso sąsajos) lygį. Garsas analizuojamas jūsų „Mac“ kompiuteryje, kol apvalkalas įkeltas; jis niekada neįrašomas, nesaugomas ir niekur nesiunčiamas.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Apvalkalas arba jo scenarijus skaito failus tinklo tome (pvz., disko ar failų sąrašo apvalkalas).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Apvalkalas arba jo scenarijus skaito failus keičiamajame diske (pvz., disko ar failų sąrašo apvalkalas).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Apvalkalų paketas";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP archyvas";

@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Croatian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Mapa";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Skinovi pitaju aplikaciju Glazba ili Spotify što se reproducira kako bi prikazali trenutačnu pjesmu i upravljali reprodukcijom, a kada upotrebljavate takav skin, traže od Findera da isprazni smeće ili otvori prozor Informacije.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Skinovi za vizualizaciju zvuka prikazuju razinu i spektar zvuka koji reproducira vaš Mac. Zvuk se analizira na vašem Macu dok je takav skin učitan; nikada se ne snima, ne sprema i ne šalje nikamo.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Skin ili njegova skripta čita ili zapisuje datoteke u mapi Radna površina (na primjer skin s popisom datoteka, bilješkama ili za pokretanje aplikacija).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Skin ili njegova skripta čita ili zapisuje datoteke u mapi Dokumenti (na primjer skin s popisom datoteka, bilješkama ili za pokretanje aplikacija).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Skin ili njegova skripta čita ili zapisuje datoteke u mapi Preuzimanja (na primjer skin s popisom datoteka ili za pokretanje aplikacija).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Slobodan softver pod licencijom GNU GPL v3. Pokreće skinove izrađene za Rainmeter; nije povezan s Rainmeterom. Rainmeter je zaštitni znak odgovarajućih vlasnika.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Skin čita informacije s uređaja u vašoj lokalnoj mreži, kao što je stranica stanja usmjerivača ili kućnog poslužitelja.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Skinovi koje ste postavili da upotrebljavaju vašu trenutačnu lokaciju čitaju vašu približnu lokaciju kako bi prikazali lokalno vrijeme te vrijeme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne sprema. macOS ovo dopuštenje traži i kako bi Wi-Fi skinovi mogli prikazivati nazive mreža.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Skinovi koje ste postavili da upotrebljavaju vašu trenutačnu lokaciju čitaju vašu približnu lokaciju kako bi prikazali lokalno vrijeme te vrijeme izlaska i zalaska sunca. Lokacija se zaokružuje na oko 1 km, šalje se samo meteorološkoj službi (MET Norway) radi prognoze i nikada se ne sprema. macOS ovo dopuštenje traži i kako bi Wi-Fi skinovi mogli prikazivati nazive mreža.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Skin želi prikazivati razinu audioulaza (mikrofona ili audiosučelja). Zvuk se analizira na vašem Macu dok je skin učitan; nikada se ne snima, ne sprema i ne šalje nikamo.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Skin ili njegova skripta čita datoteke na mrežnom volumenu (na primjer skin za disk ili popis datoteka).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Skin ili njegova skripta čita datoteke na prijenosnom pogonu (na primjer skin za disk ili popis datoteka).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Paket skinova";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP arhiva";

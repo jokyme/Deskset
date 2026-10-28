@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Thai.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "โฟลเดอร์";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "สกินจะถามแอปเพลงหรือ Spotify ว่ากำลังเล่นอะไรอยู่เพื่อแสดงแทร็กปัจจุบันและควบคุมการเล่น และขอให้ Finder ล้างถังขยะหรือเปิดหน้าต่างรายละเอียดเมื่อคุณใช้สกินลักษณะนี้";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "สกินแสดงภาพเสียงจะแสดงระดับและสเปกตรัมของเสียงที่ Mac กำลังเล่น เสียงจะได้รับการวิเคราะห์บน Mac ของคุณขณะที่สกินลักษณะนี้โหลดอยู่ และจะไม่ถูกบันทึก เก็บ หรือส่งไปที่ใดเลย";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "สกินหรือสคริปต์ของสกินอ่านหรือเขียนไฟล์ในโฟลเดอร์เดสก์ท็อปของคุณ (เช่น สกินรายการไฟล์ บันทึกย่อ หรือตัวเปิดแอป)";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "สกินหรือสคริปต์ของสกินอ่านหรือเขียนไฟล์ในโฟลเดอร์เอกสารของคุณ (เช่น สกินรายการไฟล์ บันทึกย่อ หรือตัวเปิดแอป)";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "สกินหรือสคริปต์ของสกินอ่านหรือเขียนไฟล์ในโฟลเดอร์ดาวน์โหลดของคุณ (เช่น สกินรายการไฟล์หรือตัวเปิดแอป)";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "ซอฟต์แวร์เสรีภายใต้ GNU GPL v3 ใช้งานสกินที่สร้างสำหรับ Rainmeter ได้ แต่ไม่มีส่วนเกี่ยวข้องกับ Rainmeter โดย Rainmeter เป็นเครื่องหมายการค้าของเจ้าของที่เกี่ยวข้อง";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "สกินอ่านข้อมูลจากอุปกรณ์ในเครือข่ายเฉพาะที่ของคุณ เช่น หน้าสถานะของเราเตอร์หรือเซิร์ฟเวอร์ภายในบ้าน";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "สกินที่คุณตั้งค่าให้ใช้ตำแหน่งปัจจุบันจะอ่านตำแหน่งโดยประมาณของคุณเพื่อแสดงสภาพอากาศในพื้นที่และเวลาพระอาทิตย์ขึ้นตก ตำแหน่งจะถูกปัดเศษเป็นประมาณ 1 กม. ส่งไปยังบริการพยากรณ์อากาศ (MET Norway) เท่านั้นเพื่อใช้พยากรณ์ และจะไม่ถูกจัดเก็บ นอกจากนี้ macOS ยังกำหนดให้ต้องมีสิทธิ์นี้เพื่อให้สกิน Wi-Fi แสดงชื่อเครือข่ายได้";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "สกินที่คุณตั้งค่าให้ใช้ตำแหน่งปัจจุบันจะอ่านตำแหน่งโดยประมาณของคุณเพื่อแสดงสภาพอากาศในพื้นที่และเวลาพระอาทิตย์ขึ้นตก ตำแหน่งจะถูกปัดเศษเป็นประมาณ 1 กม. ส่งไปยังบริการพยากรณ์อากาศ (MET Norway) เท่านั้นเพื่อใช้พยากรณ์ และจะไม่ถูกจัดเก็บ นอกจากนี้ macOS ยังกำหนดให้ต้องมีสิทธิ์นี้เพื่อให้สกิน Wi-Fi แสดงชื่อเครือข่ายได้";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "สกินต้องการแสดงระดับของอินพุตเสียง (ไมโครโฟนหรืออุปกรณ์ออดิโออินเทอร์เฟซ) เสียงจะได้รับการวิเคราะห์บน Mac ของคุณขณะที่สกินโหลดอยู่ และจะไม่ถูกบันทึก เก็บ หรือส่งไปที่ใดเลย";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "สกินหรือสคริปต์ของสกินอ่านไฟล์บนวอลุ่มเครือข่าย (เช่น สกินดิสก์หรือรายการไฟล์)";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "สกินหรือสคริปต์ของสกินอ่านไฟล์บนไดรฟ์แบบถอดได้ (เช่น สกินดิสก์หรือรายการไฟล์)";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "แพ็กเกจสกิน";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ไฟล์ ZIP";

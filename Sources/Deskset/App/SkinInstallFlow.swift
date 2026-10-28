@@ -62,9 +62,9 @@ struct InstallSummary: Equatable {
                 .map { String($0.dropFirst(root.count + 1)) }
             guard existing.contains(root.lowercased()) else { return Line(text: root, detail: nil, configs: configs) }
             let detail = m.mergeSkins
-                ? (m.packageFormat == .rmskin ? L("adds to the installed skins; no backup or variable preservation")
-                    : L("adds to the installed skins"))
-                : L("replaces the installed version")
+                ? (m.packageFormat == .rmskin ? L("merged into the installed copy, without a backup or kept variables")
+                    : L("merged into the installed copy"))
+                : L("replaces the installed copy")
             return Line(text: root, detail: detail, configs: configs)
         }
         layouts = inspection.layouts

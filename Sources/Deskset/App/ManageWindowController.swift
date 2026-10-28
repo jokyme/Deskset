@@ -413,7 +413,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         ])
         split.addArrangedSubview(left)
         split.addArrangedSubview(detailScroll)
-        left.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
+        // The pop-up's title must fit (about 120 pt of the sidebar is its margins, arrows and the two buttons): a
+        // longer language widens the sidebar instead of cutting "Active skins" short.
+        let titleWidth = (L("Active skins") as NSString)
+            .size(withAttributes: [.font: activeSkinsPopup.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
+        left.widthAnchor.constraint(greaterThanOrEqualToConstant: max(200, ceil(titleWidth) + 124)).isActive = true
         left.widthAnchor.constraint(lessThanOrEqualToConstant: 420).isActive = true
         let preferred = left.widthAnchor.constraint(equalToConstant: 260)
         preferred.priority = .defaultLow

@@ -53,7 +53,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
     let defaultZoomField = NSTextField()
     let defaultZoomStepper = SkinZoomStepper()
-    let forceZoomBox = NSButton(checkboxWithTitle: L("Force"), target: nil, action: nil)
+    let forceZoomBox = NSButton(checkboxWithTitle: L("Apply to all skins"), target: nil, action: nil)
     let disableDraggingBox = NSButton(checkboxWithTitle: L("Disable dragging"), target: nil, action: nil)
     let resetStatisticsButton = NSButton(title: L("Reset statistics"), target: nil, action: nil)
 
@@ -296,7 +296,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         reveal.controlSize = .small
         let folder = NSStackView(views: [path, reveal])
         folder.spacing = 8
-        let loginNote = note(LaunchAtLogin.isAvailable ? L("Your skins come back when you log in.")
+        let loginNote = note(LaunchAtLogin.isAvailable ? L("Deskset opens with your skins when you log in.")
                                                        : L("Available when Deskset runs from the Applications folder."))
         let updateButtons = NSStackView(views: [checkUpdatesButton, viewUpdateButton])
         updateButtons.spacing = 8
@@ -312,7 +312,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             [NSGridCell.emptyContentView, disableDraggingBox],
             [NSGridCell.emptyContentView, resetStatisticsButton],
             [label(L("Updates:")), automaticUpdatesBox],
-            [NSGridCell.emptyContentView, note(L("Checks daily. Updates download here; you choose when to install and relaunch."))],
+            [NSGridCell.emptyContentView, note(L("Deskset checks once a day and downloads updates itself; you choose when to install them."))],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
         ], spacingAfter: [0: 8, 2: 8, 3: 8, 5: 8])

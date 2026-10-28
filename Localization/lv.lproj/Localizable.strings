@@ -1,0 +1,1707 @@
+// Deskset — the app's own text, Latvian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+// MARK: Main menu
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+"About Deskset" = "Par Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Settings…" = "Iestatījumi…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Manage Skins…" = "Pārvaldīt apvalkus…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Install Skin…" = "Instalēt apvalku…";
+
+/* Main menu: menu item. */
+"Hide Deskset" = "Paslēpt Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Quit Deskset" = "Iziet no Deskset";
+
+/* Main menu: menu title. */
+"File" = "Fails";
+
+/* Main menu: menu item; Manage window: button; New Skin window: button.
+   Note: Menu command and button (Apple's standard term). */
+"Save" = "Saglabāt";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+   Note: Menu command and button (Apple's standard term). */
+"Close" = "Aizvērt";
+
+/* Main menu: menu title.
+   Note: The title of the Edit menu in the menu bar (Apple's standard name for it). */
+"Edit|menu" = "Rediģēt";
+
+/* Main menu: menu item. */
+"Undo" = "Atsaukt";
+
+/* Main menu: menu item. */
+"Redo" = "Atkārtot";
+
+/* Main menu: menu item. */
+"Cut" = "Izgriezt";
+
+/* Main menu: menu item. */
+"Copy" = "Kopēt";
+
+/* Main menu: menu item. */
+"Paste" = "Ielīmēt";
+
+/* Main menu: menu item. */
+"Select All" = "Atlasīt visu";
+
+/* Main menu: menu title, menu item.
+   Note: The title of the Find submenu in the Edit menu (Apple's standard name). */
+"Find" = "Meklēt";
+
+/* Main menu: menu item. */
+"Find…" = "Meklēt…";
+
+/* Main menu: menu item. */
+"Find and Replace…" = "Meklēt un aizstāt…";
+
+/* Main menu: menu item. */
+"Find Next" = "Meklēt nākamo";
+
+/* Main menu: menu item. */
+"Find Previous" = "Meklēt iepriekšējo";
+
+/* Main menu: menu item. */
+"Use Selection for Find" = "Izmantot atlasi meklēšanai";
+
+/* Main menu: menu item. */
+"Jump to Selection" = "Pāriet uz atlasi";
+
+/* Main menu: menu title. */
+"View" = "Skats";
+
+/* Main menu: menu item. */
+"Enter Full Screen" = "Pāriet pilnekrāna režīmā";
+
+/* Main menu: menu title; StudioMenus: text. */
+"Window" = "Logs";
+
+/* Main menu: menu item. */
+"Minimize" = "Minimizēt";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item.
+   Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
+"Zoom" = "Tālummaiņa";
+
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+"Help" = "Palīdzība";
+
+// MARK: Menu bar menu, skin menus and update alerts
+
+/* Menu bar menu, skin menus and update alerts: alert title.
+   Note: Title of an alert: Safe Start could not load the default layout. */
+"Could not start with the default layout" = "Neizdevās startēt ar noklusējuma izkārtojumu";
+
+/* Menu bar menu, skin menus and update alerts: button; Skin Packager window: button.
+   Note: Button (Apple's standard term). */
+"OK" = "Labi";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused while Deskset was quitting or restarting." = "Instalēšana tika pauzēta, jo Deskset tobrīd tika aizvērta vai restartēta.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused because quitting was cancelled. You can try again when ready." = "Instalēšana tika pauzēta, jo iziešana tika atcelta. Kad būsit gatavs, varat mēģināt vēlreiz.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset %@ is available" = "Pieejama Deskset %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept." = "Šim Mac datoram ir gatava lejupielādei jauna versija: %@ → %@. Deskset pirms restartēšanas jautās, un jūsu apvalki, izkārtojumi un iestatījumi tiks saglabāti.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset is up to date" = "Deskset ir atjaunināta";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"You’re running the latest release available for this Mac. Installed version %@." = "Jūs izmantojat jaunāko šim Mac datoram pieejamo versiju. Instalētā versija: %@.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"No release available" = "Nav pieejamas versijas";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"There is no public release available yet. Please check again later." = "Publiskas versijas vēl nav. Pārbaudiet vēlāk.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Couldn’t check for updates" = "Neizdevās pārbaudīt atjauninājumus";
+
+/* Menu bar menu, skin menus and update alerts: text, alert or dialog message; App updates: status or description line. */
+"Your installed copy (%@) has not been changed." = "Instalētā kopija (%@) netika mainīta.";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button (Apple's usual wording in update alerts). */
+"Skip This Version" = "Izlaist šo versiju";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button in the alert about a new version: starts downloading it. */
+"Update" = "Atjaunināt";
+
+/* Menu bar menu, skin menus and update alerts: window title. */
+"Deskset Updates" = "Deskset atjauninājumi";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
+"A newer version is ready to download for this Mac." = "Šim Mac datoram ir gatava lejupielādei jauna versija.";
+
+/* Menu bar menu, skin menus and update alerts: label.
+   Note: Label in a small card, followed by "old version → new version". */
+"Version" = "Versija";
+
+/* Menu bar menu, skin menus and update alerts: status or description line.
+   Note: Short note at the right end of the version row: Deskset asks before it restarts to install the update. */
+"Asks before restart" = "Pirms restartēšanas jautā";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list; Installing Deskset in Applications: note under a panel or list. */
+"Your skins, layouts, and settings will be kept." = "Jūsu apvalki, izkārtojumi un iestatījumi tiks saglabāti.";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"You’re running the latest release available for this Mac." = "Jūs izmantojat jaunāko šim Mac datoram pieejamo versiju.";
+
+/* Menu bar menu, skin menus and update alerts: label; Install and update panels: text.
+   Note: Label in a small card, followed by the version number. */
+"Installed version" = "Instalētā versija";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Automatic update checks are off" = "Automātiskā atjauninājumu pārbaude ir izslēgta";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Checked just now" = "Pārbaudīts tikko";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"There is no public release available for this Mac yet." = "Šim Mac datoram vēl nav publiskas versijas.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Please check again later" = "Pārbaudiet vēlāk";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Try again later using Check for Updates." = "Mēģiniet vēlāk vēlreiz, izmantojot „Pārbaudīt atjauninājumus”.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list.
+   Note: %@ is a version number. */
+"Installed: %@" = "Instalēta: %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Stop automatic reminders for this version. You can still use Check for Updates." = "Pārtraukt automātiskos atgādinājumus par šo versiju. Joprojām varat izmantot „Pārbaudīt atjauninājumus”.";
+
+/* Menu bar menu, skin menus and update alerts: tooltip. */
+"Close for now. The next daily check can remind you again." = "Pagaidām aizvērt. Nākamajā ikdienas pārbaudē jums var atgādināt vēlreiz.";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
+"Skins" = "Apvalki";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
+"Layouts" = "Izkārtojumi";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
+"Loaded Skins" = "Ielādētie apvalki";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+   Note: Reloads every skin from its files and rescans the Skins folder. */
+"Refresh All" = "Atsvaidzināt visus";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Skins Folder" = "Atvērt apvalku mapi";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Log" = "Atvērt žurnālu";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
+"Debug" = "Atkļūdošana";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Launch at Login" = "Atvērt pēc pieteikšanās";
+
+/* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
+"Available when Deskset runs as an installed app." = "Pieejams, kad Deskset darbojas kā instalēta lietotne.";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Update to Deskset %@…" = "Atjaunināt uz Deskset %@…";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Restart Deskset" = "Restartēt Deskset";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"No skins installed" = "Nav instalētu apvalku";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Favorites" = "Izlase";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Menu toggle (checkmark): selects this skin, so the menu's settings apply to every selected skin at once. */
+"Select skin" = "Atlasīt apvalku";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu with the commands a skin adds to its own menu. */
+"Custom Skin Actions" = "Apvalka darbības";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Manage window at this skin. */
+"Manage" = "Pārvaldīt";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"About" = "Par";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the other .ini files of the same skin folder; choosing one loads it instead. */
+"Variants" = "Varianti";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that sets how a skin's window stacks with other windows: Stay Topmost, Topmost, Normal, Bottom, On Desktop. */
+"Position" = "Novietojums";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description.
+   Note: Submenu that sets how transparent a skin is: 0% (opaque) to 90%. */
+"Transparency" = "Caurspīdīgums";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu: what a skin does while the pointer is over it (Do Nothing, Hide, Fade In, Fade Out). */
+"On Hover" = "Kad virs tā ir rādītājs";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
+"Click Through" = "Laist cauri klikšķus";
+
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
+"Draggable" = "Var vilkt";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin cannot be moved past the edge of its screen. */
+"Keep on Screen" = "Paturēt ekrānā";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): a dragged skin snaps to screen edges and to other skins. */
+"Snap to Edges" = "Piesaistīt malām";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
+"Save Position" = "Atcerēties novietojumu";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
+"Favorite" = "Izlasē";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+"Settings" = "Iestatījumi";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu listing what in this skin works differently on a Mac; %lld is how many notes there are. */
+"Compatibility Notes (%lld)" = "Saderības piezīmes (%lld)";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Manage Skin…" = "Pārvaldīt šo apvalku…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Opens the Debug window for this skin. */
+"Debug Skin" = "Atkļūdot apvalku";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Edit Skin…" = "Rediģēt apvalku…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: %@ is the name of a code editor app, e.g. "Edit in Visual Studio Code". */
+"Edit in %@" = "Rediģēt lietotnē %@";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Reloads this skin from its files. */
+"Refresh Skin" = "Atsvaidzināt apvalku";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Open Skin Folder" = "Atvērt apvalka mapi";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu command: removes the skin from the desktop (the files stay). */
+"Unload Skin" = "Aizvērt apvalku";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Shown instead of Refresh Skin while Shift is held: brings the skin to the front of the skins at its position. */
+"Focus Skin" = "Novietot apvalku priekšplānā";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice (Rainmeter's wording): place the skin on the main display. */
+"Use default: Primary monitor" = "Noklusējums: galvenais monitors";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: the area of all displays together. Keep "@0". */
+"@0: Virtual screen" = "@0: virtuālais ekrāns";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: A display, numbered as in Rainmeter: "Monitor 2". */
+"Monitor %lld" = "Monitors %lld";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: use whichever display the skin is on. */
+"Auto-select based on window position" = "Izvēlēties automātiski pēc loga novietojuma";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description, menu item.
+   Note: Submenu: which display a skin's position is measured from. */
+"Display monitor" = "Monitors";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is measured from the right edge of the display. */
+"From right" = "No labās malas";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is measured from the bottom edge of the display. */
+"From bottom" = "No apakšas";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is a percentage of the display width. */
+"X as percentage" = "X procentos";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is a percentage of the display height. */
+"Y as percentage" = "Y procentos";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Zoom submenu choice: the skin uses the default zoom from Settings. */
+"Default" = "Noklusējums";
+
+// MARK: Skin settings (Manage window and skin menu)
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin stays as it is. */
+"Do Nothing" = "Neko nedarīt";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin disappears while the pointer is over it. */
+"Hide" = "Paslēpt";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes opaque while the pointer is over it. */
+"Fade In" = "Pakāpeniski parādīt";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes transparent while the pointer is over it. */
+"Fade Out" = "Pakāpeniski izgaist";
+
+// MARK: Manage window
+
+/* Manage window: tooltip.
+   Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
+"Hold Control to change zoom by 10 percentage points." = "Turiet nospiestu taustiņu Control, lai mainītu tālummaiņu par 10 procentpunktiem.";
+
+/* Manage window: checkbox. */
+"Save as empty layout" = "Saglabāt kā tukšu izkārtojumu";
+
+/* Manage window: checkbox. */
+"Exclude unloaded skins" = "Neiekļaut neielādētos apvalkus";
+
+/* Manage window: checkbox. */
+"Include current wallpaper" = "Iekļaut pašreizējo fona attēlu";
+
+/* Manage window: button, text.
+   Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
+"Load" = "Ielādēt";
+
+/* Manage window: button; New Skin window: button, text. */
+"Delete" = "Dzēst";
+
+/* Manage window: button, menu item; New Skin window: button.
+   Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
+"Edit" = "Rediģēt";
+
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+"Create new skin" = "Izveidot jaunu apvalku";
+
+/* Manage window: VoiceOver description, tooltip.
+   Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
+"Create .rmskin Package…" = "Izveidot .rmskin pakotni…";
+
+/* Manage window: label. */
+"Select a skin to see its details." = "Atlasiet apvalku, lai skatītu tā informāciju.";
+
+/* Manage window: button.
+   Note: Button: reloads the skin from its files. */
+"Refresh" = "Atsvaidzināt";
+
+/* Manage window: button. */
+"Open Folder" = "Atvērt mapi";
+
+/* Manage window: label, text. */
+"Load the skin to change its settings." = "Ielādējiet apvalku, lai mainītu tā iestatījumus.";
+
+/* Manage window: checkbox.
+   Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
+"Click through" = "Laist cauri klikšķus";
+
+/* Manage window: checkbox. */
+"Keep on screen" = "Paturēt ekrānā";
+
+/* Manage window: checkbox. */
+"Snap to edges" = "Piesaistīt malām";
+
+/* Manage window: checkbox. */
+"Save position" = "Atcerēties novietojumu";
+
+/* Manage window: checkbox. */
+"Launch at login" = "Atvērt pēc pieteikšanās";
+
+/* Manage window: text, label.
+   Note: The skin window's X and Y position on the screen. */
+"Coordinates:" = "Koordinātas:";
+
+/* Manage window: text, label.
+   Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
+"Load order:" = "Ielādes secība:";
+
+/* Manage window: text, label.
+   Note: What a skin does while the pointer is over it. */
+"On hover:" = "Kad virs tā ir rādītājs:";
+
+/* Manage window: text, label. */
+"Position:" = "Novietojums:";
+
+/* Manage window: text, label. */
+"Transparency:" = "Caurspīdīgums:";
+
+/* Manage window: text, label.
+   Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
+"Zoom:" = "Tālummaiņa:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Author:" = "Autors:";
+
+/* Manage window: text.
+   Note: The skin's own description, from its [Metadata] section. */
+"Information:" = "Apraksts:";
+
+/* Manage window: text. */
+"License:" = "Licence:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Version:" = "Versija:";
+
+/* Manage window: window title.
+   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
+"Manage Skins" = "Apvalku pārvaldība";
+
+/* Manage window: VoiceOver description. */
+"Installed skins" = "Instalētie apvalki";
+
+/* Manage window: VoiceOver description, text, menu item. */
+"Active skins" = "Aktīvie apvalki";
+
+/* Manage window: tooltip. */
+"Select a loaded skin in Manage." = "Logā „Pārvaldīt” atlasiet ielādētu apvalku.";
+
+/* Manage window: text. */
+"Save new layout" = "Saglabāt jaunu izkārtojumu";
+
+/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+"Name:" = "Nosaukums:";
+
+/* Manage window: VoiceOver description. */
+"Layout name" = "Izkārtojuma nosaukums";
+
+/* Manage window: VoiceOver description, text. */
+"Saved layouts" = "Saglabātie izkārtojumi";
+
+/* Manage window: text. */
+"No saved layouts." = "Nav saglabātu izkārtojumu.";
+
+/* Manage window: text. */
+"Could not read saved layouts: %@" = "Neizdevās nolasīt saglabātos izkārtojumus: %@";
+
+/* Manage window: alert title. */
+"Could not save layout" = "Neizdevās saglabāt izkārtojumu";
+
+/* Manage window: alert title. */
+"Replace layout “%@”?" = "Vai aizstāt izkārtojumu „%@”?";
+
+/* Manage window: alert or dialog message. */
+"A layout with this name already exists. Replace its saved settings?" = "Izkārtojums ar šo nosaukumu jau pastāv. Vai aizstāt tā saglabātos iestatījumus?";
+
+/* Manage window: button; Skin Packager window: button. */
+"Replace" = "Aizstāt";
+
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+"Cancel" = "Atcelt";
+
+/* Manage window: alert title. */
+"Could not delete layout" = "Neizdevās izdzēst izkārtojumu";
+
+/* Manage window: alert title. */
+"Delete layout “%@”?" = "Vai dzēst izkārtojumu „%@”?";
+
+/* Manage window: alert or dialog message. */
+"This moves the saved layout to the Trash. Your skin files are kept." = "Saglabātais izkārtojums tiks pārvietots uz atkritni. Jūsu apvalku faili tiek saglabāti.";
+
+/* Manage window: tooltip. */
+"Select the display monitor for this skin." = "Izvēlieties šī apvalka monitoru.";
+
+/* Manage window: text.
+   Note: VoiceOver name of the field for a skin's size, as a percentage. */
+"Skin zoom" = "Apvalka tālummaiņa";
+
+/* Manage window: tooltip. */
+"Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable." = "Velciet apvalku ar peli. Turiet nospiestu ⌘, lai vilktu apvalku, kuru nevar vilkt.";
+
+/* Manage window: tooltip. */
+"Clicks pass through the skin to whatever is below it." = "Klikšķi iet cauri apvalkam uz to, kas atrodas zem tā.";
+
+/* Manage window: tooltip. */
+"Keep the whole skin inside the screen it is on." = "Paturēt visu apvalku tā ekrāna robežās, kurā tas atrodas.";
+
+/* Manage window: tooltip. */
+"Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override." = "Velkot piesaistīt ekrāna malām un citiem apvalkiem. Lai to novērstu, velkot turiet nospiestu ⌘.";
+
+/* Manage window: tooltip. */
+"Remember where the skin is when it is moved." = "Atcerēties, kur atrodas apvalks, kad tas tiek pārvietots.";
+
+/* Manage window: tooltip. */
+"Add this skin to the Favorites menu." = "Pievienot šo apvalku izvēlnei „Izlase”.";
+
+/* Manage window: tooltip. */
+"What the skin does while the pointer is over it." = "Ko apvalks dara, kamēr virs tā ir rādītājs.";
+
+/* Manage window: label.
+   Note: Unit after a duration (milliseconds). */
+"ms" = "ms";
+
+/* Manage window: label.
+   Note: How long a skin takes to fade in or out, in milliseconds. */
+"Fade duration:" = "Pārejas ilgums:";
+
+/* Manage window: text.
+   Note: Section of the Manage window listing what in the skin works differently on a Mac. */
+"Compatibility" = "Saderība";
+
+/* Manage window: text. */
+"Start Deskset when you log in." = "Startēt Deskset pēc pieteikšanās.";
+
+/* Manage window: text.
+   Note: Button: removes the skin from the desktop (the files stay). */
+"Unload" = "Aizvērt";
+
+/* Manage window: text. */
+"This skin has no [Metadata] section." = "Šim apvalkam nav sadaļas [Metadata].";
+
+/* Manage window: text. */
+"This skin has no metadata values." = "Šim apvalkam nav metadatu.";
+
+/* Manage window: text. */
+"No metadata available." = "Nav metadatu.";
+
+/* Manage window: text. */
+"Transparency: %lld%%" = "Caurspīdīgums: %lld%%";
+
+/* Manage window: text. */
+"Select a skin file to see its settings." = "Atlasiet apvalka failu, lai skatītu tā iestatījumus.";
+
+/* Manage window: note under a panel or list. */
+"Select a skin file to check it." = "Atlasiet apvalka failu, lai to pārbaudītu.";
+
+/* Manage window: text. */
+"No compatibility problems found." = "Saderības problēmas netika atrastas.";
+
+/* Manage window: note under a panel or list. */
+"Checked without loading; some problems only show up while the skin runs." = "Pārbaudīts bez ielādes; dažas problēmas parādās tikai tad, kad apvalks darbojas.";
+
+/* Manage window: status or description line.
+   Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
+"Folder" = "Mape";
+
+/* Manage window: text.
+   Note: Status: the skin is on the desktop and running. */
+"Loaded" = "Ielādēts";
+
+/* Manage window: text.
+   Note: %@ is a skin file name, e.g. "Clock.ini is loaded". */
+"%@ is loaded" = "%@ ir ielādēts";
+
+/* Manage window: text.
+   Note: %@ is a skin file name; the skin is running but has hidden itself. */
+"%@ is loaded, hidden" = "%@ ir ielādēts, paslēpts";
+
+/* Manage window: status or description line.
+   Note: Status: the skin is installed but not running. */
+"Not loaded" = "Nav ielādēts";
+
+/* Manage window: alert title. */
+"Could not add metadata" = "Neizdevās pievienot metadatus";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
+"%@, has loaded skins" = "%@, satur ielādētus apvalkus";
+
+/* Manage window: text.
+   Note: Status: the skin is running but has hidden itself. */
+"Loaded, hidden" = "Ielādēts, paslēpts";
+
+/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Show in Finder" = "Rādīt programmā Finder";
+
+/* Manage window: text, VoiceOver description. */
+"Add metadata" = "Pievienot metadatus";
+
+/* Manage window: text.
+   Note: Window position: below all ordinary windows. */
+"Bottom" = "Apakšā";
+
+/* Manage window: text.
+   Note: Window position: stacks like an ordinary window. */
+"Normal" = "Parasti";
+
+/* Manage window: text.
+   Note: Window position: on the desktop itself, under the desktop icons' level. */
+"On Desktop" = "Uz darbvirsmas";
+
+/* Manage window: text.
+   Note: Window position: always above every other window, even after other apps come forward. */
+"Stay Topmost" = "Vienmēr virspusē";
+
+/* Manage window: text.
+   Note: Window position: above other windows until another app comes forward. */
+"Topmost" = "Virspusē";
+
+/* Manage window: text.
+   Note: Title of a notice: the skin is loaded, but it hid itself (with !Hide or StartHidden), so it is not on the desktop. */
+"Hidden by the skin" = "Apvalks paslēpās pats";
+
+/* Manage window: text.
+   Note: Button in the notice about a hidden skin: shows the skin again. */
+"Show" = "Rādīt";
+
+/* Manage window: text.
+   Note: Keep StartHidden and !Hide as they are (they are names in skin code). */
+"It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it." = "Tas ir iestatīts startēt paslēpts (StartHidden), vai arī to paslēpa kāda no tā darbībām (!Hide).";
+
+/* Manage window: text.
+   Note: Keep !Hide as it is (a name in skin code). */
+"It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show." = "Tas ir ielādēts un darbojas, bet to paslēpa kāda no tā darbībām (!Hide) — tā dara daži logrīki, kad tiem nav ko rādīt.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it is loaded again." = "Pārvietojot tas neparādīsies. Noklikšķiniet uz „Rādīt”, lai to redzētu līdz nākamajai ielādei.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it hides itself again." = "Pārvietojot tas neparādīsies. Noklikšķiniet uz „Rādīt”, lai to redzētu, līdz tas atkal paslēpsies.";
+
+/* Manage window: text.
+   Note: Under the coordinates after the user typed a new position for a hidden skin. */
+"Moved, but still hidden. Click Show above to see it." = "Pārvietots, bet joprojām paslēpts. Noklikšķiniet uz „Rādīt” augstāk, lai to redzētu.";
+
+/* Manage window: text.
+   Note: Under the coordinates of a hidden skin. */
+"The skin is hidden, so you won’t see it move." = "Apvalks ir paslēpts, tāpēc jūs neredzēsit, kā tas pārvietojas.";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded" = "%@, ielādēts";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded, hidden" = "%@, ielādēts, paslēpts";
+
+/* Manage window: text. */
+"The skin cannot be loaded: %@" = "Nevar ielādēt apvalku: %@";
+
+/* Manage window: message (an error or a status). */
+"Changes to “%@” must be saved before adding metadata." = "Pirms metadatu pievienošanas jāsaglabā izmaiņas failā „%@”.";
+
+/* Manage window: message (an error or a status). */
+"Could not add metadata to “%@” while an editor save was still in progress." = "Neizdevās pievienot metadatus failam „%@”, jo redaktors to vēl saglabāja.";
+
+// MARK: Layouts
+
+/* Layouts: message (an error or a status). */
+"Wait for the current layout to finish loading." = "Uzgaidiet, līdz pašreizējais izkārtojums tiks ielādēts.";
+
+/* Layouts: message (an error or a status). */
+"Deskset is closing." = "Deskset tiek aizvērta.";
+
+/* Layouts: alert title. */
+"Couldn’t load layout “%@”" = "Neizdevās ielādēt izkārtojumu „%@”";
+
+/* Layouts: alert title. */
+"Couldn’t edit layout “%@”" = "Neizdevās rediģēt izkārtojumu „%@”";
+
+/* Layouts: menu item. */
+"No saved layouts" = "Nav saglabātu izkārtojumu";
+
+/* Layouts: message (an error or a status). */
+"The current desktop picture is not a readable image." = "Pašreizējais fona attēls nav nolasāms attēls.";
+
+/* Layouts: message (an error or a status). */
+"Wallpaper.bmp is not a readable image." = "Wallpaper.bmp nav nolasāms attēls.";
+
+// MARK: Settings window
+
+/* Settings window: message (an error or a status).
+   Note: The first pane of Settings (Apple's usual name). */
+"General" = "Vispārīgi";
+
+/* Settings window: message (an error or a status).
+   Note: A pane of Settings: options for editing skins. */
+"Editor" = "Redaktors";
+
+/* Settings window: checkbox.
+   Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
+"Refresh the skin when the file is saved elsewhere" = "Atsvaidzināt apvalku, kad fails tiek saglabāts citā lietotnē";
+
+/* Settings window: checkbox. */
+"Launch Deskset at login" = "Atvērt Deskset pēc pieteikšanās";
+
+/* Settings window: checkbox. */
+"Automatically check for updates" = "Automātiski pārbaudīt atjauninājumus";
+
+/* Settings window: button; App updates: text. */
+"Check for Updates…" = "Pārbaudīt atjauninājumus…";
+
+/* Settings window: button.
+   Note: Button in Settings, shown when a new version is available: opens the update. */
+"Update…" = "Atjaunināt…";
+
+/* Settings window: checkbox.
+   Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
+"Apply to all skins" = "Lietot visiem apvalkiem";
+
+/* Settings window: checkbox, VoiceOver description.
+   Note: Checkbox: skins cannot be moved with the mouse. */
+"Disable dragging" = "Atspējot vilkšanu";
+
+/* Settings window: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Atiestatīt statistiku";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Edit code with:" pop-up menu. */
+"Edit code with" = "Lietotne koda rediģēšanai";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the font size field for the built-in code editor. */
+"Code font size" = "Koda fonta lielums";
+
+/* Settings window: text.
+   Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
+"Default zoom" = "Noklusējuma tālummaiņa";
+
+/* Settings window: tooltip. */
+"Apply the default zoom to every skin." = "Lietot noklusējuma tālummaiņu katram apvalkam.";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
+"Force default zoom" = "Piespiest noklusējuma tālummaiņu";
+
+/* Settings window: tooltip. */
+"Prevent dragging skins with the mouse." = "Neļaut vilkt apvalkus ar peli.";
+
+/* Settings window: label.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* Settings window: label.
+   Note: Which app opens a skin's .ini file for editing. */
+"Edit code with:" = "Rediģēt kodu ar:";
+
+/* Settings window: label. */
+"Code font size:" = "Koda fonta lielums:";
+
+/* Settings window: label.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Automātiska atsvaidzināšana:";
+
+/* Settings window: text. */
+"Deskset opens with your skins when you log in." = "Pēc pieteikšanās Deskset atveras ar jūsu apvalkiem.";
+
+/* Settings window: text. */
+"Available when Deskset runs from the Applications folder." = "Pieejams, kad Deskset tiek palaista no mapes „Lietotnes”.";
+
+/* Settings window: label.
+   Note: Settings row with the language pop-up menu. */
+"Language:" = "Valoda:";
+
+/* Settings window: label.
+   Note: Settings row with the Launch Deskset at login checkbox. */
+"Startup:" = "Startēšana:";
+
+/* Settings window: label.
+   Note: Settings row with the path of the folder skins are installed in. */
+"Skins folder:" = "Apvalku mape:";
+
+/* Settings window: label.
+   Note: The zoom (size, as a percentage) skins get unless one has its own. */
+"Default zoom:" = "Noklusējuma tālummaiņa:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Atjauninājumi:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset pārbauda reizi dienā un pati lejupielādē atjauninājumus; kad tos instalēt, izlemjat jūs.";
+
+/* Settings window: text.
+   Note: %@ is the name of an editor app that is no longer installed. */
+"%@ (missing)" = "%@ (nav atrasts)";
+
+/* Settings window: text, menu item.
+   Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
+"System default (%@)" = "Sistēmas noklusējums (%@)";
+
+/* Settings window: text; Skin Packager window: menu item.
+   Note: Last item of the editor list: choose any app. */
+"Other…" = "Cita…";
+
+/* Settings window: text.
+   Note: Choice for "Edit code with:": Deskset's own editor, showing the code next to the skin. */
+"Deskset (built-in, side by side)" = "Deskset (iebūvētais, blakus)";
+
+/* Settings window: message (an error or a status). */
+"Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window." = "Atver apvalku redaktoru ar kodu blakus audeklam, atlasītajā sadaļā. Citi teksta faili, ko atver apvalks (iestatījumi, skripti), tiek atvērti Deskset koda logā.";
+
+/* Settings window: message (an error or a status). */
+"%@ is no longer installed — the built-in editor is used instead." = "%@ vairs nav instalēta — tās vietā tiek izmantots iebūvētais redaktors.";
+
+/* Settings window: message (an error or a status). */
+"Opens files in TextEdit, which can’t jump to a line." = "Atver failus lietotnē TextEdit, kas nevar pāriet uz konkrētu rindiņu.";
+
+/* Settings window: message (an error or a status). */
+"Opens each file in the app macOS uses for its type (%@ for .ini files)." = "Atver katru failu lietotnē, ko macOS izmanto tā tipam (.ini failiem — %@).";
+
+/* Settings window: message (an error or a status). */
+"%@ can’t jump to a line; files open at the top." = "%@ nevar pāriet uz konkrētu rindiņu; faili tiek atvērti no sākuma.";
+
+/* Settings window: message (an error or a status). */
+"Opens %@ at the selected line." = "Atver %@ atlasītajā rindiņā.";
+
+/* Settings window: text. */
+"The first time, %@ may ask to allow this." = "Pirmajā reizē %@ var lūgt atļauju.";
+
+/* Settings window: button.
+   Note: Button of the dialog where the user picks an editor app. */
+"Choose" = "Izvēlēties";
+
+/* Settings window: alert or dialog message. */
+"Choose the app that edits skin code." = "Izvēlieties lietotni, kurā tiek rediģēts apvalku kods.";
+
+/* Settings window: alert title. */
+"Restart Deskset now?" = "Vai restartēt Deskset tagad?";
+
+/* Settings window: alert or dialog message. */
+"The new language is used after Deskset restarts." = "Jaunā valoda tiks izmantota pēc Deskset restartēšanas.";
+
+/* Settings window: button. */
+"Restart Now" = "Restartēt tagad";
+
+/* Settings window: button; Launch at Login: button; App updates: text; Install and update panels: text. */
+"Later" = "Vēlāk";
+
+// MARK: Code editor
+
+/* Code editor: text. */
+"%@ is no longer installed — using the built-in editor" = "%@ vairs nav instalēta — tiek izmantots iebūvētais redaktors";
+
+// MARK: About window
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, build number, processor (e.g. "Apple silicon"). */
+"Deskset %@ (build %@) - %@" = "Deskset %@ (būvējums %@) – %@";
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, processor. */
+"Deskset %@ - %@" = "Deskset %@ – %@";
+
+/* About window: button.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Kopēt starpliktuvē";
+
+/* About window: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Darbvirsmas logrīki jūsu Mac datoram, saderīgi ar Rainmeter apvalkiem.";
+
+/* About window: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter ir attiecīgo īpašnieku preču zīme; Deskset nav ar to saistīta.";
+
+// MARK: New Skin window
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Neizdevās izveidot apvalku";
+
+/* New Skin window: button.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Pievienot mapi";
+
+/* New Skin window: button.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Pievienot apvalku";
+
+/* New Skin window: text.
+   Note: Tab of the New skin window: the folders and files to create. */
+"New skin" = "Jauns apvalks";
+
+/* New Skin window: text.
+   Note: A tab of the New skin window: the files a new skin starts with. */
+"Template" = "Veidne";
+
+/* New Skin window: VoiceOver description.
+   Note: VoiceOver name of the field showing the folder the new skin goes in. */
+"Selected skin folder" = "Atlasītā apvalka mape";
+
+/* New Skin window: column heading, VoiceOver description.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Nosaukums";
+
+/* New Skin window: VoiceOver description. */
+"New skin folders and files" = "Jaunā apvalka mapes un faili";
+
+/* New Skin window: VoiceOver description. */
+"Template for new skins" = "Veidne jauniem apvalkiem";
+
+/* New Skin window: VoiceOver description. */
+"Template name" = "Veidnes nosaukums";
+
+/* New Skin window: text. */
+"Save new template" = "Saglabāt kā jaunu veidni";
+
+/* New Skin window: column heading, VoiceOver description, text. */
+"Saved templates" = "Saglabātās veidnes";
+
+/* New Skin window: menu item.
+   Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
+"Template…" = "Veidne…";
+
+/* New Skin window: text. */
+"Use default template" = "Izmantot noklusējuma veidni";
+
+/* New Skin window: alert title. */
+"Could not complete the operation" = "Neizdevās pabeigt darbību";
+
+/* New Skin window: text. */
+"Create" = "Izveidot";
+
+/* New Skin window: text. */
+"Rename" = "Pārdēvēt";
+
+/* New Skin window: text.
+   Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
+"New Root Folder" = "Jauna saknes mape";
+
+/* New Skin window: text. */
+"New Folder" = "Jauna mape";
+
+/* New Skin window: text.
+   Note: Title of the dialog asking for a new skin file's name. */
+"New Skin" = "Jauns apvalks";
+
+/* New Skin window: text.
+   Note: Context menu item: opens the new skin's file in the code editor. */
+"Edit skin" = "Rediģēt apvalku";
+
+/* New Skin window: message (an error or a status). */
+"Invalid name: %@" = "Nederīgs nosaukums: %@";
+
+/* New Skin window: message (an error or a status). */
+"An item named %@ already exists." = "Vienums ar nosaukumu %@ jau pastāv.";
+
+/* New Skin window: message (an error or a status). */
+"The item is no longer a regular file or folder: %@" = "Vienums vairs nav parasts fails vai mape: %@";
+
+/* New Skin window: message (an error or a status). */
+"The selected folder is no longer available." = "Atlasītā mape vairs nav pieejama.";
+
+/* New Skin window: message (an error or a status). */
+"Only items created in this window can be renamed or deleted." = "Pārdēvēt vai dzēst var tikai šajā logā izveidotos vienumus.";
+
+/* New Skin window: message (an error or a status). */
+"The default template cannot be deleted." = "Noklusējuma veidni nevar izdzēst.";
+
+/* New Skin window: text. */
+"The rename could not be completed. The original item remains at %@." = "Neizdevās pabeigt pārdēvēšanu. Sākotnējais vienums joprojām atrodas %@.";
+
+// MARK: Skin installer
+
+/* Skin installer: text. */
+"Install “%@”?" = "Vai instalēt „%@”?";
+
+/* Skin installer: text.
+   Note: Under a package's name; %@ is the author's name. */
+"By %@" = "Autors: %@";
+
+/* Skin installer: text.
+   Note: %@ is a version number, e.g. "Version 1.2". */
+"Version %@" = "Versija %@";
+
+/* Skin installer: text. */
+"The package does not say who made it." = "Pakotnē nav norādīts, kas to izveidoja.";
+
+/* Skin installer: text. */
+"A package made for the installer of old Rainmeter versions (Rainstaller)." = "Pakotne, kas izveidota vecu Rainmeter versiju instalētājam (Rainstaller).";
+
+/* Skin installer: text. */
+"This folder is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing. The folder is copied; the original stays where it is." = "Šī mape nav apvalku pakotne, kas izveidota ar Rainmeter rīku Skin Packager, tāpēc Deskset pati atrada tajā esošos apvalkus. Pirms instalēšanas pārbaudiet tālāk redzamo sarakstu. Mape tiek kopēta; oriģināls paliek savā vietā.";
+
+/* Skin installer: text. */
+"This archive is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing." = "Šis arhīvs nav apvalku pakotne, kas izveidota ar Rainmeter rīku Skin Packager, tāpēc Deskset pati atrada tajā esošos apvalkus. Pirms instalēšanas pārbaudiet tālāk redzamo sarakstu.";
+
+/* Skin installer: text. */
+"A plain folder: no author or version information." = "Parasta mape bez informācijas par autoru vai versiju.";
+
+/* Skin installer: text. */
+"A plain archive: no author or version information." = "Parasts arhīvs bez informācijas par autoru vai versiju.";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin, makes no backup and does not keep the values of its variables files. */
+"merged into the installed copy, without a backup or kept variables" = "tiek apvienots ar instalēto kopiju, bez dublējuma un nesaglabājot mainīgos";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin. */
+"merged into the installed copy" = "tiek apvienots ar instalēto kopiju";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the installed skin is replaced. */
+"replaces the installed copy" = "aizstāj instalēto kopiju";
+
+/* Skin installer: text.
+   Note: %@ is a layout's name. */
+"Layout “%@”" = "Izkārtojums „%@”";
+
+/* Skin installer: text. */
+"This package includes Windows plugins. Plugins can’t run on macOS, so parts of these skins may show no data." = "Šajā pakotnē ir Windows spraudņi. Spraudņi nedarbojas macOS, tāpēc dažās šo apvalku daļās var nebūt datu.";
+
+/* Skin installer: text. */
+"This package includes Windows plugins (%@). Plugins can’t run on macOS, so parts of these skins may show no data." = "Šajā pakotnē ir Windows spraudņi (%@). Spraudņi nedarbojas macOS, tāpēc dažās šo apvalku daļās var nebūt datu.";
+
+/* Skin installer: menu item.
+   Note: Installer checkbox: keep a copy of installed skins that the package replaces. */
+"Backup skins" = "Dublēt apvalkus";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox: after installing, load the skins the package says to load. */
+"Load included skins" = "Ielādēt iekļautos apvalkus";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox; %@ is the layout's name. */
+"Apply included layout: %@" = "Lietot iekļauto izkārtojumu: %@";
+
+/* Skin installer: menu item; Skin Packager window: text. */
+"Advanced" = "Papildu";
+
+/* Skin installer: tooltip. */
+"Keep a backup when replacing installed skins." = "Aizstājot instalētos apvalkus, paturēt dublējumu.";
+
+/* Skin installer: VoiceOver description. */
+"Advanced installation options" = "Papildu instalēšanas opcijas";
+
+/* Skin installer: text. */
+"Install Skin" = "Apvalka instalēšana";
+
+/* Skin installer: alert or dialog message.
+   Note: Message of the open dialog. */
+"Choose a skin package (.rmskin), a ZIP archive or a folder with skins to install." = "Izvēlieties instalējamo apvalku pakotni (.rmskin), ZIP arhīvu vai mapi ar apvalkiem.";
+
+/* Skin installer: button; UISnapshot: button. */
+"Install" = "Instalēt";
+
+/* Skin installer: text. */
+"Choose the folder of the skin you want to install, not a folder that holds Deskset’s Skins folder. Skins already in the Skins folder are installed; if one is missing from the list, choose Refresh All in the Manage window." = "Izvēlieties instalējamā apvalka mapi, nevis mapi, kurā ir Deskset apvalku mape. Apvalki, kas jau ir apvalku mapē, ir instalēti; ja kāda trūkst sarakstā, logā „Pārvaldīt” izvēlieties „Atsvaidzināt visus”.";
+
+/* Skin installer: text. */
+"Can’t open these files" = "Nevar atvērt šos failus";
+
+/* Skin installer: text. */
+"Can’t open “%@”" = "Nevar atvērt „%@”";
+
+/* Skin installer: text. */
+"Deskset installs skin packages (.rmskin), ZIP archives with skins and folders with skins." = "Deskset instalē apvalku pakotnes (.rmskin), kā arī ZIP arhīvus un mapes ar apvalkiem.";
+
+/* Skin installer: text, alert title. */
+"“%@” is already in the Skins folder" = "„%@” jau atrodas apvalku mapē";
+
+/* Skin installer: text. */
+"These folders are already in the Skins folder" = "Šīs mapes jau atrodas apvalku mapē";
+
+/* Skin installer: text. */
+"“%@” contains Deskset’s Skins folder" = "„%@” satur Deskset apvalku mapi";
+
+/* Skin installer: text. */
+"These folders contain Deskset’s Skins folder" = "Šīs mapes satur Deskset apvalku mapi";
+
+/* Skin installer: alert title. */
+"Couldn’t install “%@”" = "Neizdevās instalēt „%@”";
+
+/* Skin installer: text. */
+"The current skins did not finish closing. No package files were replaced. Quit and reopen Deskset, then try again." = "Pašreizējie apvalki netika līdz galam aizvērti. Neviens pakotnes fails netika aizstāts. Izejiet no Deskset, atveriet to vēlreiz un mēģiniet vēlreiz.";
+
+/* Skin installer: alert title. */
+"“%@” was installed" = "„%@” ir instalēts";
+
+/* Skin installer: message (an error or a status). */
+"The file is not a skin package. It may be damaged or incomplete." = "Fails nav apvalku pakotne. Tas var būt bojāts vai nepilnīgs.";
+
+/* Skin installer: message (an error or a status). */
+"The package has no RMSKIN.ini, so it can’t be installed." = "Pakotnē nav RMSKIN.ini, tāpēc to nevar instalēt.";
+
+/* Skin installer: message (an error or a status). */
+"This file or folder doesn’t contain any Rainmeter skins." = "Šajā failā vai mapē nav Rainmeter apvalku.";
+
+/* Skin installer: message (an error or a status). */
+"Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "Deskset apvalku mapē esošie apvalki jau ir instalēti, tāpēc nav ko kopēt. Ja tur ievietots apvalks trūkst sarakstā, logā „Pārvaldīt” izvēlieties „Atsvaidzināt visus”.";
+
+/* Skin installer: message (an error or a status). */
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "Tajā ir vairākas apvalku pakotnes (%@). Atveriet tās pa vienai (ja tas ir arhīvs, vispirms to izpakojiet).";
+
+/* Skin installer: label.
+   Note: Above the list of skin folders in the package. */
+"Skins to install:" = "Instalējamie apvalki:";
+
+/* Skin installer: label. */
+"Layouts: %@" = "Izkārtojumi: %@";
+
+/* Skin installer: text.
+   Note: %@ is a list of font names. The fonts are used only by these skins. */
+"Fonts included for these skins (not installed system-wide): %@" = "Šiem apvalkiem pievienotie fonti (netiek instalēti visai sistēmai): %@";
+
+/* Skin installer: VoiceOver description. */
+"Warning" = "Brīdinājums";
+
+// MARK: Skin Packager window
+
+/* Skin Packager window: text. */
+"Options" = "Opcijas";
+
+/* Skin Packager window: button, VoiceOver description, tooltip. */
+"Remove" = "Noņemt";
+
+/* Skin Packager window: checkbox.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Apvienot apvalkus";
+
+/* Skin Packager window: button. */
+"Back" = "Atpakaļ";
+
+/* Skin Packager window: button. */
+"Next" = "Tālāk";
+
+/* Skin Packager window: button. */
+"Create Package" = "Izveidot pakotni";
+
+/* Skin Packager window: window title.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Izveidot .rmskin pakotni";
+
+/* Skin Packager window: button. */
+"Add Skin…" = "Pievienot apvalku…";
+
+/* Skin Packager window: menu item. */
+"Add Layout" = "Pievienot izkārtojumu";
+
+/* Skin Packager window: button.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Pievienot spraudni…";
+
+/* Skin Packager window: label. */
+"Skin:" = "Apvalks:";
+
+/* Skin Packager window: label. */
+"Layouts:" = "Izkārtojumi:";
+
+/* Skin Packager window: label.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Spraudņi:";
+
+/* Skin Packager window: text.
+   Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
+"Information and Components" = "Informācija un saturs";
+
+/* Skin Packager window: button. */
+"Choose…" = "Izvēlēties…";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Neko nedarīt";
+
+/* Skin Packager window: text. */
+"Load layout" = "Ielādēt izkārtojumu";
+
+/* Skin Packager window: text. */
+"Load skin" = "Ielādēt apvalku";
+
+/* Skin Packager window: label.
+   Note: The file the package is written to. */
+"Save package to:" = "Saglabāt pakotni:";
+
+/* Skin Packager window: label.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Pēc instalēšanas:";
+
+/* Skin Packager window: label.
+   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
+"Minimum Rainmeter version:" = "Minimālā Rainmeter versija:";
+
+/* Skin Packager window: label.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Galvenes attēls:";
+
+/* Skin Packager window: label.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Mainīgo faili:";
+
+/* Skin Packager window: menu item.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Ielādēt iepriekšējos iestatījumus";
+
+/* Skin Packager window: tooltip.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Turiet nospiestu Shift, lai dzēstu ierakstu.";
+
+/* Skin Packager window: text. */
+"No skin chosen" = "Nav izvēlēts apvalks";
+
+/* Skin Packager window: text, label, menu item.
+   Note: Shown when no header image or plugin is chosen. */
+"None" = "Nav";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit and 64-bit)" = "%@ (32 un 64 bitu)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (64-bit version missing)" = "%@ (trūkst 64 bitu versijas)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit version missing)" = "%@ (trūkst 32 bitu versijas)";
+
+/* Skin Packager window: alert or dialog message, message (an error or a status).
+   Note: The root config is the top-level folder of a skin suite in the Skins folder. */
+"Choose the skin's root config folder." = "Izvēlieties apvalka saknes mapi (root config).";
+
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Pakotni vēl nevar izveidot";
+
+/* Skin Packager window: text. */
+"Links were left out of the package: %@" = "Saites netika iekļautas pakotnē: %@";
+
+/* Skin Packager window: text. */
+"Could not create the package" = "Neizdevās izveidot pakotni";
+
+/* Skin Packager window: text, alert title. */
+"Package created" = "Pakotne izveidota";
+
+/* Skin Packager window: alert title. */
+"“%@” already exists. Replace it?" = "„%@” jau pastāv. Vai aizstāt?";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter a name." = "Ievadiet nosaukumu.";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter an author." = "Ievadiet autoru.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” has no skin (.ini) files." = "„%@” nav apvalka (.ini) failu.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout “%@” has no Rainmeter.ini." = "Izkārtojumā „%@” nav Rainmeter.ini.";
+
+/* Skin Packager window: message (an error or a status). */
+"The plugin “%@” needs both its 32-bit and 64-bit versions." = "Spraudnim „%@” nepieciešamas gan 32, gan 64 bitu versijas.";
+
+/* Skin Packager window: message (an error or a status). */
+"The skin to load, “%@”, is not in the package." = "Ielādējamais apvalks „%@” nav pakotnē.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout to load, “%@”, is not in the package." = "Ielādējamais izkārtojums „%@” nav pakotnē.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be a .bmp file." = "Galvenes attēlam jābūt .bmp failam.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be 400 × 60 pixels; this one is %lld × %lld." = "Galvenes attēlam jābūt 400 × 60 pikseļiem; šis ir %lld × %lld.";
+
+/* Skin Packager window: message (an error or a status). */
+"The variables file “%@” is not in the skin." = "Mainīgo fails „%@” nav apvalkā.";
+
+/* Skin Packager window: message (an error or a status).
+   Note: "Variables files" and "Merge skins" are the names of two package options; translate them as you did those options. */
+"Variables files and Merge skins can’t be used together." = "„Mainīgo faili” un „Apvienot apvalkus” nevar izmantot kopā.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@” nav versijas numurs, piemēram, 5.0 vai 5.0.0.4657.";
+
+/* Skin Packager window: message (an error or a status). */
+"Choose where to save the package." = "Izvēlieties, kur saglabāt pakotni.";
+
+// MARK: Move to Trash confirmation
+
+/* Move to Trash confirmation: text. */
+"Move “%@” to the Trash?" = "Vai pārvietot „%@” uz atkritni?";
+
+/* Move to Trash confirmation: text. */
+"You can restore this item from the Trash." = "Šo vienumu varat atjaunot no atkritnes.";
+
+/* Move to Trash confirmation: button. */
+"Move to Trash" = "Pārvietot uz atkritni";
+
+// MARK: Launch at Login
+
+/* Launch at Login: alert title. */
+"Launch at Login is unavailable" = "„Atvērt pēc pieteikšanās” nav pieejams";
+
+/* Launch at Login: text. */
+"Move Deskset to the Applications folder and open it from there to start it at login." = "Pārvietojiet Deskset uz mapi „Lietotnes” un atveriet to no turienes, lai tā startētos pēc pieteikšanās.";
+
+/* Launch at Login: text. */
+"Couldn’t turn off Launch at Login" = "Neizdevās izslēgt „Atvērt pēc pieteikšanās”";
+
+/* Launch at Login: text. */
+"Couldn’t turn on Launch at Login" = "Neizdevās ieslēgt „Atvērt pēc pieteikšanās”";
+
+/* Launch at Login: alert title. */
+"Allow Deskset to open at login" = "Atļaujiet Deskset atvērties pēc pieteikšanās";
+
+/* Launch at Login: alert or dialog message. */
+"macOS needs your approval. Turn on Deskset in System Settings › General › Login Items." = "macOS nepieciešams jūsu apstiprinājums. Ieslēdziet Deskset sadaļā „Sistēmas iestatījumi” > „Vispārīgi” > „Pieteikšanās vienumi”.";
+
+/* Launch at Login: button. */
+"Open System Settings" = "Atvērt sistēmas iestatījumus";
+
+// MARK: Safe Start
+
+/* Safe Start: text.
+   Note: Title of the alert offering Safe Start. */
+"Deskset Safe Start" = "Deskset drošā startēšana";
+
+/* Safe Start: text.
+   Note: Keep "@Backup" (the name the layout is saved as). */
+"Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept." = "Deskset tiks startēta ar iekļauto noklusējuma izkārtojumu. Jūsu pašreizējais izkārtojums tiks saglabāts kā @Backup.\n\nJūsu apvalku faili tiks saglabāti.";
+
+/* Safe Start: text.
+   Note: Starting Deskset with its default layout, without the skins that were loaded (offered after a start failed). */
+"Safe Start" = "Drošā startēšana";
+
+// MARK: App updates
+
+/* App updates: text. */
+"Checking for Updates…" = "Notiek atjauninājumu pārbaude…";
+
+/* App updates: message (an error or a status).
+   Note: %@ is a version number. */
+"Installed version: %@." = "Instalētā versija: %@.";
+
+/* App updates: message (an error or a status). */
+"Checking for updates…" = "Notiek atjauninājumu pārbaude…";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is up to date." = "Deskset %@ ir atjaunināta.";
+
+/* App updates: message (an error or a status). */
+"No public release is available yet." = "Publiskas versijas vēl nav.";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is available. You have %@." = "Pieejama Deskset %@. Jums ir %@.";
+
+/* App updates: message (an error or a status). */
+"Couldn’t check for updates. %@" = "Neizdevās pārbaudīt atjauninājumus. %@";
+
+/* App updates: text. */
+"The installed version could not be read." = "Neizdevās nolasīt instalēto versiju.";
+
+/* App updates: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Retry" = "Mēģināt vēlreiz";
+
+/* App updates: button; Install and update panels: text. */
+"Download Manually…" = "Lejupielādēt manuāli…";
+
+/* App updates: window title, heading. */
+"Update Deskset" = "Atjaunināt Deskset";
+
+/* App updates: text. */
+"This update is no longer available. Use Check for Updates to try again." = "Šis atjauninājums vairs nav pieejams. Lai mēģinātu vēlreiz, izmantojiet „Pārbaudīt atjauninājumus”.";
+
+/* App updates: status or description line. */
+"Downloading update package…" = "Notiek atjauninājuma pakotnes lejupielāde…";
+
+/* App updates: note under a panel or list. */
+"Deskset verifies the signature before asking you to restart." = "Deskset pārbauda parakstu, pirms lūdz restartēt.";
+
+/* App updates: status or description line. */
+"Verifying signature and preparing update…" = "Notiek paraksta pārbaude un atjauninājuma sagatavošana…";
+
+/* App updates: status or description line.
+   Note: Badge while the download's signature is checked. */
+"Verifying" = "Notiek pārbaude";
+
+/* App updates: status or description line. */
+"Couldn’t open the download page. Visit %@ in your browser." = "Neizdevās atvērt lejupielādes lapu. Pārlūkā apmeklējiet %@.";
+
+/* App updates: text. */
+"Couldn’t open the download page." = "Neizdevās atvērt lejupielādes lapu.";
+
+/* App updates: note under a panel or list. */
+"Visit %@ in your browser." = "Pārlūkā apmeklējiet %@.";
+
+/* App updates: text. */
+"Try again now, or download the update directly in your browser." = "Mēģiniet vēlreiz tagad vai lejupielādējiet atjauninājumu tieši pārlūkā.";
+
+/* App updates: text. */
+"Try again now, or download Deskset %@ directly in your browser." = "Mēģiniet vēlreiz tagad vai lejupielādējiet Deskset %@ tieši pārlūkā.";
+
+/* App updates: text, heading. */
+"Downloading Deskset %@…" = "Notiek Deskset %@ lejupielāde…";
+
+/* App updates: text. */
+"Preparing update…" = "Notiek atjauninājuma sagatavošana…";
+
+/* App updates: status or description line. */
+"You can keep working while the update downloads." = "Kamēr atjauninājums tiek lejupielādēts, varat turpināt darbu.";
+
+/* App updates: status or description line. */
+"Getting the download for this Mac…" = "Notiek lejupielādes iegūšana šim Mac datoram…";
+
+/* App updates: heading. */
+"Deskset %@ is ready to install" = "Deskset %@ ir gatava instalēšanai";
+
+/* App updates: text.
+   Note: Badge after the download's signature has been checked. */
+"Verified" = "Pārbaudīts";
+
+/* App updates: status or description line. */
+"Deskset will quit, install the update, and reopen automatically." = "Deskset izies, instalēs atjauninājumu un automātiski atvērsies no jauna.";
+
+/* App updates: label.
+   Note: Label in a small card, followed by the new version number. */
+"Ready to install" = "Gatavs instalēšanai";
+
+/* App updates: note under a panel or list. */
+"You’ll be asked to save open edits." = "Jums tiks lūgts saglabāt atvērtās izmaiņas.";
+
+/* App updates: button; Install and update panels: text. */
+"Install and Relaunch" = "Instalēt un atvērt no jauna";
+
+/* App updates: heading. */
+"Preparing to restart…" = "Notiek gatavošanās restartēšanai…";
+
+/* App updates: status or description line. */
+"Save your edits when prompted, then Deskset will restart." = "Kad tiks lūgts, saglabājiet izmaiņas; pēc tam Deskset tiks restartēta.";
+
+/* App updates: status or description line. */
+"Preparing the update helper and verifying the signature…" = "Notiek atjaunināšanas palīgrīka sagatavošana un paraksta pārbaude…";
+
+/* App updates: heading. */
+"Couldn’t update Deskset" = "Neizdevās atjaunināt Deskset";
+
+/* App updates: text.
+   Note: Badge with the Mac's processor type (Apple's term; Intel Macs show "Intel"). */
+"Apple silicon" = "Apple mikroshēma";
+
+/* App updates: message (an error or a status). */
+"The update server returned an invalid response. Please try again later." = "Atjauninājumu serveris atgrieza nederīgu atbildi. Mēģiniet vēlreiz vēlāk.";
+
+/* App updates: message (an error or a status). */
+"GitHub is limiting update checks. Please try again later." = "GitHub ierobežo atjauninājumu pārbaudes. Mēģiniet vēlreiz vēlāk.";
+
+/* App updates: message (an error or a status). */
+"The update server returned HTTP %lld. Please try again later." = "Atjauninājumu serveris atgrieza HTTP %lld. Mēģiniet vēlreiz vēlāk.";
+
+/* App updates: message (an error or a status). */
+"The update server returned invalid release information. Please try again later." = "Atjauninājumu serveris atgrieza nederīgu versijas informāciju. Mēģiniet vēlreiz vēlāk.";
+
+/* App updates: message (an error or a status). */
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "Šai versijai nav pārbaudītas lejupielādes šim Mac datoram. Tā vietā varat to lejupielādēt no GitHub.";
+
+/* App updates: message (an error or a status). */
+"The download server returned an invalid response." = "Lejupielādes serveris atgrieza nederīgu atbildi.";
+
+/* App updates: message (an error or a status). */
+"The download server returned HTTP %lld. Please try again." = "Lejupielādes serveris atgrieza HTTP %lld. Mēģiniet vēlreiz.";
+
+/* App updates: message (an error or a status). */
+"The download redirected outside the expected GitHub servers." = "Lejupielāde tika novirzīta ārpus paredzētajiem GitHub serveriem.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file does not match the release size. Please try again." = "Lejupielādētā faila lielums neatbilst versijas lielumam. Mēģiniet vēlreiz.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file failed its SHA-256 check. Please try again." = "Lejupielādētais fails neizturēja SHA-256 pārbaudi. Mēģiniet vēlreiz.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not match this Deskset release." = "Lejupielādētā lietotne neatbilst šai Deskset versijai.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not support this Mac’s processor." = "Lejupielādētā lietotne neatbalsta šī Mac datora procesoru.";
+
+/* App updates: message (an error or a status). */
+"This update requires macOS %@ or later. Your installed version of Deskset has been kept." = "Šim atjauninājumam nepieciešama macOS %@ vai jaunāka versija. Instalētā Deskset versija ir saglabāta.";
+
+/* App updates: message (an error or a status). */
+"The prepared update could not be verified. Download the update again." = "Neizdevās pārbaudīt sagatavoto atjauninājumu. Lejupielādējiet atjauninājumu vēlreiz.";
+
+/* App updates: message (an error or a status). */
+"This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again." = "Šī Deskset kopija šeit nevar sevi atjaunināt. Pārvietojiet to uz mapi „Lietotnes”, kurā var rakstīt, un mēģiniet vēlreiz.";
+
+/* App updates: message (an error or a status). */
+"Deskset’s running process changed before the update could finish. The installed application was kept." = "Deskset process mainījās, pirms atjaunināšana tika pabeigta. Instalētā lietotne ir saglabāta.";
+
+/* App updates: message (an error or a status). */
+"Deskset did not finish quitting in time. The installed application was kept." = "Deskset nepaspēja laikus iziet. Instalētā lietotne ir saglabāta.";
+
+/* App updates: message (an error or a status). */
+"The update helper could not start. Deskset has not been replaced." = "Neizdevās palaist atjaunināšanas palīgrīku. Deskset netika aizstāta.";
+
+/* App updates: message (an error or a status). */
+"Deskset was installed, but could not be opened automatically. Open it from its application folder." = "Deskset ir instalēta, bet to neizdevās automātiski atvērt. Atveriet to no mapes, kurā tā atrodas.";
+
+/* App updates: alert title. */
+"Couldn’t finish updating Deskset" = "Neizdevās pabeigt Deskset atjaunināšanu";
+
+/* App updates: alert or dialog message; Installing Deskset in Applications: alert or dialog message. */
+"Your skins, layouts, and settings are kept." = "Jūsu apvalki, izkārtojumi un iestatījumi ir saglabāti.";
+
+/* App updates: note under a panel or list. */
+"Application location: %@" = "Lietotnes atrašanās vieta: %@";
+
+// MARK: Installing Deskset in Applications
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"This is not a complete Deskset application. Download a fresh copy and try again." = "Šī nav pilnīga Deskset lietotne. Lejupielādējiet jaunu kopiju un mēģiniet vēlreiz.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The application’s version could not be verified. Use Finder to inspect the installed copy." = "Neizdevās pārbaudīt lietotnes versiju. Apskatiet instalēto kopiju programmā Finder.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset %@ is already installed. This older copy will not replace it." = "Deskset %@ jau ir instalēta. Šī vecākā kopija to neaizstās.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace." = "Deskset nevar rakstīt mapē %@. Izejiet no instalētās kopijas, tad programmā Finder ievelciet Deskset šajā mapē un izvēlieties „Aizstāt”.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again." = "Joprojām darbojas cita Deskset kopija. Izejiet no tās, izmantojot tās izvēlni, saglabājiet izmaiņas un mēģiniet vēlreiz.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The copied application’s signature could not be verified. Download a fresh copy and try again." = "Neizdevās pārbaudīt nokopētās lietotnes parakstu. Lejupielādējiet jaunu kopiju un mēģiniet vēlreiz.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again." = "Instalēšanu neizdevās pabeigt. Iepriekšējā lietotne atrodas %@. Pirms mēģināt vēlreiz, atjaunojiet to ar Finder.";
+
+/* Installing Deskset in Applications: alert title. */
+"Replace Deskset %@?" = "Vai aizstāt Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Update the installed app in %@ and reopen Deskset." = "Atjaunināt instalēto lietotni mapē %@ un no jauna atvērt Deskset.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "old version → new version" of the app being replaced. */
+"Replacing" = "Tiek aizstāta";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Replace and Open" = "Aizstāt un atvērt";
+
+/* Installing Deskset in Applications: alert title. */
+"Install Deskset %@?" = "Vai instalēt Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Copy Deskset to your Applications folder and open it there." = "Kopēt Deskset uz mapi „Lietotnes” un atvērt to no turienes.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by the folder Deskset is copied to. */
+"Destination" = "Galamērķis";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Install to Applications" = "Instalēt mapē „Lietotnes”";
+
+/* Installing Deskset in Applications: note under a panel or list.
+   Note: Small note at the bottom of the panel: this copy of Deskset was opened from the downloaded .dmg. */
+"Running from Disk Image" = "Darbojas no diska attēla";
+
+/* Installing Deskset in Applications: alert title. */
+"Quit the running copy of Deskset" = "Izejiet no otras Deskset kopijas";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Another copy of Deskset is currently open." = "Pašlaik ir atvērta cita Deskset kopija.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "Deskset is running". */
+"Status" = "Statuss";
+
+/* Installing Deskset in Applications: text. */
+"Deskset is running" = "Deskset darbojas";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Choose Quit Deskset from its menu and save any edits, then click Retry." = "Tās izvēlnē izvēlieties „Iziet no Deskset” un saglabājiet izmaiņas, pēc tam noklikšķiniet uz „Mēģināt vēlreiz”.";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset %@…" = "Notiek Deskset %@ instalēšana…";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset…" = "Notiek Deskset instalēšana…";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Deskset will open when installation finishes." = "Kad instalēšana būs pabeigta, Deskset atvērsies.";
+
+/* Installing Deskset in Applications: status or description line. */
+"Copying application and verifying signature…" = "Notiek lietotnes kopēšana un paraksta pārbaude…";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Your skins and settings are kept in place." = "Jūsu apvalki un iestatījumi paliek savās vietās.";
+
+/* Installing Deskset in Applications: alert title. */
+"Couldn’t install Deskset" = "Neizdevās instalēt Deskset";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Reveal the installer in Finder to copy Deskset manually." = "Parādiet instalētāju programmā Finder, lai Deskset nokopētu manuāli.";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Show Installer in Finder" = "Rādīt instalētāju programmā Finder";
+
+/* Installing Deskset in Applications: text.
+   Note: Badge after Deskset has been installed. */
+"Installed" = "Instalēts";
+
+/* Installing Deskset in Applications: alert title. */
+"Deskset was installed" = "Deskset ir instalēta";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Open Deskset from %@." = "Atveriet Deskset no %@.";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Use Show in Finder to open the installed application." = "Izmantojiet „Rādīt programmā Finder”, lai atvērtu instalēto lietotni.";
+
+// MARK: Install and update panels
+
+/* Install and update panels: text.
+   Note: VoiceOver name of the app icon when it carries a warning badge. */
+"Deskset warning" = "Deskset brīdinājums";
+
+/* Install and update panels: text.
+   Note: VoiceOver name of a progress bar. */
+"Progress" = "Norise";
+
+/* Install and update panels: VoiceOver description, message (an error or a status).
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"Indeterminate" = "Nenoteikts";
+
+/* Install and update panels: text.
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"In progress" = "Notiek";
+
+// MARK: Restarting Deskset
+
+/* Restarting Deskset: message (an error or a status). */
+"This copy of Deskset could not prepare an automatic restart." = "Šī Deskset kopija nevarēja sagatavot automātisku restartēšanu.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The prepared restart could not be verified." = "Neizdevās pārbaudīt sagatavoto restartēšanu.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart helper could not start. Deskset is still running." = "Neizdevās palaist restartēšanas palīgrīku. Deskset joprojām darbojas.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart was cancelled." = "Restartēšana tika atcelta.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The running process changed before the restart could finish." = "Process mainījās, pirms restartēšana tika pabeigta.";
+
+/* Restarting Deskset: message (an error or a status). */
+"Deskset did not finish preparing or quitting in time." = "Deskset nepaspēja laikus sagatavoties vai iziet.";

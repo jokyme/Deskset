@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Greek.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Φάκελος";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Τα skin ρωτούν τη Μουσική ή το Spotify τι αναπαράγεται για να εμφανίσουν το τρέχον κομμάτι και να ελέγξουν την αναπαραγωγή, και ζητούν από το Finder να αδειάσει τον Κάδο ή να ανοίξει ένα παράθυρο «Λήψη πληροφοριών» όταν χρησιμοποιείτε ένα τέτοιο skin.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Τα skin οπτικοποίησης ήχου εμφανίζουν τη στάθμη και το φάσμα του ήχου που αναπαράγει το Mac σας. Ο ήχος αναλύεται στο Mac σας όσο είναι φορτωμένο ένα τέτοιο skin· δεν εγγράφεται, δεν αποθηκεύεται και δεν αποστέλλεται ποτέ πουθενά.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Ένα skin ή το σενάριό του διαβάζει ή γράφει αρχεία στον φάκελο «Γραφείο» (για παράδειγμα ένα skin λίστας αρχείων, σημειώσεων ή εκκίνησης εφαρμογών).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Ένα skin ή το σενάριό του διαβάζει ή γράφει αρχεία στον φάκελο «Έγγραφα» (για παράδειγμα ένα skin λίστας αρχείων, σημειώσεων ή εκκίνησης εφαρμογών).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Ένα skin ή το σενάριό του διαβάζει ή γράφει αρχεία στον φάκελο «Λήψεις» (για παράδειγμα ένα skin λίστας αρχείων ή εκκίνησης εφαρμογών).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Ελεύθερο λογισμικό υπό την άδεια GNU GPL v3. Εκτελεί skin που δημιουργήθηκαν για το Rainmeter· δεν συνδέεται με το Rainmeter. Το Rainmeter είναι εμπορικό σήμα των αντίστοιχων κατόχων του.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Ένα skin διαβάζει πληροφορίες από μια συσκευή στο τοπικό σας δίκτυο, όπως τη σελίδα κατάστασης ενός δρομολογητή ή έναν οικιακό διακομιστή.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Τα skin που έχετε ρυθμίσει να χρησιμοποιούν την τρέχουσα τοποθεσία σας διαβάζουν την κατά προσέγγιση τοποθεσία σας για να εμφανίζουν τον τοπικό καιρό και τις ώρες ανατολής και δύσης του ηλίου. Στρογγυλοποιείται σε περίπου 1 km, αποστέλλεται μόνο στην υπηρεσία καιρού (MET Norway) για τις προγνώσεις και δεν αποθηκεύεται ποτέ. Το macOS απαιτεί αυτή την άδεια και για να μπορούν τα skin Wi-Fi να εμφανίζουν ονόματα δικτύων.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Τα skin που έχετε ρυθμίσει να χρησιμοποιούν την τρέχουσα τοποθεσία σας διαβάζουν την κατά προσέγγιση τοποθεσία σας για να εμφανίζουν τον τοπικό καιρό και τις ώρες ανατολής και δύσης του ηλίου. Στρογγυλοποιείται σε περίπου 1 km, αποστέλλεται μόνο στην υπηρεσία καιρού (MET Norway) για τις προγνώσεις και δεν αποθηκεύεται ποτέ. Το macOS απαιτεί αυτή την άδεια και για να μπορούν τα skin Wi-Fi να εμφανίζουν ονόματα δικτύων.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Ένα skin θέλει να εμφανίζει τη στάθμη μιας εισόδου ήχου (ενός μικροφώνου ή μιας διασύνδεσης ήχου). Ο ήχος αναλύεται στο Mac σας όσο είναι φορτωμένο το skin· δεν εγγράφεται, δεν αποθηκεύεται και δεν αποστέλλεται ποτέ πουθενά.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Ένα skin ή το σενάριό του διαβάζει αρχεία σε έναν τόμο δικτύου (για παράδειγμα ένα skin δίσκου ή λίστας αρχείων).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Ένα skin ή το σενάριό του διαβάζει αρχεία σε μια αφαιρούμενη μονάδα (για παράδειγμα ένα skin δίσκου ή λίστας αρχείων).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Πακέτο skin";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Αρχείο ZIP";

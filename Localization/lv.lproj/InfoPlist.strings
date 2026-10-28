@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Latvian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Mape";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Apvalki jautā lietotnei „Mūzika” vai Spotify, kas tiek atskaņots, lai parādītu pašreizējo celiņu un vadītu atskaņošanu, un, izmantojot šādu apvalku, lūdz programmai Finder iztukšot atkritni vai atvērt informācijas logu.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Audio vizualizācijas apvalki rāda jūsu Mac datora atskaņotās skaņas līmeni un spektru. Skaņa tiek analizēta jūsu Mac datorā, kamēr šāds apvalks ir ielādēts; tā nekad netiek ierakstīta, saglabāta vai kaut kur nosūtīta.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Apvalks vai tā skripts lasa vai raksta failus jūsu mapē „Darbvirsma” (piemēram, failu saraksta, piezīmju vai palaidēja apvalks).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Apvalks vai tā skripts lasa vai raksta failus jūsu mapē „Dokumenti” (piemēram, failu saraksta, piezīmju vai palaidēja apvalks).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Apvalks vai tā skripts lasa vai raksta failus jūsu mapē „Lejupielādes” (piemēram, failu saraksta vai palaidēja apvalks).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Brīvā programmatūra saskaņā ar GNU GPL v3. Palaiž apvalkus, kas izveidoti Rainmeter; nav saistīta ar Rainmeter. Rainmeter ir attiecīgo īpašnieku preču zīme.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Apvalks nolasa informāciju no ierīces jūsu lokālajā tīklā, piemēram, maršrutētāja statusa lapas vai mājas servera.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Apvalki, kuriem iestatījāt izmantot pašreizējo atrašanās vietu, nolasa jūsu aptuveno atrašanās vietu, lai rādītu vietējos laikapstākļus un saullēkta un saulrieta laiku. Tā tiek noapaļota līdz aptuveni 1 km, nosūtīta tikai laikapstākļu pakalpojumam (MET Norway) prognozēm un nekad netiek saglabāta. macOS šī atļauja nepieciešama arī tam, lai Wi-Fi apvalki varētu rādīt tīklu nosaukumus.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Apvalki, kuriem iestatījāt izmantot pašreizējo atrašanās vietu, nolasa jūsu aptuveno atrašanās vietu, lai rādītu vietējos laikapstākļus un saullēkta un saulrieta laiku. Tā tiek noapaļota līdz aptuveni 1 km, nosūtīta tikai laikapstākļu pakalpojumam (MET Norway) prognozēm un nekad netiek saglabāta. macOS šī atļauja nepieciešama arī tam, lai Wi-Fi apvalki varētu rādīt tīklu nosaukumus.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Apvalks vēlas rādīt audio ievades (mikrofona vai audio saskarnes) līmeni. Skaņa tiek analizēta jūsu Mac datorā, kamēr apvalks ir ielādēts; tā nekad netiek ierakstīta, saglabāta vai kaut kur nosūtīta.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Apvalks vai tā skripts lasa failus tīkla sējumā (piemēram, diska vai failu saraksta apvalks).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Apvalks vai tā skripts lasa failus noņemamā diskā (piemēram, diska vai failu saraksta apvalks).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Apvalku pakotne";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP arhīvs";

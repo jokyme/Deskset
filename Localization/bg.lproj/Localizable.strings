@@ -1,0 +1,1707 @@
+// Deskset — the app's own text, Bulgarian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+// MARK: Main menu
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+"About Deskset" = "Относно Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Settings…" = "Настройки…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Manage Skins…" = "Управление на скиновете…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Install Skin…" = "Инсталирай скин…";
+
+/* Main menu: menu item. */
+"Hide Deskset" = "Скрий Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Quit Deskset" = "Изход от Deskset";
+
+/* Main menu: menu title. */
+"File" = "Файл";
+
+/* Main menu: menu item; Manage window: button; New Skin window: button.
+   Note: Menu command and button (Apple's standard term). */
+"Save" = "Запази";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+   Note: Menu command and button (Apple's standard term). */
+"Close" = "Затвори";
+
+/* Main menu: menu title.
+   Note: The title of the Edit menu in the menu bar (Apple's standard name for it). */
+"Edit|menu" = "Редакция";
+
+/* Main menu: menu item. */
+"Undo" = "Отмени";
+
+/* Main menu: menu item. */
+"Redo" = "Повтори";
+
+/* Main menu: menu item. */
+"Cut" = "Изрежи";
+
+/* Main menu: menu item. */
+"Copy" = "Копирай";
+
+/* Main menu: menu item. */
+"Paste" = "Постави";
+
+/* Main menu: menu item. */
+"Select All" = "Избери всичко";
+
+/* Main menu: menu title, menu item.
+   Note: The title of the Find submenu in the Edit menu (Apple's standard name). */
+"Find" = "Търсене";
+
+/* Main menu: menu item. */
+"Find…" = "Търси…";
+
+/* Main menu: menu item. */
+"Find and Replace…" = "Търси и замести…";
+
+/* Main menu: menu item. */
+"Find Next" = "Търси следващо";
+
+/* Main menu: menu item. */
+"Find Previous" = "Търси предишно";
+
+/* Main menu: menu item. */
+"Use Selection for Find" = "Използвай избраното за търсене";
+
+/* Main menu: menu item. */
+"Jump to Selection" = "Отиди на избраното";
+
+/* Main menu: menu title. */
+"View" = "Изглед";
+
+/* Main menu: menu item. */
+"Enter Full Screen" = "Влез в цял екран";
+
+/* Main menu: menu title; StudioMenus: text. */
+"Window" = "Прозорец";
+
+/* Main menu: menu item. */
+"Minimize" = "Минимизирай";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item.
+   Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
+"Zoom" = "Мащабирай";
+
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+"Help" = "Помощ";
+
+// MARK: Menu bar menu, skin menus and update alerts
+
+/* Menu bar menu, skin menus and update alerts: alert title.
+   Note: Title of an alert: Safe Start could not load the default layout. */
+"Could not start with the default layout" = "Не може да се стартира със стандартната подредба";
+
+/* Menu bar menu, skin menus and update alerts: button; Skin Packager window: button.
+   Note: Button (Apple's standard term). */
+"OK" = "OK";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused while Deskset was quitting or restarting." = "Инсталирането е на пауза, защото Deskset се затваряше или рестартираше.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused because quitting was cancelled. You can try again when ready." = "Инсталирането е на пауза, защото затварянето беше отменено. Можете да опитате отново, когато сте готови.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset %@ is available" = "Наличен е Deskset %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept." = "За този Mac е готова за изтегляне нова версия: %@ → %@. Deskset ще попита преди рестартиране, а вашите скинове, подредби и настройки ще бъдат запазени.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset is up to date" = "Deskset е актуален";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"You’re running the latest release available for this Mac. Installed version %@." = "Използвате най-новата версия, налична за този Mac. Инсталирана версия: %@.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"No release available" = "Няма налична версия";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"There is no public release available yet. Please check again later." = "Все още няма публична версия. Проверете отново по-късно.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Couldn’t check for updates" = "Не може да се провери за обновления";
+
+/* Menu bar menu, skin menus and update alerts: text, alert or dialog message; App updates: status or description line. */
+"Your installed copy (%@) has not been changed." = "Инсталираното копие (%@) не е променено.";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button (Apple's usual wording in update alerts). */
+"Skip This Version" = "Пропусни тази версия";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button in the alert about a new version: starts downloading it. */
+"Update" = "Обнови";
+
+/* Menu bar menu, skin menus and update alerts: window title. */
+"Deskset Updates" = "Обновления на Deskset";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
+"A newer version is ready to download for this Mac." = "За този Mac е готова за изтегляне нова версия.";
+
+/* Menu bar menu, skin menus and update alerts: label.
+   Note: Label in a small card, followed by "old version → new version". */
+"Version" = "Версия";
+
+/* Menu bar menu, skin menus and update alerts: status or description line.
+   Note: Short note at the right end of the version row: Deskset asks before it restarts to install the update. */
+"Asks before restart" = "Пита преди рестартиране";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list; Installing Deskset in Applications: note under a panel or list. */
+"Your skins, layouts, and settings will be kept." = "Вашите скинове, подредби и настройки ще бъдат запазени.";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"You’re running the latest release available for this Mac." = "Използвате най-новата версия, налична за този Mac.";
+
+/* Menu bar menu, skin menus and update alerts: label; Install and update panels: text.
+   Note: Label in a small card, followed by the version number. */
+"Installed version" = "Инсталирана версия";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Automatic update checks are off" = "Автоматичната проверка за обновления е изключена";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Checked just now" = "Проверено току-що";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"There is no public release available for this Mac yet." = "Все още няма публична версия за този Mac.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Please check again later" = "Проверете отново по-късно";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Try again later using Check for Updates." = "Опитайте отново по-късно с „Провери за обновления“.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list.
+   Note: %@ is a version number. */
+"Installed: %@" = "Инсталирана: %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Stop automatic reminders for this version. You can still use Check for Updates." = "Без автоматични напомняния за тази версия. „Провери за обновления“ остава достъпно.";
+
+/* Menu bar menu, skin menus and update alerts: tooltip. */
+"Close for now. The next daily check can remind you again." = "Затвори засега. При следващата ежедневна проверка може да получите напомняне отново.";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
+"Skins" = "Скинове";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
+"Layouts" = "Подредби";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
+"Loaded Skins" = "Заредени скинове";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+   Note: Reloads every skin from its files and rescans the Skins folder. */
+"Refresh All" = "Опресни всички";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Skins Folder" = "Отвори папката със скинове";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Log" = "Отвори журнала";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
+"Debug" = "Отстраняване на грешки";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Launch at Login" = "Отваряй при влизане";
+
+/* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
+"Available when Deskset runs as an installed app." = "Достъпно, когато Deskset работи като инсталирано приложение.";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Update to Deskset %@…" = "Обнови до Deskset %@…";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Restart Deskset" = "Рестартирай Deskset";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"No skins installed" = "Няма инсталирани скинове";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Favorites" = "Любими";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Menu toggle (checkmark): selects this skin, so the menu's settings apply to every selected skin at once. */
+"Select skin" = "Избери скина";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu with the commands a skin adds to its own menu. */
+"Custom Skin Actions" = "Собствени команди на скина";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Manage window at this skin. */
+"Manage" = "Управление";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"About" = "Относно";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the other .ini files of the same skin folder; choosing one loads it instead. */
+"Variants" = "Варианти";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that sets how a skin's window stacks with other windows: Stay Topmost, Topmost, Normal, Bottom, On Desktop. */
+"Position" = "Позиция";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description.
+   Note: Submenu that sets how transparent a skin is: 0% (opaque) to 90%. */
+"Transparency" = "Прозрачност";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu: what a skin does while the pointer is over it (Do Nothing, Hide, Fade In, Fade Out). */
+"On Hover" = "При посочване с курсора";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
+"Click Through" = "Пропускай кликванията";
+
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
+"Draggable" = "Може да се влачи";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin cannot be moved past the edge of its screen. */
+"Keep on Screen" = "Задръж в екрана";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): a dragged skin snaps to screen edges and to other skins. */
+"Snap to Edges" = "Прилепвай към краищата";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
+"Save Position" = "Запомни позицията";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
+"Favorite" = "Любим";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+"Settings" = "Настройки";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu listing what in this skin works differently on a Mac; %lld is how many notes there are. */
+"Compatibility Notes (%lld)" = "Бележки за съвместимостта (%lld)";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Manage Skin…" = "Управление на този скин…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Opens the Debug window for this skin. */
+"Debug Skin" = "Отстрани грешки в скина";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Edit Skin…" = "Редактирай скина…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: %@ is the name of a code editor app, e.g. "Edit in Visual Studio Code". */
+"Edit in %@" = "Редактирай в %@";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Reloads this skin from its files. */
+"Refresh Skin" = "Опресни скина";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Open Skin Folder" = "Отвори папката на скина";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu command: removes the skin from the desktop (the files stay). */
+"Unload Skin" = "Затвори скина";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Shown instead of Refresh Skin while Shift is held: brings the skin to the front of the skins at its position. */
+"Focus Skin" = "Премести скина отпред";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice (Rainmeter's wording): place the skin on the main display. */
+"Use default: Primary monitor" = "Стандартно: основен монитор";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: the area of all displays together. Keep "@0". */
+"@0: Virtual screen" = "@0: виртуален екран";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: A display, numbered as in Rainmeter: "Monitor 2". */
+"Monitor %lld" = "Монитор %lld";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: use whichever display the skin is on. */
+"Auto-select based on window position" = "Избирай автоматично според позицията на прозореца";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description, menu item.
+   Note: Submenu: which display a skin's position is measured from. */
+"Display monitor" = "Монитор";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is measured from the right edge of the display. */
+"From right" = "От десния край";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is measured from the bottom edge of the display. */
+"From bottom" = "От долния край";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is a percentage of the display width. */
+"X as percentage" = "X в проценти";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is a percentage of the display height. */
+"Y as percentage" = "Y в проценти";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Zoom submenu choice: the skin uses the default zoom from Settings. */
+"Default" = "Стандартно";
+
+// MARK: Skin settings (Manage window and skin menu)
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin stays as it is. */
+"Do Nothing" = "Нищо";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin disappears while the pointer is over it. */
+"Hide" = "Скривай";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes opaque while the pointer is over it. */
+"Fade In" = "Плавно показвай";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes transparent while the pointer is over it. */
+"Fade Out" = "Плавно избледнявай";
+
+// MARK: Manage window
+
+/* Manage window: tooltip.
+   Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
+"Hold Control to change zoom by 10 percentage points." = "Задръжте клавиша Control, за да променяте мащаба през 10 процентни пункта.";
+
+/* Manage window: checkbox. */
+"Save as empty layout" = "Запази като празна подредба";
+
+/* Manage window: checkbox. */
+"Exclude unloaded skins" = "Изключи незаредените скинове";
+
+/* Manage window: checkbox. */
+"Include current wallpaper" = "Включи текущия тапет";
+
+/* Manage window: button, text.
+   Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
+"Load" = "Зареди";
+
+/* Manage window: button; New Skin window: button, text. */
+"Delete" = "Изтрий";
+
+/* Manage window: button, menu item; New Skin window: button.
+   Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
+"Edit" = "Редактирай";
+
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+"Create new skin" = "Създай нов скин";
+
+/* Manage window: VoiceOver description, tooltip.
+   Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
+"Create .rmskin Package…" = "Създай пакет .rmskin…";
+
+/* Manage window: label. */
+"Select a skin to see its details." = "Изберете скин, за да видите подробностите му.";
+
+/* Manage window: button.
+   Note: Button: reloads the skin from its files. */
+"Refresh" = "Опресни";
+
+/* Manage window: button. */
+"Open Folder" = "Отвори папката";
+
+/* Manage window: label, text. */
+"Load the skin to change its settings." = "Заредете скина, за да промените настройките му.";
+
+/* Manage window: checkbox.
+   Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
+"Click through" = "Пропускай кликванията";
+
+/* Manage window: checkbox. */
+"Keep on screen" = "Задръж в екрана";
+
+/* Manage window: checkbox. */
+"Snap to edges" = "Прилепвай към краищата";
+
+/* Manage window: checkbox. */
+"Save position" = "Запомни позицията";
+
+/* Manage window: checkbox. */
+"Launch at login" = "Отваряй при влизане";
+
+/* Manage window: text, label.
+   Note: The skin window's X and Y position on the screen. */
+"Coordinates:" = "Координати:";
+
+/* Manage window: text, label.
+   Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
+"Load order:" = "Ред на зареждане:";
+
+/* Manage window: text, label.
+   Note: What a skin does while the pointer is over it. */
+"On hover:" = "При посочване с курсора:";
+
+/* Manage window: text, label. */
+"Position:" = "Позиция:";
+
+/* Manage window: text, label. */
+"Transparency:" = "Прозрачност:";
+
+/* Manage window: text, label.
+   Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
+"Zoom:" = "Мащаб:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Author:" = "Автор:";
+
+/* Manage window: text.
+   Note: The skin's own description, from its [Metadata] section. */
+"Information:" = "Описание:";
+
+/* Manage window: text. */
+"License:" = "Лиценз:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Version:" = "Версия:";
+
+/* Manage window: window title.
+   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
+"Manage Skins" = "Управление на скиновете";
+
+/* Manage window: VoiceOver description. */
+"Installed skins" = "Инсталирани скинове";
+
+/* Manage window: VoiceOver description, text, menu item. */
+"Active skins" = "Активни скинове";
+
+/* Manage window: tooltip. */
+"Select a loaded skin in Manage." = "Изберете зареден скин в прозореца „Управление“.";
+
+/* Manage window: text. */
+"Save new layout" = "Запази нова подредба";
+
+/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+"Name:" = "Име:";
+
+/* Manage window: VoiceOver description. */
+"Layout name" = "Име на подредбата";
+
+/* Manage window: VoiceOver description, text. */
+"Saved layouts" = "Запазени подредби";
+
+/* Manage window: text. */
+"No saved layouts." = "Няма запазени подредби.";
+
+/* Manage window: text. */
+"Could not read saved layouts: %@" = "Запазените подредби не могат да бъдат прочетени: %@";
+
+/* Manage window: alert title. */
+"Could not save layout" = "Подредбата не може да бъде запазена";
+
+/* Manage window: alert title. */
+"Replace layout “%@”?" = "Да се замени ли подредбата „%@“?";
+
+/* Manage window: alert or dialog message. */
+"A layout with this name already exists. Replace its saved settings?" = "Вече съществува подредба с това име. Да се заменят ли запазените ѝ настройки?";
+
+/* Manage window: button; Skin Packager window: button. */
+"Replace" = "Замени";
+
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+"Cancel" = "Отказ";
+
+/* Manage window: alert title. */
+"Could not delete layout" = "Подредбата не може да бъде изтрита";
+
+/* Manage window: alert title. */
+"Delete layout “%@”?" = "Да се изтрие ли подредбата „%@“?";
+
+/* Manage window: alert or dialog message. */
+"This moves the saved layout to the Trash. Your skin files are kept." = "Запазената подредба ще бъде преместена в Кошчето. Файловете на скиновете се запазват.";
+
+/* Manage window: tooltip. */
+"Select the display monitor for this skin." = "Изберете монитора за този скин.";
+
+/* Manage window: text.
+   Note: VoiceOver name of the field for a skin's size, as a percentage. */
+"Skin zoom" = "Мащаб на скина";
+
+/* Manage window: tooltip. */
+"Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable." = "Влачете скина с мишката. Задръжте ⌘, за да влачите скин, който не може да се влачи.";
+
+/* Manage window: tooltip. */
+"Clicks pass through the skin to whatever is below it." = "Кликванията минават през скина към това, което е под него.";
+
+/* Manage window: tooltip. */
+"Keep the whole skin inside the screen it is on." = "Целият скин остава в границите на екрана, на който е.";
+
+/* Manage window: tooltip. */
+"Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override." = "При влачене скинът прилепва към краищата на екрана и към други скинове. Задръжте ⌘ по време на влаченето, за да го избегнете.";
+
+/* Manage window: tooltip. */
+"Remember where the skin is when it is moved." = "Запомняй къде е скинът, след като бъде преместен.";
+
+/* Manage window: tooltip. */
+"Add this skin to the Favorites menu." = "Добави този скин в менюто „Любими“.";
+
+/* Manage window: tooltip. */
+"What the skin does while the pointer is over it." = "Какво прави скинът, докато курсорът е върху него.";
+
+/* Manage window: label.
+   Note: Unit after a duration (milliseconds). */
+"ms" = "мс";
+
+/* Manage window: label.
+   Note: How long a skin takes to fade in or out, in milliseconds. */
+"Fade duration:" = "Продължителност на преливането:";
+
+/* Manage window: text.
+   Note: Section of the Manage window listing what in the skin works differently on a Mac. */
+"Compatibility" = "Съвместимост";
+
+/* Manage window: text. */
+"Start Deskset when you log in." = "Стартирай Deskset при влизане.";
+
+/* Manage window: text.
+   Note: Button: removes the skin from the desktop (the files stay). */
+"Unload" = "Затвори";
+
+/* Manage window: text. */
+"This skin has no [Metadata] section." = "Този скин няма раздел [Metadata].";
+
+/* Manage window: text. */
+"This skin has no metadata values." = "Този скин няма метаданни.";
+
+/* Manage window: text. */
+"No metadata available." = "Няма налични метаданни.";
+
+/* Manage window: text. */
+"Transparency: %lld%%" = "Прозрачност: %lld%%";
+
+/* Manage window: text. */
+"Select a skin file to see its settings." = "Изберете файл на скин, за да видите настройките му.";
+
+/* Manage window: note under a panel or list. */
+"Select a skin file to check it." = "Изберете файл на скин, за да го проверите.";
+
+/* Manage window: text. */
+"No compatibility problems found." = "Не са открити проблеми със съвместимостта.";
+
+/* Manage window: note under a panel or list. */
+"Checked without loading; some problems only show up while the skin runs." = "Проверено без зареждане; някои проблеми се проявяват само докато скинът работи.";
+
+/* Manage window: status or description line.
+   Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
+"Folder" = "Папка";
+
+/* Manage window: text.
+   Note: Status: the skin is on the desktop and running. */
+"Loaded" = "Зареден";
+
+/* Manage window: text.
+   Note: %@ is a skin file name, e.g. "Clock.ini is loaded". */
+"%@ is loaded" = "%@ е зареден";
+
+/* Manage window: text.
+   Note: %@ is a skin file name; the skin is running but has hidden itself. */
+"%@ is loaded, hidden" = "%@ е зареден, скрит";
+
+/* Manage window: status or description line.
+   Note: Status: the skin is installed but not running. */
+"Not loaded" = "Не е зареден";
+
+/* Manage window: alert title. */
+"Could not add metadata" = "Метаданните не могат да бъдат добавени";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
+"%@, has loaded skins" = "%@, съдържа заредени скинове";
+
+/* Manage window: text.
+   Note: Status: the skin is running but has hidden itself. */
+"Loaded, hidden" = "Зареден, скрит";
+
+/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Show in Finder" = "Покажи във Finder";
+
+/* Manage window: text, VoiceOver description. */
+"Add metadata" = "Добави метаданни";
+
+/* Manage window: text.
+   Note: Window position: below all ordinary windows. */
+"Bottom" = "Най-отдолу";
+
+/* Manage window: text.
+   Note: Window position: stacks like an ordinary window. */
+"Normal" = "Нормално";
+
+/* Manage window: text.
+   Note: Window position: on the desktop itself, under the desktop icons' level. */
+"On Desktop" = "На работния плот";
+
+/* Manage window: text.
+   Note: Window position: always above every other window, even after other apps come forward. */
+"Stay Topmost" = "Винаги най-отгоре";
+
+/* Manage window: text.
+   Note: Window position: above other windows until another app comes forward. */
+"Topmost" = "Най-отгоре";
+
+/* Manage window: text.
+   Note: Title of a notice: the skin is loaded, but it hid itself (with !Hide or StartHidden), so it is not on the desktop. */
+"Hidden by the skin" = "Скрит от самия скин";
+
+/* Manage window: text.
+   Note: Button in the notice about a hidden skin: shows the skin again. */
+"Show" = "Покажи";
+
+/* Manage window: text.
+   Note: Keep StartHidden and !Hide as they are (they are names in skin code). */
+"It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it." = "Настроен е да стартира скрит (StartHidden) или една от командите му (!Hide) го е скрила.";
+
+/* Manage window: text.
+   Note: Keep !Hide as it is (a name in skin code). */
+"It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show." = "Зареден е и работи, но една от командите му (!Hide) го е скрила — някои уиджети правят така, когато нямат какво да покажат.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it is loaded again." = "Преместването няма да го покаже. Натиснете „Покажи“, за да го виждате до следващото зареждане.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it hides itself again." = "Преместването няма да го покаже. Натиснете „Покажи“, за да го виждате, докато не се скрие отново сам.";
+
+/* Manage window: text.
+   Note: Under the coordinates after the user typed a new position for a hidden skin. */
+"Moved, but still hidden. Click Show above to see it." = "Преместен, но все още скрит. Натиснете „Покажи“ по-горе, за да го видите.";
+
+/* Manage window: text.
+   Note: Under the coordinates of a hidden skin. */
+"The skin is hidden, so you won’t see it move." = "Скинът е скрит, затова няма да видите как се мести.";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded" = "%@, зареден";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded, hidden" = "%@, зареден, скрит";
+
+/* Manage window: text. */
+"The skin cannot be loaded: %@" = "Скинът не може да бъде зареден: %@";
+
+/* Manage window: message (an error or a status). */
+"Changes to “%@” must be saved before adding metadata." = "Промените в „%@“ трябва да бъдат запазени, преди да добавите метаданни.";
+
+/* Manage window: message (an error or a status). */
+"Could not add metadata to “%@” while an editor save was still in progress." = "Не може да се добавят метаданни към „%@“, защото редакторът още го запазваше.";
+
+// MARK: Layouts
+
+/* Layouts: message (an error or a status). */
+"Wait for the current layout to finish loading." = "Изчакайте текущата подредба да се зареди.";
+
+/* Layouts: message (an error or a status). */
+"Deskset is closing." = "Deskset се затваря.";
+
+/* Layouts: alert title. */
+"Couldn’t load layout “%@”" = "Подредбата „%@“ не може да бъде заредена";
+
+/* Layouts: alert title. */
+"Couldn’t edit layout “%@”" = "Подредбата „%@“ не може да бъде редактирана";
+
+/* Layouts: menu item. */
+"No saved layouts" = "Няма запазени подредби";
+
+/* Layouts: message (an error or a status). */
+"The current desktop picture is not a readable image." = "Текущият тапет не е изображение, което може да се прочете.";
+
+/* Layouts: message (an error or a status). */
+"Wallpaper.bmp is not a readable image." = "Wallpaper.bmp не е изображение, което може да се прочете.";
+
+// MARK: Settings window
+
+/* Settings window: message (an error or a status).
+   Note: The first pane of Settings (Apple's usual name). */
+"General" = "Общи";
+
+/* Settings window: message (an error or a status).
+   Note: A pane of Settings: options for editing skins. */
+"Editor" = "Редактор";
+
+/* Settings window: checkbox.
+   Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
+"Refresh the skin when the file is saved elsewhere" = "Опреснявай скина, когато файлът бъде запазен в друго приложение";
+
+/* Settings window: checkbox. */
+"Launch Deskset at login" = "Отваряй Deskset при влизане";
+
+/* Settings window: checkbox. */
+"Automatically check for updates" = "Проверявай автоматично за обновления";
+
+/* Settings window: button; App updates: text. */
+"Check for Updates…" = "Провери за обновления…";
+
+/* Settings window: button.
+   Note: Button in Settings, shown when a new version is available: opens the update. */
+"Update…" = "Обнови…";
+
+/* Settings window: checkbox.
+   Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
+"Apply to all skins" = "Прилагай за всички скинове";
+
+/* Settings window: checkbox, VoiceOver description.
+   Note: Checkbox: skins cannot be moved with the mouse. */
+"Disable dragging" = "Изключи влаченето";
+
+/* Settings window: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Нулирай статистиката";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Edit code with:" pop-up menu. */
+"Edit code with" = "Приложение за редактиране на код";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the font size field for the built-in code editor. */
+"Code font size" = "Размер на шрифта за код";
+
+/* Settings window: text.
+   Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
+"Default zoom" = "Стандартен мащаб";
+
+/* Settings window: tooltip. */
+"Apply the default zoom to every skin." = "Прилагай стандартния мащаб за всеки скин.";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
+"Force default zoom" = "Налагай стандартния мащаб";
+
+/* Settings window: tooltip. */
+"Prevent dragging skins with the mouse." = "Не позволявай скиновете да се влачат с мишката.";
+
+/* Settings window: label.
+   Note: Unit after a font size (points). */
+"pt" = "пт";
+
+/* Settings window: label.
+   Note: Which app opens a skin's .ini file for editing. */
+"Edit code with:" = "Редактирай кода в:";
+
+/* Settings window: label. */
+"Code font size:" = "Размер на шрифта за код:";
+
+/* Settings window: label.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Автоматично опресняване:";
+
+/* Settings window: text. */
+"Deskset opens with your skins when you log in." = "При влизане Deskset се отваря с вашите скинове.";
+
+/* Settings window: text. */
+"Available when Deskset runs from the Applications folder." = "Достъпно, когато Deskset се стартира от папка „Програми“.";
+
+/* Settings window: label.
+   Note: Settings row with the language pop-up menu. */
+"Language:" = "Език:";
+
+/* Settings window: label.
+   Note: Settings row with the Launch Deskset at login checkbox. */
+"Startup:" = "Стартиране:";
+
+/* Settings window: label.
+   Note: Settings row with the path of the folder skins are installed in. */
+"Skins folder:" = "Папка със скинове:";
+
+/* Settings window: label.
+   Note: The zoom (size, as a percentage) skins get unless one has its own. */
+"Default zoom:" = "Стандартен мащаб:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Обновления:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверява веднъж на ден и сам изтегля обновленията; вие решавате кога да ги инсталирате.";
+
+/* Settings window: text.
+   Note: %@ is the name of an editor app that is no longer installed. */
+"%@ (missing)" = "%@ (не е намерено)";
+
+/* Settings window: text, menu item.
+   Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
+"System default (%@)" = "Стандартното за системата (%@)";
+
+/* Settings window: text; Skin Packager window: menu item.
+   Note: Last item of the editor list: choose any app. */
+"Other…" = "Друго…";
+
+/* Settings window: text.
+   Note: Choice for "Edit code with:": Deskset's own editor, showing the code next to the skin. */
+"Deskset (built-in, side by side)" = "Deskset (вграден, едно до друго)";
+
+/* Settings window: message (an error or a status). */
+"Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window." = "Отваря редактора на скинове с кода до платното, на избрания раздел. Другите текстови файлове, които скинът отваря (настройки, скриптове), се отварят в прозорец за код на Deskset.";
+
+/* Settings window: message (an error or a status). */
+"%@ is no longer installed — the built-in editor is used instead." = "%@ вече не е инсталирано — вместо него се използва вграденият редактор.";
+
+/* Settings window: message (an error or a status). */
+"Opens files in TextEdit, which can’t jump to a line." = "Отваря файловете в TextEdit, който не може да прескача до определен ред.";
+
+/* Settings window: message (an error or a status). */
+"Opens each file in the app macOS uses for its type (%@ for .ini files)." = "Отваря всеки файл в приложението, което macOS използва за вида му (%@ за файлове .ini).";
+
+/* Settings window: message (an error or a status). */
+"%@ can’t jump to a line; files open at the top." = "%@ не може да прескача до определен ред; файловете се отварят от началото.";
+
+/* Settings window: message (an error or a status). */
+"Opens %@ at the selected line." = "Отваря %@ на избрания ред.";
+
+/* Settings window: text. */
+"The first time, %@ may ask to allow this." = "Първия път %@ може да поиска разрешение.";
+
+/* Settings window: button.
+   Note: Button of the dialog where the user picks an editor app. */
+"Choose" = "Избери";
+
+/* Settings window: alert or dialog message. */
+"Choose the app that edits skin code." = "Изберете приложението, в което се редактира кодът на скиновете.";
+
+/* Settings window: alert title. */
+"Restart Deskset now?" = "Да се рестартира ли Deskset сега?";
+
+/* Settings window: alert or dialog message. */
+"The new language is used after Deskset restarts." = "Новият език ще се използва след рестартиране на Deskset.";
+
+/* Settings window: button. */
+"Restart Now" = "Рестартирай сега";
+
+/* Settings window: button; Launch at Login: button; App updates: text; Install and update panels: text. */
+"Later" = "По-късно";
+
+// MARK: Code editor
+
+/* Code editor: text. */
+"%@ is no longer installed — using the built-in editor" = "%@ вече не е инсталирано — използва се вграденият редактор";
+
+// MARK: About window
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, build number, processor (e.g. "Apple silicon"). */
+"Deskset %@ (build %@) - %@" = "Deskset %@ (компилация %@) — %@";
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, processor. */
+"Deskset %@ - %@" = "Deskset %@ — %@";
+
+/* About window: button.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Копирай в клипборда";
+
+/* About window: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Уиджети за работния плот на вашия Mac, съвместими със скинове за Rainmeter.";
+
+/* About window: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter е търговска марка на съответните ѝ притежатели; Deskset не е свързан с нея.";
+
+// MARK: New Skin window
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Скинът не може да бъде създаден";
+
+/* New Skin window: button.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Добави папка";
+
+/* New Skin window: button.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Добави скин";
+
+/* New Skin window: text.
+   Note: Tab of the New skin window: the folders and files to create. */
+"New skin" = "Нов скин";
+
+/* New Skin window: text.
+   Note: A tab of the New skin window: the files a new skin starts with. */
+"Template" = "Шаблон";
+
+/* New Skin window: VoiceOver description.
+   Note: VoiceOver name of the field showing the folder the new skin goes in. */
+"Selected skin folder" = "Избрана папка на скина";
+
+/* New Skin window: column heading, VoiceOver description.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Име";
+
+/* New Skin window: VoiceOver description. */
+"New skin folders and files" = "Папки и файлове на новия скин";
+
+/* New Skin window: VoiceOver description. */
+"Template for new skins" = "Шаблон за нови скинове";
+
+/* New Skin window: VoiceOver description. */
+"Template name" = "Име на шаблона";
+
+/* New Skin window: text. */
+"Save new template" = "Запази като нов шаблон";
+
+/* New Skin window: column heading, VoiceOver description, text. */
+"Saved templates" = "Запазени шаблони";
+
+/* New Skin window: menu item.
+   Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
+"Template…" = "Шаблон…";
+
+/* New Skin window: text. */
+"Use default template" = "Използвай стандартния шаблон";
+
+/* New Skin window: alert title. */
+"Could not complete the operation" = "Операцията не може да бъде завършена";
+
+/* New Skin window: text. */
+"Create" = "Създай";
+
+/* New Skin window: text. */
+"Rename" = "Преименувай";
+
+/* New Skin window: text.
+   Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
+"New Root Folder" = "Нова коренна папка";
+
+/* New Skin window: text. */
+"New Folder" = "Нова папка";
+
+/* New Skin window: text.
+   Note: Title of the dialog asking for a new skin file's name. */
+"New Skin" = "Нов скин";
+
+/* New Skin window: text.
+   Note: Context menu item: opens the new skin's file in the code editor. */
+"Edit skin" = "Редактирай скина";
+
+/* New Skin window: message (an error or a status). */
+"Invalid name: %@" = "Невалидно име: %@";
+
+/* New Skin window: message (an error or a status). */
+"An item named %@ already exists." = "Вече съществува обект с име %@.";
+
+/* New Skin window: message (an error or a status). */
+"The item is no longer a regular file or folder: %@" = "Обектът вече не е обикновен файл или папка: %@";
+
+/* New Skin window: message (an error or a status). */
+"The selected folder is no longer available." = "Избраната папка вече не е достъпна.";
+
+/* New Skin window: message (an error or a status). */
+"Only items created in this window can be renamed or deleted." = "Само обекти, създадени в този прозорец, могат да бъдат преименувани или изтрити.";
+
+/* New Skin window: message (an error or a status). */
+"The default template cannot be deleted." = "Стандартният шаблон не може да бъде изтрит.";
+
+/* New Skin window: text. */
+"The rename could not be completed. The original item remains at %@." = "Преименуването не може да бъде завършено. Оригиналният обект остава в %@.";
+
+// MARK: Skin installer
+
+/* Skin installer: text. */
+"Install “%@”?" = "Да се инсталира ли „%@“?";
+
+/* Skin installer: text.
+   Note: Under a package's name; %@ is the author's name. */
+"By %@" = "Автор: %@";
+
+/* Skin installer: text.
+   Note: %@ is a version number, e.g. "Version 1.2". */
+"Version %@" = "Версия %@";
+
+/* Skin installer: text. */
+"The package does not say who made it." = "Пакетът не посочва кой го е създал.";
+
+/* Skin installer: text. */
+"A package made for the installer of old Rainmeter versions (Rainstaller)." = "Пакет за инсталатора на стари версии на Rainmeter (Rainstaller).";
+
+/* Skin installer: text. */
+"This folder is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing. The folder is copied; the original stays where it is." = "Тази папка не е пакет със скинове, създаден със Skin Packager на Rainmeter, затова Deskset сам откри скиновете в нея. Проверете списъка по-долу, преди да инсталирате. Папката се копира; оригиналът остава на мястото си.";
+
+/* Skin installer: text. */
+"This archive is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing." = "Този архив не е пакет със скинове, създаден със Skin Packager на Rainmeter, затова Deskset сам откри скиновете в него. Проверете списъка по-долу, преди да инсталирате.";
+
+/* Skin installer: text. */
+"A plain folder: no author or version information." = "Обикновена папка без информация за автор или версия.";
+
+/* Skin installer: text. */
+"A plain archive: no author or version information." = "Обикновен архив без информация за автор или версия.";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin, makes no backup and does not keep the values of its variables files. */
+"merged into the installed copy, without a backup or kept variables" = "ще бъде обединен с инсталираното копие, без резервно копие и без запазване на променливите";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin. */
+"merged into the installed copy" = "ще бъде обединен с инсталираното копие";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the installed skin is replaced. */
+"replaces the installed copy" = "заменя инсталираното копие";
+
+/* Skin installer: text.
+   Note: %@ is a layout's name. */
+"Layout “%@”" = "Подредба „%@“";
+
+/* Skin installer: text. */
+"This package includes Windows plugins. Plugins can’t run on macOS, so parts of these skins may show no data." = "Този пакет съдържа плъгини за Windows. Плъгините не работят в macOS, затова части от тези скинове може да останат без данни.";
+
+/* Skin installer: text. */
+"This package includes Windows plugins (%@). Plugins can’t run on macOS, so parts of these skins may show no data." = "Този пакет съдържа плъгини за Windows (%@). Плъгините не работят в macOS, затова части от тези скинове може да останат без данни.";
+
+/* Skin installer: menu item.
+   Note: Installer checkbox: keep a copy of installed skins that the package replaces. */
+"Backup skins" = "Резервно копие на скиновете";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox: after installing, load the skins the package says to load. */
+"Load included skins" = "Зареди включените скинове";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox; %@ is the layout's name. */
+"Apply included layout: %@" = "Приложи включената подредба: %@";
+
+/* Skin installer: menu item; Skin Packager window: text. */
+"Advanced" = "Разширени";
+
+/* Skin installer: tooltip. */
+"Keep a backup when replacing installed skins." = "Пази резервно копие при замяна на инсталирани скинове.";
+
+/* Skin installer: VoiceOver description. */
+"Advanced installation options" = "Разширени опции за инсталиране";
+
+/* Skin installer: text. */
+"Install Skin" = "Инсталиране на скин";
+
+/* Skin installer: alert or dialog message.
+   Note: Message of the open dialog. */
+"Choose a skin package (.rmskin), a ZIP archive or a folder with skins to install." = "Изберете пакет със скинове (.rmskin), ZIP архив или папка със скинове за инсталиране.";
+
+/* Skin installer: button; UISnapshot: button. */
+"Install" = "Инсталирай";
+
+/* Skin installer: text. */
+"Choose the folder of the skin you want to install, not a folder that holds Deskset’s Skins folder. Skins already in the Skins folder are installed; if one is missing from the list, choose Refresh All in the Manage window." = "Изберете папката на скина, който искате да инсталирате, а не папка, която съдържа папката със скинове на Deskset. Скиновете, които вече са в папката със скинове, са инсталирани; ако някой липсва в списъка, изберете „Опресни всички“ в прозореца „Управление“.";
+
+/* Skin installer: text. */
+"Can’t open these files" = "Тези файлове не могат да бъдат отворени";
+
+/* Skin installer: text. */
+"Can’t open “%@”" = "„%@“ не може да бъде отворен";
+
+/* Skin installer: text. */
+"Deskset installs skin packages (.rmskin), ZIP archives with skins and folders with skins." = "Deskset инсталира пакети със скинове (.rmskin), както и ZIP архиви и папки със скинове.";
+
+/* Skin installer: text, alert title. */
+"“%@” is already in the Skins folder" = "„%@“ вече е в папката със скинове";
+
+/* Skin installer: text. */
+"These folders are already in the Skins folder" = "Тези папки вече са в папката със скинове";
+
+/* Skin installer: text. */
+"“%@” contains Deskset’s Skins folder" = "„%@“ съдържа папката със скинове на Deskset";
+
+/* Skin installer: text. */
+"These folders contain Deskset’s Skins folder" = "Тези папки съдържат папката със скинове на Deskset";
+
+/* Skin installer: alert title. */
+"Couldn’t install “%@”" = "„%@“ не може да бъде инсталиран";
+
+/* Skin installer: text. */
+"The current skins did not finish closing. No package files were replaced. Quit and reopen Deskset, then try again." = "Текущите скинове не се затвориха напълно. Не са заменени файлове от пакета. Излезте от Deskset, отворете го отново и опитайте пак.";
+
+/* Skin installer: alert title. */
+"“%@” was installed" = "„%@“ е инсталиран";
+
+/* Skin installer: message (an error or a status). */
+"The file is not a skin package. It may be damaged or incomplete." = "Файлът не е пакет със скинове. Възможно е да е повреден или непълен.";
+
+/* Skin installer: message (an error or a status). */
+"The package has no RMSKIN.ini, so it can’t be installed." = "Пакетът няма RMSKIN.ini, затова не може да бъде инсталиран.";
+
+/* Skin installer: message (an error or a status). */
+"This file or folder doesn’t contain any Rainmeter skins." = "Този файл или папка не съдържа скинове за Rainmeter.";
+
+/* Skin installer: message (an error or a status). */
+"Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "Скиновете в папката със скинове на Deskset вече са инсталирани, така че няма какво да се копира. Ако скин, който сте поставили там, липсва в списъка, изберете „Опресни всички“ в прозореца „Управление“.";
+
+/* Skin installer: message (an error or a status). */
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "Съдържа няколко пакета със скинове (%@). Отваряйте ги един по един (ако е архив, първо го разархивирайте).";
+
+/* Skin installer: label.
+   Note: Above the list of skin folders in the package. */
+"Skins to install:" = "Скинове за инсталиране:";
+
+/* Skin installer: label. */
+"Layouts: %@" = "Подредби: %@";
+
+/* Skin installer: text.
+   Note: %@ is a list of font names. The fonts are used only by these skins. */
+"Fonts included for these skins (not installed system-wide): %@" = "Шрифтове, включени за тези скинове (не се инсталират за цялата система): %@";
+
+/* Skin installer: VoiceOver description. */
+"Warning" = "Предупреждение";
+
+// MARK: Skin Packager window
+
+/* Skin Packager window: text. */
+"Options" = "Опции";
+
+/* Skin Packager window: button, VoiceOver description, tooltip. */
+"Remove" = "Премахни";
+
+/* Skin Packager window: checkbox.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Обединявай скиновете";
+
+/* Skin Packager window: button. */
+"Back" = "Назад";
+
+/* Skin Packager window: button. */
+"Next" = "Напред";
+
+/* Skin Packager window: button. */
+"Create Package" = "Създай пакета";
+
+/* Skin Packager window: window title.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Създаване на пакет .rmskin";
+
+/* Skin Packager window: button. */
+"Add Skin…" = "Добави скин…";
+
+/* Skin Packager window: menu item. */
+"Add Layout" = "Добави подредба";
+
+/* Skin Packager window: button.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Добави плъгин…";
+
+/* Skin Packager window: label. */
+"Skin:" = "Скин:";
+
+/* Skin Packager window: label. */
+"Layouts:" = "Подредби:";
+
+/* Skin Packager window: label.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Плъгини:";
+
+/* Skin Packager window: text.
+   Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
+"Information and Components" = "Информация и съдържание";
+
+/* Skin Packager window: button. */
+"Choose…" = "Избери…";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Нищо";
+
+/* Skin Packager window: text. */
+"Load layout" = "Зареди подредба";
+
+/* Skin Packager window: text. */
+"Load skin" = "Зареди скин";
+
+/* Skin Packager window: label.
+   Note: The file the package is written to. */
+"Save package to:" = "Запази пакета в:";
+
+/* Skin Packager window: label.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "След инсталиране:";
+
+/* Skin Packager window: label.
+   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
+"Minimum Rainmeter version:" = "Минимална версия на Rainmeter:";
+
+/* Skin Packager window: label.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Заглавно изображение:";
+
+/* Skin Packager window: label.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Файлове с променливи:";
+
+/* Skin Packager window: menu item.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Зареди предишни настройки";
+
+/* Skin Packager window: tooltip.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Задръжте Shift, за да изтриете запис.";
+
+/* Skin Packager window: text. */
+"No skin chosen" = "Не е избран скин";
+
+/* Skin Packager window: text, label, menu item.
+   Note: Shown when no header image or plugin is chosen. */
+"None" = "Няма";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit and 64-bit)" = "%@ (32- и 64-битов)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (64-bit version missing)" = "%@ (липсва 64-битова версия)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit version missing)" = "%@ (липсва 32-битова версия)";
+
+/* Skin Packager window: alert or dialog message, message (an error or a status).
+   Note: The root config is the top-level folder of a skin suite in the Skins folder. */
+"Choose the skin's root config folder." = "Изберете коренната папка на скина (root config).";
+
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Пакетът все още не може да бъде създаден";
+
+/* Skin Packager window: text. */
+"Links were left out of the package: %@" = "Връзките бяха изключени от пакета: %@";
+
+/* Skin Packager window: text. */
+"Could not create the package" = "Пакетът не може да бъде създаден";
+
+/* Skin Packager window: text, alert title. */
+"Package created" = "Пакетът е създаден";
+
+/* Skin Packager window: alert title. */
+"“%@” already exists. Replace it?" = "„%@“ вече съществува. Да се замени ли?";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter a name." = "Въведете име.";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter an author." = "Въведете автор.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” has no skin (.ini) files." = "„%@“ няма файлове на скин (.ini).";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout “%@” has no Rainmeter.ini." = "Подредбата „%@“ няма Rainmeter.ini.";
+
+/* Skin Packager window: message (an error or a status). */
+"The plugin “%@” needs both its 32-bit and 64-bit versions." = "Плъгинът „%@“ изисква и 32-битовата, и 64-битовата си версия.";
+
+/* Skin Packager window: message (an error or a status). */
+"The skin to load, “%@”, is not in the package." = "Скинът за зареждане („%@“) не е в пакета.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout to load, “%@”, is not in the package." = "Подредбата за зареждане („%@“) не е в пакета.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be a .bmp file." = "Заглавното изображение трябва да е файл .bmp.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be 400 × 60 pixels; this one is %lld × %lld." = "Заглавното изображение трябва да е 400 × 60 пиксела; това е %lld × %lld.";
+
+/* Skin Packager window: message (an error or a status). */
+"The variables file “%@” is not in the skin." = "Файлът с променливи „%@“ не е в скина.";
+
+/* Skin Packager window: message (an error or a status).
+   Note: "Variables files" and "Merge skins" are the names of two package options; translate them as you did those options. */
+"Variables files and Merge skins can’t be used together." = "„Файлове с променливи“ и „Обединявай скиновете“ не могат да се използват заедно.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@“ не е номер на версия като 5.0 или 5.0.0.4657.";
+
+/* Skin Packager window: message (an error or a status). */
+"Choose where to save the package." = "Изберете къде да се запази пакетът.";
+
+// MARK: Move to Trash confirmation
+
+/* Move to Trash confirmation: text. */
+"Move “%@” to the Trash?" = "Да се премести ли „%@“ в Кошчето?";
+
+/* Move to Trash confirmation: text. */
+"You can restore this item from the Trash." = "Можете да възстановите този обект от Кошчето.";
+
+/* Move to Trash confirmation: button. */
+"Move to Trash" = "Премести в Кошчето";
+
+// MARK: Launch at Login
+
+/* Launch at Login: alert title. */
+"Launch at Login is unavailable" = "„Отваряй при влизане“ не е достъпно";
+
+/* Launch at Login: text. */
+"Move Deskset to the Applications folder and open it from there to start it at login." = "Преместете Deskset в папка „Програми“ и го отворете оттам, за да се стартира при влизане.";
+
+/* Launch at Login: text. */
+"Couldn’t turn off Launch at Login" = "„Отваряй при влизане“ не може да бъде изключено";
+
+/* Launch at Login: text. */
+"Couldn’t turn on Launch at Login" = "„Отваряй при влизане“ не може да бъде включено";
+
+/* Launch at Login: alert title. */
+"Allow Deskset to open at login" = "Разрешете на Deskset да се отваря при влизане";
+
+/* Launch at Login: alert or dialog message. */
+"macOS needs your approval. Turn on Deskset in System Settings › General › Login Items." = "macOS се нуждае от вашето одобрение. Включете Deskset в „Системни настройки“ > „Общи“ > „Обекти при влизане“.";
+
+/* Launch at Login: button. */
+"Open System Settings" = "Отвори Системни настройки";
+
+// MARK: Safe Start
+
+/* Safe Start: text.
+   Note: Title of the alert offering Safe Start. */
+"Deskset Safe Start" = "Безопасно стартиране на Deskset";
+
+/* Safe Start: text.
+   Note: Keep "@Backup" (the name the layout is saved as). */
+"Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept." = "Deskset ще стартира с включената стандартна подредба. Текущата ви подредба ще бъде запазена като @Backup.\n\nФайловете на скиновете ще бъдат запазени.";
+
+/* Safe Start: text.
+   Note: Starting Deskset with its default layout, without the skins that were loaded (offered after a start failed). */
+"Safe Start" = "Безопасно стартиране";
+
+// MARK: App updates
+
+/* App updates: text. */
+"Checking for Updates…" = "Проверка за обновления…";
+
+/* App updates: message (an error or a status).
+   Note: %@ is a version number. */
+"Installed version: %@." = "Инсталирана версия: %@.";
+
+/* App updates: message (an error or a status). */
+"Checking for updates…" = "Проверка за обновления…";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is up to date." = "Deskset %@ е актуален.";
+
+/* App updates: message (an error or a status). */
+"No public release is available yet." = "Все още няма публична версия.";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is available. You have %@." = "Наличен е Deskset %@. Вие имате %@.";
+
+/* App updates: message (an error or a status). */
+"Couldn’t check for updates. %@" = "Не може да се провери за обновления. %@";
+
+/* App updates: text. */
+"The installed version could not be read." = "Инсталираната версия не може да бъде прочетена.";
+
+/* App updates: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Retry" = "Опитай пак";
+
+/* App updates: button; Install and update panels: text. */
+"Download Manually…" = "Изтегли ръчно…";
+
+/* App updates: window title, heading. */
+"Update Deskset" = "Обнови Deskset";
+
+/* App updates: text. */
+"This update is no longer available. Use Check for Updates to try again." = "Това обновление вече не е налично. Използвайте „Провери за обновления“, за да опитате пак.";
+
+/* App updates: status or description line. */
+"Downloading update package…" = "Изтегляне на пакета с обновлението…";
+
+/* App updates: note under a panel or list. */
+"Deskset verifies the signature before asking you to restart." = "Deskset проверява подписа, преди да ви предложи рестартиране.";
+
+/* App updates: status or description line. */
+"Verifying signature and preparing update…" = "Проверка на подписа и подготовка на обновлението…";
+
+/* App updates: status or description line.
+   Note: Badge while the download's signature is checked. */
+"Verifying" = "Проверка";
+
+/* App updates: status or description line. */
+"Couldn’t open the download page. Visit %@ in your browser." = "Страницата за изтегляне не може да бъде отворена. Посетете %@ в браузъра си.";
+
+/* App updates: text. */
+"Couldn’t open the download page." = "Страницата за изтегляне не може да бъде отворена.";
+
+/* App updates: note under a panel or list. */
+"Visit %@ in your browser." = "Посетете %@ в браузъра си.";
+
+/* App updates: text. */
+"Try again now, or download the update directly in your browser." = "Опитайте пак сега или изтеглете обновлението директно в браузъра си.";
+
+/* App updates: text. */
+"Try again now, or download Deskset %@ directly in your browser." = "Опитайте пак сега или изтеглете Deskset %@ директно в браузъра си.";
+
+/* App updates: text, heading. */
+"Downloading Deskset %@…" = "Изтегляне на Deskset %@…";
+
+/* App updates: text. */
+"Preparing update…" = "Подготовка на обновлението…";
+
+/* App updates: status or description line. */
+"You can keep working while the update downloads." = "Можете да продължите работа, докато обновлението се изтегля.";
+
+/* App updates: status or description line. */
+"Getting the download for this Mac…" = "Получаване на изтеглянето за този Mac…";
+
+/* App updates: heading. */
+"Deskset %@ is ready to install" = "Deskset %@ е готов за инсталиране";
+
+/* App updates: text.
+   Note: Badge after the download's signature has been checked. */
+"Verified" = "Проверено";
+
+/* App updates: status or description line. */
+"Deskset will quit, install the update, and reopen automatically." = "Deskset ще излезе, ще инсталира обновлението и ще се отвори отново автоматично.";
+
+/* App updates: label.
+   Note: Label in a small card, followed by the new version number. */
+"Ready to install" = "Готово за инсталиране";
+
+/* App updates: note under a panel or list. */
+"You’ll be asked to save open edits." = "Ще бъдете помолени да запазите отворените промени.";
+
+/* App updates: button; Install and update panels: text. */
+"Install and Relaunch" = "Инсталирай и рестартирай";
+
+/* App updates: heading. */
+"Preparing to restart…" = "Подготовка за рестартиране…";
+
+/* App updates: status or description line. */
+"Save your edits when prompted, then Deskset will restart." = "Запазете промените си, когато бъдете помолени; след това Deskset ще се рестартира.";
+
+/* App updates: status or description line. */
+"Preparing the update helper and verifying the signature…" = "Подготовка на помощника за обновяване и проверка на подписа…";
+
+/* App updates: heading. */
+"Couldn’t update Deskset" = "Deskset не може да бъде обновен";
+
+/* App updates: text.
+   Note: Badge with the Mac's processor type (Apple's term; Intel Macs show "Intel"). */
+"Apple silicon" = "Чип Apple";
+
+/* App updates: message (an error or a status). */
+"The update server returned an invalid response. Please try again later." = "Сървърът за обновления върна невалиден отговор. Опитайте пак по-късно.";
+
+/* App updates: message (an error or a status). */
+"GitHub is limiting update checks. Please try again later." = "GitHub ограничава проверките за обновления. Опитайте пак по-късно.";
+
+/* App updates: message (an error or a status). */
+"The update server returned HTTP %lld. Please try again later." = "Сървърът за обновления върна HTTP %lld. Опитайте пак по-късно.";
+
+/* App updates: message (an error or a status). */
+"The update server returned invalid release information. Please try again later." = "Сървърът за обновления върна невалидна информация за версията. Опитайте пак по-късно.";
+
+/* App updates: message (an error or a status). */
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "Тази версия няма проверено изтегляне за този Mac. Вместо това можете да я изтеглите от GitHub.";
+
+/* App updates: message (an error or a status). */
+"The download server returned an invalid response." = "Сървърът за изтегляне върна невалиден отговор.";
+
+/* App updates: message (an error or a status). */
+"The download server returned HTTP %lld. Please try again." = "Сървърът за изтегляне върна HTTP %lld. Опитайте пак.";
+
+/* App updates: message (an error or a status). */
+"The download redirected outside the expected GitHub servers." = "Изтеглянето беше пренасочено извън очакваните сървъри на GitHub.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file does not match the release size. Please try again." = "Размерът на изтегления файл не съвпада с този на версията. Опитайте пак.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file failed its SHA-256 check. Please try again." = "Изтегленият файл не премина проверката SHA-256. Опитайте пак.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not match this Deskset release." = "Изтегленото приложение не съответства на тази версия на Deskset.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not support this Mac’s processor." = "Изтегленото приложение не поддържа процесора на този Mac.";
+
+/* App updates: message (an error or a status). */
+"This update requires macOS %@ or later. Your installed version of Deskset has been kept." = "Това обновление изисква macOS %@ или по-нова версия. Инсталираната версия на Deskset е запазена.";
+
+/* App updates: message (an error or a status). */
+"The prepared update could not be verified. Download the update again." = "Подготвеното обновление не може да бъде проверено. Изтеглете обновлението отново.";
+
+/* App updates: message (an error or a status). */
+"This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again." = "Това копие на Deskset не може да се обнови само тук. Преместете го в папка „Програми“ с право на запис и опитайте пак.";
+
+/* App updates: message (an error or a status). */
+"Deskset’s running process changed before the update could finish. The installed application was kept." = "Процесът на Deskset се промени, преди обновяването да завърши. Инсталираното приложение е запазено.";
+
+/* App updates: message (an error or a status). */
+"Deskset did not finish quitting in time. The installed application was kept." = "Deskset не успя да излезе навреме. Инсталираното приложение е запазено.";
+
+/* App updates: message (an error or a status). */
+"The update helper could not start. Deskset has not been replaced." = "Помощникът за обновяване не може да стартира. Deskset не е заменен.";
+
+/* App updates: message (an error or a status). */
+"Deskset was installed, but could not be opened automatically. Open it from its application folder." = "Deskset е инсталиран, но не можа да се отвори автоматично. Отворете го от папката, в която се намира.";
+
+/* App updates: alert title. */
+"Couldn’t finish updating Deskset" = "Обновяването на Deskset не може да бъде завършено";
+
+/* App updates: alert or dialog message; Installing Deskset in Applications: alert or dialog message. */
+"Your skins, layouts, and settings are kept." = "Вашите скинове, подредби и настройки се запазват.";
+
+/* App updates: note under a panel or list. */
+"Application location: %@" = "Местоположение на приложението: %@";
+
+// MARK: Installing Deskset in Applications
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"This is not a complete Deskset application. Download a fresh copy and try again." = "Това не е пълно приложение Deskset. Изтеглете ново копие и опитайте пак.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The application’s version could not be verified. Use Finder to inspect the installed copy." = "Версията на приложението не може да бъде проверена. Прегледайте инсталираното копие във Finder.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset %@ is already installed. This older copy will not replace it." = "Deskset %@ вече е инсталиран. Това по-старо копие няма да го замени.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace." = "Deskset не може да записва в %@. Излезте от инсталираното копие, след това плъзнете Deskset в тази папка във Finder и изберете „Замени“.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again." = "Друго копие на Deskset все още работи. Излезте от него през менюто му, запазете промените и опитайте пак.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The copied application’s signature could not be verified. Download a fresh copy and try again." = "Подписът на копираното приложение не може да бъде проверен. Изтеглете ново копие и опитайте пак.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again." = "Инсталирането не може да завърши. Предишното ви приложение е в %@. Възстановете го с Finder, преди да опитате пак.";
+
+/* Installing Deskset in Applications: alert title. */
+"Replace Deskset %@?" = "Да се замени ли Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Update the installed app in %@ and reopen Deskset." = "Обнови инсталираното приложение в %@ и отвори Deskset отново.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "old version → new version" of the app being replaced. */
+"Replacing" = "Заменя се";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Replace and Open" = "Замени и отвори";
+
+/* Installing Deskset in Applications: alert title. */
+"Install Deskset %@?" = "Да се инсталира ли Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Copy Deskset to your Applications folder and open it there." = "Копирай Deskset в папка „Програми“ и го отвори оттам.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by the folder Deskset is copied to. */
+"Destination" = "Местоназначение";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Install to Applications" = "Инсталирай в „Програми“";
+
+/* Installing Deskset in Applications: note under a panel or list.
+   Note: Small note at the bottom of the panel: this copy of Deskset was opened from the downloaded .dmg. */
+"Running from Disk Image" = "Работи от дисков образ";
+
+/* Installing Deskset in Applications: alert title. */
+"Quit the running copy of Deskset" = "Излезте от другото копие на Deskset";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Another copy of Deskset is currently open." = "В момента е отворено друго копие на Deskset.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "Deskset is running". */
+"Status" = "Състояние";
+
+/* Installing Deskset in Applications: text. */
+"Deskset is running" = "Deskset работи";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Choose Quit Deskset from its menu and save any edits, then click Retry." = "Изберете „Изход от Deskset“ в менюто му и запазете промените, след това натиснете „Опитай пак“.";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset %@…" = "Инсталиране на Deskset %@…";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset…" = "Инсталиране на Deskset…";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Deskset will open when installation finishes." = "Deskset ще се отвори, когато инсталирането завърши.";
+
+/* Installing Deskset in Applications: status or description line. */
+"Copying application and verifying signature…" = "Копиране на приложението и проверка на подписа…";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Your skins and settings are kept in place." = "Вашите скинове и настройки остават на мястото си.";
+
+/* Installing Deskset in Applications: alert title. */
+"Couldn’t install Deskset" = "Deskset не може да бъде инсталиран";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Reveal the installer in Finder to copy Deskset manually." = "Покажете инсталатора във Finder, за да копирате Deskset ръчно.";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Show Installer in Finder" = "Покажи инсталатора във Finder";
+
+/* Installing Deskset in Applications: text.
+   Note: Badge after Deskset has been installed. */
+"Installed" = "Инсталиран";
+
+/* Installing Deskset in Applications: alert title. */
+"Deskset was installed" = "Deskset е инсталиран";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Open Deskset from %@." = "Отворете Deskset от %@.";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Use Show in Finder to open the installed application." = "Използвайте „Покажи във Finder“, за да отворите инсталираното приложение.";
+
+// MARK: Install and update panels
+
+/* Install and update panels: text.
+   Note: VoiceOver name of the app icon when it carries a warning badge. */
+"Deskset warning" = "Предупреждение от Deskset";
+
+/* Install and update panels: text.
+   Note: VoiceOver name of a progress bar. */
+"Progress" = "Напредък";
+
+/* Install and update panels: VoiceOver description, message (an error or a status).
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"Indeterminate" = "Неопределен";
+
+/* Install and update panels: text.
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"In progress" = "В процес";
+
+// MARK: Restarting Deskset
+
+/* Restarting Deskset: message (an error or a status). */
+"This copy of Deskset could not prepare an automatic restart." = "Това копие на Deskset не можа да подготви автоматично рестартиране.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The prepared restart could not be verified." = "Подготвеното рестартиране не може да бъде проверено.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart helper could not start. Deskset is still running." = "Помощникът за рестартиране не може да стартира. Deskset продължава да работи.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart was cancelled." = "Рестартирането беше отменено.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The running process changed before the restart could finish." = "Процесът се промени, преди рестартирането да завърши.";
+
+/* Restarting Deskset: message (an error or a status). */
+"Deskset did not finish preparing or quitting in time." = "Deskset не успя навреме да се подготви или да излезе.";

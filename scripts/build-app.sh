@@ -47,8 +47,8 @@ write_plist() {
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <!-- The languages of Localization/*.xcstrings (the same list as Localization.languages in the app; checked by
-         scripts/localization.swift). macOS shows the app in the first of the user's languages listed here. -->
+    <!-- The languages of Localization/<language>.lproj (the same list as Localization.languages in the app; checked
+         by scripts/localization.swift). macOS shows the app in the first of the user's languages listed here. -->
     <key>CFBundleLocalizations</key>
     <array>$(for language in en $LANGUAGES; do printf '<string>%s</string>' "$language"; done)</array>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
@@ -165,13 +165,13 @@ ditto DefaultSkins "$APP/Contents/Resources/DefaultSkins"
 # The offline place table of the weather plugins (GeoNames, CC BY 4.0; Data/Places/README.md).
 ditto Data/Places "$APP/Contents/Resources/Places"
 
-# The app's translations: each String Catalog becomes <language>.lproj/<name>.strings(dict) (Localizable: the app's
-# own text, InfoPlist: permission prompts and document type names). en.lproj always exists, so that English stays
-# the language of a Mac whose first language is English even when the catalog has no English-only entries.
-for catalog in Localization/*.xcstrings; do
-    xcrun xcstringstool compile "$catalog" --output-directory "$APP/Contents/Resources"
+# The app's translations, one folder per language (Localizable: the app's own text and its plural forms, InfoPlist:
+# permission prompts and document type names). A file macOS cannot read would show English without a word, so it
+# stops the build.
+for file in Localization/*.lproj/*; do
+    plutil -lint -s "$file" || { echo "error: $file is not a valid strings file" >&2; exit 1; }
 done
-mkdir -p "$APP/Contents/Resources/en.lproj"
+cp -R Localization/*.lproj "$APP/Contents/Resources/"
 
 # License texts travel with the app; the About panel shows Credits.html.
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"

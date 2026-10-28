@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>(+%lld more)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>(še %lld)</string>
+			<key>one</key>
+			<string>(še %lld)</string>
+			<key>other</key>
+			<string>(še %lld)</string>
+			<key>two</key>
+			<string>(še %lld)</string>
+		</dict>
+	</dict>
+	<key>Contains %lld skins.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>Vsebuje %lld preobleke.</string>
+			<key>one</key>
+			<string>Vsebuje %lld preobleko.</string>
+			<key>other</key>
+			<string>Vsebuje %lld preoblek.</string>
+			<key>two</key>
+			<string>Vsebuje %lld preobleki.</string>
+		</dict>
+	</dict>
+	<key>Move %lld items to the Trash?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>Želite premakniti %lld elemente v smetnjak?</string>
+			<key>one</key>
+			<string>Želite premakniti %lld element v smetnjak?</string>
+			<key>other</key>
+			<string>Želite premakniti %lld elementov v smetnjak?</string>
+			<key>two</key>
+			<string>Želite premakniti %lld elementa v smetnjak?</string>
+		</dict>
+	</dict>
+	<key>… and %lld more items.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>… in še %lld elementi.</string>
+			<key>one</key>
+			<string>… in še %lld element.</string>
+			<key>other</key>
+			<string>… in še %lld elementov.</string>
+			<key>two</key>
+			<string>… in še %lld elementa.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more notes.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>… in še %lld opombe.</string>
+			<key>one</key>
+			<string>… in še %lld opomba.</string>
+			<key>other</key>
+			<string>… in še %lld opomb.</string>
+			<key>two</key>
+			<string>… in še %lld opombi.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>few</key>
+			<string>… in še %lld.</string>
+			<key>one</key>
+			<string>… in še %lld.</string>
+			<key>other</key>
+			<string>… in še %lld.</string>
+			<key>two</key>
+			<string>… in še %lld.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

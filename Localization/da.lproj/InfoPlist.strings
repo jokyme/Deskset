@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Danish.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Mappe";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Skins spørger Musik eller Spotify, hvad der afspilles, for at vise det aktuelle nummer og styre afspilningen, og beder Finder om at tømme papirkurven eller åbne et infovindue, når du bruger et sådant skin.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Lydvisualiseringsskins viser niveau og spektrum for den lyd, din Mac afspiller. Lyden analyseres på din Mac, mens et sådant skin er indlæst; den bliver aldrig optaget, gemt eller sendt nogen steder hen.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Et skin eller dets script læser eller skriver filer i din mappe Skrivebord (f.eks. et skin til fillister, noter eller programstart).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Et skin eller dets script læser eller skriver filer i din mappe Dokumenter (f.eks. et skin til fillister, noter eller programstart).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Et skin eller dets script læser eller skriver filer i din mappe Overførsler (f.eks. et skin til fillister eller programstart).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Fri software under GNU GPL v3. Kører skins lavet til Rainmeter; ikke tilknyttet Rainmeter. Rainmeter er et varemærke tilhørende de respektive ejere.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Et skin læser oplysninger fra en enhed på dit lokale netværk, f.eks. statussiden på en router eller en hjemmeserver.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Skins, som du har indstillet til at bruge din aktuelle placering, læser din omtrentlige placering for at vise det lokale vejr og solens tider. Den afrundes til ca. 1 km, sendes kun til vejrtjenesten (MET Norway) for at hente prognoser og gemmes aldrig. macOS kræver også denne tilladelse, for at Wi-Fi-skins kan vise netværksnavne.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Skins, som du har indstillet til at bruge din aktuelle placering, læser din omtrentlige placering for at vise det lokale vejr og solens tider. Den afrundes til ca. 1 km, sendes kun til vejrtjenesten (MET Norway) for at hente prognoser og gemmes aldrig. macOS kræver også denne tilladelse, for at Wi-Fi-skins kan vise netværksnavne.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Et skin vil vise niveauet for et lydinput (en mikrofon eller et lydinterface). Lyden analyseres på din Mac, mens skinnet er indlæst; den bliver aldrig optaget, gemt eller sendt nogen steder hen.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Et skin eller dets script læser filer på en netværksenhed (f.eks. et skin til diske eller fillister).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Et skin eller dets script læser filer på et flytbart drev (f.eks. et skin til diske eller fillister).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Skinpakke";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-arkiv";

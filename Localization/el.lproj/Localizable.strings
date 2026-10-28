@@ -1,0 +1,1707 @@
+// Deskset — the app's own text, Greek.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+// MARK: Main menu
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+"About Deskset" = "Σχετικά με το Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Settings…" = "Ρυθμίσεις…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Manage Skins…" = "Διαχείριση skin…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Install Skin…" = "Εγκατάσταση skin…";
+
+/* Main menu: menu item. */
+"Hide Deskset" = "Απόκρυψη Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Quit Deskset" = "Τερματισμός Deskset";
+
+/* Main menu: menu title. */
+"File" = "Αρχείο";
+
+/* Main menu: menu item; Manage window: button; New Skin window: button.
+   Note: Menu command and button (Apple's standard term). */
+"Save" = "Αποθήκευση";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+   Note: Menu command and button (Apple's standard term). */
+"Close" = "Κλείσιμο";
+
+/* Main menu: menu title.
+   Note: The title of the Edit menu in the menu bar (Apple's standard name for it). */
+"Edit|menu" = "Επεξεργασία";
+
+/* Main menu: menu item. */
+"Undo" = "Αναίρεση";
+
+/* Main menu: menu item. */
+"Redo" = "Ακύρωση αναίρεσης";
+
+/* Main menu: menu item. */
+"Cut" = "Αποκοπή";
+
+/* Main menu: menu item. */
+"Copy" = "Αντιγραφή";
+
+/* Main menu: menu item. */
+"Paste" = "Επικόλληση";
+
+/* Main menu: menu item. */
+"Select All" = "Επιλογή όλων";
+
+/* Main menu: menu title, menu item.
+   Note: The title of the Find submenu in the Edit menu (Apple's standard name). */
+"Find" = "Εύρεση";
+
+/* Main menu: menu item. */
+"Find…" = "Εύρεση…";
+
+/* Main menu: menu item. */
+"Find and Replace…" = "Εύρεση και αντικατάσταση…";
+
+/* Main menu: menu item. */
+"Find Next" = "Εύρεση επόμενου";
+
+/* Main menu: menu item. */
+"Find Previous" = "Εύρεση προηγούμενου";
+
+/* Main menu: menu item. */
+"Use Selection for Find" = "Χρήση επιλογής για εύρεση";
+
+/* Main menu: menu item. */
+"Jump to Selection" = "Μετάβαση στην επιλογή";
+
+/* Main menu: menu title. */
+"View" = "Προβολή";
+
+/* Main menu: menu item. */
+"Enter Full Screen" = "Είσοδος σε πλήρη οθόνη";
+
+/* Main menu: menu title; StudioMenus: text. */
+"Window" = "Παράθυρο";
+
+/* Main menu: menu item. */
+"Minimize" = "Ελαχιστοποίηση";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item.
+   Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
+"Zoom" = "Ζουμ";
+
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+"Help" = "Βοήθεια";
+
+// MARK: Menu bar menu, skin menus and update alerts
+
+/* Menu bar menu, skin menus and update alerts: alert title.
+   Note: Title of an alert: Safe Start could not load the default layout. */
+"Could not start with the default layout" = "Δεν ήταν δυνατή η εκκίνηση με την προεπιλεγμένη διάταξη";
+
+/* Menu bar menu, skin menus and update alerts: button; Skin Packager window: button.
+   Note: Button (Apple's standard term). */
+"OK" = "OK";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused while Deskset was quitting or restarting." = "Η εγκατάσταση τέθηκε σε παύση επειδή το Deskset τερματιζόταν ή επανεκκινούνταν.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused because quitting was cancelled. You can try again when ready." = "Η εγκατάσταση τέθηκε σε παύση επειδή ο τερματισμός ακυρώθηκε. Μπορείτε να δοκιμάσετε ξανά όταν είστε έτοιμοι.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset %@ is available" = "Το Deskset %@ είναι διαθέσιμο";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept." = "Μια νέα έκδοση για αυτό το Mac είναι έτοιμη για λήψη: %@ → %@. Το Deskset θα ρωτήσει πριν από την επανεκκίνηση και τα skin, οι διατάξεις και οι ρυθμίσεις σας θα διατηρηθούν.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset is up to date" = "Το Deskset είναι ενημερωμένο";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"You’re running the latest release available for this Mac. Installed version %@." = "Χρησιμοποιείτε την πιο πρόσφατη έκδοση που είναι διαθέσιμη για αυτό το Mac. Εγκατεστημένη έκδοση: %@.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"No release available" = "Καμία διαθέσιμη έκδοση";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"There is no public release available yet. Please check again later." = "Δεν υπάρχει ακόμη δημόσια έκδοση. Ελέγξτε ξανά αργότερα.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Couldn’t check for updates" = "Δεν ήταν δυνατός ο έλεγχος για ενημερώσεις";
+
+/* Menu bar menu, skin menus and update alerts: text, alert or dialog message; App updates: status or description line. */
+"Your installed copy (%@) has not been changed." = "Το εγκατεστημένο αντίγραφο (%@) δεν άλλαξε.";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button (Apple's usual wording in update alerts). */
+"Skip This Version" = "Παράλειψη αυτής της έκδοσης";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button in the alert about a new version: starts downloading it. */
+"Update" = "Ενημέρωση";
+
+/* Menu bar menu, skin menus and update alerts: window title. */
+"Deskset Updates" = "Ενημερώσεις Deskset";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
+"A newer version is ready to download for this Mac." = "Μια νέα έκδοση για αυτό το Mac είναι έτοιμη για λήψη.";
+
+/* Menu bar menu, skin menus and update alerts: label.
+   Note: Label in a small card, followed by "old version → new version". */
+"Version" = "Έκδοση";
+
+/* Menu bar menu, skin menus and update alerts: status or description line.
+   Note: Short note at the right end of the version row: Deskset asks before it restarts to install the update. */
+"Asks before restart" = "Ρωτά πριν από την επανεκκίνηση";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list; Installing Deskset in Applications: note under a panel or list. */
+"Your skins, layouts, and settings will be kept." = "Τα skin, οι διατάξεις και οι ρυθμίσεις σας θα διατηρηθούν.";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"You’re running the latest release available for this Mac." = "Χρησιμοποιείτε την πιο πρόσφατη έκδοση που είναι διαθέσιμη για αυτό το Mac.";
+
+/* Menu bar menu, skin menus and update alerts: label; Install and update panels: text.
+   Note: Label in a small card, followed by the version number. */
+"Installed version" = "Εγκατεστημένη έκδοση";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Automatic update checks are off" = "Ο αυτόματος έλεγχος για ενημερώσεις είναι απενεργοποιημένος";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Checked just now" = "Ελέγχθηκε μόλις τώρα";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"There is no public release available for this Mac yet." = "Δεν υπάρχει ακόμη δημόσια έκδοση για αυτό το Mac.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Please check again later" = "Ελέγξτε ξανά αργότερα";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Try again later using Check for Updates." = "Δοκιμάστε ξανά αργότερα με την εντολή «Έλεγχος για ενημερώσεις».";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list.
+   Note: %@ is a version number. */
+"Installed: %@" = "Εγκατεστημένη: %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Stop automatic reminders for this version. You can still use Check for Updates." = "Διακοπή των αυτόματων υπενθυμίσεων για αυτή την έκδοση. Μπορείτε να εξακολουθείτε να χρησιμοποιείτε την εντολή «Έλεγχος για ενημερώσεις».";
+
+/* Menu bar menu, skin menus and update alerts: tooltip. */
+"Close for now. The next daily check can remind you again." = "Κλείσιμο προς το παρόν. Ο επόμενος ημερήσιος έλεγχος μπορεί να σας το υπενθυμίσει ξανά.";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
+"Skins" = "Skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
+"Layouts" = "Διατάξεις";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
+"Loaded Skins" = "Φορτωμένα skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+   Note: Reloads every skin from its files and rescans the Skins folder. */
+"Refresh All" = "Ανανέωση όλων";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Skins Folder" = "Άνοιγμα φακέλου skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Log" = "Άνοιγμα αρχείου καταγραφής";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
+"Debug" = "Αποσφαλμάτωση";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Launch at Login" = "Άνοιγμα κατά τη σύνδεση";
+
+/* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
+"Available when Deskset runs as an installed app." = "Διαθέσιμο όταν το Deskset εκτελείται ως εγκατεστημένη εφαρμογή.";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Update to Deskset %@…" = "Ενημέρωση σε Deskset %@…";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Restart Deskset" = "Επανεκκίνηση Deskset";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"No skins installed" = "Δεν υπάρχουν εγκατεστημένα skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Favorites" = "Αγαπημένα";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Menu toggle (checkmark): selects this skin, so the menu's settings apply to every selected skin at once. */
+"Select skin" = "Επιλογή skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu with the commands a skin adds to its own menu. */
+"Custom Skin Actions" = "Προσαρμοσμένες ενέργειες του skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Manage window at this skin. */
+"Manage" = "Διαχείριση";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"About" = "Σχετικά";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the other .ini files of the same skin folder; choosing one loads it instead. */
+"Variants" = "Παραλλαγές";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that sets how a skin's window stacks with other windows: Stay Topmost, Topmost, Normal, Bottom, On Desktop. */
+"Position" = "Θέση";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description.
+   Note: Submenu that sets how transparent a skin is: 0% (opaque) to 90%. */
+"Transparency" = "Διαφάνεια";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu: what a skin does while the pointer is over it (Do Nothing, Hide, Fade In, Fade Out). */
+"On Hover" = "Με τον δείκτη από πάνω";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
+"Click Through" = "Διέλευση κλικ";
+
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
+"Draggable" = "Μετακινούμενο";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin cannot be moved past the edge of its screen. */
+"Keep on Screen" = "Διατήρηση στην οθόνη";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): a dragged skin snaps to screen edges and to other skins. */
+"Snap to Edges" = "Προσκόλληση στις άκρες";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
+"Save Position" = "Απομνημόνευση θέσης";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
+"Favorite" = "Αγαπημένο";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+"Settings" = "Ρυθμίσεις";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu listing what in this skin works differently on a Mac; %lld is how many notes there are. */
+"Compatibility Notes (%lld)" = "Σημειώσεις συμβατότητας (%lld)";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Manage Skin…" = "Διαχείριση αυτού του skin…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Opens the Debug window for this skin. */
+"Debug Skin" = "Αποσφαλμάτωση skin";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Edit Skin…" = "Επεξεργασία skin…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: %@ is the name of a code editor app, e.g. "Edit in Visual Studio Code". */
+"Edit in %@" = "Επεξεργασία στο %@";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Reloads this skin from its files. */
+"Refresh Skin" = "Ανανέωση skin";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Open Skin Folder" = "Άνοιγμα φακέλου του skin";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu command: removes the skin from the desktop (the files stay). */
+"Unload Skin" = "Κλείσιμο skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Shown instead of Refresh Skin while Shift is held: brings the skin to the front of the skins at its position. */
+"Focus Skin" = "Μεταφορά του skin μπροστά";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice (Rainmeter's wording): place the skin on the main display. */
+"Use default: Primary monitor" = "Προεπιλογή: κύρια οθόνη";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: the area of all displays together. Keep "@0". */
+"@0: Virtual screen" = "@0: εικονική οθόνη";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: A display, numbered as in Rainmeter: "Monitor 2". */
+"Monitor %lld" = "Οθόνη %lld";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: use whichever display the skin is on. */
+"Auto-select based on window position" = "Αυτόματη επιλογή βάσει της θέσης του παραθύρου";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description, menu item.
+   Note: Submenu: which display a skin's position is measured from. */
+"Display monitor" = "Οθόνη";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is measured from the right edge of the display. */
+"From right" = "Από τα δεξιά";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is measured from the bottom edge of the display. */
+"From bottom" = "Από κάτω";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is a percentage of the display width. */
+"X as percentage" = "X ως ποσοστό";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is a percentage of the display height. */
+"Y as percentage" = "Y ως ποσοστό";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Zoom submenu choice: the skin uses the default zoom from Settings. */
+"Default" = "Προεπιλογή";
+
+// MARK: Skin settings (Manage window and skin menu)
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin stays as it is. */
+"Do Nothing" = "Καμία ενέργεια";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin disappears while the pointer is over it. */
+"Hide" = "Απόκρυψη";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes opaque while the pointer is over it. */
+"Fade In" = "Σταδιακή εμφάνιση";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes transparent while the pointer is over it. */
+"Fade Out" = "Σταδιακή εξαφάνιση";
+
+// MARK: Manage window
+
+/* Manage window: tooltip.
+   Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
+"Hold Control to change zoom by 10 percentage points." = "Κρατήστε πατημένο το Control για να αλλάζετε το ζουμ κατά 10 ποσοστιαίες μονάδες.";
+
+/* Manage window: checkbox. */
+"Save as empty layout" = "Αποθήκευση ως κενή διάταξη";
+
+/* Manage window: checkbox. */
+"Exclude unloaded skins" = "Εξαίρεση μη φορτωμένων skin";
+
+/* Manage window: checkbox. */
+"Include current wallpaper" = "Συμπερίληψη της τρέχουσας εικόνας φόντου";
+
+/* Manage window: button, text.
+   Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
+"Load" = "Φόρτωση";
+
+/* Manage window: button; New Skin window: button, text. */
+"Delete" = "Διαγραφή";
+
+/* Manage window: button, menu item; New Skin window: button.
+   Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
+"Edit" = "Επεξεργασία";
+
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+"Create new skin" = "Δημιουργία νέου skin";
+
+/* Manage window: VoiceOver description, tooltip.
+   Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
+"Create .rmskin Package…" = "Δημιουργία πακέτου .rmskin…";
+
+/* Manage window: label. */
+"Select a skin to see its details." = "Επιλέξτε ένα skin για να δείτε τις λεπτομέρειές του.";
+
+/* Manage window: button.
+   Note: Button: reloads the skin from its files. */
+"Refresh" = "Ανανέωση";
+
+/* Manage window: button. */
+"Open Folder" = "Άνοιγμα φακέλου";
+
+/* Manage window: label, text. */
+"Load the skin to change its settings." = "Φορτώστε το skin για να αλλάξετε τις ρυθμίσεις του.";
+
+/* Manage window: checkbox.
+   Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
+"Click through" = "Διέλευση κλικ";
+
+/* Manage window: checkbox. */
+"Keep on screen" = "Διατήρηση στην οθόνη";
+
+/* Manage window: checkbox. */
+"Snap to edges" = "Προσκόλληση στις άκρες";
+
+/* Manage window: checkbox. */
+"Save position" = "Απομνημόνευση θέσης";
+
+/* Manage window: checkbox. */
+"Launch at login" = "Άνοιγμα κατά τη σύνδεση";
+
+/* Manage window: text, label.
+   Note: The skin window's X and Y position on the screen. */
+"Coordinates:" = "Συντεταγμένες:";
+
+/* Manage window: text, label.
+   Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
+"Load order:" = "Σειρά φόρτωσης:";
+
+/* Manage window: text, label.
+   Note: What a skin does while the pointer is over it. */
+"On hover:" = "Με τον δείκτη από πάνω:";
+
+/* Manage window: text, label. */
+"Position:" = "Θέση:";
+
+/* Manage window: text, label. */
+"Transparency:" = "Διαφάνεια:";
+
+/* Manage window: text, label.
+   Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
+"Zoom:" = "Ζουμ:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Author:" = "Δημιουργός:";
+
+/* Manage window: text.
+   Note: The skin's own description, from its [Metadata] section. */
+"Information:" = "Περιγραφή:";
+
+/* Manage window: text. */
+"License:" = "Άδεια:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Version:" = "Έκδοση:";
+
+/* Manage window: window title.
+   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
+"Manage Skins" = "Διαχείριση skin";
+
+/* Manage window: VoiceOver description. */
+"Installed skins" = "Εγκατεστημένα skin";
+
+/* Manage window: VoiceOver description, text, menu item. */
+"Active skins" = "Ενεργά skin";
+
+/* Manage window: tooltip. */
+"Select a loaded skin in Manage." = "Επιλέξτε ένα φορτωμένο skin στο παράθυρο «Διαχείριση».";
+
+/* Manage window: text. */
+"Save new layout" = "Αποθήκευση νέας διάταξης";
+
+/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+"Name:" = "Όνομα:";
+
+/* Manage window: VoiceOver description. */
+"Layout name" = "Όνομα διάταξης";
+
+/* Manage window: VoiceOver description, text. */
+"Saved layouts" = "Αποθηκευμένες διατάξεις";
+
+/* Manage window: text. */
+"No saved layouts." = "Δεν υπάρχουν αποθηκευμένες διατάξεις.";
+
+/* Manage window: text. */
+"Could not read saved layouts: %@" = "Δεν ήταν δυνατή η ανάγνωση των αποθηκευμένων διατάξεων: %@";
+
+/* Manage window: alert title. */
+"Could not save layout" = "Δεν ήταν δυνατή η αποθήκευση της διάταξης";
+
+/* Manage window: alert title. */
+"Replace layout “%@”?" = "Αντικατάσταση της διάταξης «%@»;";
+
+/* Manage window: alert or dialog message. */
+"A layout with this name already exists. Replace its saved settings?" = "Υπάρχει ήδη διάταξη με αυτό το όνομα. Θέλετε να αντικαταστήσετε τις αποθηκευμένες ρυθμίσεις της;";
+
+/* Manage window: button; Skin Packager window: button. */
+"Replace" = "Αντικατάσταση";
+
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+"Cancel" = "Ακύρωση";
+
+/* Manage window: alert title. */
+"Could not delete layout" = "Δεν ήταν δυνατή η διαγραφή της διάταξης";
+
+/* Manage window: alert title. */
+"Delete layout “%@”?" = "Διαγραφή της διάταξης «%@»;";
+
+/* Manage window: alert or dialog message. */
+"This moves the saved layout to the Trash. Your skin files are kept." = "Η αποθηκευμένη διάταξη θα μεταφερθεί στον Κάδο. Τα αρχεία των skin διατηρούνται.";
+
+/* Manage window: tooltip. */
+"Select the display monitor for this skin." = "Επιλέξτε την οθόνη για αυτό το skin.";
+
+/* Manage window: text.
+   Note: VoiceOver name of the field for a skin's size, as a percentage. */
+"Skin zoom" = "Ζουμ skin";
+
+/* Manage window: tooltip. */
+"Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable." = "Σύρετε το skin με το ποντίκι. Κρατήστε πατημένο το ⌘ για να σύρετε ένα skin που δεν μετακινείται.";
+
+/* Manage window: tooltip. */
+"Clicks pass through the skin to whatever is below it." = "Τα κλικ περνούν μέσα από το skin προς ό,τι βρίσκεται από κάτω.";
+
+/* Manage window: tooltip. */
+"Keep the whole skin inside the screen it is on." = "Διατήρηση ολόκληρου του skin μέσα στην οθόνη όπου βρίσκεται.";
+
+/* Manage window: tooltip. */
+"Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override." = "Κατά τη μεταφορά, προσκόλληση στις άκρες της οθόνης και σε άλλα skin. Κρατήστε πατημένο το ⌘ ενώ σύρετε για να το αποφύγετε.";
+
+/* Manage window: tooltip. */
+"Remember where the skin is when it is moved." = "Απομνημόνευση της θέσης του skin όταν μετακινείται.";
+
+/* Manage window: tooltip. */
+"Add this skin to the Favorites menu." = "Προσθήκη αυτού του skin στο μενού «Αγαπημένα».";
+
+/* Manage window: tooltip. */
+"What the skin does while the pointer is over it." = "Τι κάνει το skin όσο ο δείκτης βρίσκεται πάνω του.";
+
+/* Manage window: label.
+   Note: Unit after a duration (milliseconds). */
+"ms" = "ms";
+
+/* Manage window: label.
+   Note: How long a skin takes to fade in or out, in milliseconds. */
+"Fade duration:" = "Διάρκεια σταδιακής μετάβασης:";
+
+/* Manage window: text.
+   Note: Section of the Manage window listing what in the skin works differently on a Mac. */
+"Compatibility" = "Συμβατότητα";
+
+/* Manage window: text. */
+"Start Deskset when you log in." = "Εκκίνηση του Deskset κατά τη σύνδεση.";
+
+/* Manage window: text.
+   Note: Button: removes the skin from the desktop (the files stay). */
+"Unload" = "Κλείσιμο";
+
+/* Manage window: text. */
+"This skin has no [Metadata] section." = "Αυτό το skin δεν έχει ενότητα [Metadata].";
+
+/* Manage window: text. */
+"This skin has no metadata values." = "Αυτό το skin δεν έχει μεταδεδομένα.";
+
+/* Manage window: text. */
+"No metadata available." = "Δεν υπάρχουν μεταδεδομένα.";
+
+/* Manage window: text. */
+"Transparency: %lld%%" = "Διαφάνεια: %lld%%";
+
+/* Manage window: text. */
+"Select a skin file to see its settings." = "Επιλέξτε ένα αρχείο skin για να δείτε τις ρυθμίσεις του.";
+
+/* Manage window: note under a panel or list. */
+"Select a skin file to check it." = "Επιλέξτε ένα αρχείο skin για να το ελέγξετε.";
+
+/* Manage window: text. */
+"No compatibility problems found." = "Δεν βρέθηκαν προβλήματα συμβατότητας.";
+
+/* Manage window: note under a panel or list. */
+"Checked without loading; some problems only show up while the skin runs." = "Ελέγχθηκε χωρίς φόρτωση· ορισμένα προβλήματα εμφανίζονται μόνο όσο εκτελείται το skin.";
+
+/* Manage window: status or description line.
+   Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
+"Folder" = "Φάκελος";
+
+/* Manage window: text.
+   Note: Status: the skin is on the desktop and running. */
+"Loaded" = "Φορτωμένο";
+
+/* Manage window: text.
+   Note: %@ is a skin file name, e.g. "Clock.ini is loaded". */
+"%@ is loaded" = "Το %@ είναι φορτωμένο";
+
+/* Manage window: text.
+   Note: %@ is a skin file name; the skin is running but has hidden itself. */
+"%@ is loaded, hidden" = "Το %@ είναι φορτωμένο, κρυφό";
+
+/* Manage window: status or description line.
+   Note: Status: the skin is installed but not running. */
+"Not loaded" = "Μη φορτωμένο";
+
+/* Manage window: alert title. */
+"Could not add metadata" = "Δεν ήταν δυνατή η προσθήκη μεταδεδομένων";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
+"%@, has loaded skins" = "%@, περιέχει φορτωμένα skin";
+
+/* Manage window: text.
+   Note: Status: the skin is running but has hidden itself. */
+"Loaded, hidden" = "Φορτωμένο, κρυφό";
+
+/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Show in Finder" = "Εμφάνιση στο Finder";
+
+/* Manage window: text, VoiceOver description. */
+"Add metadata" = "Προσθήκη μεταδεδομένων";
+
+/* Manage window: text.
+   Note: Window position: below all ordinary windows. */
+"Bottom" = "Στο κάτω μέρος";
+
+/* Manage window: text.
+   Note: Window position: stacks like an ordinary window. */
+"Normal" = "Κανονικά";
+
+/* Manage window: text.
+   Note: Window position: on the desktop itself, under the desktop icons' level. */
+"On Desktop" = "Στο γραφείο";
+
+/* Manage window: text.
+   Note: Window position: always above every other window, even after other apps come forward. */
+"Stay Topmost" = "Πάντα στην κορυφή";
+
+/* Manage window: text.
+   Note: Window position: above other windows until another app comes forward. */
+"Topmost" = "Στην κορυφή";
+
+/* Manage window: text.
+   Note: Title of a notice: the skin is loaded, but it hid itself (with !Hide or StartHidden), so it is not on the desktop. */
+"Hidden by the skin" = "Κρύφτηκε από το ίδιο το skin";
+
+/* Manage window: text.
+   Note: Button in the notice about a hidden skin: shows the skin again. */
+"Show" = "Εμφάνιση";
+
+/* Manage window: text.
+   Note: Keep StartHidden and !Hide as they are (they are names in skin code). */
+"It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it." = "Έχει ρυθμιστεί να ξεκινά κρυφό (StartHidden) ή το έκρυψε μία από τις εντολές του (!Hide).";
+
+/* Manage window: text.
+   Note: Keep !Hide as it is (a name in skin code). */
+"It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show." = "Είναι φορτωμένο και εκτελείται, αλλά το έκρυψε μία από τις εντολές του (!Hide), όπως κάνουν ορισμένα widget όταν δεν έχουν τίποτα να εμφανίσουν.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it is loaded again." = "Η μετακίνηση δεν θα το εμφανίσει. Κάντε κλικ στο «Εμφάνιση» για να το βλέπετε μέχρι την επόμενη φόρτωση.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it hides itself again." = "Η μετακίνηση δεν θα το εμφανίσει. Κάντε κλικ στο «Εμφάνιση» για να το βλέπετε μέχρι να κρυφτεί ξανά μόνο του.";
+
+/* Manage window: text.
+   Note: Under the coordinates after the user typed a new position for a hidden skin. */
+"Moved, but still hidden. Click Show above to see it." = "Μετακινήθηκε, αλλά παραμένει κρυφό. Κάντε κλικ στο «Εμφάνιση» παραπάνω για να το δείτε.";
+
+/* Manage window: text.
+   Note: Under the coordinates of a hidden skin. */
+"The skin is hidden, so you won’t see it move." = "Το skin είναι κρυφό, οπότε δεν θα το δείτε να μετακινείται.";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded" = "%@, φορτωμένο";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded, hidden" = "%@, φορτωμένο, κρυφό";
+
+/* Manage window: text. */
+"The skin cannot be loaded: %@" = "Δεν είναι δυνατή η φόρτωση του skin: %@";
+
+/* Manage window: message (an error or a status). */
+"Changes to “%@” must be saved before adding metadata." = "Οι αλλαγές στο «%@» πρέπει να αποθηκευτούν πριν από την προσθήκη μεταδεδομένων.";
+
+/* Manage window: message (an error or a status). */
+"Could not add metadata to “%@” while an editor save was still in progress." = "Δεν ήταν δυνατή η προσθήκη μεταδεδομένων στο «%@», επειδή ο επεξεργαστής το αποθήκευε ακόμη.";
+
+// MARK: Layouts
+
+/* Layouts: message (an error or a status). */
+"Wait for the current layout to finish loading." = "Περιμένετε να ολοκληρωθεί η φόρτωση της τρέχουσας διάταξης.";
+
+/* Layouts: message (an error or a status). */
+"Deskset is closing." = "Το Deskset κλείνει.";
+
+/* Layouts: alert title. */
+"Couldn’t load layout “%@”" = "Δεν ήταν δυνατή η φόρτωση της διάταξης «%@»";
+
+/* Layouts: alert title. */
+"Couldn’t edit layout “%@”" = "Δεν ήταν δυνατή η επεξεργασία της διάταξης «%@»";
+
+/* Layouts: menu item. */
+"No saved layouts" = "Δεν υπάρχουν αποθηκευμένες διατάξεις";
+
+/* Layouts: message (an error or a status). */
+"The current desktop picture is not a readable image." = "Η τρέχουσα εικόνα φόντου δεν είναι αναγνώσιμη εικόνα.";
+
+/* Layouts: message (an error or a status). */
+"Wallpaper.bmp is not a readable image." = "Το Wallpaper.bmp δεν είναι αναγνώσιμη εικόνα.";
+
+// MARK: Settings window
+
+/* Settings window: message (an error or a status).
+   Note: The first pane of Settings (Apple's usual name). */
+"General" = "Γενικά";
+
+/* Settings window: message (an error or a status).
+   Note: A pane of Settings: options for editing skins. */
+"Editor" = "Επεξεργαστής";
+
+/* Settings window: checkbox.
+   Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
+"Refresh the skin when the file is saved elsewhere" = "Ανανέωση του skin όταν το αρχείο αποθηκεύεται σε άλλη εφαρμογή";
+
+/* Settings window: checkbox. */
+"Launch Deskset at login" = "Άνοιγμα του Deskset κατά τη σύνδεση";
+
+/* Settings window: checkbox. */
+"Automatically check for updates" = "Αυτόματος έλεγχος για ενημερώσεις";
+
+/* Settings window: button; App updates: text. */
+"Check for Updates…" = "Έλεγχος για ενημερώσεις…";
+
+/* Settings window: button.
+   Note: Button in Settings, shown when a new version is available: opens the update. */
+"Update…" = "Ενημέρωση…";
+
+/* Settings window: checkbox.
+   Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
+"Apply to all skins" = "Εφαρμογή σε όλα τα skin";
+
+/* Settings window: checkbox, VoiceOver description.
+   Note: Checkbox: skins cannot be moved with the mouse. */
+"Disable dragging" = "Απενεργοποίηση μεταφοράς";
+
+/* Settings window: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Επαναφορά στατιστικών";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Edit code with:" pop-up menu. */
+"Edit code with" = "Εφαρμογή για επεξεργασία κώδικα";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the font size field for the built-in code editor. */
+"Code font size" = "Μέγεθος γραμματοσειράς κώδικα";
+
+/* Settings window: text.
+   Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
+"Default zoom" = "Προεπιλεγμένο ζουμ";
+
+/* Settings window: tooltip. */
+"Apply the default zoom to every skin." = "Εφαρμογή του προεπιλεγμένου ζουμ σε κάθε skin.";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
+"Force default zoom" = "Επιβολή προεπιλεγμένου ζουμ";
+
+/* Settings window: tooltip. */
+"Prevent dragging skins with the mouse." = "Αποτροπή μεταφοράς των skin με το ποντίκι.";
+
+/* Settings window: label.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* Settings window: label.
+   Note: Which app opens a skin's .ini file for editing. */
+"Edit code with:" = "Επεξεργασία κώδικα με:";
+
+/* Settings window: label. */
+"Code font size:" = "Μέγεθος γραμματοσειράς κώδικα:";
+
+/* Settings window: label.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Αυτόματη ανανέωση:";
+
+/* Settings window: text. */
+"Deskset opens with your skins when you log in." = "Κατά τη σύνδεση, το Deskset ανοίγει με τα skin σας.";
+
+/* Settings window: text. */
+"Available when Deskset runs from the Applications folder." = "Διαθέσιμο όταν το Deskset εκτελείται από τον φάκελο «Εφαρμογές».";
+
+/* Settings window: label.
+   Note: Settings row with the language pop-up menu. */
+"Language:" = "Γλώσσα:";
+
+/* Settings window: label.
+   Note: Settings row with the Launch Deskset at login checkbox. */
+"Startup:" = "Εκκίνηση:";
+
+/* Settings window: label.
+   Note: Settings row with the path of the folder skins are installed in. */
+"Skins folder:" = "Φάκελος skin:";
+
+/* Settings window: label.
+   Note: The zoom (size, as a percentage) skins get unless one has its own. */
+"Default zoom:" = "Προεπιλεγμένο ζουμ:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Ενημερώσεις:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Το Deskset ελέγχει μία φορά την ημέρα και κατεβάζει μόνο του τις ενημερώσεις· εσείς επιλέγετε πότε θα τις εγκαταστήσετε.";
+
+/* Settings window: text.
+   Note: %@ is the name of an editor app that is no longer installed. */
+"%@ (missing)" = "%@ (δεν βρέθηκε)";
+
+/* Settings window: text, menu item.
+   Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
+"System default (%@)" = "Προεπιλογή συστήματος (%@)";
+
+/* Settings window: text; Skin Packager window: menu item.
+   Note: Last item of the editor list: choose any app. */
+"Other…" = "Άλλο…";
+
+/* Settings window: text.
+   Note: Choice for "Edit code with:": Deskset's own editor, showing the code next to the skin. */
+"Deskset (built-in, side by side)" = "Deskset (ενσωματωμένο, δίπλα-δίπλα)";
+
+/* Settings window: message (an error or a status). */
+"Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window." = "Ανοίγει τον επεξεργαστή skin με τον κώδικα δίπλα στον καμβά, στην επιλεγμένη ενότητα. Τα άλλα αρχεία κειμένου που ανοίγει ένα skin (ρυθμίσεις, σενάρια) ανοίγουν σε παράθυρο κώδικα του Deskset.";
+
+/* Settings window: message (an error or a status). */
+"%@ is no longer installed — the built-in editor is used instead." = "Το %@ δεν είναι πλέον εγκατεστημένο — χρησιμοποιείται ο ενσωματωμένος επεξεργαστής.";
+
+/* Settings window: message (an error or a status). */
+"Opens files in TextEdit, which can’t jump to a line." = "Ανοίγει τα αρχεία στο TextEdit, το οποίο δεν μπορεί να μεταβεί σε συγκεκριμένη γραμμή.";
+
+/* Settings window: message (an error or a status). */
+"Opens each file in the app macOS uses for its type (%@ for .ini files)." = "Ανοίγει κάθε αρχείο στην εφαρμογή που χρησιμοποιεί το macOS για τον τύπο του (%@ για αρχεία .ini).";
+
+/* Settings window: message (an error or a status). */
+"%@ can’t jump to a line; files open at the top." = "Το %@ δεν μπορεί να μεταβεί σε συγκεκριμένη γραμμή· τα αρχεία ανοίγουν από την αρχή.";
+
+/* Settings window: message (an error or a status). */
+"Opens %@ at the selected line." = "Ανοίγει το %@ στην επιλεγμένη γραμμή.";
+
+/* Settings window: text. */
+"The first time, %@ may ask to allow this." = "Την πρώτη φορά, το %@ μπορεί να ζητήσει άδεια.";
+
+/* Settings window: button.
+   Note: Button of the dialog where the user picks an editor app. */
+"Choose" = "Επιλογή";
+
+/* Settings window: alert or dialog message. */
+"Choose the app that edits skin code." = "Επιλέξτε την εφαρμογή με την οποία επεξεργάζεστε τον κώδικα των skin.";
+
+/* Settings window: alert title. */
+"Restart Deskset now?" = "Επανεκκίνηση του Deskset τώρα;";
+
+/* Settings window: alert or dialog message. */
+"The new language is used after Deskset restarts." = "Η νέα γλώσσα θα χρησιμοποιηθεί μετά την επανεκκίνηση του Deskset.";
+
+/* Settings window: button. */
+"Restart Now" = "Επανεκκίνηση τώρα";
+
+/* Settings window: button; Launch at Login: button; App updates: text; Install and update panels: text. */
+"Later" = "Αργότερα";
+
+// MARK: Code editor
+
+/* Code editor: text. */
+"%@ is no longer installed — using the built-in editor" = "Το %@ δεν είναι πλέον εγκατεστημένο — χρησιμοποιείται ο ενσωματωμένος επεξεργαστής";
+
+// MARK: About window
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, build number, processor (e.g. "Apple silicon"). */
+"Deskset %@ (build %@) - %@" = "Deskset %@ (έκδοση build %@) – %@";
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, processor. */
+"Deskset %@ - %@" = "Deskset %@ – %@";
+
+/* About window: button.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Αντιγραφή στο πρόχειρο";
+
+/* About window: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Widget γραφείου για το Mac σας, συμβατά με skin του Rainmeter.";
+
+/* About window: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Το Rainmeter είναι εμπορικό σήμα των αντίστοιχων κατόχων του· το Deskset δεν συνδέεται με αυτό.";
+
+// MARK: New Skin window
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Δεν ήταν δυνατή η δημιουργία skin";
+
+/* New Skin window: button.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Προσθήκη φακέλου";
+
+/* New Skin window: button.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Προσθήκη skin";
+
+/* New Skin window: text.
+   Note: Tab of the New skin window: the folders and files to create. */
+"New skin" = "Νέο skin";
+
+/* New Skin window: text.
+   Note: A tab of the New skin window: the files a new skin starts with. */
+"Template" = "Πρότυπο";
+
+/* New Skin window: VoiceOver description.
+   Note: VoiceOver name of the field showing the folder the new skin goes in. */
+"Selected skin folder" = "Επιλεγμένος φάκελος skin";
+
+/* New Skin window: column heading, VoiceOver description.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Όνομα";
+
+/* New Skin window: VoiceOver description. */
+"New skin folders and files" = "Φάκελοι και αρχεία του νέου skin";
+
+/* New Skin window: VoiceOver description. */
+"Template for new skins" = "Πρότυπο για νέα skin";
+
+/* New Skin window: VoiceOver description. */
+"Template name" = "Όνομα προτύπου";
+
+/* New Skin window: text. */
+"Save new template" = "Αποθήκευση ως νέο πρότυπο";
+
+/* New Skin window: column heading, VoiceOver description, text. */
+"Saved templates" = "Αποθηκευμένα πρότυπα";
+
+/* New Skin window: menu item.
+   Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
+"Template…" = "Πρότυπο…";
+
+/* New Skin window: text. */
+"Use default template" = "Χρήση προεπιλεγμένου προτύπου";
+
+/* New Skin window: alert title. */
+"Could not complete the operation" = "Δεν ήταν δυνατή η ολοκλήρωση της λειτουργίας";
+
+/* New Skin window: text. */
+"Create" = "Δημιουργία";
+
+/* New Skin window: text. */
+"Rename" = "Μετονομασία";
+
+/* New Skin window: text.
+   Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
+"New Root Folder" = "Νέος ριζικός φάκελος";
+
+/* New Skin window: text. */
+"New Folder" = "Νέος φάκελος";
+
+/* New Skin window: text.
+   Note: Title of the dialog asking for a new skin file's name. */
+"New Skin" = "Νέο skin";
+
+/* New Skin window: text.
+   Note: Context menu item: opens the new skin's file in the code editor. */
+"Edit skin" = "Επεξεργασία skin";
+
+/* New Skin window: message (an error or a status). */
+"Invalid name: %@" = "Μη έγκυρο όνομα: %@";
+
+/* New Skin window: message (an error or a status). */
+"An item named %@ already exists." = "Υπάρχει ήδη στοιχείο με όνομα %@.";
+
+/* New Skin window: message (an error or a status). */
+"The item is no longer a regular file or folder: %@" = "Το στοιχείο δεν είναι πλέον κανονικό αρχείο ή φάκελος: %@";
+
+/* New Skin window: message (an error or a status). */
+"The selected folder is no longer available." = "Ο επιλεγμένος φάκελος δεν είναι πλέον διαθέσιμος.";
+
+/* New Skin window: message (an error or a status). */
+"Only items created in this window can be renamed or deleted." = "Μόνο τα στοιχεία που δημιουργήθηκαν σε αυτό το παράθυρο μπορούν να μετονομαστούν ή να διαγραφούν.";
+
+/* New Skin window: message (an error or a status). */
+"The default template cannot be deleted." = "Το προεπιλεγμένο πρότυπο δεν μπορεί να διαγραφεί.";
+
+/* New Skin window: text. */
+"The rename could not be completed. The original item remains at %@." = "Δεν ήταν δυνατή η ολοκλήρωση της μετονομασίας. Το αρχικό στοιχείο βρίσκεται ακόμη στο %@.";
+
+// MARK: Skin installer
+
+/* Skin installer: text. */
+"Install “%@”?" = "Εγκατάσταση του «%@»;";
+
+/* Skin installer: text.
+   Note: Under a package's name; %@ is the author's name. */
+"By %@" = "Από %@";
+
+/* Skin installer: text.
+   Note: %@ is a version number, e.g. "Version 1.2". */
+"Version %@" = "Έκδοση %@";
+
+/* Skin installer: text. */
+"The package does not say who made it." = "Το πακέτο δεν αναφέρει ποιος το δημιούργησε.";
+
+/* Skin installer: text. */
+"A package made for the installer of old Rainmeter versions (Rainstaller)." = "Πακέτο για το πρόγραμμα εγκατάστασης παλαιών εκδόσεων του Rainmeter (Rainstaller).";
+
+/* Skin installer: text. */
+"This folder is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing. The folder is copied; the original stays where it is." = "Αυτός ο φάκελος δεν είναι πακέτο skin που δημιουργήθηκε με το Skin Packager του Rainmeter, οπότε το Deskset βρήκε μόνο του τα skin που περιέχει. Ελέγξτε τη λίστα παρακάτω πριν από την εγκατάσταση. Ο φάκελος αντιγράφεται· το πρωτότυπο μένει στη θέση του.";
+
+/* Skin installer: text. */
+"This archive is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing." = "Αυτό το αρχείο αρχειοθέτησης δεν είναι πακέτο skin που δημιουργήθηκε με το Skin Packager του Rainmeter, οπότε το Deskset βρήκε μόνο του τα skin που περιέχει. Ελέγξτε τη λίστα παρακάτω πριν από την εγκατάσταση.";
+
+/* Skin installer: text. */
+"A plain folder: no author or version information." = "Απλός φάκελος, χωρίς πληροφορίες δημιουργού ή έκδοσης.";
+
+/* Skin installer: text. */
+"A plain archive: no author or version information." = "Απλό αρχείο αρχειοθέτησης, χωρίς πληροφορίες δημιουργού ή έκδοσης.";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin, makes no backup and does not keep the values of its variables files. */
+"merged into the installed copy, without a backup or kept variables" = "συγχωνεύεται με το εγκατεστημένο αντίγραφο, χωρίς αντίγραφο ασφαλείας και χωρίς διατήρηση μεταβλητών";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin. */
+"merged into the installed copy" = "συγχωνεύεται με το εγκατεστημένο αντίγραφο";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the installed skin is replaced. */
+"replaces the installed copy" = "αντικαθιστά το εγκατεστημένο αντίγραφο";
+
+/* Skin installer: text.
+   Note: %@ is a layout's name. */
+"Layout “%@”" = "Διάταξη «%@»";
+
+/* Skin installer: text. */
+"This package includes Windows plugins. Plugins can’t run on macOS, so parts of these skins may show no data." = "Αυτό το πακέτο περιλαμβάνει πρόσθετα για Windows. Τα πρόσθετα δεν λειτουργούν στο macOS, οπότε τμήματα αυτών των skin μπορεί να μην εμφανίζουν δεδομένα.";
+
+/* Skin installer: text. */
+"This package includes Windows plugins (%@). Plugins can’t run on macOS, so parts of these skins may show no data." = "Αυτό το πακέτο περιλαμβάνει πρόσθετα για Windows (%@). Τα πρόσθετα δεν λειτουργούν στο macOS, οπότε τμήματα αυτών των skin μπορεί να μην εμφανίζουν δεδομένα.";
+
+/* Skin installer: menu item.
+   Note: Installer checkbox: keep a copy of installed skins that the package replaces. */
+"Backup skins" = "Αντίγραφο ασφαλείας των skin";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox: after installing, load the skins the package says to load. */
+"Load included skins" = "Φόρτωση των συμπεριλαμβανόμενων skin";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox; %@ is the layout's name. */
+"Apply included layout: %@" = "Εφαρμογή της συμπεριλαμβανόμενης διάταξης: %@";
+
+/* Skin installer: menu item; Skin Packager window: text. */
+"Advanced" = "Για προχωρημένους";
+
+/* Skin installer: tooltip. */
+"Keep a backup when replacing installed skins." = "Διατήρηση αντιγράφου ασφαλείας κατά την αντικατάσταση εγκατεστημένων skin.";
+
+/* Skin installer: VoiceOver description. */
+"Advanced installation options" = "Επιλογές εγκατάστασης για προχωρημένους";
+
+/* Skin installer: text. */
+"Install Skin" = "Εγκατάσταση skin";
+
+/* Skin installer: alert or dialog message.
+   Note: Message of the open dialog. */
+"Choose a skin package (.rmskin), a ZIP archive or a folder with skins to install." = "Επιλέξτε ένα πακέτο skin (.rmskin), ένα αρχείο ZIP ή έναν φάκελο με skin για εγκατάσταση.";
+
+/* Skin installer: button; UISnapshot: button. */
+"Install" = "Εγκατάσταση";
+
+/* Skin installer: text. */
+"Choose the folder of the skin you want to install, not a folder that holds Deskset’s Skins folder. Skins already in the Skins folder are installed; if one is missing from the list, choose Refresh All in the Manage window." = "Επιλέξτε τον φάκελο του skin που θέλετε να εγκαταστήσετε, όχι έναν φάκελο που περιέχει τον φάκελο skin του Deskset. Όσα skin βρίσκονται ήδη στον φάκελο skin είναι εγκατεστημένα· αν κάποιο λείπει από τη λίστα, επιλέξτε «Ανανέωση όλων» στο παράθυρο «Διαχείριση».";
+
+/* Skin installer: text. */
+"Can’t open these files" = "Δεν είναι δυνατό το άνοιγμα αυτών των αρχείων";
+
+/* Skin installer: text. */
+"Can’t open “%@”" = "Δεν είναι δυνατό το άνοιγμα του «%@»";
+
+/* Skin installer: text. */
+"Deskset installs skin packages (.rmskin), ZIP archives with skins and folders with skins." = "Το Deskset εγκαθιστά πακέτα skin (.rmskin), καθώς και αρχεία ZIP και φακέλους με skin.";
+
+/* Skin installer: text, alert title. */
+"“%@” is already in the Skins folder" = "Το «%@» βρίσκεται ήδη στον φάκελο skin";
+
+/* Skin installer: text. */
+"These folders are already in the Skins folder" = "Αυτοί οι φάκελοι βρίσκονται ήδη στον φάκελο skin";
+
+/* Skin installer: text. */
+"“%@” contains Deskset’s Skins folder" = "Το «%@» περιέχει τον φάκελο skin του Deskset";
+
+/* Skin installer: text. */
+"These folders contain Deskset’s Skins folder" = "Αυτοί οι φάκελοι περιέχουν τον φάκελο skin του Deskset";
+
+/* Skin installer: alert title. */
+"Couldn’t install “%@”" = "Δεν ήταν δυνατή η εγκατάσταση του «%@»";
+
+/* Skin installer: text. */
+"The current skins did not finish closing. No package files were replaced. Quit and reopen Deskset, then try again." = "Τα τρέχοντα skin δεν έκλεισαν εντελώς. Κανένα αρχείο του πακέτου δεν αντικαταστάθηκε. Τερματίστε και ανοίξτε ξανά το Deskset και δοκιμάστε πάλι.";
+
+/* Skin installer: alert title. */
+"“%@” was installed" = "Το «%@» εγκαταστάθηκε";
+
+/* Skin installer: message (an error or a status). */
+"The file is not a skin package. It may be damaged or incomplete." = "Το αρχείο δεν είναι πακέτο skin. Μπορεί να είναι κατεστραμμένο ή ελλιπές.";
+
+/* Skin installer: message (an error or a status). */
+"The package has no RMSKIN.ini, so it can’t be installed." = "Το πακέτο δεν έχει RMSKIN.ini, οπότε δεν μπορεί να εγκατασταθεί.";
+
+/* Skin installer: message (an error or a status). */
+"This file or folder doesn’t contain any Rainmeter skins." = "Αυτό το αρχείο ή ο φάκελος δεν περιέχει skin του Rainmeter.";
+
+/* Skin installer: message (an error or a status). */
+"Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "Τα skin στον φάκελο skin του Deskset είναι ήδη εγκατεστημένα, οπότε δεν υπάρχει κάτι για αντιγραφή. Αν ένα skin που τοποθετήσατε εκεί λείπει από τη λίστα, επιλέξτε «Ανανέωση όλων» στο παράθυρο «Διαχείριση».";
+
+/* Skin installer: message (an error or a status). */
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "Περιέχει πολλά πακέτα skin (%@). Ανοίξτε τα ένα-ένα (αν πρόκειται για αρχείο αρχειοθέτησης, αποσυμπιέστε το πρώτα).";
+
+/* Skin installer: label.
+   Note: Above the list of skin folders in the package. */
+"Skins to install:" = "Skin για εγκατάσταση:";
+
+/* Skin installer: label. */
+"Layouts: %@" = "Διατάξεις: %@";
+
+/* Skin installer: text.
+   Note: %@ is a list of font names. The fonts are used only by these skins. */
+"Fonts included for these skins (not installed system-wide): %@" = "Γραμματοσειρές που συνοδεύουν αυτά τα skin (δεν εγκαθίστανται σε όλο το σύστημα): %@";
+
+/* Skin installer: VoiceOver description. */
+"Warning" = "Προειδοποίηση";
+
+// MARK: Skin Packager window
+
+/* Skin Packager window: text. */
+"Options" = "Επιλογές";
+
+/* Skin Packager window: button, VoiceOver description, tooltip. */
+"Remove" = "Αφαίρεση";
+
+/* Skin Packager window: checkbox.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Συγχώνευση skin";
+
+/* Skin Packager window: button. */
+"Back" = "Πίσω";
+
+/* Skin Packager window: button. */
+"Next" = "Επόμενο";
+
+/* Skin Packager window: button. */
+"Create Package" = "Δημιουργία πακέτου";
+
+/* Skin Packager window: window title.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Δημιουργία πακέτου .rmskin";
+
+/* Skin Packager window: button. */
+"Add Skin…" = "Προσθήκη skin…";
+
+/* Skin Packager window: menu item. */
+"Add Layout" = "Προσθήκη διάταξης";
+
+/* Skin Packager window: button.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Προσθήκη πρόσθετου…";
+
+/* Skin Packager window: label. */
+"Skin:" = "Skin:";
+
+/* Skin Packager window: label. */
+"Layouts:" = "Διατάξεις:";
+
+/* Skin Packager window: label.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Πρόσθετα:";
+
+/* Skin Packager window: text.
+   Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
+"Information and Components" = "Πληροφορίες και περιεχόμενα";
+
+/* Skin Packager window: button. */
+"Choose…" = "Επιλογή…";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Καμία ενέργεια";
+
+/* Skin Packager window: text. */
+"Load layout" = "Φόρτωση διάταξης";
+
+/* Skin Packager window: text. */
+"Load skin" = "Φόρτωση skin";
+
+/* Skin Packager window: label.
+   Note: The file the package is written to. */
+"Save package to:" = "Αποθήκευση πακέτου σε:";
+
+/* Skin Packager window: label.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Μετά την εγκατάσταση:";
+
+/* Skin Packager window: label.
+   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
+"Minimum Rainmeter version:" = "Ελάχιστη έκδοση Rainmeter:";
+
+/* Skin Packager window: label.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Εικόνα κεφαλίδας:";
+
+/* Skin Packager window: label.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Αρχεία μεταβλητών:";
+
+/* Skin Packager window: menu item.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Φόρτωση προηγούμενων ρυθμίσεων";
+
+/* Skin Packager window: tooltip.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Κρατήστε πατημένο το Shift για να διαγράψετε μια καταχώριση.";
+
+/* Skin Packager window: text. */
+"No skin chosen" = "Δεν επιλέχθηκε skin";
+
+/* Skin Packager window: text, label, menu item.
+   Note: Shown when no header image or plugin is chosen. */
+"None" = "Κανένα";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit and 64-bit)" = "%@ (32 και 64 bit)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (64-bit version missing)" = "%@ (λείπει η έκδοση 64 bit)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit version missing)" = "%@ (λείπει η έκδοση 32 bit)";
+
+/* Skin Packager window: alert or dialog message, message (an error or a status).
+   Note: The root config is the top-level folder of a skin suite in the Skins folder. */
+"Choose the skin's root config folder." = "Επιλέξτε τον ριζικό φάκελο του skin (root config).";
+
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Δεν είναι δυνατή ακόμη η δημιουργία του πακέτου";
+
+/* Skin Packager window: text. */
+"Links were left out of the package: %@" = "Οι σύνδεσμοι παραλείφθηκαν από το πακέτο: %@";
+
+/* Skin Packager window: text. */
+"Could not create the package" = "Δεν ήταν δυνατή η δημιουργία του πακέτου";
+
+/* Skin Packager window: text, alert title. */
+"Package created" = "Το πακέτο δημιουργήθηκε";
+
+/* Skin Packager window: alert title. */
+"“%@” already exists. Replace it?" = "Το «%@» υπάρχει ήδη. Θέλετε να το αντικαταστήσετε;";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter a name." = "Εισαγάγετε ένα όνομα.";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter an author." = "Εισαγάγετε έναν δημιουργό.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” has no skin (.ini) files." = "Το «%@» δεν έχει αρχεία skin (.ini).";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout “%@” has no Rainmeter.ini." = "Η διάταξη «%@» δεν έχει Rainmeter.ini.";
+
+/* Skin Packager window: message (an error or a status). */
+"The plugin “%@” needs both its 32-bit and 64-bit versions." = "Το πρόσθετο «%@» χρειάζεται και την έκδοση 32 bit και την έκδοση 64 bit.";
+
+/* Skin Packager window: message (an error or a status). */
+"The skin to load, “%@”, is not in the package." = "Το skin για φόρτωση («%@») δεν βρίσκεται στο πακέτο.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout to load, “%@”, is not in the package." = "Η διάταξη για φόρτωση («%@») δεν βρίσκεται στο πακέτο.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be a .bmp file." = "Η εικόνα κεφαλίδας πρέπει να είναι αρχείο .bmp.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be 400 × 60 pixels; this one is %lld × %lld." = "Η εικόνα κεφαλίδας πρέπει να είναι 400 × 60 pixel· αυτή είναι %lld × %lld.";
+
+/* Skin Packager window: message (an error or a status). */
+"The variables file “%@” is not in the skin." = "Το αρχείο μεταβλητών «%@» δεν βρίσκεται στο skin.";
+
+/* Skin Packager window: message (an error or a status).
+   Note: "Variables files" and "Merge skins" are the names of two package options; translate them as you did those options. */
+"Variables files and Merge skins can’t be used together." = "Τα «Αρχεία μεταβλητών» και η «Συγχώνευση skin» δεν μπορούν να χρησιμοποιηθούν μαζί.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "Το «%@» δεν είναι αριθμός έκδοσης όπως 5.0 ή 5.0.0.4657.";
+
+/* Skin Packager window: message (an error or a status). */
+"Choose where to save the package." = "Επιλέξτε πού θα αποθηκευτεί το πακέτο.";
+
+// MARK: Move to Trash confirmation
+
+/* Move to Trash confirmation: text. */
+"Move “%@” to the Trash?" = "Μεταφορά του «%@» στον Κάδο;";
+
+/* Move to Trash confirmation: text. */
+"You can restore this item from the Trash." = "Μπορείτε να επαναφέρετε αυτό το στοιχείο από τον Κάδο.";
+
+/* Move to Trash confirmation: button. */
+"Move to Trash" = "Μεταφορά στον Κάδο";
+
+// MARK: Launch at Login
+
+/* Launch at Login: alert title. */
+"Launch at Login is unavailable" = "Το «Άνοιγμα κατά τη σύνδεση» δεν είναι διαθέσιμο";
+
+/* Launch at Login: text. */
+"Move Deskset to the Applications folder and open it from there to start it at login." = "Μεταφέρετε το Deskset στον φάκελο «Εφαρμογές» και ανοίξτε το από εκεί, ώστε να ξεκινά κατά τη σύνδεση.";
+
+/* Launch at Login: text. */
+"Couldn’t turn off Launch at Login" = "Δεν ήταν δυνατή η απενεργοποίηση του «Άνοιγμα κατά τη σύνδεση»";
+
+/* Launch at Login: text. */
+"Couldn’t turn on Launch at Login" = "Δεν ήταν δυνατή η ενεργοποίηση του «Άνοιγμα κατά τη σύνδεση»";
+
+/* Launch at Login: alert title. */
+"Allow Deskset to open at login" = "Επιτρέψτε στο Deskset να ανοίγει κατά τη σύνδεση";
+
+/* Launch at Login: alert or dialog message. */
+"macOS needs your approval. Turn on Deskset in System Settings › General › Login Items." = "Το macOS χρειάζεται την έγκρισή σας. Ενεργοποιήστε το Deskset στις «Ρυθμίσεις συστήματος» > «Γενικά» > «Στοιχεία σύνδεσης».";
+
+/* Launch at Login: button. */
+"Open System Settings" = "Άνοιγμα Ρυθμίσεων συστήματος";
+
+// MARK: Safe Start
+
+/* Safe Start: text.
+   Note: Title of the alert offering Safe Start. */
+"Deskset Safe Start" = "Ασφαλής εκκίνηση Deskset";
+
+/* Safe Start: text.
+   Note: Keep "@Backup" (the name the layout is saved as). */
+"Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept." = "Το Deskset θα ξεκινήσει με την ενσωματωμένη προεπιλεγμένη διάταξη. Η τρέχουσα διάταξή σας θα αποθηκευτεί ως @Backup.\n\nΤα αρχεία των skin σας θα διατηρηθούν.";
+
+/* Safe Start: text.
+   Note: Starting Deskset with its default layout, without the skins that were loaded (offered after a start failed). */
+"Safe Start" = "Ασφαλής εκκίνηση";
+
+// MARK: App updates
+
+/* App updates: text. */
+"Checking for Updates…" = "Έλεγχος για ενημερώσεις…";
+
+/* App updates: message (an error or a status).
+   Note: %@ is a version number. */
+"Installed version: %@." = "Εγκατεστημένη έκδοση: %@.";
+
+/* App updates: message (an error or a status). */
+"Checking for updates…" = "Έλεγχος για ενημερώσεις…";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is up to date." = "Το Deskset %@ είναι ενημερωμένο.";
+
+/* App updates: message (an error or a status). */
+"No public release is available yet." = "Δεν υπάρχει ακόμη δημόσια έκδοση.";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is available. You have %@." = "Το Deskset %@ είναι διαθέσιμο. Έχετε την έκδοση %@.";
+
+/* App updates: message (an error or a status). */
+"Couldn’t check for updates. %@" = "Δεν ήταν δυνατός ο έλεγχος για ενημερώσεις. %@";
+
+/* App updates: text. */
+"The installed version could not be read." = "Δεν ήταν δυνατή η ανάγνωση της εγκατεστημένης έκδοσης.";
+
+/* App updates: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Retry" = "Επανάληψη";
+
+/* App updates: button; Install and update panels: text. */
+"Download Manually…" = "Μη αυτόματη λήψη…";
+
+/* App updates: window title, heading. */
+"Update Deskset" = "Ενημέρωση του Deskset";
+
+/* App updates: text. */
+"This update is no longer available. Use Check for Updates to try again." = "Αυτή η ενημέρωση δεν είναι πλέον διαθέσιμη. Χρησιμοποιήστε την εντολή «Έλεγχος για ενημερώσεις» για να δοκιμάσετε ξανά.";
+
+/* App updates: status or description line. */
+"Downloading update package…" = "Λήψη πακέτου ενημέρωσης…";
+
+/* App updates: note under a panel or list. */
+"Deskset verifies the signature before asking you to restart." = "Το Deskset επαληθεύει την υπογραφή πριν σας ζητήσει επανεκκίνηση.";
+
+/* App updates: status or description line. */
+"Verifying signature and preparing update…" = "Επαλήθευση υπογραφής και προετοιμασία ενημέρωσης…";
+
+/* App updates: status or description line.
+   Note: Badge while the download's signature is checked. */
+"Verifying" = "Επαλήθευση";
+
+/* App updates: status or description line. */
+"Couldn’t open the download page. Visit %@ in your browser." = "Δεν ήταν δυνατό το άνοιγμα της σελίδας λήψης. Επισκεφθείτε το %@ στο πρόγραμμα περιήγησης.";
+
+/* App updates: text. */
+"Couldn’t open the download page." = "Δεν ήταν δυνατό το άνοιγμα της σελίδας λήψης.";
+
+/* App updates: note under a panel or list. */
+"Visit %@ in your browser." = "Επισκεφθείτε το %@ στο πρόγραμμα περιήγησης.";
+
+/* App updates: text. */
+"Try again now, or download the update directly in your browser." = "Δοκιμάστε ξανά τώρα ή κάντε λήψη της ενημέρωσης απευθείας στο πρόγραμμα περιήγησης.";
+
+/* App updates: text. */
+"Try again now, or download Deskset %@ directly in your browser." = "Δοκιμάστε ξανά τώρα ή κάντε λήψη του Deskset %@ απευθείας στο πρόγραμμα περιήγησης.";
+
+/* App updates: text, heading. */
+"Downloading Deskset %@…" = "Λήψη του Deskset %@…";
+
+/* App updates: text. */
+"Preparing update…" = "Προετοιμασία ενημέρωσης…";
+
+/* App updates: status or description line. */
+"You can keep working while the update downloads." = "Μπορείτε να συνεχίσετε να εργάζεστε όσο γίνεται λήψη της ενημέρωσης.";
+
+/* App updates: status or description line. */
+"Getting the download for this Mac…" = "Λήψη της έκδοσης για αυτό το Mac…";
+
+/* App updates: heading. */
+"Deskset %@ is ready to install" = "Το Deskset %@ είναι έτοιμο για εγκατάσταση";
+
+/* App updates: text.
+   Note: Badge after the download's signature has been checked. */
+"Verified" = "Επαληθεύτηκε";
+
+/* App updates: status or description line. */
+"Deskset will quit, install the update, and reopen automatically." = "Το Deskset θα τερματιστεί, θα εγκαταστήσει την ενημέρωση και θα ανοίξει ξανά αυτόματα.";
+
+/* App updates: label.
+   Note: Label in a small card, followed by the new version number. */
+"Ready to install" = "Έτοιμο για εγκατάσταση";
+
+/* App updates: note under a panel or list. */
+"You’ll be asked to save open edits." = "Θα σας ζητηθεί να αποθηκεύσετε τις ανοιχτές αλλαγές.";
+
+/* App updates: button; Install and update panels: text. */
+"Install and Relaunch" = "Εγκατάσταση και επανεκκίνηση";
+
+/* App updates: heading. */
+"Preparing to restart…" = "Προετοιμασία επανεκκίνησης…";
+
+/* App updates: status or description line. */
+"Save your edits when prompted, then Deskset will restart." = "Αποθηκεύστε τις αλλαγές σας όταν σας ζητηθεί· έπειτα το Deskset θα επανεκκινηθεί.";
+
+/* App updates: status or description line. */
+"Preparing the update helper and verifying the signature…" = "Προετοιμασία βοηθού ενημέρωσης και επαλήθευση υπογραφής…";
+
+/* App updates: heading. */
+"Couldn’t update Deskset" = "Δεν ήταν δυνατή η ενημέρωση του Deskset";
+
+/* App updates: text.
+   Note: Badge with the Mac's processor type (Apple's term; Intel Macs show "Intel"). */
+"Apple silicon" = "Τσιπ Apple";
+
+/* App updates: message (an error or a status). */
+"The update server returned an invalid response. Please try again later." = "Ο διακομιστής ενημερώσεων επέστρεψε μη έγκυρη απόκριση. Δοκιμάστε ξανά αργότερα.";
+
+/* App updates: message (an error or a status). */
+"GitHub is limiting update checks. Please try again later." = "Το GitHub περιορίζει τους ελέγχους για ενημερώσεις. Δοκιμάστε ξανά αργότερα.";
+
+/* App updates: message (an error or a status). */
+"The update server returned HTTP %lld. Please try again later." = "Ο διακομιστής ενημερώσεων επέστρεψε HTTP %lld. Δοκιμάστε ξανά αργότερα.";
+
+/* App updates: message (an error or a status). */
+"The update server returned invalid release information. Please try again later." = "Ο διακομιστής ενημερώσεων επέστρεψε μη έγκυρες πληροφορίες έκδοσης. Δοκιμάστε ξανά αργότερα.";
+
+/* App updates: message (an error or a status). */
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "Αυτή η έκδοση δεν έχει επαληθευμένη λήψη για αυτό το Mac. Μπορείτε να την κατεβάσετε από το GitHub.";
+
+/* App updates: message (an error or a status). */
+"The download server returned an invalid response." = "Ο διακομιστής λήψης επέστρεψε μη έγκυρη απόκριση.";
+
+/* App updates: message (an error or a status). */
+"The download server returned HTTP %lld. Please try again." = "Ο διακομιστής λήψης επέστρεψε HTTP %lld. Δοκιμάστε ξανά.";
+
+/* App updates: message (an error or a status). */
+"The download redirected outside the expected GitHub servers." = "Η λήψη ανακατευθύνθηκε εκτός των αναμενόμενων διακομιστών του GitHub.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file does not match the release size. Please try again." = "Το μέγεθος του ληφθέντος αρχείου δεν αντιστοιχεί σε αυτό της έκδοσης. Δοκιμάστε ξανά.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file failed its SHA-256 check. Please try again." = "Το ληφθέν αρχείο απέτυχε στον έλεγχο SHA-256. Δοκιμάστε ξανά.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not match this Deskset release." = "Η ληφθείσα εφαρμογή δεν αντιστοιχεί σε αυτή την έκδοση του Deskset.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not support this Mac’s processor." = "Η ληφθείσα εφαρμογή δεν υποστηρίζει τον επεξεργαστή αυτού του Mac.";
+
+/* App updates: message (an error or a status). */
+"This update requires macOS %@ or later. Your installed version of Deskset has been kept." = "Αυτή η ενημέρωση απαιτεί macOS %@ ή νεότερο. Η εγκατεστημένη έκδοση του Deskset διατηρήθηκε.";
+
+/* App updates: message (an error or a status). */
+"The prepared update could not be verified. Download the update again." = "Δεν ήταν δυνατή η επαλήθευση της ενημέρωσης που προετοιμάστηκε. Κάντε ξανά λήψη της ενημέρωσης.";
+
+/* App updates: message (an error or a status). */
+"This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again." = "Αυτό το αντίγραφο του Deskset δεν μπορεί να ενημερωθεί μόνο του εδώ. Μεταφέρετέ το σε φάκελο «Εφαρμογές» με δικαίωμα εγγραφής και δοκιμάστε ξανά.";
+
+/* App updates: message (an error or a status). */
+"Deskset’s running process changed before the update could finish. The installed application was kept." = "Η διεργασία του Deskset άλλαξε πριν ολοκληρωθεί η ενημέρωση. Η εγκατεστημένη εφαρμογή διατηρήθηκε.";
+
+/* App updates: message (an error or a status). */
+"Deskset did not finish quitting in time. The installed application was kept." = "Το Deskset δεν τερματίστηκε εγκαίρως. Η εγκατεστημένη εφαρμογή διατηρήθηκε.";
+
+/* App updates: message (an error or a status). */
+"The update helper could not start. Deskset has not been replaced." = "Δεν ήταν δυνατή η εκκίνηση του βοηθού ενημέρωσης. Το Deskset δεν αντικαταστάθηκε.";
+
+/* App updates: message (an error or a status). */
+"Deskset was installed, but could not be opened automatically. Open it from its application folder." = "Το Deskset εγκαταστάθηκε, αλλά δεν ήταν δυνατό να ανοίξει αυτόματα. Ανοίξτε το από τον φάκελο όπου βρίσκεται.";
+
+/* App updates: alert title. */
+"Couldn’t finish updating Deskset" = "Δεν ήταν δυνατή η ολοκλήρωση της ενημέρωσης του Deskset";
+
+/* App updates: alert or dialog message; Installing Deskset in Applications: alert or dialog message. */
+"Your skins, layouts, and settings are kept." = "Τα skin, οι διατάξεις και οι ρυθμίσεις σας διατηρούνται.";
+
+/* App updates: note under a panel or list. */
+"Application location: %@" = "Τοποθεσία εφαρμογής: %@";
+
+// MARK: Installing Deskset in Applications
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"This is not a complete Deskset application. Download a fresh copy and try again." = "Αυτή δεν είναι πλήρης εφαρμογή Deskset. Κάντε λήψη νέου αντιγράφου και δοκιμάστε ξανά.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The application’s version could not be verified. Use Finder to inspect the installed copy." = "Δεν ήταν δυνατή η επαλήθευση της έκδοσης της εφαρμογής. Ελέγξτε το εγκατεστημένο αντίγραφο στο Finder.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset %@ is already installed. This older copy will not replace it." = "Το Deskset %@ είναι ήδη εγκατεστημένο. Αυτό το παλαιότερο αντίγραφο δεν θα το αντικαταστήσει.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace." = "Το Deskset δεν μπορεί να γράψει στο %@. Τερματίστε το εγκατεστημένο αντίγραφο, έπειτα σύρετε το Deskset σε αυτόν τον φάκελο στο Finder και επιλέξτε «Αντικατάσταση».";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again." = "Ένα άλλο αντίγραφο του Deskset εκτελείται ακόμη. Τερματίστε το από το μενού του, αποθηκεύστε τις αλλαγές και δοκιμάστε ξανά.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The copied application’s signature could not be verified. Download a fresh copy and try again." = "Δεν ήταν δυνατή η επαλήθευση της υπογραφής της αντιγραμμένης εφαρμογής. Κάντε λήψη νέου αντιγράφου και δοκιμάστε ξανά.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again." = "Η εγκατάσταση δεν ολοκληρώθηκε. Η προηγούμενη εφαρμογή σας βρίσκεται στο %@. Επαναφέρετέ τη με το Finder πριν δοκιμάσετε ξανά.";
+
+/* Installing Deskset in Applications: alert title. */
+"Replace Deskset %@?" = "Αντικατάσταση του Deskset %@;";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Update the installed app in %@ and reopen Deskset." = "Ενημέρωση της εγκατεστημένης εφαρμογής στο %@ και επανεκκίνηση του Deskset.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "old version → new version" of the app being replaced. */
+"Replacing" = "Αντικαθίσταται";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Replace and Open" = "Αντικατάσταση και άνοιγμα";
+
+/* Installing Deskset in Applications: alert title. */
+"Install Deskset %@?" = "Εγκατάσταση του Deskset %@;";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Copy Deskset to your Applications folder and open it there." = "Αντιγραφή του Deskset στον φάκελο «Εφαρμογές» και άνοιγμά του από εκεί.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by the folder Deskset is copied to. */
+"Destination" = "Προορισμός";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Install to Applications" = "Εγκατάσταση στις Εφαρμογές";
+
+/* Installing Deskset in Applications: note under a panel or list.
+   Note: Small note at the bottom of the panel: this copy of Deskset was opened from the downloaded .dmg. */
+"Running from Disk Image" = "Εκτελείται από είδωλο δίσκου";
+
+/* Installing Deskset in Applications: alert title. */
+"Quit the running copy of Deskset" = "Τερματίστε το άλλο αντίγραφο του Deskset";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Another copy of Deskset is currently open." = "Ένα άλλο αντίγραφο του Deskset είναι ανοιχτό αυτή τη στιγμή.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "Deskset is running". */
+"Status" = "Κατάσταση";
+
+/* Installing Deskset in Applications: text. */
+"Deskset is running" = "Το Deskset εκτελείται";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Choose Quit Deskset from its menu and save any edits, then click Retry." = "Επιλέξτε «Τερματισμός Deskset» από το μενού του και αποθηκεύστε τις αλλαγές, έπειτα κάντε κλικ στο «Επανάληψη».";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset %@…" = "Εγκατάσταση του Deskset %@…";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset…" = "Εγκατάσταση του Deskset…";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Deskset will open when installation finishes." = "Το Deskset θα ανοίξει όταν ολοκληρωθεί η εγκατάσταση.";
+
+/* Installing Deskset in Applications: status or description line. */
+"Copying application and verifying signature…" = "Αντιγραφή εφαρμογής και επαλήθευση υπογραφής…";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Your skins and settings are kept in place." = "Τα skin και οι ρυθμίσεις σας μένουν στη θέση τους.";
+
+/* Installing Deskset in Applications: alert title. */
+"Couldn’t install Deskset" = "Δεν ήταν δυνατή η εγκατάσταση του Deskset";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Reveal the installer in Finder to copy Deskset manually." = "Εμφανίστε το πρόγραμμα εγκατάστασης στο Finder για να αντιγράψετε το Deskset χειροκίνητα.";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Show Installer in Finder" = "Εμφάνιση προγράμματος εγκατάστασης στο Finder";
+
+/* Installing Deskset in Applications: text.
+   Note: Badge after Deskset has been installed. */
+"Installed" = "Εγκαταστάθηκε";
+
+/* Installing Deskset in Applications: alert title. */
+"Deskset was installed" = "Το Deskset εγκαταστάθηκε";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Open Deskset from %@." = "Ανοίξτε το Deskset από το %@.";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Use Show in Finder to open the installed application." = "Χρησιμοποιήστε την «Εμφάνιση στο Finder» για να ανοίξετε την εγκατεστημένη εφαρμογή.";
+
+// MARK: Install and update panels
+
+/* Install and update panels: text.
+   Note: VoiceOver name of the app icon when it carries a warning badge. */
+"Deskset warning" = "Προειδοποίηση Deskset";
+
+/* Install and update panels: text.
+   Note: VoiceOver name of a progress bar. */
+"Progress" = "Πρόοδος";
+
+/* Install and update panels: VoiceOver description, message (an error or a status).
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"Indeterminate" = "Απροσδιόριστη";
+
+/* Install and update panels: text.
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"In progress" = "Σε εξέλιξη";
+
+// MARK: Restarting Deskset
+
+/* Restarting Deskset: message (an error or a status). */
+"This copy of Deskset could not prepare an automatic restart." = "Αυτό το αντίγραφο του Deskset δεν μπόρεσε να προετοιμάσει αυτόματη επανεκκίνηση.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The prepared restart could not be verified." = "Δεν ήταν δυνατή η επαλήθευση της προετοιμασμένης επανεκκίνησης.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart helper could not start. Deskset is still running." = "Δεν ήταν δυνατή η εκκίνηση του βοηθού επανεκκίνησης. Το Deskset εξακολουθεί να εκτελείται.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart was cancelled." = "Η επανεκκίνηση ακυρώθηκε.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The running process changed before the restart could finish." = "Η διεργασία άλλαξε πριν ολοκληρωθεί η επανεκκίνηση.";
+
+/* Restarting Deskset: message (an error or a status). */
+"Deskset did not finish preparing or quitting in time." = "Το Deskset δεν ολοκλήρωσε εγκαίρως την προετοιμασία ή τον τερματισμό.";

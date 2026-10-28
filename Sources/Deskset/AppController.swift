@@ -1635,7 +1635,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch notice {
         case .available(let release):
             title = L("Deskset %@ is available", release.version.description)
-            text = L("A newer version is ready to download for this Mac. Version %@ → %@. Asks before restart. Your skins, layouts, and settings will be kept.", updates.currentVersion, release.version.description)
+            text = L("A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept.", updates.currentVersion, release.version.description)
             offersUpdate = true
         case .upToDate:
             title = L("Deskset is up to date")

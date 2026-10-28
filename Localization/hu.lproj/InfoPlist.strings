@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Hungarian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Mappa";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "A skinek megkérdezik a Zene appot vagy a Spotifyt, hogy mi szól, hogy megjeleníthessék az aktuális számot és vezérelhessék a lejátszást, és ha ilyen skint használsz, megkérik a Findert, hogy ürítse a Kukát vagy nyisson meg egy Információ ablakot.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "A hangvizualizációs skinek a Mac által lejátszott hang szintjét és spektrumát mutatják. A hang elemzése a Macen történik, amíg ilyen skin be van töltve; soha nem kerül rögzítésre, mentésre vagy elküldésre.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Egy skin vagy annak szkriptje fájlokat olvas vagy ír az Íróasztal mappában (például egy fájllista-, jegyzet- vagy indítóskin).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Egy skin vagy annak szkriptje fájlokat olvas vagy ír a Dokumentumok mappában (például egy fájllista-, jegyzet- vagy indítóskin).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Egy skin vagy annak szkriptje fájlokat olvas vagy ír a Letöltések mappában (például egy fájllista- vagy indítóskin).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Szabad szoftver a GNU GPL v3 alatt. Rainmeterhez készült skineket futtat; nem áll kapcsolatban a Rainmeterrel. A Rainmeter a megfelelő tulajdonosok védjegye.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Egy skin adatokat olvas a helyi hálózatod egyik eszközéről, például egy router állapotoldaláról vagy egy otthoni szerverről.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Az aktuális helyzetet használó skinek a hozzávetőleges helyzetedet olvassák ki, hogy megjelenítsék a helyi időjárást, valamint a napkelte és a napnyugta idejét. A helyzet körülbelül 1 km-re kerekítve, kizárólag az előrejelzéshez kerül elküldésre az időjárás-szolgáltatásnak (MET Norway), és soha nincs tárolva. A macOS ezt az engedélyt ahhoz is megköveteli, hogy a Wi-Fi-skinek megjeleníthessék a hálózatok nevét.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Az aktuális helyzetet használó skinek a hozzávetőleges helyzetedet olvassák ki, hogy megjelenítsék a helyi időjárást, valamint a napkelte és a napnyugta idejét. A helyzet körülbelül 1 km-re kerekítve, kizárólag az előrejelzéshez kerül elküldésre az időjárás-szolgáltatásnak (MET Norway), és soha nincs tárolva. A macOS ezt az engedélyt ahhoz is megköveteli, hogy a Wi-Fi-skinek megjeleníthessék a hálózatok nevét.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Egy skin egy hangbemenet (mikrofon vagy audiointerfész) szintjét szeretné megjeleníteni. A hang elemzése a Macen történik, amíg a skin be van töltve; soha nem kerül rögzítésre, mentésre vagy elküldésre.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Egy skin vagy annak szkriptje fájlokat olvas egy hálózati kötetről (például egy lemez- vagy fájllistaskin).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Egy skin vagy annak szkriptje fájlokat olvas egy cserélhető meghajtóról (például egy lemez- vagy fájllistaskin).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Skincsomag";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-archívum";

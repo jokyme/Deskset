@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Estonian.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Kaust";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "Kestad küsivad rakenduselt Muusika või Spotifylt, mis parajasti mängib, et kuvada praegust lugu ja juhtida taasesitust, ning paluvad Finderil tühjendada prügikasti või avada teabeakna, kui kasutate sellist kesta.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "Heli visualiseerimise kestad näitavad teie Maci esitatava heli taset ja spektrit. Heli analüüsitakse teie Macis, kuni selline kest on laaditud; seda ei salvestata, säilitata ega saadeta kuhugi.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "Kest või selle skript loeb või kirjutab faile teie kaustas Töölaud (näiteks faililoendi, märkmete või käivitaja kest).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "Kest või selle skript loeb või kirjutab faile teie kaustas Dokumendid (näiteks faililoendi, märkmete või käivitaja kest).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "Kest või selle skript loeb või kirjutab faile teie kaustas Allalaadimised (näiteks faililoendi või käivitaja kest).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Vaba tarkvara GNU GPL v3 litsentsi all. Käitab Rainmeteri jaoks tehtud kestasid; ei ole Rainmeteriga seotud. Rainmeter on vastavate omanike kaubamärk.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "Kest loeb teavet teie kohtvõrgu seadmest, näiteks ruuteri olekulehelt või koduserverist.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "Kestad, mille olete seadnud kasutama teie praegust asukohta, loevad teie ligikaudset asukohta, et kuvada kohalikku ilma ning päikesetõusu ja -loojangu aegu. Asukoht ümardatakse umbes 1 km täpsuseni, saadetakse ainult ilmateenusele (MET Norway) prognooside jaoks ja seda ei salvestata kunagi. macOS nõuab seda luba ka selleks, et Wi-Fi kestad saaksid kuvada võrkude nimesid.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "Kestad, mille olete seadnud kasutama teie praegust asukohta, loevad teie ligikaudset asukohta, et kuvada kohalikku ilma ning päikesetõusu ja -loojangu aegu. Asukoht ümardatakse umbes 1 km täpsuseni, saadetakse ainult ilmateenusele (MET Norway) prognooside jaoks ja seda ei salvestata kunagi. macOS nõuab seda luba ka selleks, et Wi-Fi kestad saaksid kuvada võrkude nimesid.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "Kest soovib kuvada helisisendi (mikrofoni või heliliidese) taset. Heli analüüsitakse teie Macis, kuni kest on laaditud; seda ei salvestata, säilitata ega saadeta kuhugi.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "Kest või selle skript loeb faile võrguköitelt (näiteks ketta või faililoendi kest).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "Kest või selle skript loeb faile eemaldatavalt kettalt (näiteks ketta või faililoendi kest).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Kestapakett";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-arhiiv";

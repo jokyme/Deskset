@@ -1,0 +1,49 @@
+// Deskset — Info.plist texts, Hebrew.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "תיקייה";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+"NSAppleEventsUsageDescription" = "סקינים שואלים את ”מוזיקה“ או את Spotify מה מתנגן כדי להציג את הרצועה הנוכחית ולשלוט בניגון, ומבקשים מ‑Finder לרוקן את הפח או לפתוח חלון ”הצג מידע“ כשמשתמשים בסקין כזה.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+"NSAudioCaptureUsageDescription" = "סקינים להמחשת שמע מציגים את העוצמה ואת הספקטרום של הצליל שה‑Mac מנגן. השמע מנותח ב‑Mac כל עוד סקין כזה טעון; הוא לעולם אינו מוקלט, נשמר או נשלח לשום מקום.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+"NSDesktopFolderUsageDescription" = "סקין או הסקריפט שלו קורא או כותב קבצים בתיקייה ”שולחן העבודה“ (למשל סקין של רשימת קבצים, פתקים או משגר).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+"NSDocumentsFolderUsageDescription" = "סקין או הסקריפט שלו קורא או כותב קבצים בתיקייה ”מסמכים“ (למשל סקין של רשימת קבצים, פתקים או משגר).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+"NSDownloadsFolderUsageDescription" = "סקין או הסקריפט שלו קורא או כותב קבצים בתיקייה ”הורדות“ (למשל סקין של רשימת קבצים או משגר).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "תוכנה חופשית ברישיון GNU GPL v3. מריצה סקינים שנוצרו עבור Rainmeter; אינה קשורה ל‑Rainmeter. ‏Rainmeter הוא סימן מסחרי של בעליו.";
+
+/* macOS permission prompt (Local Network). */
+"NSLocalNetworkUsageDescription" = "סקין קורא מידע ממכשיר ברשת המקומית שלך, כמו דף המצב של נתב או שרת ביתי.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+"NSLocationUsageDescription" = "סקינים שהגדרת להשתמש במיקום הנוכחי שלך קוראים את המיקום המשוער שלך כדי להציג את מזג האוויר המקומי ואת שעות הזריחה והשקיעה. המיקום מעוגל לכ‑1 ק״מ, נשלח רק לשירות מזג האוויר (MET Norway) לצורך התחזית, ולעולם אינו נשמר. ‏macOS דורש את ההרשאה הזו גם כדי שסקינים של Wi-Fi יוכלו להציג שמות רשתות.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+"NSLocationWhenInUseUsageDescription" = "סקינים שהגדרת להשתמש במיקום הנוכחי שלך קוראים את המיקום המשוער שלך כדי להציג את מזג האוויר המקומי ואת שעות הזריחה והשקיעה. המיקום מעוגל לכ‑1 ק״מ, נשלח רק לשירות מזג האוויר (MET Norway) לצורך התחזית, ולעולם אינו נשמר. ‏macOS דורש את ההרשאה הזו גם כדי שסקינים של Wi-Fi יוכלו להציג שמות רשתות.";
+
+/* macOS permission prompt (Microphone). */
+"NSMicrophoneUsageDescription" = "סקין מבקש להציג את העוצמה של קלט שמע (מיקרופון או ממשק שמע). השמע מנותח ב‑Mac כל עוד הסקין טעון; הוא לעולם אינו מוקלט, נשמר או נשלח לשום מקום.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+"NSNetworkVolumesUsageDescription" = "סקין או הסקריפט שלו קורא קבצים בכרך רשת (למשל סקין של דיסק או של רשימת קבצים).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+"NSRemovableVolumesUsageDescription" = "סקין או הסקריפט שלו קורא קבצים בכונן נשלף (למשל סקין של דיסק או של רשימת קבצים).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "חבילת סקינים";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ארכיון ZIP";

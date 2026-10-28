@@ -1,0 +1,1707 @@
+// Deskset — the app's own text, Norwegian Bokmål.
+// Translate the text after "="; keep %@, %lld and the like (or number them, %2$@, to change their order).
+// Order and comments come from en.lproj (`swift scripts/localization.swift sync`).
+// Status: translated, not yet reviewed by a native speaker
+
+// MARK: Main menu
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+"About Deskset" = "Om Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Settings…" = "Innstillinger…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Manage Skins…" = "Administrer skins…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Install Skin…" = "Installer skin…";
+
+/* Main menu: menu item. */
+"Hide Deskset" = "Skjul Deskset";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Quit Deskset" = "Avslutt Deskset";
+
+/* Main menu: menu title. */
+"File" = "Arkiv";
+
+/* Main menu: menu item; Manage window: button; New Skin window: button.
+   Note: Menu command and button (Apple's standard term). */
+"Save" = "Arkiver";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+   Note: Menu command and button (Apple's standard term). */
+"Close" = "Lukk";
+
+/* Main menu: menu title.
+   Note: The title of the Edit menu in the menu bar (Apple's standard name for it). */
+"Edit|menu" = "Rediger";
+
+/* Main menu: menu item. */
+"Undo" = "Angre";
+
+/* Main menu: menu item. */
+"Redo" = "Utfør på nytt";
+
+/* Main menu: menu item. */
+"Cut" = "Klipp ut";
+
+/* Main menu: menu item. */
+"Copy" = "Kopier";
+
+/* Main menu: menu item. */
+"Paste" = "Lim inn";
+
+/* Main menu: menu item. */
+"Select All" = "Marker alt";
+
+/* Main menu: menu title, menu item.
+   Note: The title of the Find submenu in the Edit menu (Apple's standard name). */
+"Find" = "Søk";
+
+/* Main menu: menu item. */
+"Find…" = "Søk…";
+
+/* Main menu: menu item. */
+"Find and Replace…" = "Søk og erstatt…";
+
+/* Main menu: menu item. */
+"Find Next" = "Søk etter neste";
+
+/* Main menu: menu item. */
+"Find Previous" = "Søk etter forrige";
+
+/* Main menu: menu item. */
+"Use Selection for Find" = "Bruk markering til søk";
+
+/* Main menu: menu item. */
+"Jump to Selection" = "Gå til markering";
+
+/* Main menu: menu title. */
+"View" = "Vis";
+
+/* Main menu: menu item. */
+"Enter Full Screen" = "Bruk fullskjerm";
+
+/* Main menu: menu title; StudioMenus: text. */
+"Window" = "Vindu";
+
+/* Main menu: menu item. */
+"Minimize" = "Minimer";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item.
+   Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
+"Zoom" = "Zoom";
+
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+"Help" = "Hjelp";
+
+// MARK: Menu bar menu, skin menus and update alerts
+
+/* Menu bar menu, skin menus and update alerts: alert title.
+   Note: Title of an alert: Safe Start could not load the default layout. */
+"Could not start with the default layout" = "Kunne ikke starte med standardoppsettet";
+
+/* Menu bar menu, skin menus and update alerts: button; Skin Packager window: button.
+   Note: Button (Apple's standard term). */
+"OK" = "OK";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused while Deskset was quitting or restarting." = "Installeringen ble satt på pause fordi Deskset holdt på å avslutte eller starte på nytt.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused because quitting was cancelled. You can try again when ready." = "Installeringen ble satt på pause fordi avslutningen ble avbrutt. Du kan prøve igjen når du er klar.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset %@ is available" = "Deskset %@ er tilgjengelig";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept." = "En ny versjon for denne Macen er klar til nedlasting: versjon %@ → %@. Deskset spør før det starter på nytt, og skins, oppsett og innstillinger beholdes.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset is up to date" = "Deskset er oppdatert";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"You’re running the latest release available for this Mac. Installed version %@." = "Du bruker den nyeste versjonen som finnes for denne Macen. Installert versjon: %@.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"No release available" = "Ingen versjon tilgjengelig";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"There is no public release available yet. Please check again later." = "Det finnes ingen offentlig versjon ennå. Se igjen senere.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Couldn’t check for updates" = "Kunne ikke se etter oppdateringer";
+
+/* Menu bar menu, skin menus and update alerts: text, alert or dialog message; App updates: status or description line. */
+"Your installed copy (%@) has not been changed." = "Den installerte kopien (%@) er ikke endret.";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button (Apple's usual wording in update alerts). */
+"Skip This Version" = "Hopp over denne versjonen";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button in the alert about a new version: starts downloading it. */
+"Update" = "Oppdater";
+
+/* Menu bar menu, skin menus and update alerts: window title. */
+"Deskset Updates" = "Oppdateringer for Deskset";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
+"A newer version is ready to download for this Mac." = "En ny versjon for denne Macen er klar til nedlasting.";
+
+/* Menu bar menu, skin menus and update alerts: label.
+   Note: Label in a small card, followed by "old version → new version". */
+"Version" = "Versjon";
+
+/* Menu bar menu, skin menus and update alerts: status or description line.
+   Note: Short note at the right end of the version row: Deskset asks before it restarts to install the update. */
+"Asks before restart" = "Spør før omstart";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list; Installing Deskset in Applications: note under a panel or list. */
+"Your skins, layouts, and settings will be kept." = "Skins, oppsett og innstillinger beholdes.";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"You’re running the latest release available for this Mac." = "Du bruker den nyeste versjonen som finnes for denne Macen.";
+
+/* Menu bar menu, skin menus and update alerts: label; Install and update panels: text.
+   Note: Label in a small card, followed by the version number. */
+"Installed version" = "Installert versjon";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Automatic update checks are off" = "Automatisk søk etter oppdateringer er slått av";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Checked just now" = "Sjekket akkurat nå";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"There is no public release available for this Mac yet." = "Det finnes ingen offentlig versjon for denne Macen ennå.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Please check again later" = "Se igjen senere";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Try again later using Check for Updates." = "Prøv igjen senere med «Se etter oppdateringer».";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list.
+   Note: %@ is a version number. */
+"Installed: %@" = "Installert: %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Stop automatic reminders for this version. You can still use Check for Updates." = "Slutt med automatiske påminnelser om denne versjonen. Du kan fortsatt bruke «Se etter oppdateringer».";
+
+/* Menu bar menu, skin menus and update alerts: tooltip. */
+"Close for now. The next daily check can remind you again." = "Lukk for nå. Neste daglige sjekk kan minne deg på det igjen.";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
+"Skins" = "Skins";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
+"Layouts" = "Oppsett";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
+"Loaded Skins" = "Innlastede skins";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+   Note: Reloads every skin from its files and rescans the Skins folder. */
+"Refresh All" = "Oppdater alle";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Skins Folder" = "Åpne skinmappen";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Log" = "Åpne loggen";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
+"Debug" = "Feilsøking";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Launch at Login" = "Åpne ved pålogging";
+
+/* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
+"Available when Deskset runs as an installed app." = "Tilgjengelig når Deskset kjører som installert app.";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Update to Deskset %@…" = "Oppdater til Deskset %@…";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Restart Deskset" = "Start Deskset på nytt";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"No skins installed" = "Ingen skins installert";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Favorites" = "Favoritter";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Menu toggle (checkmark): selects this skin, so the menu's settings apply to every selected skin at once. */
+"Select skin" = "Marker skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu with the commands a skin adds to its own menu. */
+"Custom Skin Actions" = "Skinets egne handlinger";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Manage window at this skin. */
+"Manage" = "Administrer";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"About" = "Om";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the other .ini files of the same skin folder; choosing one loads it instead. */
+"Variants" = "Varianter";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that sets how a skin's window stacks with other windows: Stay Topmost, Topmost, Normal, Bottom, On Desktop. */
+"Position" = "Plassering";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description.
+   Note: Submenu that sets how transparent a skin is: 0% (opaque) to 90%. */
+"Transparency" = "Gjennomsiktighet";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu: what a skin does while the pointer is over it (Do Nothing, Hide, Fade In, Fade Out). */
+"On Hover" = "Når pekeren er over";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
+"Click Through" = "Klikk gjennom";
+
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
+"Draggable" = "Kan flyttes";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin cannot be moved past the edge of its screen. */
+"Keep on Screen" = "Hold på skjermen";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): a dragged skin snaps to screen edges and to other skins. */
+"Snap to Edges" = "Fest til kanter";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
+"Save Position" = "Husk plassering";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
+"Favorite" = "Favoritt";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+"Settings" = "Innstillinger";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu listing what in this skin works differently on a Mac; %lld is how many notes there are. */
+"Compatibility Notes (%lld)" = "Kompatibilitetsmerknader (%lld)";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Manage Skin…" = "Administrer dette skinet…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Opens the Debug window for this skin. */
+"Debug Skin" = "Feilsøk skin";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Edit Skin…" = "Rediger skin…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: %@ is the name of a code editor app, e.g. "Edit in Visual Studio Code". */
+"Edit in %@" = "Rediger i %@";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Reloads this skin from its files. */
+"Refresh Skin" = "Oppdater skin";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Open Skin Folder" = "Åpne skinets mappe";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu command: removes the skin from the desktop (the files stay). */
+"Unload Skin" = "Lukk skin";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Shown instead of Refresh Skin while Shift is held: brings the skin to the front of the skins at its position. */
+"Focus Skin" = "Legg skinet øverst";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice (Rainmeter's wording): place the skin on the main display. */
+"Use default: Primary monitor" = "Bruk standard: Hovedskjerm";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: the area of all displays together. Keep "@0". */
+"@0: Virtual screen" = "@0: Virtuell skjerm";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: A display, numbered as in Rainmeter: "Monitor 2". */
+"Monitor %lld" = "Skjerm %lld";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: use whichever display the skin is on. */
+"Auto-select based on window position" = "Velg automatisk ut fra vinduets plassering";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description, menu item.
+   Note: Submenu: which display a skin's position is measured from. */
+"Display monitor" = "Skjerm";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is measured from the right edge of the display. */
+"From right" = "Fra høyre";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is measured from the bottom edge of the display. */
+"From bottom" = "Fra bunnen";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is a percentage of the display width. */
+"X as percentage" = "X i prosent";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is a percentage of the display height. */
+"Y as percentage" = "Y i prosent";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Zoom submenu choice: the skin uses the default zoom from Settings. */
+"Default" = "Standard";
+
+// MARK: Skin settings (Manage window and skin menu)
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin stays as it is. */
+"Do Nothing" = "Ikke gjør noe";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin disappears while the pointer is over it. */
+"Hide" = "Skjul";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes opaque while the pointer is over it. */
+"Fade In" = "Ton inn";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes transparent while the pointer is over it. */
+"Fade Out" = "Ton ut";
+
+// MARK: Manage window
+
+/* Manage window: tooltip.
+   Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
+"Hold Control to change zoom by 10 percentage points." = "Hold inne Ctrl for å endre zoomen med 10 prosentpoeng om gangen.";
+
+/* Manage window: checkbox. */
+"Save as empty layout" = "Arkiver som tomt oppsett";
+
+/* Manage window: checkbox. */
+"Exclude unloaded skins" = "Utelat skins som ikke er lastet inn";
+
+/* Manage window: checkbox. */
+"Include current wallpaper" = "Ta med gjeldende skrivebordsbilde";
+
+/* Manage window: button, text.
+   Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
+"Load" = "Last inn";
+
+/* Manage window: button; New Skin window: button, text. */
+"Delete" = "Slett";
+
+/* Manage window: button, menu item; New Skin window: button.
+   Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
+"Edit" = "Rediger";
+
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+"Create new skin" = "Opprett nytt skin";
+
+/* Manage window: VoiceOver description, tooltip.
+   Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
+"Create .rmskin Package…" = "Opprett .rmskin-pakke…";
+
+/* Manage window: label. */
+"Select a skin to see its details." = "Marker et skin for å se detaljer om det.";
+
+/* Manage window: button.
+   Note: Button: reloads the skin from its files. */
+"Refresh" = "Oppdater";
+
+/* Manage window: button. */
+"Open Folder" = "Åpne mappe";
+
+/* Manage window: label, text. */
+"Load the skin to change its settings." = "Last inn skinet for å endre innstillingene.";
+
+/* Manage window: checkbox.
+   Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
+"Click through" = "Klikk gjennom";
+
+/* Manage window: checkbox. */
+"Keep on screen" = "Hold på skjermen";
+
+/* Manage window: checkbox. */
+"Snap to edges" = "Fest til kanter";
+
+/* Manage window: checkbox. */
+"Save position" = "Husk plassering";
+
+/* Manage window: checkbox. */
+"Launch at login" = "Åpne ved pålogging";
+
+/* Manage window: text, label.
+   Note: The skin window's X and Y position on the screen. */
+"Coordinates:" = "Koordinater:";
+
+/* Manage window: text, label.
+   Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
+"Load order:" = "Innlastingsrekkefølge:";
+
+/* Manage window: text, label.
+   Note: What a skin does while the pointer is over it. */
+"On hover:" = "Når pekeren er over:";
+
+/* Manage window: text, label. */
+"Position:" = "Plassering:";
+
+/* Manage window: text, label. */
+"Transparency:" = "Gjennomsiktighet:";
+
+/* Manage window: text, label.
+   Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
+"Zoom:" = "Zoom:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Author:" = "Forfatter:";
+
+/* Manage window: text.
+   Note: The skin's own description, from its [Metadata] section. */
+"Information:" = "Beskrivelse:";
+
+/* Manage window: text. */
+"License:" = "Lisens:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Version:" = "Versjon:";
+
+/* Manage window: window title.
+   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
+"Manage Skins" = "Administrer skins";
+
+/* Manage window: VoiceOver description. */
+"Installed skins" = "Installerte skins";
+
+/* Manage window: VoiceOver description, text, menu item. */
+"Active skins" = "Aktive skins";
+
+/* Manage window: tooltip. */
+"Select a loaded skin in Manage." = "Marker et innlastet skin i Administrer-vinduet.";
+
+/* Manage window: text. */
+"Save new layout" = "Arkiver nytt oppsett";
+
+/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+"Name:" = "Navn:";
+
+/* Manage window: VoiceOver description. */
+"Layout name" = "Navn på oppsett";
+
+/* Manage window: VoiceOver description, text. */
+"Saved layouts" = "Arkiverte oppsett";
+
+/* Manage window: text. */
+"No saved layouts." = "Ingen arkiverte oppsett.";
+
+/* Manage window: text. */
+"Could not read saved layouts: %@" = "Kunne ikke lese arkiverte oppsett: %@";
+
+/* Manage window: alert title. */
+"Could not save layout" = "Kunne ikke arkivere oppsettet";
+
+/* Manage window: alert title. */
+"Replace layout “%@”?" = "Vil du erstatte oppsettet «%@»?";
+
+/* Manage window: alert or dialog message. */
+"A layout with this name already exists. Replace its saved settings?" = "Det finnes allerede et oppsett med dette navnet. Vil du erstatte de arkiverte innstillingene?";
+
+/* Manage window: button; Skin Packager window: button. */
+"Replace" = "Erstatt";
+
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+"Cancel" = "Avbryt";
+
+/* Manage window: alert title. */
+"Could not delete layout" = "Kunne ikke slette oppsettet";
+
+/* Manage window: alert title. */
+"Delete layout “%@”?" = "Vil du slette oppsettet «%@»?";
+
+/* Manage window: alert or dialog message. */
+"This moves the saved layout to the Trash. Your skin files are kept." = "Det arkiverte oppsettet flyttes til papirkurven. Skinfilene beholdes.";
+
+/* Manage window: tooltip. */
+"Select the display monitor for this skin." = "Velg skjermen for dette skinet.";
+
+/* Manage window: text.
+   Note: VoiceOver name of the field for a skin's size, as a percentage. */
+"Skin zoom" = "Skinets zoom";
+
+/* Manage window: tooltip. */
+"Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable." = "Flytt skinet med musen. Hold inne ⌘ for å flytte et skin som ikke kan flyttes.";
+
+/* Manage window: tooltip. */
+"Clicks pass through the skin to whatever is below it." = "Klikk går gjennom skinet til det som ligger under.";
+
+/* Manage window: tooltip. */
+"Keep the whole skin inside the screen it is on." = "Hold hele skinet innenfor skjermen det er på.";
+
+/* Manage window: tooltip. */
+"Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override." = "Fest til skjermkanter og andre skins når det flyttes. Hold inne ⌘ mens du flytter, for å unngå det.";
+
+/* Manage window: tooltip. */
+"Remember where the skin is when it is moved." = "Husk hvor skinet er når det flyttes.";
+
+/* Manage window: tooltip. */
+"Add this skin to the Favorites menu." = "Legg til dette skinet i Favoritter-menyen.";
+
+/* Manage window: tooltip. */
+"What the skin does while the pointer is over it." = "Hva skinet gjør mens pekeren er over det.";
+
+/* Manage window: label.
+   Note: Unit after a duration (milliseconds). */
+"ms" = "ms";
+
+/* Manage window: label.
+   Note: How long a skin takes to fade in or out, in milliseconds. */
+"Fade duration:" = "Varighet for overtoning:";
+
+/* Manage window: text.
+   Note: Section of the Manage window listing what in the skin works differently on a Mac. */
+"Compatibility" = "Kompatibilitet";
+
+/* Manage window: text. */
+"Start Deskset when you log in." = "Start Deskset når du logger på.";
+
+/* Manage window: text.
+   Note: Button: removes the skin from the desktop (the files stay). */
+"Unload" = "Lukk";
+
+/* Manage window: text. */
+"This skin has no [Metadata] section." = "Dette skinet har ingen [Metadata]-seksjon.";
+
+/* Manage window: text. */
+"This skin has no metadata values." = "Dette skinet har ingen metadata.";
+
+/* Manage window: text. */
+"No metadata available." = "Ingen metadata tilgjengelig.";
+
+/* Manage window: text. */
+"Transparency: %lld%%" = "Gjennomsiktighet: %lld %%";
+
+/* Manage window: text. */
+"Select a skin file to see its settings." = "Marker en skinfil for å se innstillingene.";
+
+/* Manage window: note under a panel or list. */
+"Select a skin file to check it." = "Marker en skinfil for å sjekke den.";
+
+/* Manage window: text. */
+"No compatibility problems found." = "Fant ingen kompatibilitetsproblemer.";
+
+/* Manage window: note under a panel or list. */
+"Checked without loading; some problems only show up while the skin runs." = "Sjekket uten å lastes inn; noen problemer vises bare mens skinet kjører.";
+
+/* Manage window: status or description line.
+   Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
+"Folder" = "Mappe";
+
+/* Manage window: text.
+   Note: Status: the skin is on the desktop and running. */
+"Loaded" = "Lastet inn";
+
+/* Manage window: text.
+   Note: %@ is a skin file name, e.g. "Clock.ini is loaded". */
+"%@ is loaded" = "%@ er lastet inn";
+
+/* Manage window: text.
+   Note: %@ is a skin file name; the skin is running but has hidden itself. */
+"%@ is loaded, hidden" = "%@ er lastet inn, skjult";
+
+/* Manage window: status or description line.
+   Note: Status: the skin is installed but not running. */
+"Not loaded" = "Ikke lastet inn";
+
+/* Manage window: alert title. */
+"Could not add metadata" = "Kunne ikke legge til metadata";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
+"%@, has loaded skins" = "%@, inneholder innlastede skins";
+
+/* Manage window: text.
+   Note: Status: the skin is running but has hidden itself. */
+"Loaded, hidden" = "Lastet inn, skjult";
+
+/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Show in Finder" = "Vis i Finder";
+
+/* Manage window: text, VoiceOver description. */
+"Add metadata" = "Legg til metadata";
+
+/* Manage window: text.
+   Note: Window position: below all ordinary windows. */
+"Bottom" = "Nederst";
+
+/* Manage window: text.
+   Note: Window position: stacks like an ordinary window. */
+"Normal" = "Normal";
+
+/* Manage window: text.
+   Note: Window position: on the desktop itself, under the desktop icons' level. */
+"On Desktop" = "På skrivebordet";
+
+/* Manage window: text.
+   Note: Window position: always above every other window, even after other apps come forward. */
+"Stay Topmost" = "Alltid øverst";
+
+/* Manage window: text.
+   Note: Window position: above other windows until another app comes forward. */
+"Topmost" = "Øverst";
+
+/* Manage window: text.
+   Note: Title of a notice: the skin is loaded, but it hid itself (with !Hide or StartHidden), so it is not on the desktop. */
+"Hidden by the skin" = "Skjult av skinet selv";
+
+/* Manage window: text.
+   Note: Button in the notice about a hidden skin: shows the skin again. */
+"Show" = "Vis";
+
+/* Manage window: text.
+   Note: Keep StartHidden and !Hide as they are (they are names in skin code). */
+"It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it." = "Det er stilt inn til å starte skjult (StartHidden), eller én av handlingene (!Hide) har skjult det.";
+
+/* Manage window: text.
+   Note: Keep !Hide as it is (a name in skin code). */
+"It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show." = "Det er lastet inn og kjører, men én av handlingene (!Hide) har skjult det, slik noen widgeter gjør når de ikke har noe å vise.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it is loaded again." = "Det blir ikke synlig av å flyttes. Klikk på Vis for å se det til det lastes inn neste gang.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it hides itself again." = "Det blir ikke synlig av å flyttes. Klikk på Vis for å se det til det skjuler seg selv igjen.";
+
+/* Manage window: text.
+   Note: Under the coordinates after the user typed a new position for a hidden skin. */
+"Moved, but still hidden. Click Show above to see it." = "Flyttet, men fortsatt skjult. Klikk på Vis ovenfor for å se det.";
+
+/* Manage window: text.
+   Note: Under the coordinates of a hidden skin. */
+"The skin is hidden, so you won’t see it move." = "Skinet er skjult, så du ser ikke at det flyttes.";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded" = "%@, lastet inn";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded, hidden" = "%@, lastet inn, skjult";
+
+/* Manage window: text. */
+"The skin cannot be loaded: %@" = "Kan ikke laste inn skinet: %@";
+
+/* Manage window: message (an error or a status). */
+"Changes to “%@” must be saved before adding metadata." = "Endringene i «%@» må arkiveres før du legger til metadata.";
+
+/* Manage window: message (an error or a status). */
+"Could not add metadata to “%@” while an editor save was still in progress." = "Kunne ikke legge til metadata i «%@» mens redigeringsprogrammet fortsatt arkiverte.";
+
+// MARK: Layouts
+
+/* Layouts: message (an error or a status). */
+"Wait for the current layout to finish loading." = "Vent til det gjeldende oppsettet er ferdig lastet inn.";
+
+/* Layouts: message (an error or a status). */
+"Deskset is closing." = "Deskset lukkes.";
+
+/* Layouts: alert title. */
+"Couldn’t load layout “%@”" = "Kunne ikke laste inn oppsettet «%@»";
+
+/* Layouts: alert title. */
+"Couldn’t edit layout “%@”" = "Kunne ikke redigere oppsettet «%@»";
+
+/* Layouts: menu item. */
+"No saved layouts" = "Ingen arkiverte oppsett";
+
+/* Layouts: message (an error or a status). */
+"The current desktop picture is not a readable image." = "Det gjeldende skrivebordsbildet er ikke et lesbart bilde.";
+
+/* Layouts: message (an error or a status). */
+"Wallpaper.bmp is not a readable image." = "Wallpaper.bmp er ikke et lesbart bilde.";
+
+// MARK: Settings window
+
+/* Settings window: message (an error or a status).
+   Note: The first pane of Settings (Apple's usual name). */
+"General" = "Generelt";
+
+/* Settings window: message (an error or a status).
+   Note: A pane of Settings: options for editing skins. */
+"Editor" = "Redigering";
+
+/* Settings window: checkbox.
+   Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
+"Refresh the skin when the file is saved elsewhere" = "Oppdater skinet når filen arkiveres i en annen app";
+
+/* Settings window: checkbox. */
+"Launch Deskset at login" = "Åpne Deskset ved pålogging";
+
+/* Settings window: checkbox. */
+"Automatically check for updates" = "Se etter oppdateringer automatisk";
+
+/* Settings window: button; App updates: text. */
+"Check for Updates…" = "Se etter oppdateringer…";
+
+/* Settings window: button.
+   Note: Button in Settings, shown when a new version is available: opens the update. */
+"Update…" = "Oppdater…";
+
+/* Settings window: checkbox.
+   Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
+"Apply to all skins" = "Bruk for alle skins";
+
+/* Settings window: checkbox, VoiceOver description.
+   Note: Checkbox: skins cannot be moved with the mouse. */
+"Disable dragging" = "Slå av flytting";
+
+/* Settings window: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Nullstill statistikk";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Edit code with:" pop-up menu. */
+"Edit code with" = "App for redigering av kode";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the font size field for the built-in code editor. */
+"Code font size" = "Skriftstørrelse for kode";
+
+/* Settings window: text.
+   Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
+"Default zoom" = "Standardzoom";
+
+/* Settings window: tooltip. */
+"Apply the default zoom to every skin." = "Bruk standardzoomen for alle skins.";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
+"Force default zoom" = "Tving standardzoom";
+
+/* Settings window: tooltip. */
+"Prevent dragging skins with the mouse." = "Hindre at skins flyttes med musen.";
+
+/* Settings window: label.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* Settings window: label.
+   Note: Which app opens a skin's .ini file for editing. */
+"Edit code with:" = "Rediger kode med:";
+
+/* Settings window: label. */
+"Code font size:" = "Skriftstørrelse for kode:";
+
+/* Settings window: label.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Automatisk innlasting:";
+
+/* Settings window: text. */
+"Deskset opens with your skins when you log in." = "Deskset åpnes med skinene dine når du logger på.";
+
+/* Settings window: text. */
+"Available when Deskset runs from the Applications folder." = "Tilgjengelig når Deskset kjøres fra Programmer-mappen.";
+
+/* Settings window: label.
+   Note: Settings row with the language pop-up menu. */
+"Language:" = "Språk:";
+
+/* Settings window: label.
+   Note: Settings row with the Launch Deskset at login checkbox. */
+"Startup:" = "Oppstart:";
+
+/* Settings window: label.
+   Note: Settings row with the path of the folder skins are installed in. */
+"Skins folder:" = "Skinmappe:";
+
+/* Settings window: label.
+   Note: The zoom (size, as a percentage) skins get unless one has its own. */
+"Default zoom:" = "Standardzoom:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Oppdateringer:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset sjekker én gang om dagen og laster ned oppdateringer selv; du velger når de skal installeres.";
+
+/* Settings window: text.
+   Note: %@ is the name of an editor app that is no longer installed. */
+"%@ (missing)" = "%@ (finnes ikke)";
+
+/* Settings window: text, menu item.
+   Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
+"System default (%@)" = "Systemstandard (%@)";
+
+/* Settings window: text; Skin Packager window: menu item.
+   Note: Last item of the editor list: choose any app. */
+"Other…" = "Annet…";
+
+/* Settings window: text.
+   Note: Choice for "Edit code with:": Deskset's own editor, showing the code next to the skin. */
+"Deskset (built-in, side by side)" = "Deskset (innebygd, side ved side)";
+
+/* Settings window: message (an error or a status). */
+"Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window." = "Åpner skinredigeringen med koden ved siden av lerretet, ved den markerte seksjonen. Andre tekstfiler som et skin åpner (innstillinger, skript), åpnes i et kodevindu i Deskset.";
+
+/* Settings window: message (an error or a status). */
+"%@ is no longer installed — the built-in editor is used instead." = "%@ er ikke lenger installert – den innebygde redigeringen brukes i stedet.";
+
+/* Settings window: message (an error or a status). */
+"Opens files in TextEdit, which can’t jump to a line." = "Åpner filer i TextEdit, som ikke kan hoppe til en bestemt linje.";
+
+/* Settings window: message (an error or a status). */
+"Opens each file in the app macOS uses for its type (%@ for .ini files)." = "Åpner hver fil i appen macOS bruker for filtypen (%@ for .ini-filer).";
+
+/* Settings window: message (an error or a status). */
+"%@ can’t jump to a line; files open at the top." = "%@ kan ikke hoppe til en bestemt linje; filer åpnes fra toppen.";
+
+/* Settings window: message (an error or a status). */
+"Opens %@ at the selected line." = "Åpner %@ ved den markerte linjen.";
+
+/* Settings window: text. */
+"The first time, %@ may ask to allow this." = "Første gang kan %@ be om tillatelse.";
+
+/* Settings window: button.
+   Note: Button of the dialog where the user picks an editor app. */
+"Choose" = "Velg";
+
+/* Settings window: alert or dialog message. */
+"Choose the app that edits skin code." = "Velg appen som redigerer skinkode.";
+
+/* Settings window: alert title. */
+"Restart Deskset now?" = "Vil du starte Deskset på nytt nå?";
+
+/* Settings window: alert or dialog message. */
+"The new language is used after Deskset restarts." = "Det nye språket brukes når Deskset har startet på nytt.";
+
+/* Settings window: button. */
+"Restart Now" = "Start på nytt nå";
+
+/* Settings window: button; Launch at Login: button; App updates: text; Install and update panels: text. */
+"Later" = "Senere";
+
+// MARK: Code editor
+
+/* Code editor: text. */
+"%@ is no longer installed — using the built-in editor" = "%@ er ikke lenger installert – bruker den innebygde redigeringen";
+
+// MARK: About window
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, build number, processor (e.g. "Apple silicon"). */
+"Deskset %@ (build %@) - %@" = "Deskset %@ (build %@) – %@";
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, processor. */
+"Deskset %@ - %@" = "Deskset %@ – %@";
+
+/* About window: button.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Kopier til utklippstavlen";
+
+/* About window: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Skrivebordswidgeter for Macen din, kompatible med skins for Rainmeter.";
+
+/* About window: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter er et varemerke som tilhører de respektive eierne; Deskset er ikke tilknyttet det.";
+
+// MARK: New Skin window
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Kunne ikke opprette et skin";
+
+/* New Skin window: button.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Legg til mappe";
+
+/* New Skin window: button.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Legg til skin";
+
+/* New Skin window: text.
+   Note: Tab of the New skin window: the folders and files to create. */
+"New skin" = "Nytt skin";
+
+/* New Skin window: text.
+   Note: A tab of the New skin window: the files a new skin starts with. */
+"Template" = "Mal";
+
+/* New Skin window: VoiceOver description.
+   Note: VoiceOver name of the field showing the folder the new skin goes in. */
+"Selected skin folder" = "Markert skinmappe";
+
+/* New Skin window: column heading, VoiceOver description.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Navn";
+
+/* New Skin window: VoiceOver description. */
+"New skin folders and files" = "Mapper og filer for nytt skin";
+
+/* New Skin window: VoiceOver description. */
+"Template for new skins" = "Mal for nye skins";
+
+/* New Skin window: VoiceOver description. */
+"Template name" = "Navn på mal";
+
+/* New Skin window: text. */
+"Save new template" = "Arkiver som ny mal";
+
+/* New Skin window: column heading, VoiceOver description, text. */
+"Saved templates" = "Arkiverte maler";
+
+/* New Skin window: menu item.
+   Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
+"Template…" = "Mal…";
+
+/* New Skin window: text. */
+"Use default template" = "Bruk standardmalen";
+
+/* New Skin window: alert title. */
+"Could not complete the operation" = "Kunne ikke fullføre handlingen";
+
+/* New Skin window: text. */
+"Create" = "Opprett";
+
+/* New Skin window: text. */
+"Rename" = "Endre navn";
+
+/* New Skin window: text.
+   Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
+"New Root Folder" = "Ny rotmappe";
+
+/* New Skin window: text. */
+"New Folder" = "Ny mappe";
+
+/* New Skin window: text.
+   Note: Title of the dialog asking for a new skin file's name. */
+"New Skin" = "Nytt skin";
+
+/* New Skin window: text.
+   Note: Context menu item: opens the new skin's file in the code editor. */
+"Edit skin" = "Rediger skin";
+
+/* New Skin window: message (an error or a status). */
+"Invalid name: %@" = "Ugyldig navn: %@";
+
+/* New Skin window: message (an error or a status). */
+"An item named %@ already exists." = "Det finnes allerede et objekt med navnet %@.";
+
+/* New Skin window: message (an error or a status). */
+"The item is no longer a regular file or folder: %@" = "Objektet er ikke lenger en vanlig fil eller mappe: %@";
+
+/* New Skin window: message (an error or a status). */
+"The selected folder is no longer available." = "Den markerte mappen er ikke lenger tilgjengelig.";
+
+/* New Skin window: message (an error or a status). */
+"Only items created in this window can be renamed or deleted." = "Bare objekter som er opprettet i dette vinduet, kan få nytt navn eller slettes.";
+
+/* New Skin window: message (an error or a status). */
+"The default template cannot be deleted." = "Standardmalen kan ikke slettes.";
+
+/* New Skin window: text. */
+"The rename could not be completed. The original item remains at %@." = "Kunne ikke fullføre navneendringen. Det opprinnelige objektet ligger fortsatt i %@.";
+
+// MARK: Skin installer
+
+/* Skin installer: text. */
+"Install “%@”?" = "Vil du installere «%@»?";
+
+/* Skin installer: text.
+   Note: Under a package's name; %@ is the author's name. */
+"By %@" = "Av %@";
+
+/* Skin installer: text.
+   Note: %@ is a version number, e.g. "Version 1.2". */
+"Version %@" = "Versjon %@";
+
+/* Skin installer: text. */
+"The package does not say who made it." = "Pakken oppgir ikke hvem som har laget den.";
+
+/* Skin installer: text. */
+"A package made for the installer of old Rainmeter versions (Rainstaller)." = "En pakke laget for installeringsprogrammet i eldre versjoner av Rainmeter (Rainstaller).";
+
+/* Skin installer: text. */
+"This folder is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing. The folder is copied; the original stays where it is." = "Denne mappen er ikke en skinpakke laget med Skin Packager i Rainmeter, så Deskset har selv funnet skinene i den. Sjekk listen nedenfor før du installerer. Mappen kopieres; originalen blir liggende der den er.";
+
+/* Skin installer: text. */
+"This archive is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing." = "Dette arkivet er ikke en skinpakke laget med Skin Packager i Rainmeter, så Deskset har selv funnet skinene i det. Sjekk listen nedenfor før du installerer.";
+
+/* Skin installer: text. */
+"A plain folder: no author or version information." = "En vanlig mappe uten informasjon om forfatter eller versjon.";
+
+/* Skin installer: text. */
+"A plain archive: no author or version information." = "Et vanlig arkiv uten informasjon om forfatter eller versjon.";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin, makes no backup and does not keep the values of its variables files. */
+"merged into the installed copy, without a backup or kept variables" = "slås sammen med den installerte kopien, uten sikkerhetskopi eller bevarte variabler";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin. */
+"merged into the installed copy" = "slås sammen med den installerte kopien";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the installed skin is replaced. */
+"replaces the installed copy" = "erstatter den installerte kopien";
+
+/* Skin installer: text.
+   Note: %@ is a layout's name. */
+"Layout “%@”" = "Oppsettet «%@»";
+
+/* Skin installer: text. */
+"This package includes Windows plugins. Plugins can’t run on macOS, so parts of these skins may show no data." = "Pakken inneholder Windows-plugins. Plugins kan ikke kjøre på macOS, så deler av disse skinene kan mangle data.";
+
+/* Skin installer: text. */
+"This package includes Windows plugins (%@). Plugins can’t run on macOS, so parts of these skins may show no data." = "Pakken inneholder Windows-plugins (%@). Plugins kan ikke kjøre på macOS, så deler av disse skinene kan mangle data.";
+
+/* Skin installer: menu item.
+   Note: Installer checkbox: keep a copy of installed skins that the package replaces. */
+"Backup skins" = "Sikkerhetskopier skins";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox: after installing, load the skins the package says to load. */
+"Load included skins" = "Last inn medfølgende skins";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox; %@ is the layout's name. */
+"Apply included layout: %@" = "Bruk medfølgende oppsett: %@";
+
+/* Skin installer: menu item; Skin Packager window: text. */
+"Advanced" = "Avansert";
+
+/* Skin installer: tooltip. */
+"Keep a backup when replacing installed skins." = "Behold en sikkerhetskopi når installerte skins erstattes.";
+
+/* Skin installer: VoiceOver description. */
+"Advanced installation options" = "Avanserte installeringsvalg";
+
+/* Skin installer: text. */
+"Install Skin" = "Installer skin";
+
+/* Skin installer: alert or dialog message.
+   Note: Message of the open dialog. */
+"Choose a skin package (.rmskin), a ZIP archive or a folder with skins to install." = "Velg en skinpakke (.rmskin), et ZIP-arkiv eller en mappe med skins som skal installeres.";
+
+/* Skin installer: button; UISnapshot: button. */
+"Install" = "Installer";
+
+/* Skin installer: text. */
+"Choose the folder of the skin you want to install, not a folder that holds Deskset’s Skins folder. Skins already in the Skins folder are installed; if one is missing from the list, choose Refresh All in the Manage window." = "Velg mappen til skinet du vil installere, ikke en mappe som inneholder skinmappen til Deskset. Skins som allerede ligger i skinmappen, er installert; hvis noen mangler i listen, velger du Oppdater alle i Administrer-vinduet.";
+
+/* Skin installer: text. */
+"Can’t open these files" = "Kan ikke åpne disse filene";
+
+/* Skin installer: text. */
+"Can’t open “%@”" = "Kan ikke åpne «%@»";
+
+/* Skin installer: text. */
+"Deskset installs skin packages (.rmskin), ZIP archives with skins and folders with skins." = "Deskset installerer skinpakker (.rmskin) og ZIP-arkiver og mapper med skins.";
+
+/* Skin installer: text, alert title. */
+"“%@” is already in the Skins folder" = "«%@» ligger allerede i skinmappen";
+
+/* Skin installer: text. */
+"These folders are already in the Skins folder" = "Disse mappene ligger allerede i skinmappen";
+
+/* Skin installer: text. */
+"“%@” contains Deskset’s Skins folder" = "«%@» inneholder skinmappen til Deskset";
+
+/* Skin installer: text. */
+"These folders contain Deskset’s Skins folder" = "Disse mappene inneholder skinmappen til Deskset";
+
+/* Skin installer: alert title. */
+"Couldn’t install “%@”" = "Kunne ikke installere «%@»";
+
+/* Skin installer: text. */
+"The current skins did not finish closing. No package files were replaced. Quit and reopen Deskset, then try again." = "De gjeldende skinene ble ikke lukket helt. Ingen pakkefiler ble erstattet. Avslutt og åpne Deskset på nytt, og prøv igjen.";
+
+/* Skin installer: alert title. */
+"“%@” was installed" = "«%@» ble installert";
+
+/* Skin installer: message (an error or a status). */
+"The file is not a skin package. It may be damaged or incomplete." = "Filen er ikke en skinpakke. Den kan være skadet eller ufullstendig.";
+
+/* Skin installer: message (an error or a status). */
+"The package has no RMSKIN.ini, so it can’t be installed." = "Pakken har ingen RMSKIN.ini og kan derfor ikke installeres.";
+
+/* Skin installer: message (an error or a status). */
+"This file or folder doesn’t contain any Rainmeter skins." = "Denne filen eller mappen inneholder ingen skins for Rainmeter.";
+
+/* Skin installer: message (an error or a status). */
+"Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "Skins i skinmappen til Deskset er allerede installert, så det er ingenting å kopiere. Hvis et skin du har lagt der, mangler i listen, velger du Oppdater alle i Administrer-vinduet.";
+
+/* Skin installer: message (an error or a status). */
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "Den inneholder flere skinpakker (%@). Åpne dem én om gangen (pakk ut arkivet først hvis det er et arkiv).";
+
+/* Skin installer: label.
+   Note: Above the list of skin folders in the package. */
+"Skins to install:" = "Skins som installeres:";
+
+/* Skin installer: label. */
+"Layouts: %@" = "Oppsett: %@";
+
+/* Skin installer: text.
+   Note: %@ is a list of font names. The fonts are used only by these skins. */
+"Fonts included for these skins (not installed system-wide): %@" = "Skrifter som følger med disse skinene (installeres ikke for hele systemet): %@";
+
+/* Skin installer: VoiceOver description. */
+"Warning" = "Advarsel";
+
+// MARK: Skin Packager window
+
+/* Skin Packager window: text. */
+"Options" = "Valg";
+
+/* Skin Packager window: button, VoiceOver description, tooltip. */
+"Remove" = "Fjern";
+
+/* Skin Packager window: checkbox.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Slå sammen skins";
+
+/* Skin Packager window: button. */
+"Back" = "Tilbake";
+
+/* Skin Packager window: button. */
+"Next" = "Neste";
+
+/* Skin Packager window: button. */
+"Create Package" = "Opprett pakke";
+
+/* Skin Packager window: window title.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Opprett .rmskin-pakke";
+
+/* Skin Packager window: button. */
+"Add Skin…" = "Legg til skin…";
+
+/* Skin Packager window: menu item. */
+"Add Layout" = "Legg til oppsett";
+
+/* Skin Packager window: button.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Legg til plugin…";
+
+/* Skin Packager window: label. */
+"Skin:" = "Skin:";
+
+/* Skin Packager window: label. */
+"Layouts:" = "Oppsett:";
+
+/* Skin Packager window: label.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Plugins:";
+
+/* Skin Packager window: text.
+   Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
+"Information and Components" = "Informasjon og innhold";
+
+/* Skin Packager window: button. */
+"Choose…" = "Velg…";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Ikke gjør noe";
+
+/* Skin Packager window: text. */
+"Load layout" = "Last inn oppsett";
+
+/* Skin Packager window: text. */
+"Load skin" = "Last inn skin";
+
+/* Skin Packager window: label.
+   Note: The file the package is written to. */
+"Save package to:" = "Arkiver pakken i:";
+
+/* Skin Packager window: label.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Etter installering:";
+
+/* Skin Packager window: label.
+   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
+"Minimum Rainmeter version:" = "Laveste versjon av Rainmeter:";
+
+/* Skin Packager window: label.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Toppbilde:";
+
+/* Skin Packager window: label.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Variabelfiler:";
+
+/* Skin Packager window: menu item.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Last inn tidligere innstillinger";
+
+/* Skin Packager window: tooltip.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Hold inne Skift for å slette en oppføring.";
+
+/* Skin Packager window: text. */
+"No skin chosen" = "Ingen skin valgt";
+
+/* Skin Packager window: text, label, menu item.
+   Note: Shown when no header image or plugin is chosen. */
+"None" = "Ingen";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit and 64-bit)" = "%@ (32-biters og 64-biters)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (64-bit version missing)" = "%@ (64-biters versjon mangler)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit version missing)" = "%@ (32-biters versjon mangler)";
+
+/* Skin Packager window: alert or dialog message, message (an error or a status).
+   Note: The root config is the top-level folder of a skin suite in the Skins folder. */
+"Choose the skin's root config folder." = "Velg rotmappen (root config) til skinet.";
+
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Pakken kan ikke opprettes ennå";
+
+/* Skin Packager window: text. */
+"Links were left out of the package: %@" = "Lenker ble utelatt fra pakken: %@";
+
+/* Skin Packager window: text. */
+"Could not create the package" = "Kunne ikke opprette pakken";
+
+/* Skin Packager window: text, alert title. */
+"Package created" = "Pakken er opprettet";
+
+/* Skin Packager window: alert title. */
+"“%@” already exists. Replace it?" = "«%@» finnes allerede. Vil du erstatte den?";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter a name." = "Skriv inn et navn.";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter an author." = "Skriv inn en forfatter.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” has no skin (.ini) files." = "«%@» har ingen skinfiler (.ini).";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout “%@” has no Rainmeter.ini." = "Oppsettet «%@» har ingen Rainmeter.ini.";
+
+/* Skin Packager window: message (an error or a status). */
+"The plugin “%@” needs both its 32-bit and 64-bit versions." = "Pluginen «%@» trenger både 32-biters og 64-biters versjon.";
+
+/* Skin Packager window: message (an error or a status). */
+"The skin to load, “%@”, is not in the package." = "Skinet som skal lastes inn, «%@», finnes ikke i pakken.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout to load, “%@”, is not in the package." = "Oppsettet som skal lastes inn, «%@», finnes ikke i pakken.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be a .bmp file." = "Toppbildet må være en .bmp-fil.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be 400 × 60 pixels; this one is %lld × %lld." = "Toppbildet må være 400 × 60 piksler; dette er %lld × %lld.";
+
+/* Skin Packager window: message (an error or a status). */
+"The variables file “%@” is not in the skin." = "Variabelfilen «%@» finnes ikke i skinet.";
+
+/* Skin Packager window: message (an error or a status).
+   Note: "Variables files" and "Merge skins" are the names of two package options; translate them as you did those options. */
+"Variables files and Merge skins can’t be used together." = "Variabelfiler og Slå sammen skins kan ikke brukes samtidig.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "«%@» er ikke et versjonsnummer som 5.0 eller 5.0.0.4657.";
+
+/* Skin Packager window: message (an error or a status). */
+"Choose where to save the package." = "Velg hvor pakken skal arkiveres.";
+
+// MARK: Move to Trash confirmation
+
+/* Move to Trash confirmation: text. */
+"Move “%@” to the Trash?" = "Vil du flytte «%@» til papirkurven?";
+
+/* Move to Trash confirmation: text. */
+"You can restore this item from the Trash." = "Du kan gjenopprette objektet fra papirkurven.";
+
+/* Move to Trash confirmation: button. */
+"Move to Trash" = "Flytt til papirkurven";
+
+// MARK: Launch at Login
+
+/* Launch at Login: alert title. */
+"Launch at Login is unavailable" = "Åpne ved pålogging er ikke tilgjengelig";
+
+/* Launch at Login: text. */
+"Move Deskset to the Applications folder and open it from there to start it at login." = "Flytt Deskset til Programmer-mappen og åpne det derfra, så kan det starte ved pålogging.";
+
+/* Launch at Login: text. */
+"Couldn’t turn off Launch at Login" = "Kunne ikke slå av Åpne ved pålogging";
+
+/* Launch at Login: text. */
+"Couldn’t turn on Launch at Login" = "Kunne ikke slå på Åpne ved pålogging";
+
+/* Launch at Login: alert title. */
+"Allow Deskset to open at login" = "Tillat at Deskset åpnes ved pålogging";
+
+/* Launch at Login: alert or dialog message. */
+"macOS needs your approval. Turn on Deskset in System Settings › General › Login Items." = "macOS trenger godkjenningen din. Slå på Deskset i Systeminnstillinger > Generelt > Påloggingsobjekter.";
+
+/* Launch at Login: button. */
+"Open System Settings" = "Åpne Systeminnstillinger";
+
+// MARK: Safe Start
+
+/* Safe Start: text.
+   Note: Title of the alert offering Safe Start. */
+"Deskset Safe Start" = "Sikker oppstart av Deskset";
+
+/* Safe Start: text.
+   Note: Keep "@Backup" (the name the layout is saved as). */
+"Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept." = "Deskset starter med det medfølgende standardoppsettet. Det gjeldende oppsettet arkiveres som @Backup.\n\nSkinfilene beholdes.";
+
+/* Safe Start: text.
+   Note: Starting Deskset with its default layout, without the skins that were loaded (offered after a start failed). */
+"Safe Start" = "Sikker oppstart";
+
+// MARK: App updates
+
+/* App updates: text. */
+"Checking for Updates…" = "Ser etter oppdateringer…";
+
+/* App updates: message (an error or a status).
+   Note: %@ is a version number. */
+"Installed version: %@." = "Installert versjon: %@.";
+
+/* App updates: message (an error or a status). */
+"Checking for updates…" = "Ser etter oppdateringer…";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is up to date." = "Deskset %@ er oppdatert.";
+
+/* App updates: message (an error or a status). */
+"No public release is available yet." = "Det finnes ingen offentlig versjon ennå.";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is available. You have %@." = "Deskset %@ er tilgjengelig. Du har %@.";
+
+/* App updates: message (an error or a status). */
+"Couldn’t check for updates. %@" = "Kunne ikke se etter oppdateringer. %@";
+
+/* App updates: text. */
+"The installed version could not be read." = "Kunne ikke lese den installerte versjonen.";
+
+/* App updates: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Retry" = "Prøv igjen";
+
+/* App updates: button; Install and update panels: text. */
+"Download Manually…" = "Last ned manuelt…";
+
+/* App updates: window title, heading. */
+"Update Deskset" = "Oppdater Deskset";
+
+/* App updates: text. */
+"This update is no longer available. Use Check for Updates to try again." = "Denne oppdateringen er ikke lenger tilgjengelig. Bruk Se etter oppdateringer for å prøve igjen.";
+
+/* App updates: status or description line. */
+"Downloading update package…" = "Laster ned oppdateringspakken…";
+
+/* App updates: note under a panel or list. */
+"Deskset verifies the signature before asking you to restart." = "Deskset verifiserer signaturen før du blir bedt om å starte på nytt.";
+
+/* App updates: status or description line. */
+"Verifying signature and preparing update…" = "Verifiserer signaturen og klargjør oppdateringen…";
+
+/* App updates: status or description line.
+   Note: Badge while the download's signature is checked. */
+"Verifying" = "Verifiserer";
+
+/* App updates: status or description line. */
+"Couldn’t open the download page. Visit %@ in your browser." = "Kunne ikke åpne nedlastingssiden. Gå til %@ i nettleseren.";
+
+/* App updates: text. */
+"Couldn’t open the download page." = "Kunne ikke åpne nedlastingssiden.";
+
+/* App updates: note under a panel or list. */
+"Visit %@ in your browser." = "Gå til %@ i nettleseren.";
+
+/* App updates: text. */
+"Try again now, or download the update directly in your browser." = "Prøv igjen nå, eller last ned oppdateringen direkte i nettleseren.";
+
+/* App updates: text. */
+"Try again now, or download Deskset %@ directly in your browser." = "Prøv igjen nå, eller last ned Deskset %@ direkte i nettleseren.";
+
+/* App updates: text, heading. */
+"Downloading Deskset %@…" = "Laster ned Deskset %@…";
+
+/* App updates: text. */
+"Preparing update…" = "Klargjør oppdateringen…";
+
+/* App updates: status or description line. */
+"You can keep working while the update downloads." = "Du kan jobbe videre mens oppdateringen lastes ned.";
+
+/* App updates: status or description line. */
+"Getting the download for this Mac…" = "Henter nedlastingen for denne Macen…";
+
+/* App updates: heading. */
+"Deskset %@ is ready to install" = "Deskset %@ er klar til installering";
+
+/* App updates: text.
+   Note: Badge after the download's signature has been checked. */
+"Verified" = "Verifisert";
+
+/* App updates: status or description line. */
+"Deskset will quit, install the update, and reopen automatically." = "Deskset avslutter, installerer oppdateringen og åpnes automatisk igjen.";
+
+/* App updates: label.
+   Note: Label in a small card, followed by the new version number. */
+"Ready to install" = "Klar til installering";
+
+/* App updates: note under a panel or list. */
+"You’ll be asked to save open edits." = "Du blir bedt om å arkivere åpne endringer.";
+
+/* App updates: button; Install and update panels: text. */
+"Install and Relaunch" = "Installer og åpne på nytt";
+
+/* App updates: heading. */
+"Preparing to restart…" = "Klargjør omstart…";
+
+/* App updates: status or description line. */
+"Save your edits when prompted, then Deskset will restart." = "Arkiver endringene når du blir bedt om det; deretter starter Deskset på nytt.";
+
+/* App updates: status or description line. */
+"Preparing the update helper and verifying the signature…" = "Klargjør oppdateringshjelperen og verifiserer signaturen…";
+
+/* App updates: heading. */
+"Couldn’t update Deskset" = "Kunne ikke oppdatere Deskset";
+
+/* App updates: text.
+   Note: Badge with the Mac's processor type (Apple's term; Intel Macs show "Intel"). */
+"Apple silicon" = "Apple-chip";
+
+/* App updates: message (an error or a status). */
+"The update server returned an invalid response. Please try again later." = "Oppdateringsserveren returnerte et ugyldig svar. Prøv igjen senere.";
+
+/* App updates: message (an error or a status). */
+"GitHub is limiting update checks. Please try again later." = "GitHub begrenser søk etter oppdateringer. Prøv igjen senere.";
+
+/* App updates: message (an error or a status). */
+"The update server returned HTTP %lld. Please try again later." = "Oppdateringsserveren returnerte HTTP %lld. Prøv igjen senere.";
+
+/* App updates: message (an error or a status). */
+"The update server returned invalid release information. Please try again later." = "Oppdateringsserveren returnerte ugyldig versjonsinformasjon. Prøv igjen senere.";
+
+/* App updates: message (an error or a status). */
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "Denne versjonen har ingen verifisert nedlasting for denne Macen. Du kan laste den ned fra GitHub i stedet.";
+
+/* App updates: message (an error or a status). */
+"The download server returned an invalid response." = "Nedlastingsserveren returnerte et ugyldig svar.";
+
+/* App updates: message (an error or a status). */
+"The download server returned HTTP %lld. Please try again." = "Nedlastingsserveren returnerte HTTP %lld. Prøv igjen.";
+
+/* App updates: message (an error or a status). */
+"The download redirected outside the expected GitHub servers." = "Nedlastingen ble omdirigert utenfor de forventede GitHub-serverne.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file does not match the release size. Please try again." = "Den nedlastede filen har ikke samme størrelse som versjonen. Prøv igjen.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file failed its SHA-256 check. Please try again." = "Den nedlastede filen besto ikke SHA-256-kontrollen. Prøv igjen.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not match this Deskset release." = "Den nedlastede appen samsvarer ikke med denne versjonen av Deskset.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not support this Mac’s processor." = "Den nedlastede appen støtter ikke prosessoren i denne Macen.";
+
+/* App updates: message (an error or a status). */
+"This update requires macOS %@ or later. Your installed version of Deskset has been kept." = "Denne oppdateringen krever macOS %@ eller nyere. Den installerte versjonen av Deskset er beholdt.";
+
+/* App updates: message (an error or a status). */
+"The prepared update could not be verified. Download the update again." = "Kunne ikke verifisere den klargjorte oppdateringen. Last ned oppdateringen på nytt.";
+
+/* App updates: message (an error or a status). */
+"This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again." = "Denne kopien av Deskset kan ikke oppdatere seg selv her. Flytt den til en Programmer-mappe du kan skrive til, og prøv igjen.";
+
+/* App updates: message (an error or a status). */
+"Deskset’s running process changed before the update could finish. The installed application was kept." = "Deskset-prosessen endret seg før oppdateringen var ferdig. Den installerte appen er beholdt.";
+
+/* App updates: message (an error or a status). */
+"Deskset did not finish quitting in time. The installed application was kept." = "Deskset rakk ikke å avslutte i tide. Den installerte appen er beholdt.";
+
+/* App updates: message (an error or a status). */
+"The update helper could not start. Deskset has not been replaced." = "Kunne ikke starte oppdateringshjelperen. Deskset er ikke erstattet.";
+
+/* App updates: message (an error or a status). */
+"Deskset was installed, but could not be opened automatically. Open it from its application folder." = "Deskset ble installert, men kunne ikke åpnes automatisk. Åpne det fra programmappen.";
+
+/* App updates: alert title. */
+"Couldn’t finish updating Deskset" = "Kunne ikke fullføre oppdateringen av Deskset";
+
+/* App updates: alert or dialog message; Installing Deskset in Applications: alert or dialog message. */
+"Your skins, layouts, and settings are kept." = "Skins, oppsett og innstillinger beholdes.";
+
+/* App updates: note under a panel or list. */
+"Application location: %@" = "Appens plassering: %@";
+
+// MARK: Installing Deskset in Applications
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"This is not a complete Deskset application. Download a fresh copy and try again." = "Dette er ikke en fullstendig Deskset-app. Last ned en ny kopi og prøv igjen.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The application’s version could not be verified. Use Finder to inspect the installed copy." = "Kunne ikke verifisere appens versjon. Bruk Finder til å undersøke den installerte kopien.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset %@ is already installed. This older copy will not replace it." = "Deskset %@ er allerede installert. Denne eldre kopien erstatter den ikke.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace." = "Deskset kan ikke skrive til %@. Avslutt den installerte kopien, flytt deretter Deskset til den mappen i Finder og velg Erstatt.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again." = "En annen kopi av Deskset kjører fortsatt. Avslutt den fra menyen, arkiver eventuelle endringer, og prøv igjen.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The copied application’s signature could not be verified. Download a fresh copy and try again." = "Kunne ikke verifisere signaturen til den kopierte appen. Last ned en ny kopi og prøv igjen.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again." = "Installeringen kunne ikke fullføres. Den forrige appen ligger i %@. Gjenopprett den med Finder før du prøver igjen.";
+
+/* Installing Deskset in Applications: alert title. */
+"Replace Deskset %@?" = "Vil du erstatte Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Update the installed app in %@ and reopen Deskset." = "Oppdater den installerte appen i %@ og åpne Deskset på nytt.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "old version → new version" of the app being replaced. */
+"Replacing" = "Erstatter";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Replace and Open" = "Erstatt og åpne";
+
+/* Installing Deskset in Applications: alert title. */
+"Install Deskset %@?" = "Vil du installere Deskset %@?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Copy Deskset to your Applications folder and open it there." = "Kopier Deskset til Programmer-mappen og åpne det derfra.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by the folder Deskset is copied to. */
+"Destination" = "Mål";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Install to Applications" = "Installer i Programmer";
+
+/* Installing Deskset in Applications: note under a panel or list.
+   Note: Small note at the bottom of the panel: this copy of Deskset was opened from the downloaded .dmg. */
+"Running from Disk Image" = "Kjører fra et diskbilde";
+
+/* Installing Deskset in Applications: alert title. */
+"Quit the running copy of Deskset" = "Avslutt den andre kopien av Deskset";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Another copy of Deskset is currently open." = "En annen kopi av Deskset er åpen akkurat nå.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "Deskset is running". */
+"Status" = "Status";
+
+/* Installing Deskset in Applications: text. */
+"Deskset is running" = "Deskset kjører";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Choose Quit Deskset from its menu and save any edits, then click Retry." = "Velg Avslutt Deskset i menyen til den andre kopien og arkiver eventuelle endringer, og klikk deretter på Prøv igjen.";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset %@…" = "Installerer Deskset %@…";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset…" = "Installerer Deskset…";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Deskset will open when installation finishes." = "Deskset åpnes når installeringen er ferdig.";
+
+/* Installing Deskset in Applications: status or description line. */
+"Copying application and verifying signature…" = "Kopierer appen og verifiserer signaturen…";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Your skins and settings are kept in place." = "Skins og innstillinger blir liggende der de er.";
+
+/* Installing Deskset in Applications: alert title. */
+"Couldn’t install Deskset" = "Kunne ikke installere Deskset";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Reveal the installer in Finder to copy Deskset manually." = "Vis installeringsprogrammet i Finder for å kopiere Deskset manuelt.";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Show Installer in Finder" = "Vis installeringsprogrammet i Finder";
+
+/* Installing Deskset in Applications: text.
+   Note: Badge after Deskset has been installed. */
+"Installed" = "Installert";
+
+/* Installing Deskset in Applications: alert title. */
+"Deskset was installed" = "Deskset ble installert";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Open Deskset from %@." = "Åpne Deskset fra %@.";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Use Show in Finder to open the installed application." = "Bruk Vis i Finder for å åpne den installerte appen.";
+
+// MARK: Install and update panels
+
+/* Install and update panels: text.
+   Note: VoiceOver name of the app icon when it carries a warning badge. */
+"Deskset warning" = "Advarsel fra Deskset";
+
+/* Install and update panels: text.
+   Note: VoiceOver name of a progress bar. */
+"Progress" = "Fremdrift";
+
+/* Install and update panels: VoiceOver description, message (an error or a status).
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"Indeterminate" = "Ubestemt";
+
+/* Install and update panels: text.
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"In progress" = "Pågår";
+
+// MARK: Restarting Deskset
+
+/* Restarting Deskset: message (an error or a status). */
+"This copy of Deskset could not prepare an automatic restart." = "Denne kopien av Deskset kunne ikke klargjøre en automatisk omstart.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The prepared restart could not be verified." = "Kunne ikke verifisere den klargjorte omstarten.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart helper could not start. Deskset is still running." = "Kunne ikke starte omstartshjelperen. Deskset kjører fortsatt.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart was cancelled." = "Omstarten ble avbrutt.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The running process changed before the restart could finish." = "Prosessen endret seg før omstarten var ferdig.";
+
+/* Restarting Deskset: message (an error or a status). */
+"Deskset did not finish preparing or quitting in time." = "Deskset ble ikke ferdig med klargjøring eller avslutning i tide.";
