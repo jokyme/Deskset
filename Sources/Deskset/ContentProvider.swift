@@ -55,6 +55,8 @@ extension ContentProvider {
 /// - Every change is an explicit transaction with actions disabled. The frames of one turn of the executor's run loop
 ///   go together, in one transaction committed at the end of the turn (`SkinFrameTurn`, `SkinFrameBatch`); off the main
 ///   thread it is flushed at once.
+/// - Clicks on its fully transparent pixels go through to what is below the window, as on a view's own layer
+///   (`hitTestByAlpha`).
 /// - Nothing outside this class touches `contentLayer`.
 final class LayerContentProvider: ContentProvider {
     /// Guards the layer and the state below: `teardown` comes from the main thread, frames from the skin's executor.
@@ -76,12 +78,30 @@ final class LayerContentProvider: ContentProvider {
         layer.bounds = .zero
         layer.isOpaque = false
         layer.actions = LayerContentProvider.noActions
+        LayerContentProvider.hitTestByAlpha(layer)
         if let host = view.layer {
             // The bounds are always the frame's, so the gravity never scales anything; it only says which corner the
             // picture would stay in otherwise: the top-left one, which is `bottomLeft` in a flipped layer tree.
             layer.contentsGravity = host.contentsAreFlipped() ? .bottomLeft : .topLeft
             host.addSublayer(layer)
         }
+    }
+
+    /// The window server finds which window a click is for by its layers: the layers AppKit makes for views by the alpha
+    /// of their contents, so that a click on a fully transparent pixel goes to the window below (the desktop icons under
+    /// a skin), and any other layer as a solid rectangle. The property that says so is private (AppKit sets it on its
+    /// views' layers): set where it exists. Without it the content layer caught every click in the skin's rectangle.
+    private static let alphaHitTestKey = "hitTestsContentsAlphaChannel"
+
+    private static func hitTestByAlpha(_ layer: CALayer) {
+        guard layer.responds(to: NSSelectorFromString("setHitTestsContentsAlphaChannel:")) else { return }
+        layer.setValue(true, forKey: alphaHitTestKey)
+    }
+
+    /// Whether clicks on `layer` are found by the alpha of its contents (`hitTestByAlpha`).
+    static func isHitTestedByAlpha(_ layer: CALayer) -> Bool {
+        guard layer.responds(to: NSSelectorFromString(alphaHitTestKey)) else { return false }
+        return (layer.value(forKey: alphaHitTestKey) as? Bool) == true
     }
 
     /// Every property the provider changes, without an implicit animation (the transactions disable them too).
@@ -149,7 +169,8 @@ final class LayerContentProvider: ContentProvider {
 
     // MARK: What the self-tests read
 
-    /// What the layer shows now: its picture, bounds, scale, where it sits in its superlayer and which layer that is.
+    /// What the layer shows now: its picture, bounds, scale, where it sits in its superlayer and which layer that is, and
+    /// whether clicks on its transparent pixels go through.
     struct Shown {
         var image: CGImage?
         var bounds: CGRect
@@ -158,6 +179,7 @@ final class LayerContentProvider: ContentProvider {
         var anchorPoint: CGPoint
         weak var superlayer: CALayer?
         var isAttached: Bool
+        var isHitTestedByAlpha: Bool
     }
 
     var shown: Shown {
@@ -167,7 +189,8 @@ final class LayerContentProvider: ContentProvider {
         let contents = layer.contents
         let image = contents.flatMap { CFGetTypeID($0 as CFTypeRef) == CGImage.typeID ? ($0 as! CGImage) : nil }
         return Shown(image: image, bounds: layer.bounds, scale: layer.contentsScale, position: layer.position,
-                     anchorPoint: layer.anchorPoint, superlayer: layer.superlayer, isAttached: layer.superlayer != nil)
+                     anchorPoint: layer.anchorPoint, superlayer: layer.superlayer, isAttached: layer.superlayer != nil,
+                     isHitTestedByAlpha: LayerContentProvider.isHitTestedByAlpha(layer))
     }
 
     /// Frames presented, what the provider was last told, and whether it was torn down.
