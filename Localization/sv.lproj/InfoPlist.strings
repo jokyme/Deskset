@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Swedish.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Mapp";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skins frågar Musik eller Spotify vad som spelas för att visa aktuellt spår och styra uppspelningen, och ber Finder tömma papperskorgen eller öppna ett infofönster när du använder ett sådant skin.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Ljudvisualiseringsskins visar nivå och spektrum för ljudet som datorn spelar upp. Ljudet analyseras på datorn medan ett sådant skin är inläst; det spelas aldrig in, sparas eller skickas någonstans.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Ett skin eller dess skript läser eller skriver filer i mappen Skrivbord (till exempel ett skin för fillista, anteckningar eller programstart).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Ett skin eller dess skript läser eller skriver filer i mappen Dokument (till exempel ett skin för fillista, anteckningar eller programstart).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Ett skin eller dess skript läser eller skriver filer i mappen Hämtade filer (till exempel ett skin för fillista eller programstart).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Fri programvara under GNU GPL v3. Kör skins som gjorts för Rainmeter; inte knutet till Rainmeter. Rainmeter är ett varumärke som tillhör respektive ägare.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Ett skin läser information från en enhet i ditt lokala nätverk, till exempel en routers statussida eller en hemserver.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skins som du ställt in att använda din nuvarande plats läser din ungefärliga plats för att visa lokalt väder och soltider. Platsen avrundas till ungefär 1 km, skickas bara till vädertjänsten (MET Norway) för prognoser och sparas aldrig. macOS kräver också den här behörigheten för att wifiskins ska kunna visa nätverksnamn.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skins som du ställt in att använda din nuvarande plats läser din ungefärliga plats för att visa lokalt väder och soltider. Platsen avrundas till ungefär 1 km, skickas bara till vädertjänsten (MET Norway) för prognoser och sparas aldrig. macOS kräver också den här behörigheten för att wifiskins ska kunna visa nätverksnamn.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Ett skin vill visa nivån för en ljudingång (en mikrofon eller ett ljudgränssnitt). Ljudet analyseras på datorn medan skinet är inläst; det spelas aldrig in, sparas eller skickas någonstans.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Ett skin eller dess skript läser filer på en nätverksvolym (till exempel ett skin för diskar eller fillista).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Ett skin eller dess skript läser filer på en löstagbar enhet (till exempel ett skin för diskar eller fillista).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Skinpaket";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-arkiv";

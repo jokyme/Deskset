@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Vietnamese.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Thư mục";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skin hỏi Nhạc hoặc Spotify đang phát gì để hiển thị bản nhạc hiện tại và điều khiển phát lại, đồng thời yêu cầu Finder dọn sạch Thùng rác hoặc mở cửa sổ Lấy thông tin khi bạn dùng skin như vậy.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Skin trực quan hóa âm thanh hiển thị mức âm lượng và phổ của âm thanh mà máy Mac đang phát. Âm thanh được phân tích ngay trên máy Mac khi skin như vậy được tải; âm thanh không bao giờ bị ghi, lưu hay gửi đi bất kỳ đâu.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Một skin hoặc tập lệnh của skin đọc hay ghi tệp trong thư mục Màn hình nền của bạn (ví dụ skin danh sách tệp, ghi chú hoặc trình khởi chạy).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Một skin hoặc tập lệnh của skin đọc hay ghi tệp trong thư mục Tài liệu của bạn (ví dụ skin danh sách tệp, ghi chú hoặc trình khởi chạy).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Một skin hoặc tập lệnh của skin đọc hay ghi tệp trong thư mục Tải về của bạn (ví dụ skin danh sách tệp hoặc trình khởi chạy).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Phần mềm tự do theo GNU GPL v3. Chạy các skin được tạo cho Rainmeter; không liên kết với Rainmeter. Rainmeter là nhãn hiệu của các chủ sở hữu tương ứng.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Một skin đọc thông tin từ thiết bị trong mạng cục bộ của bạn, chẳng hạn trang trạng thái của bộ định tuyến hoặc máy chủ gia đình.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Những skin bạn đặt để dùng vị trí hiện tại sẽ đọc vị trí gần đúng của bạn để hiển thị thời tiết địa phương và giờ mặt trời mọc, lặn. Vị trí được làm tròn khoảng 1 km, chỉ được gửi tới dịch vụ thời tiết (MET Norway) để lấy dự báo và không bao giờ được lưu trữ. macOS cũng yêu cầu quyền này để skin Wi-Fi có thể hiển thị tên mạng.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Những skin bạn đặt để dùng vị trí hiện tại sẽ đọc vị trí gần đúng của bạn để hiển thị thời tiết địa phương và giờ mặt trời mọc, lặn. Vị trí được làm tròn khoảng 1 km, chỉ được gửi tới dịch vụ thời tiết (MET Norway) để lấy dự báo và không bao giờ được lưu trữ. macOS cũng yêu cầu quyền này để skin Wi-Fi có thể hiển thị tên mạng.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Một skin muốn hiển thị mức của nguồn âm thanh vào (micrô hoặc giao diện âm thanh). Âm thanh được phân tích ngay trên máy Mac khi skin được tải; âm thanh không bao giờ bị ghi, lưu hay gửi đi bất kỳ đâu.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Một skin hoặc tập lệnh của skin đọc tệp trên ổ đĩa mạng (ví dụ skin ổ đĩa hoặc danh sách tệp).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Một skin hoặc tập lệnh của skin đọc tệp trên ổ đĩa rời (ví dụ skin ổ đĩa hoặc danh sách tệp).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Gói skin";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Tệp nén ZIP";

@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Czech.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Složka";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skiny se ptají aplikace Hudba nebo Spotify, co hraje, aby mohly zobrazit aktuální skladbu a ovládat přehrávání, a při použití takového skinu žádají Finder o vysypání koše nebo otevření okna Informace.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Skiny vizualizace zvuku zobrazují úroveň a spektrum zvuku, který Mac přehrává. Zvuk se analyzuje na vašem Macu, dokud je takový skin načtený; nikdy se nenahrává, neukládá ani nikam neodesílá.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Skin nebo jeho skript čte nebo zapisuje soubory ve složce Plocha (například skin se seznamem souborů, poznámkami nebo spouštěčem).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Skin nebo jeho skript čte nebo zapisuje soubory ve složce Dokumenty (například skin se seznamem souborů, poznámkami nebo spouštěčem).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Skin nebo jeho skript čte nebo zapisuje soubory ve složce Stažené soubory (například skin se seznamem souborů nebo spouštěčem).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Svobodný software pod licencí GNU GPL v3. Spouští skiny vytvořené pro Rainmeter; s Rainmeterem není nijak spojen. Rainmeter je ochranná známka příslušných vlastníků.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Skin čte informace ze zařízení v místní síti, například stavovou stránku routeru nebo domácí server.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skiny, u kterých jste nastavili použití aktuální polohy, čtou vaši přibližnou polohu, aby zobrazily místní počasí a časy východu a západu slunce. Poloha se zaokrouhlí přibližně na 1 km, odesílá se jen meteorologické službě (MET Norway) kvůli předpovědi a nikdy se neukládá. macOS toto povolení vyžaduje také proto, aby skiny Wi-Fi mohly zobrazovat názvy sítí.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skiny, u kterých jste nastavili použití aktuální polohy, čtou vaši přibližnou polohu, aby zobrazily místní počasí a časy východu a západu slunce. Poloha se zaokrouhlí přibližně na 1 km, odesílá se jen meteorologické službě (MET Norway) kvůli předpovědi a nikdy se neukládá. macOS toto povolení vyžaduje také proto, aby skiny Wi-Fi mohly zobrazovat názvy sítí.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Skin chce zobrazovat úroveň zvukového vstupu (mikrofonu nebo zvukového rozhraní). Zvuk se analyzuje na vašem Macu, dokud je skin načtený; nikdy se nenahrává, neukládá ani nikam neodesílá.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Skin nebo jeho skript čte soubory na síťovém svazku (například skin disku nebo seznamu souborů).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Skin nebo jeho skript čte soubory na vyměnitelném disku (například skin disku nebo seznamu souborů).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Balíček skinů";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Archiv ZIP";

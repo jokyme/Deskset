@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, German.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Ordner";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skins fragen Musik oder Spotify, was gerade läuft, um den aktuellen Titel anzuzeigen und die Wiedergabe zu steuern, und bitten den Finder, den Papierkorb zu leeren oder ein Informationsfenster zu öffnen, wenn du einen solchen Skin verwendest.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Audiovisualisierungs-Skins zeigen Pegel und Spektrum des Tons, den dein Mac wiedergibt. Der Ton wird auf deinem Mac analysiert, solange ein solcher Skin geladen ist; er wird nie aufgenommen, gespeichert oder irgendwohin gesendet.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Ein Skin oder sein Skript liest oder schreibt Dateien in deinem Ordner „Schreibtisch“ (zum Beispiel ein Dateilisten-, Notiz- oder Starter-Skin).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Ein Skin oder sein Skript liest oder schreibt Dateien in deinem Ordner „Dokumente“ (zum Beispiel ein Dateilisten-, Notiz- oder Starter-Skin).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Ein Skin oder sein Skript liest oder schreibt Dateien in deinem Ordner „Downloads“ (zum Beispiel ein Dateilisten- oder Starter-Skin).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Freie Software unter der GNU GPL v3. Führt Skins aus, die für Rainmeter erstellt wurden; steht in keiner Verbindung zu Rainmeter. Rainmeter ist eine Marke des jeweiligen Inhabers.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Ein Skin liest Informationen von einem Gerät in deinem lokalen Netzwerk, etwa die Statusseite eines Routers oder einen Heimserver.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skins, die deinen aktuellen Standort verwenden sollen, lesen deinen ungefähren Standort, um das lokale Wetter und die Sonnenzeiten anzuzeigen. Er wird auf etwa 1 km gerundet, nur für Vorhersagen an den Wetterdienst (MET Norway) gesendet und nie gespeichert. macOS verlangt diese Erlaubnis außerdem, damit WLAN-Skins Netzwerknamen anzeigen können.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skins, die deinen aktuellen Standort verwenden sollen, lesen deinen ungefähren Standort, um das lokale Wetter und die Sonnenzeiten anzuzeigen. Er wird auf etwa 1 km gerundet, nur für Vorhersagen an den Wetterdienst (MET Norway) gesendet und nie gespeichert. macOS verlangt diese Erlaubnis außerdem, damit WLAN-Skins Netzwerknamen anzeigen können.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Ein Skin möchte den Pegel eines Audioeingangs (Mikrofon oder Audio-Interface) anzeigen. Der Ton wird auf deinem Mac analysiert, solange der Skin geladen ist; er wird nie aufgenommen, gespeichert oder irgendwohin gesendet.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Ein Skin oder sein Skript liest Dateien auf einem Netzwerkvolume (zum Beispiel ein Festplatten- oder Dateilisten-Skin).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Ein Skin oder sein Skript liest Dateien auf einem Wechseldatenträger (zum Beispiel ein Festplatten- oder Dateilisten-Skin).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Skin-Paket";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-Archiv";

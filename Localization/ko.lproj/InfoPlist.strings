@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Korean.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "폴더";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "스킨이 현재 트랙을 표시하고 재생을 제어하기 위해 음악 또는 Spotify에 재생 중인 항목을 묻고, 해당 스킨을 사용할 때 Finder에 휴지통 비우기나 정보 가져오기 윈도우 열기를 요청합니다.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "오디오 시각화 스킨은 Mac에서 재생 중인 사운드의 레벨과 스펙트럼을 표시합니다. 오디오는 해당 스킨이 로드되어 있는 동안 Mac에서만 분석되며, 녹음되거나 저장되거나 어디로도 전송되지 않습니다.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "스킨 또는 스킨의 스크립트가 데스크탑 폴더의 파일을 읽거나 씁니다(예: 파일 목록, 메모 또는 실행기 스킨).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "스킨 또는 스킨의 스크립트가 문서 폴더의 파일을 읽거나 씁니다(예: 파일 목록, 메모 또는 실행기 스킨).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "스킨 또는 스킨의 스크립트가 다운로드 폴더의 파일을 읽거나 씁니다(예: 파일 목록 또는 실행기 스킨).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "GNU GPL v3에 따른 자유 소프트웨어입니다. Rainmeter용으로 만든 스킨을 실행하지만 Rainmeter와 관련이 없습니다. Rainmeter는 해당 소유자의 상표입니다.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "스킨이 공유기 상태 페이지나 홈 서버 등 로컬 네트워크에 있는 기기의 정보를 읽습니다.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "현재 위치를 사용하도록 설정한 스킨은 지역 날씨와 일출·일몰 시간을 표시하기 위해 대략적인 위치를 읽습니다. 위치는 약 1km 단위로 반올림되어 예보를 위해 날씨 서비스(MET Norway)에만 전송되며, 저장되지 않습니다. 또한 macOS에서는 Wi-Fi 스킨이 네트워크 이름을 표시하는 데에도 이 권한이 필요합니다.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "현재 위치를 사용하도록 설정한 스킨은 지역 날씨와 일출·일몰 시간을 표시하기 위해 대략적인 위치를 읽습니다. 위치는 약 1km 단위로 반올림되어 예보를 위해 날씨 서비스(MET Norway)에만 전송되며, 저장되지 않습니다. 또한 macOS에서는 Wi-Fi 스킨이 네트워크 이름을 표시하는 데에도 이 권한이 필요합니다.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "스킨이 오디오 입력(마이크 또는 오디오 인터페이스)의 레벨을 표시하려고 합니다. 오디오는 스킨이 로드되어 있는 동안 Mac에서만 분석되며, 녹음되거나 저장되거나 어디로도 전송되지 않습니다.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "스킨 또는 스킨의 스크립트가 네트워크 볼륨의 파일을 읽습니다(예: 디스크 또는 파일 목록 스킨).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "스킨 또는 스킨의 스크립트가 이동식 드라이브의 파일을 읽습니다(예: 디스크 또는 파일 목록 스킨).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "스킨 패키지";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP 아카이브";

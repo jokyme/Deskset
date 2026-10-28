@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>(+%lld more)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>(dar %lld)</string>
+			<key>few</key>
+			<string>(dar %lld)</string>
+			<key>many</key>
+			<string>(dar %lld)</string>
+			<key>other</key>
+			<string>(dar %lld)</string>
+		</dict>
+	</dict>
+	<key>Contains %lld skins.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Yra %lld apvalkalas.</string>
+			<key>few</key>
+			<string>Yra %lld apvalkalai.</string>
+			<key>many</key>
+			<string>Yra %lld apvalkalo.</string>
+			<key>other</key>
+			<string>Yra %lld apvalkalų.</string>
+		</dict>
+	</dict>
+	<key>Move %lld items to the Trash?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Perkelti %lld elementą į šiukšlinę?</string>
+			<key>few</key>
+			<string>Perkelti %lld elementus į šiukšlinę?</string>
+			<key>many</key>
+			<string>Perkelti %lld elemento į šiukšlinę?</string>
+			<key>other</key>
+			<string>Perkelti %lld elementų į šiukšlinę?</string>
+		</dict>
+	</dict>
+	<key>… and %lld more items.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ir dar %lld elementas.</string>
+			<key>few</key>
+			<string>… ir dar %lld elementai.</string>
+			<key>many</key>
+			<string>… ir dar %lld elemento.</string>
+			<key>other</key>
+			<string>… ir dar %lld elementų.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more notes.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ir dar %lld pastaba.</string>
+			<key>few</key>
+			<string>… ir dar %lld pastabos.</string>
+			<key>many</key>
+			<string>… ir dar %lld pastabos.</string>
+			<key>other</key>
+			<string>… ir dar %lld pastabų.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ir dar %lld.</string>
+			<key>few</key>
+			<string>… ir dar %lld.</string>
+			<key>many</key>
+			<string>… ir dar %lld.</string>
+			<key>other</key>
+			<string>… ir dar %lld.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

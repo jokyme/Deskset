@@ -12,12 +12,17 @@ enum LocalizationSelfTests {
                 "Refresh All": "Обновить все",
                 "Deskset %@ is available": "Доступен Deskset %@",
                 "Version %@ → %@": "Версия %2$@ ← %1$@",
+                "Edit|menu": "Правка",
+                "Edit": "Изменить",
             ], plurals: ["Contains %lld skins.": ["one": "%lld скин.", "few": "%lld скина.", "many": "%lld скинов.",
                                                    "other": "%lld скина."]])
             t.equal(L("Refresh All"), "Обновить все")
             t.equal(L("Deskset %@ is available", "1.2"), "Доступен Deskset 1.2")
             t.equal(L("Version %@ → %@", "1", "2"), "Версия 2 ← 1", "positional arguments may change order")
             t.equal(L("Not in the catalog"), "Not in the catalog", "a missing text shows the English key")
+            t.equal(L("Edit|menu"), "Правка", "a context gives the same English text its own translation")
+            t.equal(L("Edit"), "Изменить")
+            t.equal(L("Missing|menu"), "Missing", "without a translation the context is not shown")
             t.equal(L("100% sure"), "100% sure", "without arguments a text is not a format")
             t.equal(L("%lld%% done", 50), "50% done")
             t.equal([1, 2, 5, 21, 111].map { L("Contains %lld skins.", $0) },

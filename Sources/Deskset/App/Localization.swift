@@ -1,14 +1,18 @@
 import Foundation
 
 /// The app's own text in the user's language: `L("Refresh All")`, or a printf format with its arguments
-/// (`L("Deskset %@ is available", version)`); a format whose catalog entry has plural variations picks the form for
-/// its number (`L("%lld skins", count)`).
+/// (`L("Deskset %@ is available", version)`); a format with plural forms picks the form for its number
+/// (`L("%lld skins", count)`).
 ///
-/// The English text is the key of `Localization/Localizable.xcstrings`, which `scripts/build-app.sh` compiles into
-/// `Contents/Resources/<language>.lproj`; macOS picks the language (System Settings → General → Language & Region →
-/// Applications can set one for Deskset alone). Without .lproj folders (`swift run`, the self-tests) the English text
-/// shows. `swift scripts/localization.swift check` (a CI step) keeps the keys in the code, the catalog and its
-/// languages in step.
+/// The English text is the key of `Localization/<language>.lproj/Localizable.strings` (plural forms in
+/// `Localizable.stringsdict`), one folder per language, which `scripts/build-app.sh` copies into the app's Resources;
+/// macOS picks the language (Settings › General › Language, or System Settings → General → Language & Region →
+/// Applications). Without .lproj folders (`swift run`, the self-tests) the English text shows.
+/// `swift scripts/localization.swift check` (a CI step) keeps the keys in the code, en.lproj and the languages in
+/// step.
+///
+/// A text that needs two translations adds a context after `|`: `L("Edit|menu")` is the Edit menu's title, `L("Edit")`
+/// the Edit buttons (French "Édition" and "Modifier"); English shows the part before `|`.
 ///
 /// Not translated: log lines, command-line output, INI keys, bang names, and everything a skin draws — a skin's text
 /// follows Rainmeter's rules (the Time measure's English default, FormatLocale…), not the app's language.
@@ -24,7 +28,8 @@ enum Localization {
     static var pseudo: PseudoLanguage?
 
     static func text(_ key: String, _ arguments: [CVarArg]) -> String {
-        let format = bundle.localizedString(forKey: key, value: key, table: nil)
+        let english = key.split(separator: "|", maxSplits: 1).first.map(String.init) ?? key
+        let format = bundle.localizedString(forKey: key, value: english, table: nil)
         // Without arguments the text is not a format: a literal % stays as written. With them, the plural form is
         // chosen by the rules of the text's language (Russian "2 скина", "5 скинов"), not of the Mac's region.
         let text = arguments.isEmpty ? format
@@ -33,7 +38,7 @@ enum Localization {
         return pseudo?.transform(text) ?? text
     }
 
-    /// The languages of the catalog besides English: those of Rainmeter's translations, in macOS's codes.
+    /// The languages Deskset has besides English: those of Rainmeter's translations, in macOS's codes.
     static let languages = ["ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "he", "hr", "hu", "id", "it",
                             "ja", "ko", "lt", "lv", "ms", "nb", "nl", "pl", "pt-BR", "pt-PT", "ro", "ru", "sk", "sl",
                             "sr", "sr-Latn", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"]

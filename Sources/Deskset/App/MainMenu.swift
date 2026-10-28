@@ -28,7 +28,7 @@ enum MainMenu {
         file.addItem(item(L("Close"), #selector(NSWindow.performClose(_:)), key: "w"))
         add(file, to: main)
 
-        let edit = NSMenu(title: L("Edit"))
+        let edit = NSMenu(title: L("Edit|menu"))
         edit.addItem(item(L("Undo"), Selector(("undo:")), key: "z"))
         edit.addItem(item(L("Redo"), Selector(("redo:")), key: "z", modifiers: [.command, .shift]))
         edit.addItem(.separator())

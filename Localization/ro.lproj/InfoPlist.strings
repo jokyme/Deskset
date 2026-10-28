@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Romanian.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Dosar";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skinurile întreabă Muzică sau Spotify ce se redă pentru a afișa piesa curentă și a controla redarea și îi cer aplicației Finder să golească Coșul sau să deschidă o fereastră Obține informații când folosiți un astfel de skin.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Skinurile de vizualizare audio afișează nivelul și spectrul sunetului redat de Mac. Sunetul este analizat pe Mac cât timp un astfel de skin este încărcat; nu este niciodată înregistrat, salvat sau trimis undeva.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Un skin sau scriptul său citește ori scrie fișiere în dosarul Birou (de exemplu un skin cu listă de fișiere, notițe sau lansator).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Un skin sau scriptul său citește ori scrie fișiere în dosarul Documente (de exemplu un skin cu listă de fișiere, notițe sau lansator).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Un skin sau scriptul său citește ori scrie fișiere în dosarul Descărcări (de exemplu un skin cu listă de fișiere sau lansator).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Software liber sub GNU GPL v3. Rulează skinuri create pentru Rainmeter; nu este afiliat cu Rainmeter. Rainmeter este o marcă comercială a proprietarilor săi.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Un skin citește informații de la un dispozitiv din rețeaua locală, cum ar fi pagina de stare a unui router sau un server de acasă.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skinurile configurate să folosească localizarea curentă citesc localizarea aproximativă pentru a afișa vremea locală și orele răsăritului și apusului. Aceasta este rotunjită la aproximativ 1 km, trimisă doar serviciului meteo (MET Norway) pentru prognoze și nu este stocată niciodată. macOS cere această permisiune și pentru ca skinurile Wi-Fi să poată afișa numele rețelelor.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skinurile configurate să folosească localizarea curentă citesc localizarea aproximativă pentru a afișa vremea locală și orele răsăritului și apusului. Aceasta este rotunjită la aproximativ 1 km, trimisă doar serviciului meteo (MET Norway) pentru prognoze și nu este stocată niciodată. macOS cere această permisiune și pentru ca skinurile Wi-Fi să poată afișa numele rețelelor.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Un skin dorește să afișeze nivelul unei intrări audio (un microfon sau o interfață audio). Sunetul este analizat pe Mac cât timp skinul este încărcat; nu este niciodată înregistrat, salvat sau trimis undeva.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Un skin sau scriptul său citește fișiere de pe un volum de rețea (de exemplu un skin de disc sau de listă de fișiere).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Un skin sau scriptul său citește fișiere de pe o unitate amovibilă (de exemplu un skin de disc sau de listă de fișiere).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Pachet de skinuri";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Arhivă ZIP";

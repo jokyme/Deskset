@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Polish.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Folder";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skórki pytają aplikację Muzyka lub Spotify, co jest odtwarzane, aby pokazać bieżący utwór i sterować odtwarzaniem, oraz proszą Findera o opróżnienie kosza lub otwarcie okna Informacje, gdy używasz takiej skórki.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Skórki wizualizacji dźwięku pokazują poziom i widmo dźwięku odtwarzanego przez Maca. Dźwięk jest analizowany na Macu, dopóki taka skórka jest wczytana; nigdy nie jest nagrywany, zachowywany ani nigdzie wysyłany.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Skórka lub jej skrypt odczytuje lub zapisuje pliki w folderze Biurko (na przykład skórka z listą plików, notatkami lub programem uruchamiającym).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Skórka lub jej skrypt odczytuje lub zapisuje pliki w folderze Dokumenty (na przykład skórka z listą plików, notatkami lub programem uruchamiającym).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Skórka lub jej skrypt odczytuje lub zapisuje pliki w folderze Pobrane rzeczy (na przykład skórka z listą plików lub programem uruchamiającym).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Wolne oprogramowanie na licencji GNU GPL v3. Uruchamia skórki stworzone dla Rainmeter; nie jest powiązane z Rainmeter. Rainmeter jest znakiem towarowym odpowiednich właścicieli.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Skórka odczytuje informacje z urządzenia w sieci lokalnej, takie jak strona stanu routera lub serwera domowego.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skórki ustawione do korzystania z bieżącej lokalizacji odczytują przybliżoną lokalizację, aby pokazać lokalną pogodę oraz godziny wschodu i zachodu słońca. Lokalizacja jest zaokrąglana do około 1 km, wysyłana tylko do serwisu pogodowego (MET Norway) w celu pobrania prognozy i nigdy nie jest zachowywana. macOS wymaga tego pozwolenia także po to, aby skórki Wi-Fi mogły pokazywać nazwy sieci.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skórki ustawione do korzystania z bieżącej lokalizacji odczytują przybliżoną lokalizację, aby pokazać lokalną pogodę oraz godziny wschodu i zachodu słońca. Lokalizacja jest zaokrąglana do około 1 km, wysyłana tylko do serwisu pogodowego (MET Norway) w celu pobrania prognozy i nigdy nie jest zachowywana. macOS wymaga tego pozwolenia także po to, aby skórki Wi-Fi mogły pokazywać nazwy sieci.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Skórka chce pokazywać poziom wejścia audio (mikrofonu lub interfejsu audio). Dźwięk jest analizowany na Macu, dopóki skórka jest wczytana; nigdy nie jest nagrywany, zachowywany ani nigdzie wysyłany.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Skórka lub jej skrypt odczytuje pliki z woluminu sieciowego (na przykład skórka dysku lub listy plików).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Skórka lub jej skrypt odczytuje pliki z dysku wymiennego (na przykład skórka dysku lub listy plików).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Pakiet skórek";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Archiwum ZIP";

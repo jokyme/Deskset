@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>(+%lld more)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>(еще %lld)</string>
+			<key>few</key>
+			<string>(еще %lld)</string>
+			<key>many</key>
+			<string>(еще %lld)</string>
+			<key>other</key>
+			<string>(еще %lld)</string>
+		</dict>
+	</dict>
+	<key>Contains %lld skins.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Содержит %lld скин.</string>
+			<key>few</key>
+			<string>Содержит %lld скина.</string>
+			<key>many</key>
+			<string>Содержит %lld скинов.</string>
+			<key>other</key>
+			<string>Содержит %lld скина.</string>
+		</dict>
+	</dict>
+	<key>Move %lld items to the Trash?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Переместить %lld объект в Корзину?</string>
+			<key>few</key>
+			<string>Переместить %lld объекта в Корзину?</string>
+			<key>many</key>
+			<string>Переместить %lld объектов в Корзину?</string>
+			<key>other</key>
+			<string>Переместить %lld объекта в Корзину?</string>
+		</dict>
+	</dict>
+	<key>… and %lld more items.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld объект.</string>
+			<key>few</key>
+			<string>… и еще %lld объекта.</string>
+			<key>many</key>
+			<string>… и еще %lld объектов.</string>
+			<key>other</key>
+			<string>… и еще %lld объекта.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more notes.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld заметка.</string>
+			<key>few</key>
+			<string>… и еще %lld заметки.</string>
+			<key>many</key>
+			<string>… и еще %lld заметок.</string>
+			<key>other</key>
+			<string>… и еще %lld заметки.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… и еще %lld.</string>
+			<key>few</key>
+			<string>… и еще %lld.</string>
+			<key>many</key>
+			<string>… и еще %lld.</string>
+			<key>other</key>
+			<string>… и еще %lld.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

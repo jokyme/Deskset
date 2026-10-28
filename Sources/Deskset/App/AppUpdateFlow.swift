@@ -92,7 +92,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
                     status: L("Downloading update package…"),
                     rightMeta: pct,
                     fraction: fraction,
-                    bottomNote: L("Verifies signature automatically before asking to restart.")
+                    bottomNote: L("Deskset verifies the signature before asking you to restart.")
                 )
             } else {
                 self.panelContent.configureProgressCard(
@@ -211,7 +211,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
                 status: L("Getting the download for this Mac…"),
                 rightMeta: "",
                 fraction: nil,
-                bottomNote: L("Verifies signature automatically before asking to restart.")
+                bottomNote: L("Deskset verifies the signature before asking you to restart.")
             )
             panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .downloading:
@@ -222,7 +222,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
                 status: L("Downloading update package…"),
                 rightMeta: "0%",
                 fraction: 0,
-                bottomNote: L("Verifies signature automatically before asking to restart.")
+                bottomNote: L("Deskset verifies the signature before asking you to restart.")
             )
             panelContent.footnote.stringValue = L("Installed: %@", AppVersion.current)
         case .ready:
@@ -237,14 +237,14 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
                 rightMetaAccent: false,
                 bottomNote: L("Your skins, layouts, and settings will be kept.")
             )
-            panelContent.footnote.stringValue = L("Prompts to save open edits")
+            panelContent.footnote.stringValue = L("You’ll be asked to save open edits.")
             primary.title = L("Install and Relaunch")
         case .preparing:
             heading.stringValue = L("Preparing to restart…")
             panelContent.badgeText = ""
             detail.stringValue = L("Save your edits when prompted, then Deskset will restart.")
             panelContent.configureProgressCard(
-                status: L("Staging update helper and verifying signature…"),
+                status: L("Preparing the update helper and verifying the signature…"),
                 rightMeta: "",
                 fraction: nil,
                 bottomNote: L("Your skins, layouts, and settings will be kept.")

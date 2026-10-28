@@ -1,0 +1,1706 @@
+// Deskset — the app's own text, Korean.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+// MARK: Main menu
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+"About Deskset" = "Deskset에 관하여";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Settings…" = "설정…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Manage Skins…" = "스킨 관리…";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Install Skin…" = "스킨 설치…";
+
+/* Main menu: menu item. */
+"Hide Deskset" = "Deskset 가리기";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+"Quit Deskset" = "Deskset 종료";
+
+/* Main menu: menu title. */
+"File" = "파일";
+
+/* Main menu: menu item; Manage window: button; New Skin window: button.
+   Note: Menu command and button (Apple's standard term). */
+"Save" = "저장";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+   Note: Menu command and button (Apple's standard term). */
+"Close" = "닫기";
+
+/* Main menu: menu title.
+   Note: The title of the Edit menu in the menu bar (Apple's standard name for it). */
+"Edit|menu" = "편집";
+
+/* Main menu: menu item. */
+"Undo" = "실행 취소";
+
+/* Main menu: menu item. */
+"Redo" = "실행 복귀";
+
+/* Main menu: menu item. */
+"Cut" = "오려두기";
+
+/* Main menu: menu item. */
+"Copy" = "복사하기";
+
+/* Main menu: menu item. */
+"Paste" = "붙여넣기";
+
+/* Main menu: menu item. */
+"Select All" = "전체 선택";
+
+/* Main menu: menu title, menu item.
+   Note: The title of the Find submenu in the Edit menu (Apple's standard name). */
+"Find" = "찾기";
+
+/* Main menu: menu item. */
+"Find…" = "찾기…";
+
+/* Main menu: menu item. */
+"Find and Replace…" = "찾기 및 대치…";
+
+/* Main menu: menu item. */
+"Find Next" = "다음 찾기";
+
+/* Main menu: menu item. */
+"Find Previous" = "이전 찾기";
+
+/* Main menu: menu item. */
+"Use Selection for Find" = "선택 항목으로 찾기";
+
+/* Main menu: menu item. */
+"Jump to Selection" = "선택 항목으로 이동";
+
+/* Main menu: menu title. */
+"View" = "보기";
+
+/* Main menu: menu item. */
+"Enter Full Screen" = "전체 화면 시작";
+
+/* Main menu: menu title; StudioMenus: text. */
+"Window" = "윈도우";
+
+/* Main menu: menu item. */
+"Minimize" = "최소화";
+
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item.
+   Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
+"Zoom" = "확대/축소";
+
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+"Help" = "도움말";
+
+// MARK: Menu bar menu, skin menus and update alerts
+
+/* Menu bar menu, skin menus and update alerts: alert title.
+   Note: Title of an alert: Safe Start could not load the default layout. */
+"Could not start with the default layout" = "기본 레이아웃으로 시작할 수 없음";
+
+/* Menu bar menu, skin menus and update alerts: button; Skin Packager window: button.
+   Note: Button (Apple's standard term). */
+"OK" = "확인";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused while Deskset was quitting or restarting." = "Deskset이 종료 또는 재시작하는 중이어서 설치가 일시 정지되었습니다.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Installation was paused because quitting was cancelled. You can try again when ready." = "종료가 취소되어 설치가 일시 정지되었습니다. 준비되면 다시 시도하십시오.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset %@ is available" = "Deskset %@ 사용 가능";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"A newer version is ready to download for this Mac: version %@ → %@. Deskset asks before it restarts, and your skins, layouts, and settings are kept." = "이 Mac용 새 버전을 다운로드할 수 있습니다(%@ → %@). Deskset은 재시작하기 전에 확인을 요청하며, 스킨, 레이아웃 및 설정은 그대로 유지됩니다.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Deskset is up to date" = "Deskset이 최신 버전입니다";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"You’re running the latest release available for this Mac. Installed version %@." = "이 Mac에서 사용할 수 있는 최신 릴리스를 사용하고 있습니다. 설치된 버전: %@.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"No release available" = "사용 가능한 릴리스 없음";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"There is no public release available yet. Please check again later." = "아직 공개된 릴리스가 없습니다. 나중에 다시 확인하십시오.";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Couldn’t check for updates" = "업데이트를 확인할 수 없음";
+
+/* Menu bar menu, skin menus and update alerts: text, alert or dialog message; App updates: status or description line. */
+"Your installed copy (%@) has not been changed." = "설치된 버전(%@)은 변경되지 않았습니다.";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button (Apple's usual wording in update alerts). */
+"Skip This Version" = "이 버전 건너뛰기";
+
+/* Menu bar menu, skin menus and update alerts: text; Install and update panels: text.
+   Note: Button in the alert about a new version: starts downloading it. */
+"Update" = "업데이트";
+
+/* Menu bar menu, skin menus and update alerts: window title. */
+"Deskset Updates" = "Deskset 업데이트";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
+"A newer version is ready to download for this Mac." = "이 Mac용 새 버전을 다운로드할 수 있습니다.";
+
+/* Menu bar menu, skin menus and update alerts: label.
+   Note: Label in a small card, followed by "old version → new version". */
+"Version" = "버전";
+
+/* Menu bar menu, skin menus and update alerts: status or description line.
+   Note: Short note at the right end of the version row: Deskset asks before it restarts to install the update. */
+"Asks before restart" = "재시작 전에 확인";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list; Installing Deskset in Applications: note under a panel or list. */
+"Your skins, layouts, and settings will be kept." = "스킨, 레이아웃 및 설정은 그대로 유지됩니다.";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"You’re running the latest release available for this Mac." = "이 Mac에서 사용할 수 있는 최신 릴리스를 사용하고 있습니다.";
+
+/* Menu bar menu, skin menus and update alerts: label; Install and update panels: text.
+   Note: Label in a small card, followed by the version number. */
+"Installed version" = "설치된 버전";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Automatic update checks are off" = "자동 업데이트 확인이 꺼져 있음";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Checked just now" = "방금 확인함";
+
+/* Menu bar menu, skin menus and update alerts: alert or dialog message. */
+"There is no public release available for this Mac yet." = "아직 이 Mac용 공개 릴리스가 없습니다.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Please check again later" = "나중에 다시 확인하십시오";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list. */
+"Try again later using Check for Updates." = "나중에 ‘업데이트 확인’을 사용하여 다시 시도하십시오.";
+
+/* Menu bar menu, skin menus and update alerts: note under a panel or list; App updates: note under a panel or list.
+   Note: %@ is a version number. */
+"Installed: %@" = "설치됨: %@";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Stop automatic reminders for this version. You can still use Check for Updates." = "이 버전에 대한 자동 알림을 중단합니다. ‘업데이트 확인’은 계속 사용할 수 있습니다.";
+
+/* Menu bar menu, skin menus and update alerts: tooltip. */
+"Close for now. The next daily check can remind you again." = "지금은 닫습니다. 다음 일일 확인 때 다시 알려드릴 수 있습니다.";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
+"Skins" = "스킨";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+   Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
+"Layouts" = "레이아웃";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
+"Loaded Skins" = "로드된 스킨";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+   Note: Reloads every skin from its files and rescans the Skins folder. */
+"Refresh All" = "모두 새로 고침";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Skins Folder" = "스킨 폴더 열기";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+"Open Log" = "로그 열기";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
+"Debug" = "디버그";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Launch at Login" = "로그인 시 열기";
+
+/* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
+"Available when Deskset runs as an installed app." = "Deskset을 설치된 앱으로 실행할 때 사용할 수 있습니다.";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Update to Deskset %@…" = "Deskset %@(으)로 업데이트…";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Restart Deskset" = "Deskset 재시작";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"No skins installed" = "설치된 스킨 없음";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"Favorites" = "즐겨찾기";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Menu toggle (checkmark): selects this skin, so the menu's settings apply to every selected skin at once. */
+"Select skin" = "스킨 선택";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu with the commands a skin adds to its own menu. */
+"Custom Skin Actions" = "스킨 사용자 설정 동작";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Opens the Manage window at this skin. */
+"Manage" = "관리";
+
+/* Menu bar menu, skin menus and update alerts: menu item. */
+"About" = "정보";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that lists the other .ini files of the same skin folder; choosing one loads it instead. */
+"Variants" = "변형";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu that sets how a skin's window stacks with other windows: Stay Topmost, Topmost, Normal, Bottom, On Desktop. */
+"Position" = "위치";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description.
+   Note: Submenu that sets how transparent a skin is: 0% (opaque) to 90%. */
+"Transparency" = "투명도";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu: what a skin does while the pointer is over it (Do Nothing, Hide, Fade In, Fade Out). */
+"On Hover" = "포인터를 올렸을 때";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
+"Click Through" = "클릭 통과";
+
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
+"Draggable" = "드래그 가능";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin cannot be moved past the edge of its screen. */
+"Keep on Screen" = "화면 안에 유지";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): a dragged skin snaps to screen edges and to other skins. */
+"Snap to Edges" = "가장자리에 맞추기";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
+"Save Position" = "위치 저장";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+   Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
+"Favorite" = "즐겨찾기";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+"Settings" = "설정";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Submenu listing what in this skin works differently on a Mac; %lld is how many notes there are. */
+"Compatibility Notes (%lld)" = "호환성 참고 사항(%lld)";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Manage Skin…" = "이 스킨 관리…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Opens the Debug window for this skin. */
+"Debug Skin" = "스킨 디버그";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Edit Skin…" = "스킨 편집…";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: %@ is the name of a code editor app, e.g. "Edit in Visual Studio Code". */
+"Edit in %@" = "%@에서 편집";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Reloads this skin from its files. */
+"Refresh Skin" = "스킨 새로 고침";
+
+/* Menu bar menu, skin menus and update alerts: text. */
+"Open Skin Folder" = "스킨 폴더 열기";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Menu command: removes the skin from the desktop (the files stay). */
+"Unload Skin" = "스킨 언로드";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Shown instead of Refresh Skin while Shift is held: brings the skin to the front of the skins at its position. */
+"Focus Skin" = "스킨을 앞으로 가져오기";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice (Rainmeter's wording): place the skin on the main display. */
+"Use default: Primary monitor" = "기본값 사용: 주 디스플레이";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: the area of all displays together. Keep "@0". */
+"@0: Virtual screen" = "@0: 가상 화면";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: A display, numbered as in Rainmeter: "Monitor 2". */
+"Monitor %lld" = "디스플레이 %lld";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Display monitor choice: use whichever display the skin is on. */
+"Auto-select based on window position" = "윈도우 위치에 따라 자동 선택";
+
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: VoiceOver description, menu item.
+   Note: Submenu: which display a skin's position is measured from. */
+"Display monitor" = "디스플레이";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is measured from the right edge of the display. */
+"From right" = "오른쪽 기준";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is measured from the bottom edge of the display. */
+"From bottom" = "아래쪽 기준";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's X is a percentage of the display width. */
+"X as percentage" = "X를 백분율로";
+
+/* Menu bar menu, skin menus and update alerts: text.
+   Note: Position option (checkmark): the skin's Y is a percentage of the display height. */
+"Y as percentage" = "Y를 백분율로";
+
+/* Menu bar menu, skin menus and update alerts: menu item.
+   Note: Zoom submenu choice: the skin uses the default zoom from Settings. */
+"Default" = "기본값";
+
+// MARK: Skin settings (Manage window and skin menu)
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin stays as it is. */
+"Do Nothing" = "아무것도 안 함";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin disappears while the pointer is over it. */
+"Hide" = "가리기";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes opaque while the pointer is over it. */
+"Fade In" = "페이드 인";
+
+/* Skin settings (Manage window and skin menu): message (an error or a status).
+   Note: On Hover choice: the skin becomes transparent while the pointer is over it. */
+"Fade Out" = "페이드 아웃";
+
+// MARK: Manage window
+
+/* Manage window: tooltip.
+   Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
+"Hold Control to change zoom by 10 percentage points." = "Control 키를 누른 채로 있으면 10%포인트씩 변경됩니다.";
+
+/* Manage window: checkbox. */
+"Save as empty layout" = "빈 레이아웃으로 저장";
+
+/* Manage window: checkbox. */
+"Exclude unloaded skins" = "로드되지 않은 스킨 제외";
+
+/* Manage window: checkbox. */
+"Include current wallpaper" = "현재 배경화면 포함";
+
+/* Manage window: button, text.
+   Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
+"Load" = "로드";
+
+/* Manage window: button; New Skin window: button, text. */
+"Delete" = "삭제";
+
+/* Manage window: button, menu item; New Skin window: button.
+   Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
+"Edit" = "편집";
+
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+"Create new skin" = "새로운 스킨 만들기";
+
+/* Manage window: VoiceOver description, tooltip.
+   Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
+"Create .rmskin Package…" = ".rmskin 패키지 만들기…";
+
+/* Manage window: label. */
+"Select a skin to see its details." = "세부 사항을 보려면 스킨을 선택하십시오.";
+
+/* Manage window: button.
+   Note: Button: reloads the skin from its files. */
+"Refresh" = "새로 고침";
+
+/* Manage window: button. */
+"Open Folder" = "폴더 열기";
+
+/* Manage window: label, text. */
+"Load the skin to change its settings." = "설정을 변경하려면 스킨을 로드하십시오.";
+
+/* Manage window: checkbox.
+   Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
+"Click through" = "클릭 통과";
+
+/* Manage window: checkbox. */
+"Keep on screen" = "화면 안에 유지";
+
+/* Manage window: checkbox. */
+"Snap to edges" = "가장자리에 맞추기";
+
+/* Manage window: checkbox. */
+"Save position" = "위치 저장";
+
+/* Manage window: checkbox. */
+"Launch at login" = "로그인 시 열기";
+
+/* Manage window: text, label.
+   Note: The skin window's X and Y position on the screen. */
+"Coordinates:" = "좌표:";
+
+/* Manage window: text, label.
+   Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
+"Load order:" = "로드 순서:";
+
+/* Manage window: text, label.
+   Note: What a skin does while the pointer is over it. */
+"On hover:" = "포인터를 올렸을 때:";
+
+/* Manage window: text, label. */
+"Position:" = "위치:";
+
+/* Manage window: text, label. */
+"Transparency:" = "투명도:";
+
+/* Manage window: text, label.
+   Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
+"Zoom:" = "확대/축소:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Author:" = "만든 사람:";
+
+/* Manage window: text.
+   Note: The skin's own description, from its [Metadata] section. */
+"Information:" = "설명:";
+
+/* Manage window: text. */
+"License:" = "사용권:";
+
+/* Manage window: text; Skin Packager window: label. */
+"Version:" = "버전:";
+
+/* Manage window: window title.
+   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
+"Manage Skins" = "스킨 관리";
+
+/* Manage window: VoiceOver description. */
+"Installed skins" = "설치된 스킨";
+
+/* Manage window: VoiceOver description, text, menu item. */
+"Active skins" = "실행 중인 스킨";
+
+/* Manage window: tooltip. */
+"Select a loaded skin in Manage." = "‘관리’ 윈도우에서 로드된 스킨을 선택하십시오.";
+
+/* Manage window: text. */
+"Save new layout" = "새로운 레이아웃 저장";
+
+/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+"Name:" = "이름:";
+
+/* Manage window: VoiceOver description. */
+"Layout name" = "레이아웃 이름";
+
+/* Manage window: VoiceOver description, text. */
+"Saved layouts" = "저장된 레이아웃";
+
+/* Manage window: text. */
+"No saved layouts." = "저장된 레이아웃이 없습니다.";
+
+/* Manage window: text. */
+"Could not read saved layouts: %@" = "저장된 레이아웃을 읽을 수 없음: %@";
+
+/* Manage window: alert title. */
+"Could not save layout" = "레이아웃을 저장할 수 없음";
+
+/* Manage window: alert title. */
+"Replace layout “%@”?" = "‘%@’ 레이아웃을 대치하겠습니까?";
+
+/* Manage window: alert or dialog message. */
+"A layout with this name already exists. Replace its saved settings?" = "같은 이름의 레이아웃이 이미 있습니다. 저장된 설정을 대치하겠습니까?";
+
+/* Manage window: button; Skin Packager window: button. */
+"Replace" = "대치";
+
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+"Cancel" = "취소";
+
+/* Manage window: alert title. */
+"Could not delete layout" = "레이아웃을 삭제할 수 없음";
+
+/* Manage window: alert title. */
+"Delete layout “%@”?" = "‘%@’ 레이아웃을 삭제하겠습니까?";
+
+/* Manage window: alert or dialog message. */
+"This moves the saved layout to the Trash. Your skin files are kept." = "저장된 레이아웃이 휴지통으로 이동됩니다. 스킨 파일은 유지됩니다.";
+
+/* Manage window: tooltip. */
+"Select the display monitor for this skin." = "이 스킨을 표시할 디스플레이를 선택합니다.";
+
+/* Manage window: text.
+   Note: VoiceOver name of the field for a skin's size, as a percentage. */
+"Skin zoom" = "스킨 확대/축소";
+
+/* Manage window: tooltip. */
+"Drag the skin with the mouse. Hold ⌘ to drag a skin that is not draggable." = "마우스로 스킨을 드래그합니다. 드래그할 수 없는 스킨은 ⌘ 키를 누른 채로 드래그하십시오.";
+
+/* Manage window: tooltip. */
+"Clicks pass through the skin to whatever is below it." = "클릭이 스킨을 통과하여 아래에 있는 항목에 전달됩니다.";
+
+/* Manage window: tooltip. */
+"Keep the whole skin inside the screen it is on." = "스킨 전체를 현재 화면 안에 유지합니다.";
+
+/* Manage window: tooltip. */
+"Snap to screen edges and other skins when dragged. Hold ⌘ while dragging to override." = "드래그할 때 화면 가장자리와 다른 스킨에 맞춥니다. 맞추지 않으려면 ⌘ 키를 누른 채로 드래그하십시오.";
+
+/* Manage window: tooltip. */
+"Remember where the skin is when it is moved." = "스킨을 옮기면 그 위치를 기억합니다.";
+
+/* Manage window: tooltip. */
+"Add this skin to the Favorites menu." = "이 스킨을 즐겨찾기 메뉴에 추가합니다.";
+
+/* Manage window: tooltip. */
+"What the skin does while the pointer is over it." = "포인터를 스킨 위에 올렸을 때의 동작입니다.";
+
+/* Manage window: label.
+   Note: Unit after a duration (milliseconds). */
+"ms" = "ms";
+
+/* Manage window: label.
+   Note: How long a skin takes to fade in or out, in milliseconds. */
+"Fade duration:" = "페이드 시간:";
+
+/* Manage window: text.
+   Note: Section of the Manage window listing what in the skin works differently on a Mac. */
+"Compatibility" = "호환성";
+
+/* Manage window: text. */
+"Start Deskset when you log in." = "로그인할 때 Deskset을 시작합니다.";
+
+/* Manage window: text.
+   Note: Button: removes the skin from the desktop (the files stay). */
+"Unload" = "언로드";
+
+/* Manage window: text. */
+"This skin has no [Metadata] section." = "이 스킨에는 [Metadata] 섹션이 없습니다.";
+
+/* Manage window: text. */
+"This skin has no metadata values." = "이 스킨의 메타데이터가 비어 있습니다.";
+
+/* Manage window: text. */
+"No metadata available." = "메타데이터가 없습니다.";
+
+/* Manage window: text. */
+"Transparency: %lld%%" = "투명도: %lld%%";
+
+/* Manage window: text. */
+"Select a skin file to see its settings." = "설정을 보려면 스킨 파일을 선택하십시오.";
+
+/* Manage window: note under a panel or list. */
+"Select a skin file to check it." = "확인하려면 스킨 파일을 선택하십시오.";
+
+/* Manage window: text. */
+"No compatibility problems found." = "호환성 문제가 발견되지 않았습니다.";
+
+/* Manage window: note under a panel or list. */
+"Checked without loading; some problems only show up while the skin runs." = "스킨을 로드하지 않고 확인했습니다. 일부 문제는 스킨이 실행되는 동안에만 나타납니다.";
+
+/* Manage window: status or description line.
+   Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
+"Folder" = "폴더";
+
+/* Manage window: text.
+   Note: Status: the skin is on the desktop and running. */
+"Loaded" = "로드됨";
+
+/* Manage window: text.
+   Note: %@ is a skin file name, e.g. "Clock.ini is loaded". */
+"%@ is loaded" = "%@ 로드됨";
+
+/* Manage window: text.
+   Note: %@ is a skin file name; the skin is running but has hidden itself. */
+"%@ is loaded, hidden" = "%@ 로드됨, 가려짐";
+
+/* Manage window: status or description line.
+   Note: Status: the skin is installed but not running. */
+"Not loaded" = "로드되지 않음";
+
+/* Manage window: alert title. */
+"Could not add metadata" = "메타데이터를 추가할 수 없음";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
+"%@, has loaded skins" = "%@, 로드된 스킨 있음";
+
+/* Manage window: text.
+   Note: Status: the skin is running but has hidden itself. */
+"Loaded, hidden" = "로드됨, 가려짐";
+
+/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Show in Finder" = "Finder에서 보기";
+
+/* Manage window: text, VoiceOver description. */
+"Add metadata" = "메타데이터 추가";
+
+/* Manage window: text.
+   Note: Window position: below all ordinary windows. */
+"Bottom" = "맨 아래";
+
+/* Manage window: text.
+   Note: Window position: stacks like an ordinary window. */
+"Normal" = "보통";
+
+/* Manage window: text.
+   Note: Window position: on the desktop itself, under the desktop icons' level. */
+"On Desktop" = "데스크탑에 고정";
+
+/* Manage window: text.
+   Note: Window position: always above every other window, even after other apps come forward. */
+"Stay Topmost" = "항상 맨 위";
+
+/* Manage window: text.
+   Note: Window position: above other windows until another app comes forward. */
+"Topmost" = "맨 위";
+
+/* Manage window: text.
+   Note: Title of a notice: the skin is loaded, but it hid itself (with !Hide or StartHidden), so it is not on the desktop. */
+"Hidden by the skin" = "스킨이 스스로 가려짐";
+
+/* Manage window: text.
+   Note: Button in the notice about a hidden skin: shows the skin again. */
+"Show" = "보기";
+
+/* Manage window: text.
+   Note: Keep StartHidden and !Hide as they are (they are names in skin code). */
+"It is set to start hidden (StartHidden), or one of its actions (!Hide) hid it." = "시작할 때 가려지도록 설정되어 있거나(StartHidden), 스킨의 동작(!Hide)에 의해 가려졌습니다.";
+
+/* Manage window: text.
+   Note: Keep !Hide as it is (a name in skin code). */
+"It is loaded and running, but one of its actions (!Hide) hid it, as some widgets do while they have nothing to show." = "로드되어 실행 중이지만 스킨의 동작(!Hide)에 의해 가려졌습니다. 일부 위젯은 표시할 내용이 없을 때 이렇게 가려집니다.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it is loaded again." = "옮겨도 나타나지 않습니다. ‘보기’를 클릭하면 다음에 로드될 때까지 표시됩니다.";
+
+/* Manage window: text. */
+"Moving it won’t make it appear. Click Show to see it until it hides itself again." = "옮겨도 나타나지 않습니다. ‘보기’를 클릭하면 스킨이 다시 스스로 가려질 때까지 표시됩니다.";
+
+/* Manage window: text.
+   Note: Under the coordinates after the user typed a new position for a hidden skin. */
+"Moved, but still hidden. Click Show above to see it." = "옮겼지만 여전히 가려져 있습니다. 보려면 위의 ‘보기’를 클릭하십시오.";
+
+/* Manage window: text.
+   Note: Under the coordinates of a hidden skin. */
+"The skin is hidden, so you won’t see it move." = "스킨이 가려져 있으므로 옮겨도 보이지 않습니다.";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded" = "%@, 로드됨";
+
+/* Manage window: text.
+   Note: VoiceOver: %@ is a skin file name. */
+"%@, loaded, hidden" = "%@, 로드됨, 가려짐";
+
+/* Manage window: text. */
+"The skin cannot be loaded: %@" = "스킨을 로드할 수 없음: %@";
+
+/* Manage window: message (an error or a status). */
+"Changes to “%@” must be saved before adding metadata." = "메타데이터를 추가하기 전에 ‘%@’의 변경 사항을 저장해야 합니다.";
+
+/* Manage window: message (an error or a status). */
+"Could not add metadata to “%@” while an editor save was still in progress." = "편집기에서 ‘%@’을(를) 저장하는 중이어서 메타데이터를 추가할 수 없었습니다.";
+
+// MARK: Layouts
+
+/* Layouts: message (an error or a status). */
+"Wait for the current layout to finish loading." = "현재 레이아웃이 로드될 때까지 기다리십시오.";
+
+/* Layouts: message (an error or a status). */
+"Deskset is closing." = "Deskset을 닫는 중입니다.";
+
+/* Layouts: alert title. */
+"Couldn’t load layout “%@”" = "‘%@’ 레이아웃을 로드할 수 없음";
+
+/* Layouts: alert title. */
+"Couldn’t edit layout “%@”" = "‘%@’ 레이아웃을 편집할 수 없음";
+
+/* Layouts: menu item. */
+"No saved layouts" = "저장된 레이아웃 없음";
+
+/* Layouts: message (an error or a status). */
+"The current desktop picture is not a readable image." = "현재 배경화면은 읽을 수 있는 이미지가 아닙니다.";
+
+/* Layouts: message (an error or a status). */
+"Wallpaper.bmp is not a readable image." = "Wallpaper.bmp는 읽을 수 있는 이미지가 아닙니다.";
+
+// MARK: Settings window
+
+/* Settings window: message (an error or a status).
+   Note: The first pane of Settings (Apple's usual name). */
+"General" = "일반";
+
+/* Settings window: message (an error or a status).
+   Note: A pane of Settings: options for editing skins. */
+"Editor" = "편집기";
+
+/* Settings window: checkbox.
+   Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
+"Refresh the skin when the file is saved elsewhere" = "다른 앱에서 파일을 저장하면 스킨 새로 고침";
+
+/* Settings window: checkbox. */
+"Launch Deskset at login" = "로그인 시 Deskset 열기";
+
+/* Settings window: checkbox. */
+"Automatically check for updates" = "자동으로 업데이트 확인";
+
+/* Settings window: button; App updates: text. */
+"Check for Updates…" = "업데이트 확인…";
+
+/* Settings window: button.
+   Note: Button in Settings, shown when a new version is available: opens the update. */
+"Update…" = "업데이트…";
+
+/* Settings window: checkbox.
+   Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
+"Apply to all skins" = "모든 스킨에 적용";
+
+/* Settings window: checkbox, VoiceOver description.
+   Note: Checkbox: skins cannot be moved with the mouse. */
+"Disable dragging" = "드래그 비활성화";
+
+/* Settings window: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "통계 재설정";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Edit code with:" pop-up menu. */
+"Edit code with" = "코드 편집에 사용할 앱";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the font size field for the built-in code editor. */
+"Code font size" = "코드 서체 크기";
+
+/* Settings window: text.
+   Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
+"Default zoom" = "기본 확대/축소";
+
+/* Settings window: tooltip. */
+"Apply the default zoom to every skin." = "모든 스킨에 기본 확대/축소를 적용합니다.";
+
+/* Settings window: VoiceOver description.
+   Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
+"Force default zoom" = "기본 확대/축소 강제 적용";
+
+/* Settings window: tooltip. */
+"Prevent dragging skins with the mouse." = "마우스로 스킨을 드래그하지 못하게 합니다.";
+
+/* Settings window: label.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* Settings window: label.
+   Note: Which app opens a skin's .ini file for editing. */
+"Edit code with:" = "코드 편집:";
+
+/* Settings window: label. */
+"Code font size:" = "코드 서체 크기:";
+
+/* Settings window: label.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "자동 새로 고침:";
+
+/* Settings window: text. */
+"Deskset opens with your skins when you log in." = "로그인하면 Deskset이 스킨과 함께 열립니다.";
+
+/* Settings window: text. */
+"Available when Deskset runs from the Applications folder." = "Deskset을 응용 프로그램 폴더에서 실행할 때 사용할 수 있습니다.";
+
+/* Settings window: label.
+   Note: Settings row with the language pop-up menu. */
+"Language:" = "언어:";
+
+/* Settings window: label.
+   Note: Settings row with the Launch Deskset at login checkbox. */
+"Startup:" = "시동:";
+
+/* Settings window: label.
+   Note: Settings row with the path of the folder skins are installed in. */
+"Skins folder:" = "스킨 폴더:";
+
+/* Settings window: label.
+   Note: The zoom (size, as a percentage) skins get unless one has its own. */
+"Default zoom:" = "기본 확대/축소:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "업데이트:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset은 하루에 한 번 확인하고 업데이트를 직접 다운로드합니다. 설치 시점은 사용자가 선택합니다.";
+
+/* Settings window: text.
+   Note: %@ is the name of an editor app that is no longer installed. */
+"%@ (missing)" = "%@(찾을 수 없음)";
+
+/* Settings window: text, menu item.
+   Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
+"System default (%@)" = "시스템 기본값(%@)";
+
+/* Settings window: text; Skin Packager window: menu item.
+   Note: Last item of the editor list: choose any app. */
+"Other…" = "기타…";
+
+/* Settings window: text.
+   Note: Choice for "Edit code with:": Deskset's own editor, showing the code next to the skin. */
+"Deskset (built-in, side by side)" = "Deskset(내장, 나란히 보기)";
+
+/* Settings window: message (an error or a status). */
+"Opens the skin editor with the code next to the canvas, at the selected section. Other text files a skin opens (settings, scripts) open in a Deskset code window." = "캔버스 옆에 코드를 표시하는 스킨 편집기를 열고 선택한 섹션으로 이동합니다. 스킨이 여는 다른 텍스트 파일(설정, 스크립트)은 Deskset 코드 윈도우에서 열립니다.";
+
+/* Settings window: message (an error or a status). */
+"%@ is no longer installed — the built-in editor is used instead." = "%@이(가) 더 이상 설치되어 있지 않아 내장 편집기를 대신 사용합니다.";
+
+/* Settings window: message (an error or a status). */
+"Opens files in TextEdit, which can’t jump to a line." = "텍스트 편집기에서 파일을 엽니다. 특정 행으로 이동할 수는 없습니다.";
+
+/* Settings window: message (an error or a status). */
+"Opens each file in the app macOS uses for its type (%@ for .ini files)." = "macOS가 파일 유형별로 지정한 앱에서 파일을 엽니다(.ini 파일은 %@).";
+
+/* Settings window: message (an error or a status). */
+"%@ can’t jump to a line; files open at the top." = "%@은(는) 특정 행으로 이동할 수 없어 파일이 처음부터 열립니다.";
+
+/* Settings window: message (an error or a status). */
+"Opens %@ at the selected line." = "%@에서 선택한 행으로 열립니다.";
+
+/* Settings window: text. */
+"The first time, %@ may ask to allow this." = "처음 사용할 때 %@에서 허용을 요청할 수 있습니다.";
+
+/* Settings window: button.
+   Note: Button of the dialog where the user picks an editor app. */
+"Choose" = "선택";
+
+/* Settings window: alert or dialog message. */
+"Choose the app that edits skin code." = "스킨 코드를 편집할 앱을 선택하십시오.";
+
+/* Settings window: alert title. */
+"Restart Deskset now?" = "지금 Deskset을 재시작하겠습니까?";
+
+/* Settings window: alert or dialog message. */
+"The new language is used after Deskset restarts." = "새로운 언어는 Deskset을 재시작한 후에 적용됩니다.";
+
+/* Settings window: button. */
+"Restart Now" = "지금 재시작";
+
+/* Settings window: button; Launch at Login: button; App updates: text; Install and update panels: text. */
+"Later" = "나중에";
+
+// MARK: Code editor
+
+/* Code editor: text. */
+"%@ is no longer installed — using the built-in editor" = "%@이(가) 더 이상 설치되어 있지 않아 내장 편집기를 사용하는 중";
+
+// MARK: About window
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, build number, processor (e.g. "Apple silicon"). */
+"Deskset %@ (build %@) - %@" = "Deskset %@(빌드 %@) - %@";
+
+/* About window: message (an error or a status).
+   Note: The About window's version line: version, processor. */
+"Deskset %@ - %@" = "Deskset %@ - %@";
+
+/* About window: button.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "클립보드에 복사";
+
+/* About window: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Rainmeter 스킨과 호환되는 Mac용 데스크탑 위젯.";
+
+/* About window: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter는 해당 소유자의 상표이며, Deskset은 Rainmeter와 관련이 없습니다.";
+
+// MARK: New Skin window
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "스킨을 만들 수 없음";
+
+/* New Skin window: button.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "폴더 추가";
+
+/* New Skin window: button.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "스킨 추가";
+
+/* New Skin window: text.
+   Note: Tab of the New skin window: the folders and files to create. */
+"New skin" = "새로운 스킨";
+
+/* New Skin window: text.
+   Note: A tab of the New skin window: the files a new skin starts with. */
+"Template" = "템플릿";
+
+/* New Skin window: VoiceOver description.
+   Note: VoiceOver name of the field showing the folder the new skin goes in. */
+"Selected skin folder" = "선택한 스킨 폴더";
+
+/* New Skin window: column heading, VoiceOver description.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "이름";
+
+/* New Skin window: VoiceOver description. */
+"New skin folders and files" = "새로운 스킨의 폴더 및 파일";
+
+/* New Skin window: VoiceOver description. */
+"Template for new skins" = "새로운 스킨용 템플릿";
+
+/* New Skin window: VoiceOver description. */
+"Template name" = "템플릿 이름";
+
+/* New Skin window: text. */
+"Save new template" = "새로운 템플릿으로 저장";
+
+/* New Skin window: column heading, VoiceOver description, text. */
+"Saved templates" = "저장된 템플릿";
+
+/* New Skin window: menu item.
+   Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
+"Template…" = "템플릿…";
+
+/* New Skin window: text. */
+"Use default template" = "기본 템플릿 사용";
+
+/* New Skin window: alert title. */
+"Could not complete the operation" = "작업을 완료할 수 없음";
+
+/* New Skin window: text. */
+"Create" = "만들기";
+
+/* New Skin window: text. */
+"Rename" = "이름 변경";
+
+/* New Skin window: text.
+   Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
+"New Root Folder" = "새로운 루트 폴더";
+
+/* New Skin window: text. */
+"New Folder" = "새로운 폴더";
+
+/* New Skin window: text.
+   Note: Title of the dialog asking for a new skin file's name. */
+"New Skin" = "새로운 스킨";
+
+/* New Skin window: text.
+   Note: Context menu item: opens the new skin's file in the code editor. */
+"Edit skin" = "스킨 편집";
+
+/* New Skin window: message (an error or a status). */
+"Invalid name: %@" = "유효하지 않은 이름: %@";
+
+/* New Skin window: message (an error or a status). */
+"An item named %@ already exists." = "이름이 %@인 항목이 이미 있습니다.";
+
+/* New Skin window: message (an error or a status). */
+"The item is no longer a regular file or folder: %@" = "항목이 더 이상 일반 파일이나 폴더가 아닙니다: %@";
+
+/* New Skin window: message (an error or a status). */
+"The selected folder is no longer available." = "선택한 폴더를 더 이상 사용할 수 없습니다.";
+
+/* New Skin window: message (an error or a status). */
+"Only items created in this window can be renamed or deleted." = "이 윈도우에서 만든 항목만 이름을 변경하거나 삭제할 수 있습니다.";
+
+/* New Skin window: message (an error or a status). */
+"The default template cannot be deleted." = "기본 템플릿은 삭제할 수 없습니다.";
+
+/* New Skin window: text. */
+"The rename could not be completed. The original item remains at %@." = "이름을 변경할 수 없었습니다. 원래 항목은 %@에 그대로 있습니다.";
+
+// MARK: Skin installer
+
+/* Skin installer: text. */
+"Install “%@”?" = "‘%@’을(를) 설치하겠습니까?";
+
+/* Skin installer: text.
+   Note: Under a package's name; %@ is the author's name. */
+"By %@" = "만든 사람: %@";
+
+/* Skin installer: text.
+   Note: %@ is a version number, e.g. "Version 1.2". */
+"Version %@" = "버전 %@";
+
+/* Skin installer: text. */
+"The package does not say who made it." = "패키지에 만든 사람이 표시되어 있지 않습니다.";
+
+/* Skin installer: text. */
+"A package made for the installer of old Rainmeter versions (Rainstaller)." = "이전 Rainmeter 버전의 설치 프로그램(Rainstaller)용으로 만든 패키지입니다.";
+
+/* Skin installer: text. */
+"This folder is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing. The folder is copied; the original stays where it is." = "이 폴더는 Rainmeter의 Skin Packager로 만든 스킨 패키지가 아니므로 Deskset이 직접 스킨을 찾았습니다. 설치하기 전에 아래 목록을 확인하십시오. 폴더는 복사되며 원본은 그대로 남습니다.";
+
+/* Skin installer: text. */
+"This archive is not a skin package made with Rainmeter’s Skin Packager, so Deskset found the skins in it by itself. Check the list below before installing." = "이 압축 파일은 Rainmeter의 Skin Packager로 만든 스킨 패키지가 아니므로 Deskset이 직접 스킨을 찾았습니다. 설치하기 전에 아래 목록을 확인하십시오.";
+
+/* Skin installer: text. */
+"A plain folder: no author or version information." = "일반 폴더입니다. 만든 사람이나 버전 정보가 없습니다.";
+
+/* Skin installer: text. */
+"A plain archive: no author or version information." = "일반 압축 파일입니다. 만든 사람이나 버전 정보가 없습니다.";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin, makes no backup and does not keep the values of its variables files. */
+"merged into the installed copy, without a backup or kept variables" = "설치된 스킨에 병합(백업 없음, 변수 유지 안 됨)";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the package adds its files to the installed skin. */
+"merged into the installed copy" = "설치된 스킨에 병합";
+
+/* Skin installer: text.
+   Note: After a skin name in the list of skins to install: the installed skin is replaced. */
+"replaces the installed copy" = "설치된 스킨을 대치";
+
+/* Skin installer: text.
+   Note: %@ is a layout's name. */
+"Layout “%@”" = "‘%@’ 레이아웃";
+
+/* Skin installer: text. */
+"This package includes Windows plugins. Plugins can’t run on macOS, so parts of these skins may show no data." = "이 패키지에는 Windows 플러그인이 포함되어 있습니다. 플러그인은 macOS에서 실행할 수 없으므로 스킨의 일부에 데이터가 표시되지 않을 수 있습니다.";
+
+/* Skin installer: text. */
+"This package includes Windows plugins (%@). Plugins can’t run on macOS, so parts of these skins may show no data." = "이 패키지에는 Windows 플러그인(%@)이 포함되어 있습니다. 플러그인은 macOS에서 실행할 수 없으므로 스킨의 일부에 데이터가 표시되지 않을 수 있습니다.";
+
+/* Skin installer: menu item.
+   Note: Installer checkbox: keep a copy of installed skins that the package replaces. */
+"Backup skins" = "스킨 백업";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox: after installing, load the skins the package says to load. */
+"Load included skins" = "포함된 스킨 로드";
+
+/* Skin installer: checkbox.
+   Note: Installer checkbox; %@ is the layout's name. */
+"Apply included layout: %@" = "포함된 레이아웃 적용: %@";
+
+/* Skin installer: menu item; Skin Packager window: text. */
+"Advanced" = "고급";
+
+/* Skin installer: tooltip. */
+"Keep a backup when replacing installed skins." = "설치된 스킨을 대치할 때 백업을 보관합니다.";
+
+/* Skin installer: VoiceOver description. */
+"Advanced installation options" = "고급 설치 옵션";
+
+/* Skin installer: text. */
+"Install Skin" = "스킨 설치";
+
+/* Skin installer: alert or dialog message.
+   Note: Message of the open dialog. */
+"Choose a skin package (.rmskin), a ZIP archive or a folder with skins to install." = "설치할 스킨 패키지(.rmskin), ZIP 압축 파일 또는 스킨이 들어 있는 폴더를 선택하십시오.";
+
+/* Skin installer: button; UISnapshot: button. */
+"Install" = "설치";
+
+/* Skin installer: text. */
+"Choose the folder of the skin you want to install, not a folder that holds Deskset’s Skins folder. Skins already in the Skins folder are installed; if one is missing from the list, choose Refresh All in the Manage window." = "설치하려는 스킨의 폴더를 선택하십시오. Deskset의 스킨 폴더를 포함하는 폴더는 선택할 수 없습니다. 스킨 폴더에 있는 스킨은 이미 설치된 것입니다. 목록에 없는 스킨이 있으면 ‘관리’ 윈도우에서 ‘모두 새로 고침’을 선택하십시오.";
+
+/* Skin installer: text. */
+"Can’t open these files" = "이 파일들을 열 수 없음";
+
+/* Skin installer: text. */
+"Can’t open “%@”" = "‘%@’을(를) 열 수 없음";
+
+/* Skin installer: text. */
+"Deskset installs skin packages (.rmskin), ZIP archives with skins and folders with skins." = "Deskset은 스킨 패키지(.rmskin), 스킨이 들어 있는 ZIP 압축 파일과 폴더를 설치할 수 있습니다.";
+
+/* Skin installer: text, alert title. */
+"“%@” is already in the Skins folder" = "‘%@’은(는) 이미 스킨 폴더에 있음";
+
+/* Skin installer: text. */
+"These folders are already in the Skins folder" = "이 폴더들은 이미 스킨 폴더에 있음";
+
+/* Skin installer: text. */
+"“%@” contains Deskset’s Skins folder" = "‘%@’에 Deskset의 스킨 폴더가 포함되어 있음";
+
+/* Skin installer: text. */
+"These folders contain Deskset’s Skins folder" = "이 폴더들에 Deskset의 스킨 폴더가 포함되어 있음";
+
+/* Skin installer: alert title. */
+"Couldn’t install “%@”" = "‘%@’을(를) 설치할 수 없음";
+
+/* Skin installer: text. */
+"The current skins did not finish closing. No package files were replaced. Quit and reopen Deskset, then try again." = "현재 스킨이 완전히 닫히지 않았습니다. 패키지 파일은 대치되지 않았습니다. Deskset을 종료한 후 다시 열고 다시 시도하십시오.";
+
+/* Skin installer: alert title. */
+"“%@” was installed" = "‘%@’ 설치됨";
+
+/* Skin installer: message (an error or a status). */
+"The file is not a skin package. It may be damaged or incomplete." = "스킨 패키지 파일이 아닙니다. 손상되었거나 불완전할 수 있습니다.";
+
+/* Skin installer: message (an error or a status). */
+"The package has no RMSKIN.ini, so it can’t be installed." = "패키지에 RMSKIN.ini가 없어 설치할 수 없습니다.";
+
+/* Skin installer: message (an error or a status). */
+"This file or folder doesn’t contain any Rainmeter skins." = "이 파일 또는 폴더에는 Rainmeter 스킨이 없습니다.";
+
+/* Skin installer: message (an error or a status). */
+"Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "Deskset의 스킨 폴더에 있는 스킨은 이미 설치되어 있으므로 복사할 항목이 없습니다. 그곳에 넣은 스킨이 목록에 없으면 ‘관리’ 윈도우에서 ‘모두 새로 고침’을 선택하십시오.";
+
+/* Skin installer: message (an error or a status). */
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "여러 스킨 패키지(%@)가 들어 있습니다. 하나씩 여십시오(압축 파일이면 먼저 압축을 푸십시오).";
+
+/* Skin installer: label.
+   Note: Above the list of skin folders in the package. */
+"Skins to install:" = "설치할 스킨:";
+
+/* Skin installer: label. */
+"Layouts: %@" = "레이아웃: %@";
+
+/* Skin installer: text.
+   Note: %@ is a list of font names. The fonts are used only by these skins. */
+"Fonts included for these skins (not installed system-wide): %@" = "이 스킨들에 포함된 서체(시스템 전체에 설치되지 않음): %@";
+
+/* Skin installer: VoiceOver description. */
+"Warning" = "경고";
+
+// MARK: Skin Packager window
+
+/* Skin Packager window: text. */
+"Options" = "옵션";
+
+/* Skin Packager window: button, VoiceOver description, tooltip. */
+"Remove" = "제거";
+
+/* Skin Packager window: checkbox.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "스킨 병합";
+
+/* Skin Packager window: button. */
+"Back" = "이전";
+
+/* Skin Packager window: button. */
+"Next" = "다음";
+
+/* Skin Packager window: button. */
+"Create Package" = "패키지 만들기";
+
+/* Skin Packager window: window title.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = ".rmskin 패키지 만들기";
+
+/* Skin Packager window: button. */
+"Add Skin…" = "스킨 추가…";
+
+/* Skin Packager window: menu item. */
+"Add Layout" = "레이아웃 추가";
+
+/* Skin Packager window: button.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "플러그인 추가…";
+
+/* Skin Packager window: label. */
+"Skin:" = "스킨:";
+
+/* Skin Packager window: label. */
+"Layouts:" = "레이아웃:";
+
+/* Skin Packager window: label.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "플러그인:";
+
+/* Skin Packager window: text.
+   Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
+"Information and Components" = "정보 및 구성 요소";
+
+/* Skin Packager window: button. */
+"Choose…" = "선택…";
+
+/* Skin Packager window: text. */
+"Do nothing" = "아무것도 안 함";
+
+/* Skin Packager window: text. */
+"Load layout" = "레이아웃 로드";
+
+/* Skin Packager window: text. */
+"Load skin" = "스킨 로드";
+
+/* Skin Packager window: label.
+   Note: The file the package is written to. */
+"Save package to:" = "패키지 저장 위치:";
+
+/* Skin Packager window: label.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "설치 후:";
+
+/* Skin Packager window: label.
+   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
+"Minimum Rainmeter version:" = "최소 Rainmeter 버전:";
+
+/* Skin Packager window: label.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "헤더 이미지:";
+
+/* Skin Packager window: label.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "변수 파일:";
+
+/* Skin Packager window: menu item.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "이전 설정 불러오기";
+
+/* Skin Packager window: tooltip.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "항목을 삭제하려면 Shift 키를 누른 채로 있으십시오.";
+
+/* Skin Packager window: text. */
+"No skin chosen" = "선택한 스킨 없음";
+
+/* Skin Packager window: text, label, menu item.
+   Note: Shown when no header image or plugin is chosen. */
+"None" = "없음";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit and 64-bit)" = "%@(32비트 및 64비트)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (64-bit version missing)" = "%@(64비트 버전 없음)";
+
+/* Skin Packager window: message (an error or a status).
+   Note: %@ is a plugin's file name. */
+"%@ (32-bit version missing)" = "%@(32비트 버전 없음)";
+
+/* Skin Packager window: alert or dialog message, message (an error or a status).
+   Note: The root config is the top-level folder of a skin suite in the Skins folder. */
+"Choose the skin's root config folder." = "스킨의 루트 구성 폴더를 선택하십시오.";
+
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "아직 패키지를 만들 수 없음";
+
+/* Skin Packager window: text. */
+"Links were left out of the package: %@" = "다음 링크는 패키지에서 제외되었습니다: %@";
+
+/* Skin Packager window: text. */
+"Could not create the package" = "패키지를 만들 수 없음";
+
+/* Skin Packager window: text, alert title. */
+"Package created" = "패키지 생성됨";
+
+/* Skin Packager window: alert title. */
+"“%@” already exists. Replace it?" = "‘%@’이(가) 이미 존재합니다. 대치하겠습니까?";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter a name." = "이름을 입력하십시오.";
+
+/* Skin Packager window: message (an error or a status). */
+"Enter an author." = "만든 사람을 입력하십시오.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” has no skin (.ini) files." = "‘%@’에 스킨(.ini) 파일이 없습니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout “%@” has no Rainmeter.ini." = "‘%@’ 레이아웃에 Rainmeter.ini가 없습니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The plugin “%@” needs both its 32-bit and 64-bit versions." = "‘%@’ 플러그인은 32비트와 64비트 버전이 모두 필요합니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The skin to load, “%@”, is not in the package." = "로드할 스킨 ‘%@’이(가) 패키지에 없습니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The layout to load, “%@”, is not in the package." = "로드할 레이아웃 ‘%@’이(가) 패키지에 없습니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be a .bmp file." = "헤더 이미지는 .bmp 파일이어야 합니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The header image must be 400 × 60 pixels; this one is %lld × %lld." = "헤더 이미지는 400 × 60픽셀이어야 합니다. 이 이미지는 %lld × %lld입니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"The variables file “%@” is not in the skin." = "변수 파일 ‘%@’이(가) 스킨에 없습니다.";
+
+/* Skin Packager window: message (an error or a status).
+   Note: "Variables files" and "Merge skins" are the names of two package options; translate them as you did those options. */
+"Variables files and Merge skins can’t be used together." = "‘변수 파일’과 ‘스킨 병합’은 함께 사용할 수 없습니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "‘%@’은(는) 5.0이나 5.0.0.4657 같은 버전 번호가 아닙니다.";
+
+/* Skin Packager window: message (an error or a status). */
+"Choose where to save the package." = "패키지를 저장할 위치를 선택하십시오.";
+
+// MARK: Move to Trash confirmation
+
+/* Move to Trash confirmation: text. */
+"Move “%@” to the Trash?" = "‘%@’을(를) 휴지통으로 이동하겠습니까?";
+
+/* Move to Trash confirmation: text. */
+"You can restore this item from the Trash." = "이 항목은 휴지통에서 복원할 수 있습니다.";
+
+/* Move to Trash confirmation: button. */
+"Move to Trash" = "휴지통으로 이동";
+
+// MARK: Launch at Login
+
+/* Launch at Login: alert title. */
+"Launch at Login is unavailable" = "‘로그인 시 열기’를 사용할 수 없음";
+
+/* Launch at Login: text. */
+"Move Deskset to the Applications folder and open it from there to start it at login." = "로그인할 때 시작하려면 Deskset을 응용 프로그램 폴더로 옮긴 다음 그곳에서 여십시오.";
+
+/* Launch at Login: text. */
+"Couldn’t turn off Launch at Login" = "‘로그인 시 열기’를 끌 수 없음";
+
+/* Launch at Login: text. */
+"Couldn’t turn on Launch at Login" = "‘로그인 시 열기’를 켤 수 없음";
+
+/* Launch at Login: alert title. */
+"Allow Deskset to open at login" = "로그인 시 Deskset 열기 허용";
+
+/* Launch at Login: alert or dialog message. */
+"macOS needs your approval. Turn on Deskset in System Settings › General › Login Items." = "macOS에서 승인이 필요합니다. 시스템 설정 > 일반 > 로그인 항목에서 Deskset을 켜십시오.";
+
+/* Launch at Login: button. */
+"Open System Settings" = "시스템 설정 열기";
+
+// MARK: Safe Start
+
+/* Safe Start: text.
+   Note: Title of the alert offering Safe Start. */
+"Deskset Safe Start" = "Deskset 안전 시동";
+
+/* Safe Start: text.
+   Note: Keep "@Backup" (the name the layout is saved as). */
+"Deskset will start with its bundled default layout. Your current layout will be saved as @Backup.\n\nYour skin files will be kept." = "Deskset이 내장된 기본 레이아웃으로 시작됩니다. 현재 레이아웃은 @Backup으로 저장됩니다.\n\n스킨 파일은 유지됩니다.";
+
+/* Safe Start: text.
+   Note: Starting Deskset with its default layout, without the skins that were loaded (offered after a start failed). */
+"Safe Start" = "안전 시동";
+
+// MARK: App updates
+
+/* App updates: text. */
+"Checking for Updates…" = "업데이트 확인 중…";
+
+/* App updates: message (an error or a status).
+   Note: %@ is a version number. */
+"Installed version: %@." = "설치된 버전: %@.";
+
+/* App updates: message (an error or a status). */
+"Checking for updates…" = "업데이트 확인 중…";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is up to date." = "Deskset %@이(가) 최신 버전입니다.";
+
+/* App updates: message (an error or a status). */
+"No public release is available yet." = "아직 공개된 릴리스가 없습니다.";
+
+/* App updates: message (an error or a status). */
+"Deskset %@ is available. You have %@." = "Deskset %@을(를) 사용할 수 있습니다. 현재 버전은 %@입니다.";
+
+/* App updates: message (an error or a status). */
+"Couldn’t check for updates. %@" = "업데이트를 확인할 수 없습니다. %@";
+
+/* App updates: text. */
+"The installed version could not be read." = "설치된 버전을 읽을 수 없습니다.";
+
+/* App updates: button; Installing Deskset in Applications: button; Install and update panels: text. */
+"Retry" = "재시도";
+
+/* App updates: button; Install and update panels: text. */
+"Download Manually…" = "수동으로 다운로드…";
+
+/* App updates: window title, heading. */
+"Update Deskset" = "Deskset 업데이트";
+
+/* App updates: text. */
+"This update is no longer available. Use Check for Updates to try again." = "이 업데이트는 더 이상 사용할 수 없습니다. ‘업데이트 확인’을 사용하여 다시 시도하십시오.";
+
+/* App updates: status or description line. */
+"Downloading update package…" = "업데이트 패키지 다운로드 중…";
+
+/* App updates: note under a panel or list. */
+"Deskset verifies the signature before asking you to restart." = "Deskset은 서명을 확인한 후 재시작할지 묻습니다.";
+
+/* App updates: status or description line. */
+"Verifying signature and preparing update…" = "서명 확인 및 업데이트 준비 중…";
+
+/* App updates: status or description line.
+   Note: Badge while the download's signature is checked. */
+"Verifying" = "확인 중";
+
+/* App updates: status or description line. */
+"Couldn’t open the download page. Visit %@ in your browser." = "다운로드 페이지를 열 수 없습니다. 브라우저에서 %@(으)로 이동하십시오.";
+
+/* App updates: text. */
+"Couldn’t open the download page." = "다운로드 페이지를 열 수 없습니다.";
+
+/* App updates: note under a panel or list. */
+"Visit %@ in your browser." = "브라우저에서 %@(으)로 이동하십시오.";
+
+/* App updates: text. */
+"Try again now, or download the update directly in your browser." = "지금 다시 시도하거나 브라우저에서 업데이트를 직접 다운로드하십시오.";
+
+/* App updates: text. */
+"Try again now, or download Deskset %@ directly in your browser." = "지금 다시 시도하거나 브라우저에서 Deskset %@을(를) 직접 다운로드하십시오.";
+
+/* App updates: text, heading. */
+"Downloading Deskset %@…" = "Deskset %@ 다운로드 중…";
+
+/* App updates: text. */
+"Preparing update…" = "업데이트 준비 중…";
+
+/* App updates: status or description line. */
+"You can keep working while the update downloads." = "업데이트를 다운로드하는 동안 계속 작업할 수 있습니다.";
+
+/* App updates: status or description line. */
+"Getting the download for this Mac…" = "이 Mac용 다운로드를 가져오는 중…";
+
+/* App updates: heading. */
+"Deskset %@ is ready to install" = "Deskset %@ 설치 준비 완료";
+
+/* App updates: text.
+   Note: Badge after the download's signature has been checked. */
+"Verified" = "확인됨";
+
+/* App updates: status or description line. */
+"Deskset will quit, install the update, and reopen automatically." = "Deskset이 종료되고 업데이트를 설치한 다음 자동으로 다시 열립니다.";
+
+/* App updates: label.
+   Note: Label in a small card, followed by the new version number. */
+"Ready to install" = "설치 준비 완료";
+
+/* App updates: note under a panel or list. */
+"You’ll be asked to save open edits." = "열려 있는 편집 내용을 저장하라는 메시지가 표시됩니다.";
+
+/* App updates: button; Install and update panels: text. */
+"Install and Relaunch" = "설치 후 다시 열기";
+
+/* App updates: heading. */
+"Preparing to restart…" = "재시작 준비 중…";
+
+/* App updates: status or description line. */
+"Save your edits when prompted, then Deskset will restart." = "메시지가 표시되면 편집 내용을 저장하십시오. 그런 다음 Deskset이 재시작됩니다.";
+
+/* App updates: status or description line. */
+"Preparing the update helper and verifying the signature…" = "업데이트 도우미 준비 및 서명 확인 중…";
+
+/* App updates: heading. */
+"Couldn’t update Deskset" = "Deskset을 업데이트할 수 없음";
+
+/* App updates: text.
+   Note: Badge with the Mac's processor type (Apple's term; Intel Macs show "Intel"). */
+"Apple silicon" = "Apple 실리콘";
+
+/* App updates: message (an error or a status). */
+"The update server returned an invalid response. Please try again later." = "업데이트 서버에서 유효하지 않은 응답을 반환했습니다. 나중에 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"GitHub is limiting update checks. Please try again later." = "GitHub에서 업데이트 확인을 제한하고 있습니다. 나중에 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"The update server returned HTTP %lld. Please try again later." = "업데이트 서버에서 HTTP %lld을(를) 반환했습니다. 나중에 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"The update server returned invalid release information. Please try again later." = "업데이트 서버에서 유효하지 않은 릴리스 정보를 반환했습니다. 나중에 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "이 릴리스에는 이 Mac용으로 확인된 다운로드가 없습니다. 대신 GitHub에서 다운로드할 수 있습니다.";
+
+/* App updates: message (an error or a status). */
+"The download server returned an invalid response." = "다운로드 서버에서 유효하지 않은 응답을 반환했습니다.";
+
+/* App updates: message (an error or a status). */
+"The download server returned HTTP %lld. Please try again." = "다운로드 서버에서 HTTP %lld을(를) 반환했습니다. 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"The download redirected outside the expected GitHub servers." = "다운로드가 예상된 GitHub 서버 밖으로 리디렉션되었습니다.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file does not match the release size. Please try again." = "다운로드한 파일의 크기가 릴리스와 일치하지 않습니다. 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"The downloaded file failed its SHA-256 check. Please try again." = "다운로드한 파일이 SHA-256 확인에 실패했습니다. 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not match this Deskset release." = "다운로드한 앱이 이 Deskset 릴리스와 일치하지 않습니다.";
+
+/* App updates: message (an error or a status). */
+"The downloaded application does not support this Mac’s processor." = "다운로드한 앱이 이 Mac의 프로세서를 지원하지 않습니다.";
+
+/* App updates: message (an error or a status). */
+"This update requires macOS %@ or later. Your installed version of Deskset has been kept." = "이 업데이트를 사용하려면 macOS %@ 이상이 필요합니다. 설치된 Deskset은 그대로 유지됩니다.";
+
+/* App updates: message (an error or a status). */
+"The prepared update could not be verified. Download the update again." = "준비된 업데이트를 확인할 수 없습니다. 업데이트를 다시 다운로드하십시오.";
+
+/* App updates: message (an error or a status). */
+"This copy of Deskset cannot update itself here. Move it to a writable Applications folder and try again." = "이 Deskset 사본은 이 위치에서 스스로 업데이트할 수 없습니다. 쓰기 가능한 응용 프로그램 폴더로 옮긴 후 다시 시도하십시오.";
+
+/* App updates: message (an error or a status). */
+"Deskset’s running process changed before the update could finish. The installed application was kept." = "업데이트가 완료되기 전에 실행 중인 Deskset 프로세스가 변경되었습니다. 설치된 앱은 그대로 유지됩니다.";
+
+/* App updates: message (an error or a status). */
+"Deskset did not finish quitting in time. The installed application was kept." = "Deskset이 제시간에 종료되지 않았습니다. 설치된 앱은 그대로 유지됩니다.";
+
+/* App updates: message (an error or a status). */
+"The update helper could not start. Deskset has not been replaced." = "업데이트 도우미를 시작할 수 없습니다. Deskset은 대치되지 않았습니다.";
+
+/* App updates: message (an error or a status). */
+"Deskset was installed, but could not be opened automatically. Open it from its application folder." = "Deskset이 설치되었지만 자동으로 열 수 없었습니다. 앱이 있는 폴더에서 여십시오.";
+
+/* App updates: alert title. */
+"Couldn’t finish updating Deskset" = "Deskset 업데이트를 완료할 수 없음";
+
+/* App updates: alert or dialog message; Installing Deskset in Applications: alert or dialog message. */
+"Your skins, layouts, and settings are kept." = "스킨, 레이아웃 및 설정은 그대로 유지됩니다.";
+
+/* App updates: note under a panel or list. */
+"Application location: %@" = "앱 위치: %@";
+
+// MARK: Installing Deskset in Applications
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"This is not a complete Deskset application. Download a fresh copy and try again." = "완전한 Deskset 앱이 아닙니다. 새 사본을 다운로드한 후 다시 시도하십시오.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The application’s version could not be verified. Use Finder to inspect the installed copy." = "앱의 버전을 확인할 수 없습니다. Finder에서 설치된 사본을 확인하십시오.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset %@ is already installed. This older copy will not replace it." = "Deskset %@이(가) 이미 설치되어 있습니다. 이 이전 사본으로 대치하지 않습니다.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Deskset cannot write to %@. Quit the installed copy, then drag Deskset to that folder in Finder and choose Replace." = "Deskset이 %@에 쓸 수 없습니다. 설치된 사본을 종료한 다음, Finder에서 Deskset을 해당 폴더로 드래그하고 ‘대치’를 선택하십시오.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"Another copy of Deskset is still running. Quit it from its menu, save any edits, then try again." = "다른 Deskset 사본이 아직 실행 중입니다. 해당 메뉴에서 종료하고 편집 내용을 저장한 후 다시 시도하십시오.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The copied application’s signature could not be verified. Download a fresh copy and try again." = "복사한 앱의 서명을 확인할 수 없습니다. 새 사본을 다운로드한 후 다시 시도하십시오.";
+
+/* Installing Deskset in Applications: message (an error or a status). */
+"The installation could not finish. Your previous application is kept at %@. Restore it with Finder before trying again." = "설치를 완료할 수 없습니다. 이전 앱은 %@에 보관되어 있습니다. Finder에서 복원한 후 다시 시도하십시오.";
+
+/* Installing Deskset in Applications: alert title. */
+"Replace Deskset %@?" = "Deskset %@을(를) 대치하겠습니까?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Update the installed app in %@ and reopen Deskset." = "%@에 설치된 앱을 업데이트하고 Deskset을 다시 엽니다.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "old version → new version" of the app being replaced. */
+"Replacing" = "대치";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Replace and Open" = "대치 후 열기";
+
+/* Installing Deskset in Applications: alert title. */
+"Install Deskset %@?" = "Deskset %@을(를) 설치하겠습니까?";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Copy Deskset to your Applications folder and open it there." = "Deskset을 응용 프로그램 폴더에 복사하고 그곳에서 엽니다.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by the folder Deskset is copied to. */
+"Destination" = "설치 위치";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Install to Applications" = "응용 프로그램 폴더에 설치";
+
+/* Installing Deskset in Applications: note under a panel or list.
+   Note: Small note at the bottom of the panel: this copy of Deskset was opened from the downloaded .dmg. */
+"Running from Disk Image" = "디스크 이미지에서 실행 중";
+
+/* Installing Deskset in Applications: alert title. */
+"Quit the running copy of Deskset" = "실행 중인 Deskset 사본 종료";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Another copy of Deskset is currently open." = "다른 Deskset 사본이 현재 열려 있습니다.";
+
+/* Installing Deskset in Applications: label.
+   Note: Label in a small card, followed by "Deskset is running". */
+"Status" = "상태";
+
+/* Installing Deskset in Applications: text. */
+"Deskset is running" = "Deskset 실행 중";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Choose Quit Deskset from its menu and save any edits, then click Retry." = "해당 메뉴에서 ‘Deskset 종료’를 선택하고 편집 내용을 저장한 다음 ‘재시도’를 클릭하십시오.";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset %@…" = "Deskset %@ 설치 중…";
+
+/* Installing Deskset in Applications: text. */
+"Installing Deskset…" = "Deskset 설치 중…";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Deskset will open when installation finishes." = "설치가 끝나면 Deskset이 열립니다.";
+
+/* Installing Deskset in Applications: status or description line. */
+"Copying application and verifying signature…" = "앱 복사 및 서명 확인 중…";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Your skins and settings are kept in place." = "스킨과 설정은 그대로 유지됩니다.";
+
+/* Installing Deskset in Applications: alert title. */
+"Couldn’t install Deskset" = "Deskset을 설치할 수 없음";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Reveal the installer in Finder to copy Deskset manually." = "Finder에서 설치 프로그램을 보고 Deskset을 수동으로 복사하십시오.";
+
+/* Installing Deskset in Applications: button; Install and update panels: text. */
+"Show Installer in Finder" = "Finder에서 설치 프로그램 보기";
+
+/* Installing Deskset in Applications: text.
+   Note: Badge after Deskset has been installed. */
+"Installed" = "설치됨";
+
+/* Installing Deskset in Applications: alert title. */
+"Deskset was installed" = "Deskset 설치됨";
+
+/* Installing Deskset in Applications: alert or dialog message. */
+"Open Deskset from %@." = "%@에서 Deskset을 여십시오.";
+
+/* Installing Deskset in Applications: note under a panel or list. */
+"Use Show in Finder to open the installed application." = "‘Finder에서 보기’를 사용하여 설치된 앱을 여십시오.";
+
+// MARK: Install and update panels
+
+/* Install and update panels: text.
+   Note: VoiceOver name of the app icon when it carries a warning badge. */
+"Deskset warning" = "Deskset 경고";
+
+/* Install and update panels: text.
+   Note: VoiceOver name of a progress bar. */
+"Progress" = "진행 상황";
+
+/* Install and update panels: VoiceOver description, message (an error or a status).
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"Indeterminate" = "확정되지 않음";
+
+/* Install and update panels: text.
+   Note: VoiceOver value of a progress bar whose amount is not known. */
+"In progress" = "진행 중";
+
+// MARK: Restarting Deskset
+
+/* Restarting Deskset: message (an error or a status). */
+"This copy of Deskset could not prepare an automatic restart." = "이 Deskset 사본은 자동 재시작을 준비할 수 없습니다.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The prepared restart could not be verified." = "준비된 재시작을 확인할 수 없습니다.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart helper could not start. Deskset is still running." = "재시작 도우미를 시작할 수 없습니다. Deskset은 계속 실행 중입니다.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The restart was cancelled." = "재시작이 취소되었습니다.";
+
+/* Restarting Deskset: message (an error or a status). */
+"The running process changed before the restart could finish." = "재시작이 완료되기 전에 실행 중인 프로세스가 변경되었습니다.";
+
+/* Restarting Deskset: message (an error or a status). */
+"Deskset did not finish preparing or quitting in time." = "Deskset이 제시간에 준비하거나 종료하지 못했습니다.";

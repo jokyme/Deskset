@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Indonesian.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Folder";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skin menanyakan kepada Musik atau Spotify apa yang sedang diputar untuk menampilkan trek saat ini dan mengontrol pemutaran, serta meminta Finder mengosongkan Tong Sampah atau membuka jendela Dapatkan Info saat Anda menggunakan skin semacam itu.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Skin visualisasi audio menampilkan level dan spektrum suara yang diputar Mac Anda. Audio dianalisis di Mac Anda selama skin semacam itu dimuat; audio tidak pernah direkam, disimpan, atau dikirim ke mana pun.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Sebuah skin atau skripnya membaca atau menulis file di folder Desktop Anda (misalnya skin daftar file, catatan, atau peluncur).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Sebuah skin atau skripnya membaca atau menulis file di folder Dokumen Anda (misalnya skin daftar file, catatan, atau peluncur).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Sebuah skin atau skripnya membaca atau menulis file di folder Unduhan Anda (misalnya skin daftar file atau peluncur).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Perangkat lunak bebas di bawah GNU GPL v3. Menjalankan skin yang dibuat untuk Rainmeter; tidak berafiliasi dengan Rainmeter. Rainmeter adalah merek dagang dari pemiliknya masing-masing.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Sebuah skin membaca informasi dari perangkat di jaringan lokal Anda, seperti halaman status router atau server rumah.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skin yang Anda atur untuk menggunakan lokasi Anda saat ini membaca perkiraan lokasi Anda untuk menampilkan cuaca setempat serta waktu matahari terbit dan terbenam. Lokasi dibulatkan hingga sekitar 1 km, hanya dikirim ke layanan cuaca (MET Norway) untuk prakiraan, dan tidak pernah disimpan. macOS juga memerlukan izin ini agar skin Wi-Fi dapat menampilkan nama jaringan.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skin yang Anda atur untuk menggunakan lokasi Anda saat ini membaca perkiraan lokasi Anda untuk menampilkan cuaca setempat serta waktu matahari terbit dan terbenam. Lokasi dibulatkan hingga sekitar 1 km, hanya dikirim ke layanan cuaca (MET Norway) untuk prakiraan, dan tidak pernah disimpan. macOS juga memerlukan izin ini agar skin Wi-Fi dapat menampilkan nama jaringan.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Sebuah skin ingin menampilkan level input audio (mikrofon atau antarmuka audio). Audio dianalisis di Mac Anda selama skin dimuat; audio tidak pernah direkam, disimpan, atau dikirim ke mana pun.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Sebuah skin atau skripnya membaca file di volume jaringan (misalnya skin disk atau daftar file).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Sebuah skin atau skripnya membaca file di drive yang dapat dilepas (misalnya skin disk atau daftar file).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Paket Skin";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "Arsip ZIP";

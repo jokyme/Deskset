@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>(+%lld more)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>(+%lld)</string>
+			<key>one</key>
+			<string>(+واحدة أخرى)</string>
+			<key>two</key>
+			<string>(+اثنتان أخريان)</string>
+			<key>few</key>
+			<string>(+%lld أخرى)</string>
+			<key>many</key>
+			<string>(+%lld أخرى)</string>
+			<key>other</key>
+			<string>(+%lld أخرى)</string>
+		</dict>
+	</dict>
+	<key>Contains %lld skins.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>لا تحتوي على أي واجهات.</string>
+			<key>one</key>
+			<string>تحتوي على واجهة واحدة.</string>
+			<key>two</key>
+			<string>تحتوي على واجهتين.</string>
+			<key>few</key>
+			<string>تحتوي على %lld واجهات.</string>
+			<key>many</key>
+			<string>تحتوي على %lld واجهة.</string>
+			<key>other</key>
+			<string>تحتوي على %lld واجهة.</string>
+		</dict>
+	</dict>
+	<key>Move %lld items to the Trash?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>هل تريد نقل %lld عنصر إلى سلة المهملات؟</string>
+			<key>one</key>
+			<string>هل تريد نقل عنصر واحد إلى سلة المهملات؟</string>
+			<key>two</key>
+			<string>هل تريد نقل عنصرين إلى سلة المهملات؟</string>
+			<key>few</key>
+			<string>هل تريد نقل %lld عناصر إلى سلة المهملات؟</string>
+			<key>many</key>
+			<string>هل تريد نقل %lld عنصرًا إلى سلة المهملات؟</string>
+			<key>other</key>
+			<string>هل تريد نقل %lld عنصر إلى سلة المهملات؟</string>
+		</dict>
+	</dict>
+	<key>… and %lld more items.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>…</string>
+			<key>one</key>
+			<string>… وعنصر آخر.</string>
+			<key>two</key>
+			<string>… وعنصران آخران.</string>
+			<key>few</key>
+			<string>… و%lld عناصر أخرى.</string>
+			<key>many</key>
+			<string>… و%lld عنصرًا آخر.</string>
+			<key>other</key>
+			<string>… و%lld عنصر آخر.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more notes.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>…</string>
+			<key>one</key>
+			<string>… وملاحظة أخرى.</string>
+			<key>two</key>
+			<string>… وملاحظتان أخريان.</string>
+			<key>few</key>
+			<string>… و%lld ملاحظات أخرى.</string>
+			<key>many</key>
+			<string>… و%lld ملاحظة أخرى.</string>
+			<key>other</key>
+			<string>… و%lld ملاحظة أخرى.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>zero</key>
+			<string>…</string>
+			<key>one</key>
+			<string>… وعنصر آخر.</string>
+			<key>two</key>
+			<string>… وعنصران آخران.</string>
+			<key>few</key>
+			<string>… و%lld عناصر أخرى.</string>
+			<key>many</key>
+			<string>… و%lld عنصرًا آخر.</string>
+			<key>other</key>
+			<string>… و%lld عنصر آخر.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

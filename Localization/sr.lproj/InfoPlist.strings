@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Serbian.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Фасцикла";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Скинови питају апликацију Музика или Spotify шта се пушта да би приказали тренутну песму и управљали репродукцијом, а када користите такав скин, траже од Finder-а да испразни смеће или отвори прозор „Информације“.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Скинови за визуелизацију звука приказују ниво и спектар звука који репродукује ваш Mac. Звук се анализира на вашем Mac рачунару док је такав скин учитан; никада се не снима, не чува и не шаље нигде.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Скин или његова скрипта чита или уписује датотеке у фасцикли Радна површина (на пример скин са листом датотека, белешкама или за покретање апликација).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Скин или његова скрипта чита или уписује датотеке у фасцикли Документи (на пример скин са листом датотека, белешкама или за покретање апликација).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Скин или његова скрипта чита или уписује датотеке у фасцикли Преузимања (на пример скин са листом датотека или за покретање апликација).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Слободан софтвер под лиценцом GNU GPL v3. Покреће скинове направљене за Rainmeter; није повезан са Rainmeter-ом. Rainmeter је заштитни знак одговарајућих власника.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Скин чита информације са уређаја у вашој локалној мрежи, као што је страница статуса рутера или кућног сервера.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Скинови које сте подесили да користе вашу тренутну локацију читају вашу приближну локацију да би приказали локално време и време изласка и заласка сунца. Локација се заокружује на око 1 км, шаље се само метеоролошкој служби (MET Norway) ради прогнозе и никада се не чува. macOS ову дозволу захтева и да би Wi-Fi скинови могли да приказују називе мрежа.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Скинови које сте подесили да користе вашу тренутну локацију читају вашу приближну локацију да би приказали локално време и време изласка и заласка сунца. Локација се заокружује на око 1 км, шаље се само метеоролошкој служби (MET Norway) ради прогнозе и никада се не чува. macOS ову дозволу захтева и да би Wi-Fi скинови могли да приказују називе мрежа.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Скин жели да приказује ниво аудио улаза (микрофона или аудио интерфејса). Звук се анализира на вашем Mac рачунару док је скин учитан; никада се не снима, не чува и не шаље нигде.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Скин или његова скрипта чита датотеке на мрежном волумену (на пример скин за диск или листу датотека).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Скин или његова скрипта чита датотеке на преносивој јединици (на пример скин за диск или листу датотека).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Пакет скинова";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP архива";

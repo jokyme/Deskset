@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>(+%lld more)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>(ועוד אחד)</string>
+			<key>two</key>
+			<string>(ועוד שניים)</string>
+			<key>other</key>
+			<string>(ועוד %lld)</string>
+		</dict>
+	</dict>
+	<key>Contains %lld skins.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>מכיל סקין אחד.</string>
+			<key>two</key>
+			<string>מכיל שני סקינים.</string>
+			<key>other</key>
+			<string>מכיל %lld סקינים.</string>
+		</dict>
+	</dict>
+	<key>Move %lld items to the Trash?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>להעביר פריט אחד לפח?</string>
+			<key>two</key>
+			<string>להעביר שני פריטים לפח?</string>
+			<key>other</key>
+			<string>להעביר %lld פריטים לפח?</string>
+		</dict>
+	</dict>
+	<key>… and %lld more items.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ועוד פריט אחד.</string>
+			<key>two</key>
+			<string>… ועוד שני פריטים.</string>
+			<key>other</key>
+			<string>… ועוד %lld פריטים.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more notes.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ועוד הערה אחת.</string>
+			<key>two</key>
+			<string>… ועוד שתי הערות.</string>
+			<key>other</key>
+			<string>… ועוד %lld הערות.</string>
+		</dict>
+	</dict>
+	<key>… and %lld more.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@value@</string>
+		<key>value</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>… ועוד אחד.</string>
+			<key>two</key>
+			<string>… ועוד שניים.</string>
+			<key>other</key>
+			<string>… ועוד %lld.</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

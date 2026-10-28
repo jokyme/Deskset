@@ -92,16 +92,31 @@ bash scripts/build-app.sh            # build/Deskset.app
 The app's own text (menus, windows, alerts) is translated into the same 38 languages Rainmeter ships. Text a skin
 draws is the skin's and is never translated by the app.
 
-- In code, user-visible text goes through `L("English text")`, with a printf format for values:
+**To translate or fix a translation**, use [Weblate](https://hosted.weblate.org/projects/deskset/): sign in, pick your
+language and edit in the browser; no Git needed. Each text shows where it appears in the app, and the ambiguous ones
+have a note. Please keep to Apple's own terms for your language (Settings, Quit, Trash…) and keep `%@`, `%lld` and
+the like; number them (`%2$@`) to change their order. Weblate collects the changes and opens a pull request here,
+which CI checks like any other.
+
+**In code:**
+
+- User-visible text goes through `L("English text")`, with a printf format for values:
   `L("Deskset %@ is available", version)`, never an interpolation. A count that changes the wording is a plural key
-  (`L("Contains %lld skins.", count)`) with forms in the catalog. Log lines, command-line output, INI keys and bang
-  names stay in English.
-- The translations live in `Localization/Localizable.xcstrings` (and `InfoPlist.xcstrings` for permission prompts),
-  String Catalogs that Xcode edits directly. Machine-drafted texts are marked **Needs Review**; when you have checked
-  one in your language, mark it reviewed. Please keep to Apple's own terms for your language (Settings, Quit, Trash…).
-- `swift scripts/localization.swift sync` adds new keys after code changes; `check` (run by CI) reports missing keys,
-  languages without a text, mismatched format specifiers and untranslated text in the files it covers; `report` shows
-  each language's progress.
+  (`L("Contains %lld skins.", count)`) with forms in `Localizable.stringsdict`. When the same English needs two
+  translations, add a context after `|`: `L("Edit|menu")` is the Edit menu's title and `L("Edit")` the Edit buttons
+  (French "Édition" and "Modifier"). Log lines, command-line output, INI keys and bang names stay in English.
+- Each language has its own folder, `Localization/<language>.lproj/`: `Localizable.strings` (the app's text),
+  `Localizable.stringsdict` (texts whose wording depends on a number) and `InfoPlist.strings` (permission prompts
+  and document type names). `en.lproj` is the source: the comment above each text says which window it appears in
+  and what it is (a button, a menu item, an alert…), and a `Note:` line explains the ones that need more. Every
+  language follows en's order and comments, so the same text is on the same line everywhere.
+- `swift scripts/localization.swift sync` writes en.lproj from the code and re-orders the languages after code
+  changes; `check` (run by CI) reports missing keys, languages without a text, mismatched format specifiers, missing
+  plural forms, files macOS cannot read and untranslated text in the files it covers; `report` shows each language's
+  progress. The script writes the files exactly as Weblate does, so a sync only changes what the code changed.
+  `export DIR` and `import DIR LANGUAGE…` move the texts to and from tab-separated files.
+- A change that adds text adds it to every language (CI requires it); Weblate's translators then improve it. Merge
+  Weblate's open pull request before a change that renames or removes many texts, so the two don't conflict.
 - To check that layouts fit longer languages and right-to-left ones, render a window in a made-up language:
   `.build/debug/Deskset --snapshot-ui manage --pseudo-language long|rtl --out manage.png`.
 

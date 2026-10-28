@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Finnish.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Kansio";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Skinit kysyvät Musiikilta tai Spotifylta, mitä soitetaan, näyttääkseen nykyisen kappaleen ja ohjatakseen toistoa, ja pyytävät Finderia tyhjentämään roskakorin tai avaamaan Näytä tiedot -ikkunan, kun käytät tällaista skiniä.";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Äänen visualisointiskinit näyttävät Macin toistaman äänen tason ja spektrin. Ääntä analysoidaan Macissa, kun tällainen skin on ladattuna; sitä ei koskaan tallenneta, säilytetä eikä lähetetä minnekään.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Skin tai sen skripti lukee tai kirjoittaa tiedostoja Työpöytä-kansioosi (esimerkiksi tiedostoluettelo-, muistiinpano- tai käynnistinskin).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Skin tai sen skripti lukee tai kirjoittaa tiedostoja Dokumentit-kansioosi (esimerkiksi tiedostoluettelo-, muistiinpano- tai käynnistinskin).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Skin tai sen skripti lukee tai kirjoittaa tiedostoja Lataukset-kansioosi (esimerkiksi tiedostoluettelo- tai käynnistinskin).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Vapaa ohjelmisto GNU GPL v3 -lisenssillä. Ajaa Rainmeterille tehtyjä skinejä; ei sidoksissa Rainmeteriin. Rainmeter on omistajiensa tavaramerkki.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Skin lukee tietoja lähiverkkosi laitteesta, kuten reitittimen tilasivulta tai kotipalvelimelta.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Skinit, jotka olet asettanut käyttämään nykyistä sijaintiasi, lukevat likimääräisen sijaintisi näyttääkseen paikallisen sään sekä auringon nousu- ja laskuajat. Sijainti pyöristetään noin 1 km:n tarkkuuteen, lähetetään ennusteita varten vain sääpalvelulle (MET Norway) eikä sitä koskaan tallenneta. macOS vaatii tämän luvan myös, jotta Wi-Fi-skinit voivat näyttää verkkojen nimet.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Skinit, jotka olet asettanut käyttämään nykyistä sijaintiasi, lukevat likimääräisen sijaintisi näyttääkseen paikallisen sään sekä auringon nousu- ja laskuajat. Sijainti pyöristetään noin 1 km:n tarkkuuteen, lähetetään ennusteita varten vain sääpalvelulle (MET Norway) eikä sitä koskaan tallenneta. macOS vaatii tämän luvan myös, jotta Wi-Fi-skinit voivat näyttää verkkojen nimet.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Skin haluaa näyttää äänitulon (mikrofonin tai äänikortin) tason. Ääntä analysoidaan Macissa, kun skin on ladattuna; sitä ei koskaan tallenneta, säilytetä eikä lähetetä minnekään.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Skin tai sen skripti lukee tiedostoja verkkotaltiolta (esimerkiksi levy- tai tiedostoluetteloskin).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Skin tai sen skripti lukee tiedostoja irrotettavalta asemalta (esimerkiksi levy- tai tiedostoluetteloskin).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Skinipaketti";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-arkisto";

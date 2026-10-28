@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Ukrainian.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Папка";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Скіни дізнаються в програми «Музика» чи Spotify, що зараз грає, щоб показати поточний трек і керувати відтворенням, а під час використання такого скіна просять Finder очистити Смітник або відкрити вікно «Інформація».";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Скіни-візуалізатори показують рівень і спектр звуку, який відтворює Mac. Звук аналізується на вашому Mac, поки такий скін завантажено; він ніколи не записується, не зберігається й нікуди не надсилається.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Скін або його скрипт читає чи записує файли в папці «Робочий стіл» (наприклад, скін зі списком файлів, нотатками або для запуску програм).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Скін або його скрипт читає чи записує файли в папці «Документи» (наприклад, скін зі списком файлів, нотатками або для запуску програм).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Скін або його скрипт читає чи записує файли в папці «Завантаження» (наприклад, скін зі списком файлів або для запуску програм).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Вільне програмне забезпечення за ліцензією GNU GPL v3. Запускає скіни, створені для Rainmeter; не пов’язане з Rainmeter. Rainmeter — торговельна марка відповідних власників.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Скін зчитує інформацію з пристрою у вашій локальній мережі, наприклад сторінку стану роутера чи домашнього сервера.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Скіни, яким ви дозволили використовувати поточне розташування, зчитують ваше приблизне розташування, щоб показувати місцеву погоду й час сходу та заходу сонця. Його округлюють приблизно до 1 км, надсилають лише до метеослужби (MET Norway) для прогнозу й ніколи не зберігають. Крім того, macOS вимагає цей дозвіл, щоб скіни Wi-Fi могли показувати назви мереж.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Скіни, яким ви дозволили використовувати поточне розташування, зчитують ваше приблизне розташування, щоб показувати місцеву погоду й час сходу та заходу сонця. Його округлюють приблизно до 1 км, надсилають лише до метеослужби (MET Norway) для прогнозу й ніколи не зберігають. Крім того, macOS вимагає цей дозвіл, щоб скіни Wi-Fi могли показувати назви мереж.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Скін хоче показувати рівень аудіовходу (мікрофона чи аудіоінтерфейсу). Звук аналізується на вашому Mac, поки скін завантажено; він ніколи не записується, не зберігається й нікуди не надсилається.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Скін або його скрипт читає файли на мережевому томі (наприклад, скін диска чи списку файлів).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Скін або його скрипт читає файли на знімному диску (наприклад, скін диска чи списку файлів).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Пакет скінів";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-архів";

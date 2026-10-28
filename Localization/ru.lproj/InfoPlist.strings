@@ -1,0 +1,48 @@
+// Deskset — Info.plist texts, Russian.
+// Translated on Weblate: https://hosted.weblate.org/projects/deskset/
+// Order and comments follow en.lproj (`swift scripts/localization.swift sync`).
+
+/* Document type name: a folder of skins that Deskset can install (Finder › Open With). */
+"Folder" = "Папка";
+
+/* macOS permission prompt (Automation): why Deskset controls Music, Spotify and Finder. */
+NSAppleEventsUsageDescription = "Скины узнают у приложения «Музыка» или Spotify, что сейчас играет, чтобы показать текущий трек и управлять воспроизведением, а при использовании такого скина просят Finder очистить Корзину или открыть окно «Свойства».";
+
+/* macOS permission prompt (system audio recording) for audio visualizer skins. */
+NSAudioCaptureUsageDescription = "Скины-визуализаторы показывают уровень и спектр звука, который воспроизводит Mac. Звук анализируется на вашем Mac, пока такой скин загружен; он никогда не записывается, не сохраняется и никуда не отправляется.";
+
+/* macOS permission prompt (Files and Folders › Desktop). */
+NSDesktopFolderUsageDescription = "Скин или его скрипт читает или записывает файлы в папке «Рабочий стол» (например, скин со списком файлов, заметками или для запуска программ).";
+
+/* macOS permission prompt (Files and Folders › Documents). */
+NSDocumentsFolderUsageDescription = "Скин или его скрипт читает или записывает файлы в папке «Документы» (например, скин со списком файлов, заметками или для запуска программ).";
+
+/* macOS permission prompt (Files and Folders › Downloads). */
+NSDownloadsFolderUsageDescription = "Скин или его скрипт читает или записывает файлы в папке «Загрузки» (например, скин со списком файлов или для запуска программ).";
+
+/* The copyright line Finder's Get Info window shows. A legal line; translate faithfully. */
+"NSHumanReadableCopyright" = "Свободное ПО по лицензии GNU GPL v3. Запускает скины, созданные для Rainmeter; не связано с Rainmeter. Rainmeter — товарный знак соответствующих владельцев.";
+
+/* macOS permission prompt (Local Network). */
+NSLocalNetworkUsageDescription = "Скин считывает информацию с устройства в вашей локальной сети, например страницу состояния роутера или домашнего сервера.";
+
+/* macOS permission prompt (Location Services). Keep "MET Norway" (the weather service's name). */
+NSLocationUsageDescription = "Скины, которым вы разрешили использовать текущую геопозицию, считывают ваше примерное местоположение, чтобы показывать местную погоду и время восхода и заката. Оно округляется примерно до 1 км, отправляется только в метеослужбу (MET Norway) для получения прогноза и никогда не сохраняется. Кроме того, macOS требует это разрешение, чтобы скины Wi-Fi могли показывать названия сетей.";
+
+/* macOS permission prompt (Location Services); the same text as NSLocationUsageDescription. */
+NSLocationWhenInUseUsageDescription = "Скины, которым вы разрешили использовать текущую геопозицию, считывают ваше примерное местоположение, чтобы показывать местную погоду и время восхода и заката. Оно округляется примерно до 1 км, отправляется только в метеослужбу (MET Norway) для получения прогноза и никогда не сохраняется. Кроме того, macOS требует это разрешение, чтобы скины Wi-Fi могли показывать названия сетей.";
+
+/* macOS permission prompt (Microphone). */
+NSMicrophoneUsageDescription = "Скин хочет показывать уровень аудиовхода (микрофона или аудиоинтерфейса). Звук анализируется на вашем Mac, пока скин загружен; он никогда не записывается, не сохраняется и никуда не отправляется.";
+
+/* macOS permission prompt (Files and Folders › Network Volumes). */
+NSNetworkVolumesUsageDescription = "Скин или его скрипт читает файлы на сетевом томе (например, скин диска или списка файлов).";
+
+/* macOS permission prompt (Files and Folders › Removable Volumes). */
+NSRemovableVolumesUsageDescription = "Скин или его скрипт читает файлы на съемном диске (например, скин диска или списка файлов).";
+
+/* Document type name of .rmskin files (Finder's Kind column). */
+"Skin Package" = "Пакет скинов";
+
+/* Document type name of .zip files with skins (Finder's Kind column). */
+"ZIP Archive" = "ZIP-архив";

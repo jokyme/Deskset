@@ -11,7 +11,7 @@ enum AppUpdateNoticeSelfTests {
             t.equal(offer.title, "Deskset 0.3.0 is available")
             t.equal(offer.buttons, ["Update", "Skip This Version", "Close"])
             t.check(offer.text.contains("0.3.0"))
-            t.check(offer.text.contains("Asks before restart"), "downloading does not quit the app without confirmation")
+            t.check(offer.text.contains("asks before it restarts"), "downloading does not quit the app without confirmation")
             t.equal(state.updates.skippedVersion, nil, "constructing a notice changes no preference")
             for notice: AppUpdateController.Notice in [.upToDate, .noRelease, .failed("Offline")] {
                 let result = app.updateNoticePresentation(notice)

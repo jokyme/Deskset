@@ -30,7 +30,7 @@ final class NewSkinModel {
             case .collision(let name): return L("An item named %@ already exists.", name)
             case .unsafeItem(let name): return L("The item is no longer a regular file or folder: %@", name)
             case .unavailable: return L("The selected folder is no longer available.")
-            case .notCreated: return L("Only items created in this New skin window can be renamed or deleted.")
+            case .notCreated: return L("Only items created in this window can be renamed or deleted.")
             case .defaultTemplate: return L("The default template cannot be deleted.")
             }
         }
