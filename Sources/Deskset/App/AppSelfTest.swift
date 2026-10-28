@@ -79,6 +79,7 @@ enum AppSelfTest {
         installTests(t)
         InstallerOptionsSelfTests.run(t)
         DefaultSkinsSelfTests.run(t)
+        reviewTests(t)
         mousePluginTests(t)
         sliderPluginTests(t)
         sliderElsewhereTests(t)
