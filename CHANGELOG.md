@@ -2,6 +2,39 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.6.1
+
+This release makes the translations read naturally, adds the Skin Packager for making `.rmskin` packages, and lets clicks on a widget's empty areas reach what is below it again.
+
+### Added
+
+- **Skin Packager.** Make `.rmskin` packages on the Mac, following the steps of Rainmeter's Skin Packager: the package's name, author, version and header image, the skins, layouts and plugins it contains, and what the installer loads afterwards. Open it with the box icon next to "Create new skin" above the skin list in Manage. Packages use the format Rainmeter's installer reads on Windows.
+- **Translate on Weblate.** Anyone can now improve Deskset in their language in the browser on [Weblate](https://hosted.weblate.org/projects/deskset/), no Git needed.
+
+### Changed and improved
+
+- **Rewritten translations.** All 38 languages were translated again, using each language's usual macOS terms and natural phrasing instead of word-for-word renderings of the English. Several English texts were reworded as well, such as the notice for a skin that hid itself.
+- The Edit menu and the Edit buttons now use different words where a language needs them, for example "Édition" and "Modifier" in French.
+- The skin list in Manage widens so the "Active skins" menu is no longer cut off in longer languages.
+
+### Fixed
+
+- Clicks on a skin's transparent areas reach the desktop icons and windows below it again. Since 0.2.0 the whole rectangle of a skin had caught every click.
+
+### Known limitations
+
+- The translations have not been reviewed by native speakers yet. Corrections are welcome on [Weblate](https://hosted.weblate.org/projects/deskset/).
+- The skin editor (Skin Studio), compatibility notes and the Debug window are still in English.
+- What a skin draws is not translated: skins keep their own text, and the Time measure keeps Rainmeter's English default.
+- In Arabic and Hebrew the text is translated, but windows are laid out right to left only when the Mac's own language is right to left.
+- Packages made with the Skin Packager have not been tried with Rainmeter on Windows yet.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved. Coming from 0.5.2? Deskset now shows the Mac's language if it has it (see 0.6.0); choose English in Settings › General › Language to keep the English interface. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.6.0...v0.6.1)
+
 ## 0.6.0
 
 This release speaks your language: Deskset's menus, windows and alerts are now available in 38 languages.
