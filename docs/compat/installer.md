@@ -470,6 +470,43 @@ Skins folder) and `.severalPackages([names])`.
 - Skin impact: one extra step for those downloads.
 - Status: not supported
 
+## Skin Packager
+
+### Making a package (Create .rmskin Package…)
+- Windows (Rainmeter): Manage → "Create .rmskin package...": Name, Author, Version, one root config folder, layouts,
+  plugin pairs (32-bit and 64-bit; the other one is looked up by swapping `32bit` / `64bit` in the folder name), then
+  the output folder (Desktop), Load skin / Load layout, the minimum Rainmeter version, and on the Advanced tab the
+  400×60 header bitmap, Variables files and Merge skins (mutually exclusive). Load previous (Shift deletes), Back.
+  Hidden files are skipped; the result is `Name_Version.rmskin`.
+- Mac (Deskset): `RmskinPackager` (DesksetCore) checks the settings (`problems`) and writes the package (`build`);
+  `SkinPackagerWindowController` is the window, opened from the box icon next to "Create new skin" above Manage's skin
+  list (with the selected skin's root config); a text button in the bottom bar would push Manage past its minimum width.
+  - Layout: `RMSKIN.ini`, optional `RMSKIN.bmp`, `Skins/<root>/…`, `Layouts/<name>/…`, `Plugins/32bit|64bit/<dll>`;
+    ZIP from `ditto -c -k --norsrc --noextattr --noacl --noqtn`, then the 16-byte footer.
+  - `RMSKIN.ini`: UTF-16 LE with BOM, CRLF; keys Name, Author, Version, LoadType/Load (only with a choice),
+    VariableFiles (` | `), MergeSkins=1 (only when set), MinimumRainmeter. No MinimumWindows (removed in 5.0).
+    Line breaks in fields become spaces.
+  - Names: staged with POSIX `mkdir` / `copyfile` in Unicode form C (Foundation's file APIs would decompose them), and
+    the UTF-8 flag (bit 11) is set in every central record and local header (`RmskinZip.markNamesUTF8`), since ditto
+    writes UTF-8 names without it.
+  - Left out: names starting with `.`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `__MACOSX`, Finder-hidden items,
+    symbolic links (reported in the result).
+  - Checks: name, author, a root config with at least one `.ini` outside `@Resources`, layouts with `Rainmeter.ini`,
+    complete plugin pairs with the same file name, the skin or layout to load being part of the package, a real
+    400×60 BMP header, Variables files inside the root config (case-insensitive), not with Merge skins, a version like
+    `5`, `5.0` or `5.0.0.4657`, an output folder.
+  - Plugin version from the PE header's machine type (0x14C x86, 0x8664 x64); counterpart by swapping `32bit`/`64bit`
+    or `x86`/`x64` folder components.
+  - Defaults (judgment calls): minimum Rainmeter 5.0; empty Name/Author/Version filled from the folder and its first
+    skin's `[Metadata]`; "Load skin" set to that skin. Unsafe file-name characters become `-`.
+  - Load previous: `SkinPackagerHistory` in the app's preferences (`SkinPackagerHistory` key), one entry per name,
+    newest first, at most 20; Shift while choosing deletes.
+- Why: Windows-safe encodings and names; the Mac has no Windows plugin builds of its own, so the PE header is the
+  reliable source.
+- Skin impact: packages install with Deskset's installer (round-trip self-test); installation on a Windows desktop is
+  not verified yet.
+- Status: emulated
+
 ## Real packages tried (local only, not distributed)
 
 All 15 packages of the local compatibility corpus install (re-checked by the review): 13 packager-made .rmskin files (Enigma, FluentDash11,

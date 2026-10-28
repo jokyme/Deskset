@@ -73,7 +73,7 @@ enum CommandLineTools {
                                         run skins without a window and print what an update and a drawing cost
                Deskset --self-test [filter]
                                         run the app's self-tests
-               Deskset --snapshot-ui manage|settings|about|debug|codeeditor|install|install-zip|icon|menubar
+               Deskset --snapshot-ui manage|settings|about|debug|packager|codeeditor|install|install-zip|icon|menubar
                       [--out x.png] [--dark] [--select NAME] [--size WxH] [--skins-dir DIR]
                       [--pane general|editor|skins|layouts|log|display|network|plugins|version] [--hidden] [--coordinates X,Y]
                       [--pseudo-language long|rtl]

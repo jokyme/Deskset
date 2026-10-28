@@ -196,6 +196,62 @@ enum RmskinZip {
         return entries
     }
 
+    // MARK: UTF-8 names
+
+    /// Sets the UTF-8 flag (general purpose bit 11) of every entry whose name is valid UTF-8, in its central directory
+    /// record and its local header. `/usr/bin/ditto -c -k` writes UTF-8 names without the flag, so other unzip tools
+    /// (Windows' among them) read non-ASCII names in a legacy code page. Sizes, CRCs and offsets do not change.
+    /// Returns the number of entries marked; throws `ScanError` for an archive `scanCentralDirectory` refuses.
+    @discardableResult
+    static func markNamesUTF8(_ data: inout Data) throws -> Int {
+        _ = try scanCentralDirectory(data)
+        return try data.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) -> Int in
+            let n = b.count
+            func u16(_ o: Int) -> UInt64 { UInt64(b[o]) | UInt64(b[o + 1]) << 8 }
+            func u32(_ o: Int) -> UInt64 { u16(o) | u16(o + 2) << 16 }
+            func u64(_ o: Int) -> UInt64 { u32(o) | u32(o + 4) << 32 }
+            var eocd = n - 22
+            while eocd >= max(0, n - 22 - 0xFFFF), u32(eocd) != 0x0605_4B50 { eocd -= 1 }
+            var count = u16(eocd + 10), offset = u32(eocd + 16)
+            if (count == 0xFFFF || offset == 0xFFFF_FFFF), eocd >= 20, u32(eocd - 20) == 0x0706_4B50 {
+                let record = Int(u64(eocd - 20 + 8))
+                count = u64(record + 32)
+                offset = u64(record + 48)
+            }
+            var position = Int(offset), marked = 0
+            for _ in 0..<Int(count) {
+                let nameLength = Int(u16(position + 28)), extraLength = Int(u16(position + 30))
+                let commentLength = Int(u16(position + 32))
+                let nameStart = position + 46
+                var local = u32(position + 42)
+                if local == 0xFFFF_FFFF {
+                    // ZIP64 extra field: only the fields saturated in the record are present, in this order.
+                    var e = nameStart + nameLength
+                    let end = e + extraLength
+                    while e + 4 <= end {
+                        let tag = u16(e), size = Int(u16(e + 2))
+                        if tag == 0x0001 {
+                            var field = e + 4
+                            if u32(position + 24) == 0xFFFF_FFFF { field += 8 }
+                            if u32(position + 20) == 0xFFFF_FFFF { field += 8 }
+                            if field + 8 <= e + 4 + size { local = u64(field) }
+                            break
+                        }
+                        e += 4 + size
+                    }
+                }
+                let name = Array(b[nameStart..<(nameStart + nameLength)])
+                if String(bytes: name, encoding: .utf8) != nil, local < UInt64(n - 30), u32(Int(local)) == 0x0403_4B50 {
+                    b[position + 9] |= 0x08
+                    b[Int(local) + 7] |= 0x08
+                    marked += 1
+                }
+                position = nameStart + nameLength + extraLength + commentLength
+            }
+            return marked
+        }
+    }
+
     /// Why an entry name could escape the extraction directory, or nil when it is safe. Works on raw bytes:
     /// `/`, `\`, `.` and `:` are ASCII in every encoding a ZIP name may use. Backslashes count as separators because
     /// Windows tools sometimes write them, and the installer later turns them into folders.

@@ -1145,10 +1145,10 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   Windows 旧 helper 仍未映射。
 
 #### Rainmeter 5.0 中尚未实现的部分
-- **Windows：** `Rainmeter.exe [!Launch][!Bang]` 可以先启动再执行命令，另外还有崩溃转储与皮肤打包器。
-- **Mac：** 这些部分仍未实现。Debug、Safe Start、Restart/Focus、显式目标前置命令、复合皮肤组选择与七个 SendKey
-  媒体键名称已实现，具体限制见对应条目。
-- **原因：** 剩余的进程启动、崩溃转储和打包流程尚未完成。
+- **Windows：** `Rainmeter.exe [!Launch][!Bang]` 可以先启动再执行命令，另外还有崩溃转储。
+- **Mac：** 这些部分仍未实现。Debug、Safe Start、Restart/Focus、显式目标前置命令、复合皮肤组选择、七个 SendKey
+  媒体键名称与皮肤打包器（见 [§11.2](#皮肤打包器create-rmskin-package)）已实现，具体限制见对应条目。
+- **原因：** 剩余的进程启动和崩溃转储流程尚未完成。
 - **对皮肤的影响：** 在剩余命令可用之前，继续使用现有加载和刷新操作。
 - **状态：** 不支持
 
@@ -2706,6 +2706,26 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
   这些功能的皮肤。Windows 版本号在 macOS 上没有意义。
 - **对皮肤的影响：** 为更新版本的 Rainmeter 制作的包在警告后照常安装；不支持的功能会优雅降级，并由引擎报告。
 - **状态：** 完全一致 / 模拟实现（最低 Rainmeter 版本只警告、不拒绝）/ 不支持（最低 Windows 版本）
+
+
+#### 皮肤打包器（Create .rmskin Package…）
+- **Windows：** 在 Manage 中点“Create .rmskin package...”按钮：第一步填写名称、作者、版本，选择一个根配置文件夹、布局和插件
+  （必须同时提供 32 位和 64 位 DLL；选中其中一个时，会把所在文件夹名中的 `32bit` / `64bit` 互换来寻找另一个）；第二步选择保存
+  位置（默认桌面）、安装后载入的内容和最低 Rainmeter 版本，在 Advanced 页设置 400×60 的 `.bmp` 头图、变量文件和合并皮肤（两者
+  不能同时使用）。“Load previous”恢复某个包上次的设置（按住 Shift 可删除条目），“Back”回到第一步。隐藏的文件和文件夹会被
+  排除，文件保存为 `名称_版本.rmskin`。
+- **Mac：** 步骤、选项、检查和文件名都相同；按钮是 Manage 皮肤列表上方“新建皮肤”旁边的盒子图标（打开时带上所选皮肤的根配置），
+  这样底部按钮栏不会变宽。打出的包可以用 Deskset 的安装器安装（自测覆盖）；尚未在 Windows 桌面上安装
+  验证。为 Windows 做的处理：`RMSKIN.ini` 写成带 BOM 的 UTF-16 LE、CRLF 换行；文件名以 Unicode NFC 形式存储，并设置 ZIP 的
+  UTF-8 标志；压缩包中没有 `__MACOSX` 文件夹或其他 Mac 元数据。“隐藏”指以 `.` 开头的名称、Windows 资源管理器的
+  `desktop.ini` / `Thumbs.db`，以及 Finder 中被隐藏的项目；符号链接不会打包，打包完成后会列出。最低 Rainmeter 版本默认 5.0，
+  即 Deskset 实现的皮肤功能所对应的版本；不写最低 Windows 版本（Rainmeter 5.0 已移除该选项）。Windows 插件是 32 位还是 64 位，
+  从 DLL 的 PE 头读取（也识别 `x86` / `x64` 文件夹）。名称、作者和版本为空时，会用文件夹名和第一个皮肤的 `[Metadata]`
+  填写，“Load skin”默认选这个皮肤（取舍判断）。“Load previous”保存在 Deskset 的偏好设置中，每个包名一条，最多 20 条。
+- **原因：** Windows 读取 INI 文件时只认 UTF-16 或本机 ANSI 代码页；没有 UTF-8 标志的 ZIP 文件名会被解压工具按旧代码页解读；
+  macOS 可能给出分解形式的文件名，也可能有 Windows 无法重建的链接。
+- **对皮肤的影响：** 皮肤作者可以在 Mac 上打包。尚待在 Windows 桌面上对照安装结果。
+- **状态：** 模拟实现
 
 #### 根配置、备份与合并皮肤
 - **Windows：** 每个包一个根配置；Backup skins 控制替换时的备份；Merge skins 不删除无关文件，也不备份根配置。

@@ -65,7 +65,7 @@ let covered: [String] = [
     "App/NewSkinWindowController.swift",
     "App/SafeStartController.swift",
     "App/SettingsWindowController.swift",
-    "App/SkinInstallFlow.swift",
+    "App/SkinInstallFlow.swift", "App/SkinPackagerWindowController.swift",
     "App/WindowGeometry.swift",
 ]
 
