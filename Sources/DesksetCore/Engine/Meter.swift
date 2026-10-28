@@ -181,8 +181,6 @@ open class Meter: SkinSection {
                  height: max(frame.height - padding.top - padding.bottom, 0))
     }
 
-    public var hasMouseActions: Bool { !mouseActions.isEmpty }
-
     /// The action to run for `kind`: nil when not defined or cleared (the event passes through to meters / the skin
     /// behind), `""` when disabled (the event is caught but nothing runs), otherwise the action.
     public func effectiveMouseAction(_ kind: MouseEventKind) -> String? {

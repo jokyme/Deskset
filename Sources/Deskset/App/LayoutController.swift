@@ -279,7 +279,7 @@ final class LayoutController {
         for controller in remaining {
             controller.runtime.send(.pause)
             controller.runtime.whenCaughtUp { [weak self] in
-                guard !finished, let self else { return }
+                guard !finished, self != nil else { return }
                 count -= 1
                 if count == 0 { checkAfterTurn() }
             }

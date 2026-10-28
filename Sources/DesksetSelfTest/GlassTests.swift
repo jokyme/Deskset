@@ -617,19 +617,9 @@ func runGlassTests(_ t: TestRunner) {
         }
         t.equal(S.property("MacGlass", in: S.meterGroups("String"))?.level, .essential, "shown in Box Behind It")
         t.equal(S.property("MacGlassCornerRadius", in: S.meterGroups("Shape"))?.placeholder, "the rectangle's corners")
-        let widget = S.skinGroups
-        t.equal(S.property("MacGlass", in: widget)?.label, "Glass")
-        t.check(S.keys(widget).isSuperset(of: ["macglass", "macglasscornerradius", "macglasstint"]))
         let (skin, _) = try makeSkin(t, "[Rainmeter]\nMacGlass=Regular\nMacGlassTint=10,20,30\n[M]\nMeter=Image\nW=10\nH=10\n")
         skin.update()
         t.equal(skin.glassRegions.first?.tint, RGBA(r: 10, g: 20, b: 30, a: 255), "read by the engine in [Rainmeter]")
-        // The layer list calls a see-through block with glass what it is.
-        let (named, _) = try makeSkin(t, "[T]\nMeter=String\nX=200\nText=Hi\n[G]\nMeter=Image\nX=10\nY=10\nW=130\nH=104\n"
-                                     + "MacGlass=Clear\n[C]\nMeter=Image\nW=4\nH=4\nSolidColor=255,255,255\nMacGlass=Clear\n")
-        named.update()
-        t.equal(named.meter(named: "G").map { LayerNaming.layer($0, in: named).sentence }, "A 130 × 104 glass block.")
-        t.equal(named.meter(named: "C").map { LayerNaming.layer($0, in: named).sentence }, "A 4 × 4 white block.",
-                "a colored block keeps its color's name")
     }
 
     t.suite("Glass: skins without glass never tell the host") {

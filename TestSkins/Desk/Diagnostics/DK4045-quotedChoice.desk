@@ -1,7 +1,0 @@
-// DK4045 quotedChoice
-//== expect: DK4045
-info { name: "T" }
-widget { Text("A").font("headline") }
-//== negative
-info { name: "T" }
-widget { Text("A").font(.headline) }

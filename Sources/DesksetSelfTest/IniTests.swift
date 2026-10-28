@@ -816,4 +816,20 @@ func runIniTests(_ t: TestRunner) {
         t.check(Date().timeIntervalSince(writeStart) < limit, "written in \(Date().timeIntervalSince(writeStart)) s")
         t.check(out.hasSuffix("[S99999]\nA=1\nNew=x\n"))
     }
+
+    t.suite("Ini: section lookups by name follow every change") {
+        var doc = IniDocument.parse("[A]\nk=1\n[b]\nk=2\n")
+        t.equal(doc.indexOfSection(named: "B"), 1, "case-insensitive")
+        doc.sections.insert(IniSection(name: "New"), at: 0)
+        t.equal(doc.indexOfSection(named: "a"), 1, "an insert moves the others")
+        t.equal(doc.indexOfSection(named: "new"), 0)
+        let copy = doc
+        doc.sections[0].name = "Renamed"
+        t.equal(doc.indexOfSection(named: "new"), nil)
+        t.equal(doc.indexOfSection(named: "renamed"), 0)
+        t.equal(copy.indexOfSection(named: "new"), 0, "a copy keeps its own sections")
+        t.equal(doc == copy, false)
+        t.equal(IniDocument(sections: [IniSection(name: "X"), IniSection(name: "x")]).indexOfSection(named: "X"), 0,
+                "the first of two with one name")
+    }
 }

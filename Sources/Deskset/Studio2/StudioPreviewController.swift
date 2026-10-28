@@ -286,12 +286,6 @@ final class StudioPreviewController {
         popover.show(relativeTo: item.bounds, of: item, preferredEdge: .minY)
     }
 
-    func closePreviewPopover() {
-        previewPopover?.close()
-        previewPopover = nil
-        previewPopoverContent = nil
-    }
-
     func showBackdropMenu() {
         let menu = menus.backdropMenu(state, fidelity: fidelity, reduceTransparency: reduceTransparency(),
                                       canShowNeighbours: link?.isOnDesktop ?? false, neighboursShown: showsNeighbours)

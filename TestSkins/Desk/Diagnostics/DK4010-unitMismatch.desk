@@ -1,7 +1,0 @@
-// DK4010 unitMismatch
-//== expect: DK4010
-info { name: "T" }
-widget { Text("{cpu.usage + memory.used}") }
-//== negative
-info { name: "T" }
-widget { Text("{cpu.usage + memory.usage}") }

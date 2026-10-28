@@ -493,7 +493,7 @@ enum SkinWindowModelSelfTests {
                 """
             ])
             guard let c = app.activate(config: "Model\\Host50", file: nil),
-                  let peer = app.activate(config: "Model\\Peer50", file: nil) else {
+                  app.activate(config: "Model\\Peer50", file: nil) != nil else {
                 return t.check(false, "Host50 and Peer50 load")
             }
             defer {

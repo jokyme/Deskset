@@ -7,11 +7,10 @@ import DesksetCore
 /// The files on disk stay the source of truth. Typing edits an in-memory buffer (one per open file, each with its own
 /// undo manager, so ⌘Z here undoes typing only); the buffer is *committed* — handed to `onCommit`, which writes it
 /// as one undoable editor step and refreshes the skin — after `idleCommitDelay` without typing, on ⌘S, when the text
-/// view loses focus or its window stops being key, and before another file is shown. Before that, once typing pauses
-/// for `typedTextDelay`, the typed text is handed to `onTypedText` (the Studio shows it on its canvas, unwritten). After
-/// a visual edit the host hands the view the step's edits (`follow`), which it makes character by character in clean
-/// buffers; after an external change, or when it cannot follow, the host calls `reloadFromDisk`, which updates clean
-/// buffers in place too. Both keep caret and scroll.
+/// view loses focus or its window stops being key, and before another file is shown. After a visual edit the host hands
+/// the view the step's edits (`follow`), which it makes character by character in clean buffers; after an external
+/// change, or when it cannot follow, the host calls `reloadFromDisk`, which updates clean buffers in place too. Both
+/// keep caret and scroll.
 ///
 /// A commit never writes over a change made on disk since the buffer was read: each buffer remembers the bytes its
 /// text is based on, and a commit that finds other bytes in the file asks whether to keep the typed edits (written
@@ -37,8 +36,8 @@ final class CodeEditorView: NSView {
     /// the next trigger). When nil, the view writes the file itself. Calling `commitNow()` from inside is harmless.
     ///
     /// `url` identifies the buffer (standardized, as passed to `open`); a symlink in it is *not* resolved. Write to
-    /// `CodeDocument.writeTarget(for: url)` (or through `IniWriter` / `EditorFileChange`, which resolve too), so a
-    /// skin file linked in from elsewhere gets the edit instead of losing its link.
+    /// `CodeDocument.writeTarget(for: url)` (or through `IniWriter`, which resolves it too), so a skin file linked in
+    /// from elsewhere gets the edit instead of losing its link.
     var onCommit: ((URL, String) -> Bool)?
     /// The caret came to rest in a section after a user move (click, arrow keys, typing, the section pop-up): the
     /// file and the section name (nil before the first header). Never called for API changes.
@@ -59,11 +58,6 @@ final class CodeEditorView: NSView {
 
     enum DiskConflictChoice { case keepEdits, takeDisk, decideLater }
 
-    /// Typing paused for `typedTextDelay` (not committed yet: that waits for `idleCommitDelay`): the buffer's text, for
-    /// the host to show before it is written (the Studio's canvas); nil when the buffer holds no typing any more — typed
-    /// back, committed, discarded, or the file's text taken — after the host was shown some.
-    var onTypedText: ((URL, String?) -> Void)?
-
     /// Reads a file's bytes: the disk by default. The skin studio reads its editing session's text instead (the truth
     /// the disk follows), so the buffers compare with — and re-read — what the Studio's instance of the widget shows.
     var readData: (URL) throws -> Data = { try Data(contentsOf: $0) }
@@ -72,10 +66,6 @@ final class CodeEditorView: NSView {
     /// How long typing must pause before the buffer is committed (self-tests set it; the idle commit can also be
     /// fired at once with `fireIdleCommit`).
     var idleCommitDelay: TimeInterval = CodeEditorView.defaultIdleCommitDelay
-    static let defaultTypedTextDelay: TimeInterval = 0.15
-    /// How long typing must pause before the typed text is reported (`onTypedText`; self-tests set it, or fire it at once
-    /// with `fireTypedText`).
-    var typedTextDelay: TimeInterval = CodeEditorView.defaultTypedTextDelay
     static let defaultCaretRestDelay: TimeInterval = 0.15
     /// How long the caret must rest before its section is reported (self-tests set it; `fireCaretRest` reports at
     /// once).
@@ -137,9 +127,6 @@ final class CodeEditorView: NSView {
     /// The buffer being handed to `onCommit` (or written), during the call.
     private var committingBuffer: FileBuffer?
     private var commitTimer: Timer?
-    private var typedTimer: Timer?
-    /// The files whose typed text the host was shown (`onTypedText`) and not yet told is gone.
-    private var typedShown: Set<URL> = []
     private var caretTimer: Timer?
     /// Whether the pending caret rest was caused by typing (a rest in the same section is then not reported again).
     private var caretMoveFromTyping = false
@@ -180,7 +167,6 @@ final class CodeEditorView: NSView {
 
     deinit {
         commitTimer?.invalidate()
-        typedTimer?.invalidate()
         caretTimer?.invalidate()
         windowObservers.forEach(NotificationCenter.default.removeObserver)
         NotificationCenter.default.removeObserver(self)
@@ -264,7 +250,7 @@ final class CodeEditorView: NSView {
         sectionPopUp.setAccessibilityLabel("Section")
         sectionPopUp.menu?.delegate = self
         sectionPopUp.addItem(withTitle: "No Section")
-        let chevron = NSImageView(image: EditorStyle.image("chevron.right", size: 9, weight: .semibold) ?? NSImage())
+        let chevron = NSImageView(image: EditorStyle.image("chevron.right", size: 9, weight: .semibold))
         chevron.contentTintColor = .tertiaryLabelColor
         statusLabel.alignment = .right
         statusLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -430,8 +416,6 @@ final class CodeEditorView: NSView {
     func discardUncommittedChanges() {
         commitTimer?.invalidate()
         commitTimer = nil
-        typedTimer?.invalidate()
-        typedTimer = nil
         apiChange {
             for buffer in buffers where buffer.isDirty {
                 // Re-read: the disk may have changed, and a refused commit may have switched the encoding already.
@@ -803,7 +787,6 @@ final class CodeEditorView: NSView {
             commitTimer?.invalidate()
             commitTimer = nil
         }
-        defer { if committingBuffer == nil { reportCleanBuffers() } }
         guard buffer.isDirty else { return true }
         // No nested commits: the host (committing dirty code before its own edit), its refresh, or the window
         // resigning key behind the conversion alert may ask for one while this one runs. For the same buffer that is
@@ -852,8 +835,6 @@ final class CodeEditorView: NSView {
             buffer.conflictPostponed = false
             let now = buffer === current ? textView.string : buffer.text
             buffer.isDirty = !(now as NSString).isEqual(to: text)
-            // The committed text is what the host shows now.
-            if !buffer.isDirty, buffer === current { typedTimer?.invalidate() }
         }
         updateJumpBar()
         return ok
@@ -938,56 +919,6 @@ final class CodeEditorView: NSView {
         guard let timer = commitTimer, timer.isValid else { return false }
         timer.fire()
         return true
-    }
-
-    /// Reports the pending typed text now (self-tests: no waiting on the clock). False when none was pending.
-    @discardableResult
-    func fireTypedText() -> Bool {
-        guard let timer = typedTimer, timer.isValid else { return false }
-        timer.fire()
-        return true
-    }
-
-    /// When the pending typed text is due (nil: none pending), for self-tests.
-    var typedTextDate: Date? { typedTimer.flatMap { $0.isValid ? $0.fireDate : nil } }
-
-    private func scheduleTypedText() {
-        typedTimer?.invalidate()
-        guard onTypedText != nil else { return }
-        let timer = Timer(timeInterval: typedTextDelay, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            self.typedTimer = nil
-            // Not in the middle of an input-method composition: its marked text is not typed yet.
-            if self.textView.hasMarkedText() {
-                self.scheduleTypedText()
-                return
-            }
-            self.reportTypedText()
-        }
-        RunLoop.main.add(timer, forMode: .default)
-        typedTimer = timer
-    }
-
-    /// Tells the host what the shown buffer holds now: its typed text, or — typed back to the file's text — none.
-    private func reportTypedText() {
-        guard let buffer = current else { return }
-        if buffer.isDirty {
-            typedShown.insert(buffer.url)
-            onTypedText?(buffer.url, textView.string)
-        } else {
-            reportCleanBuffers()
-        }
-    }
-
-    /// Tells the host that buffers whose typed text it was shown hold none any more (committed, discarded, typed back,
-    /// the file's text taken, or closed).
-    private func reportCleanBuffers() {
-        guard !typedShown.isEmpty else { return }
-        for url in typedShown.sorted(by: { $0.path < $1.path }) {
-            if let buffer = buffer(for: url), buffer.isDirty { continue }
-            typedShown.remove(url)
-            onTypedText?(url, nil)
-        }
     }
 
     private func scheduleCommit() {
@@ -1084,7 +1015,6 @@ final class CodeEditorView: NSView {
         flushHighlight()
         apiDepth -= 1
         if apiDepth == 0 {
-            reportCleanBuffers()
             // The next user move is reported even in the same section: the host may have selected something else.
             lastReport = nil
             updateSectionTitle(caretSection)
@@ -1324,7 +1254,6 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
         buffer.isDirty = !(textView.textStorage?.mutableString.isEqual(to: buffer.document.text) ?? true)
         if buffer.isDirty != wasDirty { updateJumpBar() }
         if buffer.isDirty { scheduleCommit() } else { commitTimer?.invalidate() }
-        if buffer.isDirty || typedShown.contains(buffer.url) { scheduleTypedText() } else { typedTimer?.invalidate() }
         ruler.updateThickness(lineCount: analysis.lineCount)
         ruler.needsDisplay = true
     }

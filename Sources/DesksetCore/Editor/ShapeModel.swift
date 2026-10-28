@@ -173,19 +173,6 @@ public struct ShapeSpec {
             }
         }
 
-        /// A kind in plain words, with its article: "a rectangle", "a circle", "a path".
-        public static func plainName(_ kind: Kind) -> String {
-            switch kind {
-            case .rectangle: return "a rectangle"
-            case .ellipse: return "a circle"
-            case .line: return "a line"
-            case .arc: return "an arc"
-            case .curve: return "a curve"
-            case .path, .path1: return "a path"
-            case .combine: return "combined shapes"
-            }
-        }
-
         /// SF Symbol for the type pop-up.
         public var symbol: String {
             switch self {
@@ -244,11 +231,6 @@ public struct ShapeSpec {
             case .color: return nil
             case .linearGradient(let n, _), .radialGradient(let n, _): return n
             }
-        }
-
-        public var isRadial: Bool {
-            if case .radialGradient = self { return true }
-            return false
         }
     }
 
@@ -672,16 +654,6 @@ public struct ShapeSpec {
             self.sweepDirection = sweepDirection; self.arcSize = arcSize; self.shapeEnding = shapeEnding
         }
 
-        /// The radius the engine uses when none is given: half the distance from start to end (nil with variables).
-        public var defaultRadius: Double? {
-            guard let x1 = ShapeText.number(startX.isEmpty ? "0" : startX), let y1 = ShapeText.number(startY.isEmpty ? "0" : startY),
-                  let x2 = ShapeText.number(endX.isEmpty ? "0" : endX), let y2 = ShapeText.number(endY.isEmpty ? "0" : endY)
-            else { return nil }
-            return ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).squareRoot() / 2
-        }
-        /// Rotation in degrees with the default applied.
-        public var effectiveRotation: String { rotation ?? "0" }
-
         public var isCounterClockwise: Bool {
             get { ShapeSpec.flag(sweepDirection) }
             set { sweepDirection = newValue ? "1" : nil }
@@ -897,10 +869,7 @@ public struct ShapeSpec {
     public mutating func setStroke(_ paint: Paint?) { set(.stroke, paint.map { .stroke($0) }) }
     public mutating func setStrokeWidth(_ width: String?) { set(.strokeWidth, width.map { .strokeWidth($0) }) }
     public mutating func setStrokeDashes(_ dashes: [String]?) { set(.strokeDashes, dashes.map { .strokeDashes($0) }) }
-    public mutating func setStrokeDashOffset(_ offset: String?) { set(.strokeDashOffset, offset.map { .strokeDashOffset($0) }) }
-    public mutating func setStrokeDashCap(_ cap: ShapeLineCap?) { set(.strokeDashCap, cap.map { .strokeDashCap($0) }) }
     public mutating func setStrokeStartCap(_ cap: ShapeLineCap?) { set(.strokeStartCap, cap.map { .strokeStartCap($0) }) }
-    public mutating func setStrokeEndCap(_ cap: ShapeLineCap?) { set(.strokeEndCap, cap.map { .strokeEndCap($0) }) }
     public mutating func setStrokeLineJoin(_ join: ShapeLineJoin?, miterLimit: String? = nil) {
         set(.strokeLineJoin, join.map { .strokeLineJoin($0, miterLimit: miterLimit) })
     }
@@ -911,11 +880,7 @@ public struct ShapeSpec {
     public mutating func setScale(_ x: String?, _ y: String? = nil, anchorX: String? = nil, anchorY: String? = nil) {
         set(.scale, x.map { .scale(x: $0, y: y, anchorX: anchorX, anchorY: anchorY) })
     }
-    public mutating func setSkew(_ x: String?, _ y: String? = nil, anchorX: String? = nil, anchorY: String? = nil) {
-        set(.skew, x.map { .skew(x: $0, y: y, anchorX: anchorX, anchorY: anchorY) })
-    }
     public mutating func setOffset(_ x: String?, _ y: String? = nil) { set(.offset, x.map { .offset(x: $0, y: y) }) }
-    public mutating func setTransformOrder(_ order: [TransformKind]?) { set(.transformOrder, order.map { .transformOrder($0) }) }
 
     // MARK: Changing the type
 
@@ -1296,7 +1261,6 @@ public struct GradientSpec: Equatable {
         }
 
         public var rgba: RGBA? { OptionValue.color(color) }
-        public var positionValue: Double? { ShapeText.number(position) }
     }
 
     /// Linear: `[Angle]`; radial: `[CenterX, CenterY, OffsetX, OffsetY, RadiusX, RadiusY]` (trailing ones optional).

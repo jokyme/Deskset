@@ -129,9 +129,6 @@ timer.Timer	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timin
 timer.executorTimer	Sources/Deskset/App/EditingSession.swift	1	the update timer, on the executor
 timer.runLoopAdd	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timing and debounces
 
-wall.Date()	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's clock; DesksetCore has no such defaults
-zone.inferredCurrent	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's time zone and locale; DesksetCore has no such defaults
-
 zone.localizedText	Sources/Deskset/App/ManageModel.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.mainHop	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -394,8 +391,6 @@ event.notification	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window
 timer.Timer	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPanes.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
-timer.animation	Sources/Deskset/Studio2/StudioPreviewBar.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
-
 timer.Timer	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 timer.runLoopAdd	Sources/Deskset/Studio2/StudioPreviewController.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
@@ -448,16 +443,11 @@ effect.iniWrite	Sources/DesksetCore/Editor/EditorModel.swift	*	Skin Studio editi
 effect.fileWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
 effect.iniWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
-effect.fileWrite	Sources/DesksetCore/Editor/EditorSupport.swift	*	Skin Studio editing (Core half); never runs inside a skin
-
-zone.implicitFormatter	Sources/DesksetCore/Editor/FormatPresets.swift	*	Skin Studio editing (Core half); never runs inside a skin
-zone.inferredCurrent	Sources/DesksetCore/Editor/FormatPresets.swift	*	Skin Studio editing (Core half); never runs inside a skin
-
 effect.fileWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
 effect.iniWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
-effect.fileWrite	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
-random.hashSeed	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
+effect.fileWrite	Sources/DesksetCore/Editor/SharedFiles.swift	*	Skin Studio editing (Core half); never runs inside a skin
+random.hashSeed	Sources/DesksetCore/Editor/SharedFiles.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
 background.dispatch	Sources/DesksetCore/Engine/BackgroundWork.swift	1	the background seam itself: a job done in one go on its queue (live mode; a fake stands in for it in virtual time)
 background.hop	Sources/DesksetCore/Engine/BackgroundWork.swift	2	the background seam itself: in live mode results come back through SkinHop, as before; backgroundHop gives services the same way back

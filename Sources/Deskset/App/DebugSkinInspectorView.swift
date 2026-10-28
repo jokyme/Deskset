@@ -577,7 +577,6 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
 
     var testTable: NSTableView { table }
     var testMenu: NSMenu { contextMenu }
-    var testConfigPopup: NSPopUpButton { configPopup }
     var testFilterField: NSSearchField { filterField }
     var testRefreshCheck: NSButton { refreshCheck }
     var testJumpPopup: NSPopUpButton { jumpPopup }

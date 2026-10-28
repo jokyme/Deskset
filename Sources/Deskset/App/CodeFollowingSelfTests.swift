@@ -18,15 +18,6 @@ enum CodeFollowingSelfTests {
         return condition()
     }
 
-    /// Types `text` over the first `old` in the code pane, as keyboard input does.
-    static func typeOver(_ code: CodeEditorView, _ old: String, with text: String) -> Bool {
-        let range = (code.text as NSString).range(of: old)
-        guard range.location != NSNotFound else { return false }
-        code.textView.setSelectedRange(range)
-        code.textView.insertText(text, replacementRange: range)
-        return true
-    }
-
     static func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
 
     /// The colors of the shown text, run by run (the highlighter's temporary attributes), each color by identity.
@@ -43,17 +34,6 @@ enum CodeFollowingSelfTests {
             i = max(NSMaxRange(range), i + 1)
         }
         return runs
-    }
-
-    /// The text of the line in the middle of the visible part of the shown file.
-    static func middleLine(_ e: CodeEditorView) -> String {
-        guard let layout = e.textView.layoutManager, let container = e.textView.textContainer else { return "" }
-        let visible = e.scrollView.contentView.bounds
-        let point = NSPoint(x: 20, y: visible.midY - e.textView.textContainerOrigin.y)
-        let glyph = layout.glyphIndex(for: point, in: container)
-        let index = layout.characterIndexForGlyph(at: glyph)
-        let document = CodeDocument(text: e.text)
-        return (e.text as NSString).substring(with: document.range(ofLine: document.line(containingOffset: index)))
     }
 
     /// A view that read `text` afresh: what a full read shows.

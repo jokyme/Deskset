@@ -67,7 +67,6 @@ enum NewSkinEditorPreflightSelfTests {
 
     private static func slowTimers(_ editor: CodeEditorView) {
         editor.idleCommitDelay = 60
-        editor.typedTextDelay = 60
         editor.caretRestDelay = 60
     }
 

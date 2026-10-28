@@ -1,8 +1,0 @@
-// DK8504 textTooLong
-//== expect: DK8504
-//== generate: longText
-info { name: "T" }
-
-//== negative
-info { name: "T" }
-widget { Text("A") }

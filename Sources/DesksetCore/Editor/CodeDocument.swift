@@ -131,9 +131,9 @@ public struct CodeDocument: Equatable {
     /// Writes `text` to `url` (atomically) in this document's encoding; an ANSI document that cannot hold a
     /// character of `text` is converted to Unicode first (`convertToUnicode`), as `IniWriter` does.
     ///
-    /// A symlink is followed and its target updated (see `writeTarget(for:)`), like `IniWriter` and
-    /// `EditorFileChange`: an atomic write to the link itself would replace it with a regular file and leave the
-    /// real file — e.g. in a git or synced folder the skin is linked from — silently stale.
+    /// A symlink is followed and its target updated (see `writeTarget(for:)`), like `IniWriter`: an atomic write to the
+    /// link itself would replace it with a regular file and leave the real file — e.g. in a git or synced folder the
+    /// skin is linked from — silently stale.
     public mutating func write(_ text: String, to url: URL) throws {
         if !canEncode(text) { convertToUnicode() }
         let bytes = data(for: text) ?? Data(text.utf8)

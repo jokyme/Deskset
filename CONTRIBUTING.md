@@ -61,7 +61,7 @@ bash scripts/build-app.sh            # build/Deskset.app
   it in `Measure.liveInputs`, so that a run in virtual time reports it when it is not faked. Iterate in a defined
   order where the order reaches the skin (the skin's meters, sorted keys), never a set's or dictionary's own: Swift
   seeds it at random in every process. `DesksetCore`'s formatting takes the clock, time zone and locale as arguments
-  (the engine passes the skin's; the app's UI uses `MacTimeFormatting`). `swift scripts/check-seams.swift --check`
+  (the engine passes the skin's). `swift scripts/check-seams.swift --check`
   (run by CI, a few seconds) fails on a new direct `Date()`, `.random`, timer, queue, thread, `async` hand-over,
   iteration in hash order or outside effect in the engine, plugins and services; route it through a seam, or add it
   to `scripts/seams-allowlist.tsv` with a note saying why. The list only shrinks: the check also fails when an

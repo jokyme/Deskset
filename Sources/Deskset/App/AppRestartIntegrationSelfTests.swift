@@ -256,9 +256,7 @@ enum AppRestartIntegrationSelfTests {
             throw CocoaError(.fileReadUnknown)
         }
         window.codeView.onCommit = nil
-        window.codeView.onTypedText = nil
         window.codeView.idleCommitDelay = 60
-        window.codeView.typedTextDelay = 60
         t.atSuiteEnd {
             window.codeView.onCommit = nil
             window.codeView.onEncodingConversion = nil

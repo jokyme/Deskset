@@ -47,54 +47,6 @@ func runEditorTests(_ t: TestRunner) {
         t.equal(OptionValue.position(GeometryEdit.offset("(4 * 2)R", by: 2)), PositionValue(value: 10, mode: .relativeToPreviousEnd))
     }
 
-    t.suite("Editor: snapping") {
-        let skin = SkinRect(x: 0, y: 0, width: 200, height: 100)
-        let other = SkinRect(x: 50, y: 40, width: 30, height: 10)
-        var r = EditorSnapping.snap(SkinRect(x: 52, y: 70, width: 20, height: 10), to: [skin, other], threshold: 4)
-        t.equal(r.dx, -2, "left edges align")
-        t.equal(r.guides.first, EditorSnapping.Guide(axis: .vertical, position: 50))
-        r = EditorSnapping.snap(SkinRect(x: 89, y: 43, width: 20, height: 10), to: [skin, other], threshold: 4)
-        t.equal(r.dx, 1, "center 99 snaps to the skin center 100")
-        t.equal(r.dy, 2, "nearest line wins (middle 48 → 50)")
-        r = EditorSnapping.snap(SkinRect(x: 120, y: 20, width: 10, height: 10), to: [skin, other], threshold: 4)
-        t.equal(r, EditorSnapping.Result(dx: 0, dy: 0, guides: []))
-    }
-
-    t.suite("Editor: colors keep their notation") {
-        let c = RGBA(r: 255, g: 128, b: 0, a: 255)
-        t.equal(ColorText.format(c, like: "10,20,30"), "255,128,0")
-        t.equal(ColorText.format(c, like: "10,20,30,255"), "255,128,0,255")
-        t.equal(ColorText.format(RGBA(r: 255, g: 128, b: 0, a: 100), like: "10,20,30"), "255,128,0,100")
-        t.equal(ColorText.format(c, like: "0A141E"), "FF8000")
-        t.equal(ColorText.format(c, like: "0a141e80"), "ff8000ff")
-        t.equal(ColorText.format(c, like: nil), "255,128,0")
-        t.equal(ColorText.format(RGBA(r: 300, g: -4, b: 12.6, a: 255), like: "1,1,1"), "255,0,13")
-    }
-
-    t.suite("Editor: undo restores bytes only when unchanged elsewhere") {
-        let dir = t.temporaryDirectory("editor-undo")
-        let file = dir.appendingPathComponent("Skin.ini")
-        try "[M]\r\nX=1\r\n".write(to: file, atomically: true, encoding: .utf8)
-        let changes = try EditorFileChange.record([file, file]) {
-            try IniWriter.writeValue("5", key: "X", section: "M", fileURL: file)
-        }
-        t.equal(changes.count, 1)
-        try EditorFileChange.restore(changes, undo: true)
-        t.equal(try String(contentsOf: file, encoding: .utf8), "[M]\r\nX=1\r\n")
-        try EditorFileChange.restore(changes, undo: false)
-        t.equal(try String(contentsOf: file, encoding: .utf8), "[M]\r\nX=5\r\n")
-        try "[M]\r\nX=9\r\n".write(to: file, atomically: true, encoding: .utf8)
-        do {
-            try EditorFileChange.restore(changes, undo: true)
-            t.check(false, "undo over an external change must fail")
-        } catch let failure as EditorFileChange.Failure {
-            t.equal(failure, .changedElsewhere(file.resolvingSymlinksInPath()))
-        }
-        t.equal(try String(contentsOf: file, encoding: .utf8), "[M]\r\nX=9\r\n", "nothing overwritten")
-        let none = EditorFileChange.record([file]) {}
-        t.equal(none.count, 0)
-    }
-
     t.suite("Editor: preview and own-section writes") {
         let ini = """
         [Rainmeter]
@@ -419,6 +371,5 @@ func runEditorSchemaTests(_ t: TestRunner) {
         t.equal(EditorSchema.describeMeasure(type: "SwapMemory", invert: true).title, "Memory and swap free")
         t.equal(EditorSchema.describeMeasure(type: "Plugin", plugin: "PowerPlugin").title, "Battery")
         t.check(EditorSchema.measureGroups("time").first?.properties.contains { $0.key == "Format" } == true)
-        t.check(EditorSchema.keys(EditorSchema.skinGroups).contains("update"))
     }
 }

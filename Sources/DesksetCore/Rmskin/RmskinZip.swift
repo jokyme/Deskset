@@ -205,7 +205,7 @@ enum RmskinZip {
     @discardableResult
     static func markNamesUTF8(_ data: inout Data) throws -> Int {
         _ = try scanCentralDirectory(data)
-        return try data.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) -> Int in
+        return data.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) -> Int in
             let n = b.count
             func u16(_ o: Int) -> UInt64 { UInt64(b[o]) | UInt64(b[o + 1]) << 8 }
             func u32(_ o: Int) -> UInt64 { u16(o) | u16(o + 2) << 16 }

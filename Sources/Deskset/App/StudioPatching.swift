@@ -24,8 +24,6 @@ extension EditingSession {
         guard let skin = studioSkin else { return nil }
         reloadPhases.reset()
         let edits = SourceTextEdits(undo ? changes.reversed().map(\.reversed) : changes, in: buffers)
-        // Typed code in these files was committed with the step, or is gone: the instance reads the text in memory.
-        studioSources.forget(changes.map(\.file))
         // A file the instance reads another way (a script, a data file) is read again only by a load.
         let sources = Set(skin.sourceFiles.map(SourceFileID.init))
         if let other = changes.first(where: { !sources.contains($0.file) }) {
@@ -34,7 +32,7 @@ extension EditingSession {
         }
         let stamps = diskSync.modificationDates()
         let result = reloadPhases.measure("studio.patch") {
-            StudioSignposts.interval("studio.patch") { skin.patch(sources: studioSources) }
+            StudioSignposts.interval("studio.patch") { skin.patch(sources: buffers) }
         }
         switch result {
         case .needsReload(let reason):

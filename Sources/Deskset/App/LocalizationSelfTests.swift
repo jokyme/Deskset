@@ -163,7 +163,7 @@ enum LocalizationSelfTests {
             visit(menu: status, "menu bar menu")
             let skinMenu = app.skinMenu(for: focus, includeCustomItems: false)
             // The first item is the skin's own name.
-            skinMenu.items.first.map { data.insert($0.title) }
+            if let first = skinMenu.items.first { data.insert(first.title) }
             visit(menu: skinMenu, "skin menu")
 
             // Fake editors: the icon service is never asked (IconServiceGuard).

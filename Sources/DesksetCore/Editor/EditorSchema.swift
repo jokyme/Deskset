@@ -2027,7 +2027,7 @@ extension EditorSchema {
                                      "plugin", "winding"]
 
     /// The first engine word or code in `text` ("skin", "#Accent#", "120,200,255,255", ".inc", "f(x)", "[MeasureCPU]"),
-    /// nil when it reads as plain words. The one G3 check (the widget page's `WidgetPresets.isEngineText` asks it too).
+    /// nil when it reads as plain words. The one G3 check.
     /// The widget's own words, quoted as the editor quotes them (“Audio”), are the author's and are not checked.
     public static func engineWord(in text: String) -> String? {
         let text = text.replacingOccurrences(of: #"“[^”]*”"#, with: "“”", options: .regularExpression)

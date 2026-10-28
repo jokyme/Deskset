@@ -585,9 +585,4 @@ extension Skin {
 
     /// Lowercased names of every section (for picking new names).
     public var sectionNames: Set<String> { Set(document.sections.map { $0.name.lowercased() }) }
-
-    /// Lowercased `[Variables]` names.
-    public var variableNames: Set<String> {
-        Set((document.section(named: "Variables")?.entries ?? []).map { $0.key.lowercased() })
-    }
 }
