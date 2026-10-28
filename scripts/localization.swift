@@ -674,8 +674,10 @@ func languageFileProblems(uses: [Use]) -> [Problem] {
     guard let english = readStrings(enPath) else { return [Problem(file: enPath, line: 0, message: "missing")] }
     if !appleReads(enPath, english) { problems.append(Problem(file: enPath, line: 0, message: "macOS cannot read it")) }
     let englishKeys = english.entries.map(\.key)
+    let englishPlurals = readPlurals("en")
+    let allKeys = Set(englishKeys).union(englishPlurals.keys)
     let used = Set(uses.map(\.key))
-    for use in uses where !englishKeys.contains(use.key) {
+    for use in uses where !allKeys.contains(use.key) {
         problems.append(Problem(file: use.file, line: use.line,
                                 message: "\"\(use.key)\" is not in \(enPath) (run: swift scripts/localization.swift sync)"))
     }
@@ -685,11 +687,14 @@ func languageFileProblems(uses: [Use]) -> [Problem] {
     for e in english.entries where e.value != shownText(e.key) {
         problems.append(Problem(file: enPath, line: 0, message: "\"\(e.key)\": the English text must equal its key"))
     }
-    let englishPlurals = readPlurals("en")
     for key in englishPlurals.keys where !used.contains(key) {
         problems.append(Problem(file: pluralPath("en"), line: 0, message: "\"\(key)\" is no longer used"))
     }
-    if Set(englishKeys) != used { return problems }   // sync first; the languages are compared with en's keys
+    for key in englishKeys where englishPlurals[key] != nil {
+        problems.append(Problem(file: enPath, line: 0,
+                                message: "\"\(key)\" has plural forms: it belongs in the .stringsdict only (run sync)"))
+    }
+    if allKeys != used { return problems }   // sync first; the languages are compared with en's keys
     let pluralKeys = Set(englishPlurals.keys)
     for language in languages {
         let path = stringsPath(language, "Localizable")
@@ -812,6 +817,14 @@ func languageListProblems() -> [Problem] {
         : [Problem(file: file, line: 0, message: "Localization.languages differs from scripts/localization.swift")]
 }
 
+/// The texts `export` numbers and `import` reads back: for Localizable every key the code uses in en's order (plural
+/// keys included, though en.lproj keeps them in the .stringsdict only), for InfoPlist en's entries.
+func exportedTexts() -> [Entry] {
+    guard table == "Localizable" else { return readStrings(stringsPath("en", table))?.entries ?? [] }
+    return englishEntries(scanSources().uses, existing: readStrings(stringsPath("en", "Localizable")),
+                          plurals: Set(readPlurals("en").keys))
+}
+
 // MARK: - TSV
 
 func escapeTSV(_ s: String) -> String {
@@ -851,7 +864,9 @@ case "sync":
     let plurals = readPlurals("en")
     let english = englishEntries(scanned.uses, existing: readStrings(stringsPath("en", "Localizable")),
                                  plurals: Set(plurals.keys))
-    writeStrings(StringsFile(status: nil, entries: english), language: "en", table: "Localizable")
+    // A plural key is only in the .stringsdict, where its forms are.
+    writeStrings(StringsFile(status: nil, entries: english.filter { plurals[$0.key] == nil }), language: "en",
+                 table: "Localizable")
     let used = Set(english.map(\.key))
     writePlurals(plurals.filter { used.contains($0.key) }, language: "en")
     let enInfo = readStrings(stringsPath("en", "InfoPlist"))?.entries ?? []
@@ -882,7 +897,7 @@ case "report":
 
 case "export":
     guard let directory = commandArguments.first else { fail(usage: "export needs a directory") }
-    let english = readStrings(stringsPath("en", table))?.entries ?? []
+    let english = exportedTexts()
     let pluralKeys = table == "Localizable" ? Set(readPlurals("en").keys) : []
     var lines: [String] = []
     for (n, e) in english.enumerated() {
@@ -898,7 +913,7 @@ case "import":
     guard let source = try? String(contentsOfFile: directory + "/source.tsv", encoding: .utf8) else {
         fail(usage: "cannot read \(directory)/source.tsv")
     }
-    let english = readStrings(stringsPath("en", table))?.entries ?? []
+    let english = exportedTexts()
     // The numbers count en's entries; source.tsv's English must still match (nothing changed since the export).
     for row in source.split(separator: "\n") {
         let fields = row.split(separator: "\t", omittingEmptySubsequences: false)
