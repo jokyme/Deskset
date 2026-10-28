@@ -1508,7 +1508,7 @@
 "The update server returned invalid release information. Please try again later." = "Päivityspalvelin palautti virheelliset versiotiedot. Yritä myöhemmin uudelleen.";
 
 /* App updates: message (an error or a status). */
-"This release has no verified download for this Mac. You can download it from GitHub instead." = "Tällä versiolla ei ole tarkistettua latausta tähän Maciin. Voit ladata sen sen sijaan GitHubista.";
+"This release has no verified download for this Mac. You can download it from GitHub instead." = "Tällä versiolla ei ole tarkistettua latausta tähän Maciin. Voit sen sijaan ladata version GitHubista.";
 
 /* App updates: message (an error or a status). */
 "The download server returned an invalid response." = "Latauspalvelin palautti virheellisen vastauksen.";

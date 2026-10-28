@@ -390,7 +390,7 @@
 
 /* Manage window: tooltip.
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
-"Hold Control to change zoom by 10 percentage points." = "Control 키를 누른 채로 있으면 10%포인트씩 변경됩니다.";
+"Hold Control to change zoom by 10 percentage points." = "Control 키를 누른 채 화살표를 클릭하면 10퍼센트포인트씩 변경됩니다.";
 
 /* Manage window: checkbox. */
 "Save as empty layout" = "빈 레이아웃으로 저장";

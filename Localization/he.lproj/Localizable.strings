@@ -1149,7 +1149,7 @@
 "Skins in Deskset’s Skins folder are already installed, so there is nothing to copy. If a skin placed there is missing from the list, choose Refresh All in the Manage window." = "הסקינים שבתיקיית הסקינים של Deskset כבר מותקנים, כך שאין מה להעתיק. אם סקין ששמת שם חסר ברשימה, בחר ”רענן הכל“ בחלון ”ניהול“.";
 
 /* Skin installer: message (an error or a status). */
-"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "מכיל כמה חבילות סקינים (%@). פתח אותן אחת אחת (אם זה ארכיון, חלץ אותו קודם).";
+"It contains several skin packages (%@). Open them one at a time (extract the archive first when it is one)." = "מכיל כמה חבילות סקינים (%@). פתח אותן בזו אחר זו (אם זה ארכיון, חלץ אותו קודם).";
 
 /* Skin installer: label.
    Note: Above the list of skin folders in the package. */
