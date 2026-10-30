@@ -65,6 +65,24 @@ jobs:
       - name: App bundle
         run: bash scripts/build-app.sh --arch arm64
 
+  # The next Xcode, before it reaches the macos-* images (Swift 6.4 changed SwiftPM's default build system, #61).
+  # The image is a preview: a failure here is a heads-up, not one of main's required checks.
+  bundle-next:
+    name: App bundle (Xcode 27 preview)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: App bundle
+        run: bash scripts/build-app.sh --arch arm64
+
   intel:
     name: Build and test (x86_64)
     runs-on: macos-26-intel

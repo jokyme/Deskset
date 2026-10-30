@@ -6,6 +6,8 @@
 #   scripts/build-app.sh --arch arm64 --package
 #                                              also writes dist/Deskset-<version>-<arch>.zip and .dmg
 #   scripts/build-app.sh --plist OUT.plist     only writes the Info.plist (checked by `Deskset --self-test plist`)
+#   scripts/build-app.sh --fast                build/Deskset.app compiled file by file: quicker on a many-core Mac,
+#                                              a slower app (local work only; see "--fast" below)
 #
 # Options: --version X.Y.Z (default: DesksetCore's version), --build-number N (default: the commit count).
 # Signing: ad-hoc by default. With DESKSET_SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" the app is signed
@@ -19,10 +21,13 @@ cd "$(dirname "$0")/.."
 APP_NAME="Deskset"
 LANGUAGES="ar bg cs da de el es et fi fr he hr hu id it ja ko lt lv ms nb nl pl pt-BR pt-PT ro ru sk sl sr sr-Latn sv th tr uk vi zh-Hans zh-Hant"
 BUNDLE_ID="app.deskset.Deskset"
+# The oldest macOS the app runs on (Package.swift's platform): written to the Info.plist and checked on the binary.
+MIN_SYSTEM_VERSION="13.0"
 VERSION="$(sed -n 's/.*version = "\(.*\)".*/\1/p' Sources/DesksetCore/DesksetCore.swift)"
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 ARCH=""
 PACKAGE=0
+FAST=0
 PLIST_OUT=""
 
 while [[ $# -gt 0 ]]; do
@@ -32,7 +37,8 @@ while [[ $# -gt 0 ]]; do
         --version) VERSION="${2:-}"; shift 2 ;;
         --build-number) BUILD_NUMBER="${2:-}"; shift 2 ;;
         --package) PACKAGE=1; shift ;;
-        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+        --fast) FAST=1; shift ;;
+        -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
         *) echo "unknown option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
 done
@@ -60,7 +66,7 @@ write_plist() {
     <key>CFBundleIconFile</key><string>${APP_NAME}</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
-    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSMinimumSystemVersion</key><string>${MIN_SYSTEM_VERSION}</string>
     <key>LSUIElement</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
@@ -153,9 +159,26 @@ else
 fi
 case "$ARCH" in arm64|x86_64) ;; *) echo "--arch must be arm64 or x86_64" >&2; exit 2 ;; esac
 
-JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-swift build -c release --arch "$ARCH" --product "$APP_NAME" -j "$JOBS" -Xswiftc -no-whole-module-optimization
-BIN="$(swift build -c release --arch "$ARCH" --product "$APP_NAME" --show-bin-path)/$APP_NAME"
+# A release build compiles each module as a whole, SwiftPM's default: the app then spends noticeably less CPU per
+# skin update than a file-by-file build, and both of SwiftPM's build systems produce it. Swift Build, the default
+# build system since Swift 6.4, only builds a release module as a whole, and -no-whole-module-optimization makes it
+# fail looking for DesksetCore-primary.d (#61). --fast asks the older build system, which still compiles file by
+# file, for that build: it parallelizes across cores (about one minute instead of four on a 14-core Mac) at the cost
+# of the slower app, so it is for local work only, and it stops working once SwiftPM removes that build system.
+BUILD_OPTIONS=(-c release --product "$APP_NAME" -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
+if [[ "$FAST" == 1 ]]; then
+    BUILD_OPTIONS+=(--build-system native -Xswiftc -no-whole-module-optimization)
+fi
+swift build "${BUILD_OPTIONS[@]}" --arch "$ARCH"
+BIN="$(swift build "${BUILD_OPTIONS[@]}" --arch "$ARCH" --show-bin-path)/$APP_NAME"
+
+# The binary must run on every macOS the Info.plist admits. Swift 6.2's Swift Build, when selected by hand, raises
+# the binary's minimum to the SDK's macOS (26.0), and dyld would then refuse the app on anything older.
+BIN_MIN_VERSION="$(vtool -show-build "$BIN" | awk '$1 == "minos" { print $2; exit }')"
+if [[ "$BIN_MIN_VERSION" != "$MIN_SYSTEM_VERSION" ]]; then
+    echo "error: $BIN is built for macOS $BIN_MIN_VERSION and later, but the app declares $MIN_SYSTEM_VERSION" >&2
+    exit 1
+fi
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -191,8 +214,8 @@ CREDITS
 # the other architecture may not run on this Mac (no Rosetta), so the icon then comes from a build for this Mac.
 ICON_BIN="$BIN"
 if ! "$ICON_BIN" --help > /dev/null 2>&1; then
-    swift build -c release --product "$APP_NAME" -j "$JOBS" -Xswiftc -no-whole-module-optimization
-    ICON_BIN="$(swift build -c release --product "$APP_NAME" --show-bin-path)/$APP_NAME"
+    swift build "${BUILD_OPTIONS[@]}"
+    ICON_BIN="$(swift build "${BUILD_OPTIONS[@]}" --show-bin-path)/$APP_NAME"
 fi
 ICONSET="build/$APP_NAME-$ARCH.iconset"
 rm -rf "$ICONSET"
