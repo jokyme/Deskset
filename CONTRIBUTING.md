@@ -35,6 +35,7 @@ swift build
 swift run DesksetSelfTest            # engine self-tests (add a suite prefix to run a subset)
 .build/debug/Deskset --self-test     # app self-tests (add a filter to run a subset)
 bash scripts/build-app.sh            # build/Deskset.app
+bash scripts/build-app.sh --fast     # the same, compiled file by file: quicker on a many-core Mac, a slower app
 ```
 
 - The package uses the Swift 5 language mode (`swift-tools-version:5.9`).
