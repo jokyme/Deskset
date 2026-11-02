@@ -1,5 +1,5 @@
 import Foundation
 
 public enum DesksetCore {
-    public static let version = "0.6.1"
+    public static let version = "1.0.0"
 }

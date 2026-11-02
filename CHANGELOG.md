@@ -2,6 +2,44 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 1.0.0
+
+Deskset 1.0 is the first stable release: the complete Rainmeter experience, as it is on Windows, running natively on the Mac. Little changes on the surface since 0.6.1; the version marks that what the 0.x releases built up — the skin engine, the Stationery widgets, the Skin Studio, layouts, in-app updates and 38 languages — is complete enough to rely on.
+
+### Who this release is for, and what comes next
+
+- **1.0.0 is for Rainmeter users coming from Windows.** It gives you the complete Rainmeter experience you know from Windows, with your skins running natively on the Mac.
+- **The releases after it turn to the Mac itself.** The interface, ease of use and how Deskset fits macOS will be refined step by step. If you are a Mac user new to Rainmeter, use the latest release available rather than 1.0.0.
+
+### Deskset 1.0 at a glance
+
+- **Desktop widgets for the Mac.** The bundled Stationery collection: clocks, calendars, weather, system monitors, music controls, a vinyl turntable, an audio spectrum, photos, notes, to-do lists, timers and folder launchers, with light and dark looks, several sizes, and English and Chinese labels.
+- **Runs Rainmeter skins, including Rainmeter 5.0.** Double-click a `.rmskin` package, or open a `.zip` or skin folder with Deskset. Meters (including SVG graphics and TextEdit inputs), measures, formulas, variables, bangs, mouse actions, drag-and-drop, Lua scripts and all but two of Rainmeter's bundled plugins run natively on macOS, along with ten popular third-party plugins. The [compatibility guide](docs/COMPATIBILITY.md) lists every known difference from Windows.
+- **Native and light.** No web views. Each widget is a lightweight desktop panel that sits on the desktop level, with normal windows or always on top, with click-through, edge snapping, fading, zoom and saved positions.
+- **Mac styling, sensors and weather.** Liquid Glass on macOS 26 (a frosted blur on earlier systems), SF Symbols, Apple system fonts and colors that follow Light and Dark Mode; the Mac's temperatures, fan speeds, power draw and processor clocks; weather forecasts from MET Norway and offline sunrise, sunset and moon phase.
+- **Skin Studio and Skin Packager.** Edit a skin with a live preview next to its code, and make `.rmskin` packages on the Mac.
+- **Manage, layouts, updates and debugging.** Saved desktop layouts, favorites, a Debug window, Safe Start, and updates that are downloaded, verified and installed inside Deskset.
+- **38 languages**, with corrections welcome on [Weblate](https://hosted.weblate.org/projects/deskset/).
+
+### Changed and improved
+
+- **A little less processor time.** The released app is built as a whole module again; the 0.5 and 0.6 releases were built file by file. In our measurements a skin update costs 8–18% less processor time.
+- The build now checks that the app still runs on macOS 13, about 72,000 lines of code nothing used any more were removed, and twelve app self-test suites that had silently stopped running are back.
+
+### Known limitations
+
+- Windows-only plugins (DLLs) and Windows programs that a skin launches cannot run on the Mac. The skin still loads, and its Compatibility Notes list what is missing.
+- Hardware sensor readings vary by Mac model and are close approximations, since Apple does not document them.
+- Windows fonts are replaced by similar Mac fonts, so text can be a little wider or narrower.
+- The translations have not been reviewed by native speakers yet, and the Skin Studio, compatibility notes and the Debug window are still in English. In Arabic and Hebrew, windows are laid out right to left only when the Mac's own language is right to left.
+- Packages made with the Skin Packager have not been tried with Rainmeter on Windows yet.
+
+### Upgrading
+
+- Your skins, saved layouts and settings are preserved, and coming from 0.6.1 nothing behaves differently. Choose **Update** in the update notice or **Check for Updates…** in the Deskset menu, or download the disk image for your Mac. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v0.6.1...v1.0.0)
+
 ## 0.6.1
 
 This release makes the translations read naturally, adds the Skin Packager for making `.rmskin` packages, and lets clicks on a widget's empty areas reach what is below it again.
