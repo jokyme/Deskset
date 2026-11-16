@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fișier";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Salvează";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Închide";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Taie";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Copiază";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Zoom";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Ajutor";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "O versiune nouă pentru acest Mac este gata de descărcat.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Versiune";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Închideți deocamdată. La următoarea verificare zilnică puteți primi din nou un memento.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skinuri";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Deschide dosarul cu skinuri";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Deschide jurnalul";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Depanare";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Selectați un skin încărcat în fereastra Gestionează.";
 
+/* Manage window: button. */
+"Open Log" = "Deschide jurnalul";
+
 /* Manage window: text. */
 "Save new layout" = "Salvează un aranjament nou";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Înlocuiește";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Anulează";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Generale";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Dezactivează tragerea";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Resetează statisticile";
+/* Settings window: VoiceOver description. */
+"Theme" = "Temă";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Disponibil când Deskset rulează din dosarul Aplicații.";
 
+/* Settings window: text. */
+"User interface" = "Interfață cu utilizatorul";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Limbă:";
 
+/* Settings window: label. */
+"Theme:" = "Temă:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Pornire:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Actualizări:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset verifică o dată pe zi și descarcă singur actualizările; dvs. alegeți când le instalați.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Zoom implicit:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Actualizări:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset verifică o dată pe zi și descarcă singur actualizările; dvs. alegeți când le instalați.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Dosarul skinului selectat";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Nume";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Fonturi incluse pentru aceste skinuri (nu se instalează în tot sistemul): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Avertisment";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset nu a terminat la timp pregătirea sau închiderea.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automată";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Luminoasă";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Întunecată";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Afișează interfețele virtuale";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Resetează statisticile";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Copiază tot";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Se încarcă interfețele de rețea…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Se reîmprospătează…";
+
+/* DebugInfoView: text. */
+"Display information" = "Informații despre afișaj";
+
+/* DebugInfoView: text. */
+"Network information" = "Informații de rețea";
+
+/* DebugInfoView: text. */
+"Property" = "Proprietate";
+
+/* DebugInfoView: text. */
+"Value" = "Valoare";
+
+/* DebugInfoView: text. */
+"No displays available." = "Nu există afișaje disponibile.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Nu există interfețe de rețea de afișat.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Măsurători";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Variabile";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Contoare";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Urmărire";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Reîmprospătează la modificarea fișierului";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Adaugă urmărire…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Copiază numele";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Copiază intervalul";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Copiază numărul";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Copiază șirul";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Adaugă urmărire";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Editează măsurătoarea";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Copiază valoarea";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Editează variabila";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Copiază tipul";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Copiază limitele";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Editează contorul";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Editează urmărirea";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Șterge urmărirea";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filtrare…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Filtrează măsurătorile și variabilele";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Skin activ";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Sari la";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Măsurători, variabile și urmăriri ale skinului";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Număr";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Șir";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Formulă";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Execută";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Tip de expresie:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Expresie:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Expresie urmărită";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Rezultat urmărit";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Jurnal";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Pluginuri";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Afișaj";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Rețea";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Depanare Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "Oră";
+
+/* DebugWindowController: text. */
+"Type" = "Tip";
+
+/* DebugWindowController: text. */
+"Message" = "Mesaj";
+
+/* DebugWindowController: text. */
+"Source" = "Sursă";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Eroare";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Notificare";
+
+/* DebugWindowController: text. */
+"Log file" = "Fișier jurnal";
+
+/* DebugWindowController: text. */
+"Start logging" = "Pornește înregistrarea";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Oprește înregistrarea";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Șterge fișierul jurnal";
+
+/* DebugWindowController: text. */
+"Show log file" = "Afișează fișierul jurnal";
+
+/* DebugWindowController: button. */
+"Clear" = "Golește";
+
+/* DebugWindowController: text. */
+"Author" = "Autor";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Toate pluginurile enumerate sunt integrate în Deskset și actualizate odată cu aplicația. Versiunile corespund cu Deskset; pluginurile externe nu sunt acceptate momentan.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (integrat)";

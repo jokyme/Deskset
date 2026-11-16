@@ -823,6 +823,19 @@ through `Skin.pointerEvent` (the skin window's mouse rules are in app.md).
   release, some without an update).
 - Status: emulated
 
+### Capture overlay (`!Mouse:StartCapture` / `!Mouse:StopCapture`)
+- Windows (Rainmeter 5.0): `Mouse` accepts `!CommandMeasure M "StartCapture"` / `"StopCapture"` (or `!Mouse:StartCapture` /
+  `!Mouse:StopCapture`) with `CaptureOverlayColor` and `CaptureOverlayCursorName` to capture pointer events over an
+  overlay surface across the screen.
+- Mac (Deskset): implemented using transparent borderless capture overlay panels (`MouseCaptureController`) across active
+  displays using `CaptureOverlayColor`, `CaptureOverlayCursorName` (default `ARROW`, mapped via `SkinCursors`), and
+  reporting screen/skin-relative `$MouseX$` / `$MouseY$` coordinates to the measure's actions until `StopCapture` or
+  measure/skin teardown.
+- Why: sandboxes overlay pointer capture without modifying global event taps or requiring Accessibility access.
+- Skin impact: color-picker and screen-capture Mouse skins capture coordinates cleanly on macOS; Escape / StopCapture
+  closes the overlay.
+- Status: emulated
+
 ### UpdateRate
 - Windows (Rainmeter): documented for version 3.0 only: "UpdateRate can be set from default 20 to set the interval (in
   milliseconds) for executing the plugin's move and drag actions". Version 3.1 moved to "threading instead of timers"

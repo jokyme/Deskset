@@ -47,8 +47,11 @@ public struct SkinSettings {
     public var onUnfocusAction = ""
     /// Run at the end of the first update after the system wakes (see `Skin.systemDidWake()`).
     public var onWakeAction = ""
-    /// Run when display metrics change (`OnDisplayMetricsChange`, see `Skin.displayMetricsDidChange()`).
+    /// Run when display metrics change (`OnDisplayMetricsChangeAction`, with legacy alias `OnDisplayMetricsChange`,
+    /// see `Skin.displayMetricsDidChange()`).
     public var onDisplayMetricsChange = ""
+    /// Run when skin visibility changes (`OnVisibilityChangeAction`, see `Skin.visibilityDidChange(visible:)`).
+    public var onVisibilityChangeAction = ""
     /// `AppVersion` in `[Rainmeter]`.
     public var appVersion = ""
     /// `MacOnAppearanceChangeAction` (Deskset extension) as written: run when the Mac switches between light and dark,
@@ -165,6 +168,8 @@ public final class Skin {
     /// A patch came while an editor preview showed: the window is sized when the preview ends (`endPreview`), not with
     /// the preview's values.
     var sizeWaitsForPreviewEnd = false
+    /// True while a live patch is re-reading changed sections' options from edited source files.
+    var isPatchingOptions = false
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
@@ -241,6 +246,8 @@ public final class Skin {
     public private(set) var issues: [String] = []
     /// False when `[Rainmeter]` specifies an unsupported `SyntaxVersion` (only 1 and 2 are valid).
     public private(set) var isSupportedSyntaxVersion = true
+    /// False when `[Rainmeter]` specifies an `AppVersion` newer than `RmskinManifest.compatibleRainmeterVersion`.
+    public private(set) var isSupportedAppVersion = true
     /// Set by `!ForceEnableVisibleMode`: when true, the skin uses its normal visible `Update` rate even while hidden.
     public private(set) var forceEnableVisibleMode = false {
         didSet { if forceEnableVisibleMode != oldValue { noteSnapshotChange() } }
@@ -298,6 +305,8 @@ public final class Skin {
     private var pointerObservers: [SkinPointerObserver] = []
     /// Buttons pressed on the skin (reported to `pointerEvent`) and not released yet.
     private var pointerButtons: Set<MouseButton> = []
+    /// Buttons currently held on the skin (used by `!Mouse:StartCapture` to wait for held buttons to release).
+    var heldPointerButtons: Set<MouseButton> { pointerButtons }
     /// Whether `pointerEvent` last saw the pointer over the skin.
     private var pointerInside = false
     /// Measures that also follow the mouse outside the skin window (`Plugin=Slider`), in file order (see
@@ -406,6 +415,10 @@ public final class Skin {
     private var closed = false
     private var pendingWakeAction = false
     private var pendingDisplayMetricsAction = false
+    private var lastVisibilityState: Bool?
+    private var hadInvisiblePhase = false
+    private var lastTickUptime: Double?
+    public var canRunVisibilityUpdate: Bool { updateDepth == 0 }
     /// Work done since the outermost update or action started: bangs run plus meters / measures updated by bangs.
     private var burstWork = 0
     /// `!UpdateMeter` / `!UpdateMeterGroup` ran: meter frames are recomputed once, lazily (see `layoutIfPending`).
@@ -500,10 +513,14 @@ public final class Skin {
         environmentValid = false
         loadedLocale = nil
         isSupportedSyntaxVersion = true
+        isSupportedAppVersion = true
         forceEnableVisibleMode = false
         zoomFactorOverride = nil
         followsDefaultZoom = false
         pendingDisplayMetricsAction = false
+        lastVisibilityState = nil
+        hadInvisiblePhase = false
+        lastTickUptime = nil
         let builtins = builtInVariables()
         var includesAppearance = false
         let loaded = try SkinFileLoader.load(url: fileURL, sources: sourceProvider) { raw, readSoFar in
@@ -581,7 +598,7 @@ public final class Skin {
         outsideObservers = measures.compactMap { $0 as? SkinOutsidePointerObserver }
 
         readSettings(root)
-        guard isSupportedSyntaxVersion else {
+        guard isSupportedSyntaxVersion && isSupportedAppVersion else {
             measures = []
             meters = []
             measureIndex = [:]
@@ -638,8 +655,18 @@ public final class Skin {
 
     private func readSyntaxVersion(_ s: RainmeterSection) -> Int {
         if let rawSyntax = s.option("SyntaxVersion")?.trimmingCharacters(in: .whitespaces), !rawSyntax.isEmpty {
-            if let v = Formula.withLookup({ self.formulaValue(of: $0, from: s) }, { OptionValue.int(rawSyntax) }),
-               v == 1 || v == 2 {
+            let parsed: Int?
+            if let exact = Int(rawSyntax) {
+                parsed = exact
+            } else if rawSyntax.hasPrefix("("),
+                      let value = Formula.withLookup({ self.formulaValue(of: $0, from: s) },
+                                                     { OptionValue.number(rawSyntax) }),
+                      value.isFinite, value.rounded(.towardZero) == value {
+                parsed = Int(exactly: value)
+            } else {
+                parsed = nil
+            }
+            if let v = parsed, v == 1 || v == 2 {
                 return v
             } else {
                 isSupportedSyntaxVersion = false
@@ -684,8 +711,15 @@ public final class Skin {
         st.onFocusAction = s.actionOption("OnFocusAction")
         st.onUnfocusAction = s.actionOption("OnUnfocusAction")
         st.onWakeAction = s.actionOption("OnWakeAction")
-        st.onDisplayMetricsChange = s.actionOption("OnDisplayMetricsChange")
+        let metricsAction = s.actionOption("OnDisplayMetricsChangeAction")
+        st.onDisplayMetricsChange = metricsAction.isEmpty ? s.actionOption("OnDisplayMetricsChange") : metricsAction
+        st.onVisibilityChangeAction = s.actionOption("OnVisibilityChangeAction")
         st.appVersion = s.string("AppVersion").trimmingCharacters(in: .whitespaces)
+        if !st.appVersion.isEmpty, RmskinManifest.requiresNewerRainmeter(st.appVersion) {
+            isSupportedAppVersion = false
+            log("[Rainmeter] Unsupported AppVersion=\(st.appVersion)", level: .error)
+            addIssue("AppVersion=\(st.appVersion) requires a newer version of Rainmeter")
+        }
         // Kept as written: resolved when it runs (`appearanceDidChange()`), with the appearance of that moment.
         if let raw = s.rawOption("MacOnAppearanceChangeAction") { st.macOnAppearanceChangeAction = raw }
         st.transitionUpdate = min(max(s.int("TransitionUpdate", 100), 16), 86_400_000)
@@ -762,30 +796,19 @@ public final class Skin {
             .map { folder.appendingPathComponent($0).path }
     }
 
-    /// Windows-only measure types (and plugins) that cannot work on macOS.
-    /// Only reached when nothing registered the name in MeasureRegistry (app-side plugins are registered by the
-    /// app; `--render` and the self-tests register them too).
-    private static let windowsOnlyMeasures: Set<String> = []
-    /// Built-in plugins / measures that are not tied to Windows but are not implemented yet: the compatibility
-    /// hint must not call them "Windows-only" (ActionTimer, for instance, drives many skins' animations).
-    private static let notYetSupportedMeasures: Set<String> = []
-
     /// Plugin and measure names (lowercased, without folder / `.dll`) that the Deskset app implements and registers
     /// with `MeasureRegistry` at startup (`AudioPlugins`, `MediaUIPlugins`): they need AppKit, Core Audio, CoreWLAN…,
     /// which DesksetCore does not link. In the app (and in `--render` / `--self-test`) they are always registered, so
-    /// the fallback below never sees them; only a core-only context (DesksetSelfTest, a tool that loads skins without
-    /// the app) reaches it. There the generic "is a Windows plugin" hint would be wrong: they work on the Mac.
-    /// As `Measure=` types only the documented ones count (NowPlaying, MediaKey, WiFiStatus — the app registers only
-    /// those as measures); `Measure=AudioLevel` stays an invalid measure type in every context.
-    /// Keep in step with the app's registrations (the app self-test compares this list with them).
+    /// the fallback below never sees them; only a core-only context (`DesksetSelfTest` loading skins without the app)
+    /// reaches it, so the generic "Windows plugin" compatibility note would be misleading.
+    /// Keep in step with the app's registrations (`AppWiringTests` checks equality).
     public static let appProvidedMeasures: Set<String> = [
         "nowplaying", "wifistatus", "mediakey", "itunesplugin", "itunes", "webnowplaying", "inputtext",
         "frostedglass", "chameleon", "isfullscreen", "getactivetitle", "syscolor", "audiolevel", "audio",
         "win7audioplugin", "win7audio", "appvolume",
     ]
 
-    /// Measures whose manual page says they were "previously a plugin measure" and that "still [work] with those
-    /// forms" — `Measure=Plugin` with `Plugin=Name`, `Name.dll` or `Plugins\Name.dll` is the same as `Measure=Name`.
+    /// Measures that support both `Measure=Name` and legacy `Measure=Plugin` + `Plugin=Name[.dll]` forms.
     static let formerPluginMeasures: Set<String> = [
         "sysinfo", "process", "webparser", "recyclemanager", "mediakey", "nowplaying", "wifistatus",
         "actiontimer", "advancedcpu", "audio", "win7audio", "win7audioplugin", "audiolevel", "coretemp",
@@ -872,23 +895,11 @@ public final class Skin {
                     log("[\(section.name)] Measure=Plugin without a Plugin option", level: .warning)
                 } else if Skin.appProvidedMeasures.contains(effectiveType) {
                     addIssue("Plugin \"\(plugin)\" is provided by the Deskset app and is not available here")
-                } else if Skin.windowsOnlyMeasures.contains(effectiveType) {
-                    addIssue("Plugin=\(plugin) is Windows-only and is not supported")
-                } else if Skin.notYetSupportedMeasures.contains(effectiveType) {
-                    addIssue("Plugin=\(plugin) is not supported yet")
                 } else {
                     addIssue("Plugin \"\(plugin)\" is a Windows plugin and is not supported")
                 }
             } else if Skin.appProvidedMeasures.contains(type), Skin.documentedMeasureTypes.contains(type) {
-                // Only the measure types the app registers as `Measure=` (NowPlaying, MediaKey, WiFiStatus). A plugin
-                // name written as a measure type (`Measure=AudioLevel`) is not a Rainmeter measure type and the app
-                // does not register it as one: it reaches this fallback in the app too, where "provided by the
-                // Deskset app" would be wrong — it is a mistake in the skin (logged below), as on Windows.
                 addIssue("Measure=\(rawType) is provided by the Deskset app and is not available here")
-            } else if Skin.windowsOnlyMeasures.contains(type) {
-                addIssue("Measure=\(rawType) is Windows-only and is not supported")
-            } else if Skin.notYetSupportedMeasures.contains(type) {
-                addIssue("Measure=\(rawType) is not supported yet")
             } else if Skin.documentedMeasureTypes.contains(type) {
                 addIssue("Measure=\(rawType) is not supported")
             } else {
@@ -957,11 +968,47 @@ public final class Skin {
             if updateDepth == 0 && actionDepth == 0 { refreshOutsidePointerNeeds() }
         }
         environmentValid = false
+        let envVisible = currentEnvironment().visible
+        if lastVisibilityState == nil {
+            lastVisibilityState = envVisible
+        } else if lastVisibilityState != envVisible {
+            lastVisibilityState = envVisible
+            if !envVisible { hadInvisiblePhase = true }
+            if !settings.onVisibilityChangeAction.isEmpty {
+                execute(settings.onVisibilityChangeAction, from: rainmeterSection)
+                if closed { return }
+            }
+        }
+        if !envVisible { hadInvisiblePhase = true }
+        let nowUptime = skinClock.uptime()
+        let tickStep: Int
+        if updateCount > 0, settings.invisibleUpdate != nil, settings.update > 0, hadInvisiblePhase,
+           let lastUptime = lastTickUptime {
+            let elapsedMs = max(0, (nowUptime - lastUptime) * 1000.0)
+            tickStep = max(1, Int(floor((elapsedMs + 0.5) / Double(settings.update))))
+        } else {
+            tickStep = 1
+        }
+        if envVisible {
+            lastTickUptime = nowUptime
+            hadInvisiblePhase = false
+        } else if let lastUptime = lastTickUptime, settings.update > 0 {
+            lastTickUptime = lastUptime + Double(tickStep * settings.update) / 1000.0
+        } else {
+            lastTickUptime = nowUptime
+        }
 
         // An action may unload the skin (`!Refresh`, `!DeactivateConfig` through the host): stop right there.
-        for m in measures where m.consumeUpdateTick() {
+        var initialSampleMeasureNames: Set<String> = []
+        for m in measures {
+            let hits = m.consumeUpdateTicks(tickStep)
+            let initialSample = hits == 0 && m.needsInitialSampleUpdate
+            guard hits > 0 || initialSample else { continue }
+            if initialSample { initialSampleMeasureNames.insert(m.name.lowercased()) }
+            m.pendingUpdateHits = max(1, hits)
             m.readOptionsIfNeeded()
             m.performUpdate()
+            m.pendingUpdateHits = 1
             if closed { return }
         }
         // Meters update and lay out in file order, so `[PreviousMeter:X]` and `r`/`R` see fresh values.
@@ -969,7 +1016,11 @@ public final class Skin {
         var needsSecondPass = false
         var placement = LayoutState()
         for m in meters {
-            if m.consumeUpdateTick() { updateMeterNow(m) }
+            let hits = m.consumeUpdateTicks(tickStep)
+            if hits > 0 || (!initialSampleMeasureNames.isEmpty
+                                && meterReferencesAny(m, initialSampleMeasureNames)) {
+                updateMeterNow(m)
+            }
             if closed { return }
             if placement.place(m) { needsSecondPass = true }
         }
@@ -1026,6 +1077,40 @@ public final class Skin {
         m.performUpdate()
     }
 
+    private func meterReferencesAny(_ meter: Meter, _ measureKeys: Set<String>) -> Bool {
+        if meter.dynamicVariables { return true }
+        return meter.numberedOptions("MeasureName").contains { entry in
+            measureKeys.contains(entry.value.trimmingCharacters(in: CharacterSet.whitespaces).lowercased())
+        }
+    }
+
+    /// Evaluates a measure whose first asynchronous sample arrived before its `UpdateDivider` elapsed and refreshes
+    /// meters referencing it without advancing unrelated `UpdateDivider` counters.
+    func refreshMeasureFromFirstSample(_ m: Measure) {
+        assertOwned()
+        guard !closed, !m.disabled, !m.paused else { return }
+        beginWork()
+        defer { endWork() }
+        m.readOptionsIfNeeded()
+        m.performUpdate()
+        if closed { return }
+        let targetKeys: Set<String> = [m.name.lowercased()]
+        var updatedAnyMeter = false
+        for meter in meters where meterReferencesAny(meter, targetKeys) {
+            meter.readOptionsIfNeeded()
+            meter.updateMeter()
+            meter.noteDrawChange()
+            updatedAnyMeter = true
+            if closed { return }
+        }
+        if updatedAnyMeter {
+            layoutMeters()
+            layoutPending = false
+            updateSize()
+            needsDisplay()
+        }
+    }
+
     /// Recomputes meter frames (relative positioning) and, when allowed, the skin size.
     public func layout() {
         assertOwned()
@@ -1070,7 +1155,7 @@ public final class Skin {
     /// `!UpdateMeter` only marks the layout as stale; it is recomputed once when a meter section variable
     /// (`[Meter:W]`) is read, at the end of the outermost action, or by the next `!Redraw` / update — instead of
     /// after every one of `[!UpdateMeter A][!UpdateMeter B]…` (each layout measures every String meter's text).
-    private func layoutIfPending() {
+    func layoutIfPending() {
         if layoutPending { layout() }
     }
 
@@ -1319,6 +1404,26 @@ public final class Skin {
             execute(settings.onDisplayMetricsChange, from: rainmeterSection)
         } else {
             pendingDisplayMetricsAction = true
+        }
+    }
+
+    /// Runs `OnVisibilityChangeAction` when skin visibility transitions between visible (`1`) and invisible (`0`),
+    /// and marks invisible tick tracking when hidden/occluded.
+    public func visibilityDidChange(visible: Bool) {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed else { return }
+        environmentValid = false
+        if !visible { hadInvisiblePhase = true }
+        if lastVisibilityState == nil {
+            lastVisibilityState = visible
+            return
+        }
+        guard lastVisibilityState != visible else { return }
+        lastVisibilityState = visible
+        if !settings.onVisibilityChangeAction.isEmpty {
+            execute(settings.onVisibilityChangeAction, from: rainmeterSection)
         }
     }
 
@@ -1698,7 +1803,7 @@ public final class Skin {
         }
         let env = currentEnvironment()
         let idx = parsed.explicitIndex
-            ?? ((env.currentScreen >= 0 && env.currentScreen < env.screens.count) ? env.currentScreen : 0)
+            ?? ((env.activeScreen >= 0 && env.activeScreen < env.screens.count) ? env.activeScreen : 0)
         guard idx >= 0, idx < env.screens.count else { return "" }
         if parsed.isDevice { return "\\\\.\\DISPLAY\(idx + 1)" }
         let name = env.screens[idx].name
@@ -1711,7 +1816,7 @@ public final class Skin {
         let env = currentEnvironment()
         if body.hasPrefix("skin") {
             let prop = body.dropFirst("skin".count)
-            let screenIndex = (env.currentScreen >= 0 && env.currentScreen < env.screens.count) ? env.currentScreen : 0
+            let screenIndex = (env.activeScreen >= 0 && env.activeScreen < env.screens.count) ? env.activeScreen : 0
             let dpi = max(screenIndex < env.screens.count ? env.screens[screenIndex].dpiFactor : 1.0, 0.25)
             let zoom = effectiveZoomFactor
             let skinW = width > 0 ? width : env.windowFrame.width
@@ -1763,7 +1868,7 @@ public final class Skin {
         }
         guard let parsed = Skin.parseDisplayTarget(body) else { return nil }
         let idx = parsed.explicitIndex
-            ?? ((env.currentScreen >= 0 && env.currentScreen < env.screens.count) ? env.currentScreen : 0)
+            ?? ((env.activeScreen >= 0 && env.activeScreen < env.screens.count) ? env.activeScreen : 0)
         let inRange = idx >= 0 && idx < env.screens.count
         let screen = inRange ? env.screens[idx] : SkinScreen(area: SkinRect(), workArea: SkinRect())
         let dpi = inRange ? max(screen.dpiFactor, 0.25) : 0.0
@@ -1868,21 +1973,75 @@ public final class Skin {
     }
 
     /// Runs an action of a measure that follows the mouse itself (`Plugin=Mouse`) for the pointer at skin point
-    /// (x, y): `$MouseX$` / `$MouseY$` are that point, or with `relativeToSkin` false the same point in screen
-    /// coordinates (top-left origin at the primary screen's top-left corner, as `!Move` and `#CURRENTCONFIGX#` use).
+    /// (x, y): `$MouseX$` / `$MouseY$` are that point, or with `relativeToSkin` false the same point relative to
+    /// the current monitor (or primary screen's top-left corner for `Plugin=Slider`, as `!Move` and `#CURRENTCONFIGX#`
+    /// use).
     func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
-                              relativeToSkin: Bool) {
+                              relativeToSkin: Bool, screenPoint: (x: Double, y: Double)? = nil) {
         if actionDepth == 0 && updateDepth == 0 { environmentValid = false }
         var px = x, py = y
         if !relativeToSkin {
-            let frame = currentEnvironment().windowFrame
-            px += frame.x
-            py += frame.y
+            let env = currentEnvironment()
+            if let screenPoint {
+                px = screenPoint.x
+                py = screenPoint.y
+            } else {
+                let frame = env.windowFrame
+                px += frame.x
+                py += frame.y
+            }
+            if !(section is SliderMeasure), !env.screens.isEmpty {
+                let screen = env.screens.first { s in
+                    px >= s.area.x && px < s.area.x + s.area.width
+                        && py >= s.area.y && py < s.area.y + s.area.height
+                } ?? env.screens[min(max(env.activeScreen, 0), env.screens.count - 1)]
+                px -= screen.area.x
+                py -= screen.area.y
+            }
         }
         let saved = mouseContext
         mouseContext = MouseContext(x: px, y: py, width: 0, height: 0, percentForms: false)
         execute(action, from: section)
         mouseContext = saved
+    }
+
+    /// Notifies the host of the active `!Mouse:StartCapture` measure on this skin (nil when none is active).
+    func notifyMouseCaptureChanged() {
+        let request: MouseCaptureRequest?
+        if closed {
+            request = nil
+        } else if let m = measures.lazy.compactMap({ $0 as? MouseMeasure })
+            .first(where: { $0.isCapturing && !$0.closed && !$0.disabled && !$0.paused }) {
+            request = MouseCaptureRequest(measureName: m.name,
+                                          overlayColor: m.captureOverlayColor,
+                                          overlayCursorName: m.captureOverlayCursorName,
+                                          relativeToSkin: m.settings.relativeToSkin)
+        } else {
+            request = nil
+        }
+        host?.skin(self, mouseCaptureRequest: request)
+    }
+
+    /// Completes an active `!Mouse:StartCapture` release from the host's screen-wide capture overlay.
+    public func completeMouseCapture(measureName: String, button: MouseButton, skinX: Double, skinY: Double,
+                                     screenPoint: (x: Double, y: Double)? = nil) {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        guard !closed, let m = measure(named: measureName) as? MouseMeasure else { return }
+        m.completeCapturedRelease(button: button, skinX: skinX, skinY: skinY, screenPoint: screenPoint)
+    }
+
+    /// Cancels an active `!Mouse:StartCapture` session on the named measure (or all `Mouse` measures when nil)
+    /// without firing a mouse-up action.
+    public func cancelMouseCapture(measureName: String? = nil) {
+        assertOwned()
+        beginWork()
+        defer { endWork() }
+        for m in measures.compactMap({ $0 as? MouseMeasure }) {
+            if let measureName, m.name.caseInsensitiveCompare(measureName) != .orderedSame { continue }
+            if m.isCapturing { m.stopCapture() }
+        }
     }
 
     private func variableValue(_ name: String, section: SkinSection?) -> String? {
@@ -2177,7 +2336,10 @@ public final class Skin {
                 if bang.name == "delay" {
                     // "The lowest possible value is 16 milliseconds." Judgment: the rest of the action runs later
                     // on the skin's executor instead of blocking the skin; a refresh / unload (`close()`) cancels it.
-                    let ms = bang.args.first.flatMap { OptionValue.number($0) } ?? 0
+                    let ms: Double = Formula.withLookup({ self.formulaValue(of: $0, from: section) }) {
+                        let raw = literal.contains(0) ? nil : bang.args.first
+                        return raw.flatMap { OptionValue.number($0) } ?? 0
+                    }
                     let rest = Array(actions[index...])
                     let delay = min(max(ms, 16), 86_400_000) / 1000
                     let scheduled = generation
@@ -2276,14 +2438,23 @@ public final class Skin {
             return
         }
         if let translated = translateNamespacedMeasureBang(bang, from: section) {
-            let mapped = Bang(name: "commandmeasure",
-                              args: [translated.target, translated.command] + (translated.configTarget.map { [$0] } ?? []))
-            perform(mapped, from: section, literalArguments: [])
+            if let configTarget = translated.configTarget, !isOwnConfig(configTarget) {
+                let forwarded = Bang(name: bang.name, args: translated.localArgs,
+                                     literalArguments: literalArguments.filter { translated.localArgs.indices.contains($0) })
+                if configTarget == "*" {
+                    commandMeasure(translated.target, translated.command, expectedNamespace: translated.namespace)
+                    host?.skin(self, forward: forwarded, toConfig: "*")
+                } else {
+                    host?.skin(self, forward: forwarded, toConfig: configTarget)
+                }
+            } else {
+                commandMeasure(translated.target, translated.command, expectedNamespace: translated.namespace)
+            }
             return
         }
         if Skin.noEffectBangs.contains(bang.name) { return }
         guard Skin.localBangs.contains(bang.name) else {
-            if bang.name != "delay" { forwardToHost(bang) }
+            if bang.name != "delay" { forwardToHost(evaluatedHostBang(bang, literal: literalArguments)) }
             return
         }
         var args = bang.args
@@ -2296,13 +2467,16 @@ public final class Skin {
             let target = definition.configArgument(in: args)
             if args.count > configIndex { args = Array(args.prefix(configIndex)) }
             if let target, !isOwnConfig(target) {
-                let local = Bang(name: bang.name, args: args,
-                                 literalArguments: literalArguments.filter { args.indices.contains($0) })
+                let rawLocal = Bang(name: bang.name, args: args,
+                                    literalArguments: literalArguments.filter { args.indices.contains($0) })
+                let forwardBang = bang.name == "forceenablevisiblemode"
+                    ? evaluatedHostBang(rawLocal, literal: rawLocal.literalArguments)
+                    : rawLocal
                 if target == "*" {
-                    performLocally(local, from: section, literal: literalArguments)
-                    host?.skin(self, forward: local, toConfig: "*")
+                    performLocally(rawLocal, from: section, literal: literalArguments)
+                    host?.skin(self, forward: forwardBang, toConfig: "*")
                 } else {
-                    host?.skin(self, forward: local, toConfig: target)
+                    host?.skin(self, forward: forwardBang, toConfig: target)
                 }
                 return
             }
@@ -2337,7 +2511,7 @@ public final class Skin {
     /// Translates Rainmeter 5.0 colon-namespaced measure/plugin bangs (`!Loop:Reset`, `!WebParser:Refetch`, etc.)
     /// into `!CommandMeasure` parameters.
     private func translateNamespacedMeasureBang(_ bang: Bang, from section: SkinSection?)
-        -> (target: String, command: String, configTarget: String?)? {
+        -> (namespace: String, target: String, command: String, localArgs: [String], configTarget: String?)? {
         guard bang.name.contains(":"), !bang.name.hasPrefix("skin:"),
               let definition = BangCatalog.definition(for: bang.name),
               definition.category == .measure else { return nil }
@@ -2349,10 +2523,20 @@ public final class Skin {
         if let configIndex = definition.configParameterIndex, args.count > configIndex {
             args = Array(args.prefix(configIndex))
         }
+        let localArgs = args
         if let current = section as? Measure, namespace(ns, matches: current),
-           let payloadCount = Skin.namespacedPayloadCounts[bang.name], args.count == payloadCount,
-           !(args.first.map { $0 == "*" || Skin.groupTarget(in: $0) != nil || measure(named: $0) != nil } ?? false) {
-            args.insert(current.name, at: 0)
+           let payloadCount = Skin.namespacedPayloadCounts[bang.name], args.count == payloadCount {
+            let hasSelector: Bool
+            if payloadCount == 0 {
+                hasSelector = false
+            } else if let first = args.first {
+                hasSelector = (first == "*" || Skin.groupTarget(in: first) != nil)
+            } else {
+                hasSelector = false
+            }
+            if !hasSelector {
+                args.insert(current.name, at: 0)
+            }
         }
         let target = args.first ?? ""
         let extra = args.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespaces)
@@ -2365,10 +2549,8 @@ public final class Skin {
         case ("runcommand", "run"): command = "Run"
         case ("runcommand", "close"): command = "Close"
         case ("runcommand", "kill"): command = "Kill"
-        case ("webparser", "refetch"): command = "Refetch"
-        case ("webparser", "clearresults"): command = "ClearResults"
-        case ("webparser", "updatedata"): command = withExtra("UpdateData")
-        case ("webparser", "resetdata"): command = "ResetData"
+        case ("webparser", "refetch"), ("webparser", "updatedata"): command = "Refetch"
+        case ("webparser", "clearresults"), ("webparser", "resetdata"): command = "ClearResults"
         case ("recyclemanager", "emptybin"): command = "EmptyBin"
         case ("recyclemanager", "emptybinsilent"): command = "EmptyBinSilent"
         case ("recyclemanager", "openbin"): command = "OpenBin"
@@ -2397,7 +2579,7 @@ public final class Skin {
         case ("windowmessage", "send"): command = withExtra("SendMessage")
         default: return nil
         }
-        return (target, command, configTarget)
+        return (ns, target, command, localArgs, configTarget)
     }
 
     private static let namespacedPayloadCounts: [String: Int] = [
@@ -2405,6 +2587,7 @@ public final class Skin {
         "actiontimer:execute": 1, "actiontimer:stop": 1,
         "runcommand:run": 0, "runcommand:close": 0, "runcommand:kill": 0,
         "webparser:refetch": 0, "webparser:clearresults": 0,
+        "webparser:updatedata": 0, "webparser:resetdata": 0,
         "recyclemanager:emptybin": 0, "recyclemanager:emptybinsilent": 0, "recyclemanager:openbin": 0,
         "audio:setvolume": 1, "audio:changevolume": 1, "audio:setoutputindex": 1,
         "audio:mute": 0, "audio:unmute": 0, "audio:togglemute": 0,
@@ -2640,14 +2823,33 @@ public final class Skin {
             }
         case "forceenablevisiblemode":
             let rawSetting = arg(0).trimmingCharacters(in: .whitespaces)
-            if rawSetting.isEmpty {
-                forceEnableVisibleMode = true
-            } else if let v = OptionValue.int(valueArg(0, evaluatedValue)) {
-                if v == -1 {
-                    forceEnableVisibleMode.toggle()
+            func applySetting(_ text: String) {
+                if let v = OptionValue.int(text) {
+                    forceEnableVisibleMode = (v == -1) ? !forceEnableVisibleMode : (v != 0)
                 } else {
-                    forceEnableVisibleMode = (v != 0)
+                    forceEnableVisibleMode = true
                 }
+            }
+            if a.count >= 2 {
+                let configTarget = arg(1).trimmingCharacters(in: .whitespaces)
+                let settingArg = valueArg(0, evaluatedValue).trimmingCharacters(in: .whitespaces)
+                let payload = settingArg.isEmpty ? "1" : settingArg
+                if !configTarget.isEmpty, !isOwnConfig(configTarget) {
+                    let forwarded = Bang(name: "forceenablevisiblemode", args: [payload])
+                    if configTarget == "*" {
+                        applySetting(payload)
+                        host?.skin(self, forward: forwarded, toConfig: "*")
+                    } else {
+                        host?.skin(self, forward: forwarded, toConfig: configTarget)
+                    }
+                    return
+                }
+                applySetting(payload)
+            } else if rawSetting.isEmpty {
+                forceEnableVisibleMode = true
+            } else if let v = Formula.withLookup({ self.formulaValue(of: $0, from: section) },
+                                                 { OptionValue.int(literal.contains(0) ? rawSetting : valueArg(0, evaluatedValue)) }) {
+                forceEnableVisibleMode = (v == -1) ? !forceEnableVisibleMode : (v != 0)
             } else if !isOwnConfig(rawSetting) {
                 let forwarded = Bang(name: "forceenablevisiblemode", args: ["1"])
                 if rawSetting == "*" {
@@ -2657,13 +2859,6 @@ public final class Skin {
                     host?.skin(self, forward: forwarded, toConfig: rawSetting)
                 }
                 return
-            }
-            if a.count >= 2 {
-                let configTarget = arg(1).trimmingCharacters(in: .whitespaces)
-                if !configTarget.isEmpty, !isOwnConfig(configTarget) {
-                    let forwarded = Bang(name: "forceenablevisiblemode", args: [rawSetting])
-                    host?.skin(self, forward: forwarded, toConfig: configTarget)
-                }
             }
             _ = host?.skin(self, handle: Bang(name: "forceenablevisiblemode",
                                               args: [forceEnableVisibleMode ? "1" : "0"]))
@@ -2686,8 +2881,10 @@ public final class Skin {
         case "movemeter":
             let targets = meters(matching: arg(2))
             if !targets.isEmpty {
-                let xVal = arg(0).trimmingCharacters(in: .whitespaces)
-                let yVal = arg(1).trimmingCharacters(in: .whitespaces)
+                let xVal = evaluatedCoordinateArg(valueArg(0, { $0 }), literal: literal.contains(0))
+                    .trimmingCharacters(in: .whitespaces)
+                let yVal = evaluatedCoordinateArg(valueArg(1, { $0 }), literal: literal.contains(1))
+                    .trimmingCharacters(in: .whitespaces)
                 for m in targets {
                     m.overrides["x"] = xVal
                     m.overrides["y"] = yVal
@@ -2777,21 +2974,90 @@ public final class Skin {
         }
     }
 
-    private func commandMeasure(_ name: String, _ command: String) {
+    private func commandMeasure(_ name: String, _ command: String, expectedNamespace: String? = nil) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
+        func matchesExpected(_ measure: Measure) -> Bool {
+            expectedNamespace.map { namespace($0, matches: measure) } ?? true
+        }
         if trimmed == "*" {
-            measures.forEach { $0.execute(command: command) }
+            measures.filter(matchesExpected).forEach { $0.execute(command: command) }
             return
         }
         if let group = Skin.groupTarget(in: trimmed) {
-            measures.filter { $0.isInGroup(group) }.forEach { $0.execute(command: command) }
+            measures.filter { $0.isInGroup(group) && matchesExpected($0) }.forEach { $0.execute(command: command) }
             return
         }
         if let m = measure(named: trimmed) {
-            m.execute(command: command)
+            if matchesExpected(m) {
+                m.execute(command: command)
+            } else if let ns = expectedNamespace {
+                log("!\(ns): measure [\(name)] is not of type \(ns)", level: .warning)
+            }
         } else {
             log("!CommandMeasure: measure [\(name)] not found", level: .warning)
         }
+    }
+
+    /// Evaluates parenthesized formulas (with measure and `[$Skin...]` lookup) in bang arguments that expect
+    /// numbers or screen coordinates before forwarding to the window host or another config.
+    private func evaluatedHostBang(_ bang: Bang, literal: Set<Int>) -> Bang {
+        guard !bang.args.isEmpty else { return bang }
+        var indices: [Int] = []
+        var coordinateSuffixes = false
+        switch bang.name {
+        case "move": indices = [0, 1]
+        case "setwindowposition":
+            indices = bang.args.count >= 4 ? [0, 1, 2, 3] : [0, 1]
+            coordinateSuffixes = true
+        case "setanchor":
+            indices = [0, 1]
+            coordinateSuffixes = true
+        case "zpos", "settransparency", "fadeduration", "setzoomfactor", "forceenablevisiblemode",
+             "zposgroup", "settransparencygroup", "fadedurationgroup", "setzoomfactorgroup":
+            indices = [0]
+        default:
+            return bang
+        }
+        var args = bang.args
+        for i in indices where i < args.count && !literal.contains(i) {
+            args[i] = coordinateSuffixes ? evaluatedCoordinateArg(args[i], literal: false) : evaluatedValue(args[i])
+        }
+        return Bang(name: bang.name, args: args, literalArguments: bang.literalArguments)
+    }
+
+    /// Evaluates a parenthesized formula even when followed by `r`/`R`/`b`/`B`/`%` or `@N` suffixes (coordinates).
+    private func evaluatedCoordinateArg(_ raw: String, literal: Bool) -> String {
+        guard !literal else { return raw }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("(") else { return raw }
+        var body = Substring(trimmed)
+        var screenSuffix = ""
+        if let at = body.lastIndex(of: "@") {
+            let num = body[body.index(after: at)...].trimmingCharacters(in: .whitespaces)
+            if let n = Int(num), (0...32).contains(n) {
+                screenSuffix = "@\(n)"
+                body = Substring(body[..<at]).trimmingCharacters(in: .whitespaces).dropFirst(0)
+            }
+        }
+        var coordSuffix = ""
+        for _ in 0..<2 {
+            let trimmedBody = body.trimmingCharacters(in: .whitespaces)
+            guard let last = trimmedBody.last else { break }
+            let upper = last.uppercased()
+            if last == "%" || upper == "R" || upper == "B" {
+                coordSuffix = String(last) + coordSuffix
+                body = Substring(trimmedBody.dropLast())
+            } else {
+                break
+            }
+        }
+        let expr = body.trimmingCharacters(in: .whitespaces)
+        guard expr.hasPrefix("("), expr.hasSuffix(")"),
+              let evaluated = try? Formula.evaluate(expr, lookup: { self.formulaValue(of: $0, from: nil) }),
+              evaluated.isFinite else {
+            return raw
+        }
+        return NumberFormatting.plain(evaluated, maxDecimals: 10) + coordSuffix + screenSuffix
     }
 
     /// `!SetOption` / `SKIN:SetOption`: stored raw (the section resolves it when reading options, once, or every update when

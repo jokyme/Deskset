@@ -1098,5 +1098,20 @@ private func runFormatReviewTests(_ t: TestRunner) {
         t.equal(TimeFormatting.parseTimeStamp("2015-万-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
         t.equal(TimeFormatting.parseTimeStamp("2015-½-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
         t.equal(TimeFormatting.parseTimeStamp("2015-1\u{301}2-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)   // digit + combining mark
+
+        // Localized %Z standard vs daylight name resolves its respective offset regardless of today's DST state.
+        let ny = TimeZone(identifier: "America/New_York")!
+        let stdName = TimeZoneNames.name(of: ny, daylight: false, locale: Locale(identifier: "en_US"))
+        let dstName = TimeZoneNames.name(of: ny, daylight: true, locale: Locale(identifier: "en_US"))
+        let expectedStd = winTS(2015, 1, 27, 15, 0, 0)
+        let expectedDst = winTS(2015, 7, 15, 16, 0, 0)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 10:00:00 \(stdName)", mask: "%Y-%m-%d %H:%M:%S %Z",
+                                              locale: Locale(identifier: "en_US"),
+                                              systemLocale: Locale(identifier: "en_US"),
+                                              localTimeZone: ny), expectedStd)
+        t.equal(TimeFormatting.parseTimeStamp("2015-07-15 12:00:00 \(dstName)", mask: "%Y-%m-%d %H:%M:%S %Z",
+                                              locale: Locale(identifier: "en_US"),
+                                              systemLocale: Locale(identifier: "en_US"),
+                                              localTimeZone: ny), expectedDst)
     }
 }

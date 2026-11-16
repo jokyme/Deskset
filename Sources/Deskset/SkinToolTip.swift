@@ -18,6 +18,16 @@ final class SkinToolTipPresenter {
     private(set) var pending: (view: SkinView, info: ToolTipInfo, point: NSPoint)?
     private var timer: Timer?
     private var panel: NSPanel?
+    var panelForTheme: NSPanel? { panel }
+
+    /// Creates the reusable tooltip panel without ordering it on screen, for appearance checks in headless tests.
+    func ensurePanelForTesting() -> NSPanel {
+        if let panel { return panel }
+        let made = SkinToolTipPresenter.makePanel()
+        AppTheme.apply(app.state.uiTheme, to: made)
+        panel = made
+        return made
+    }
 
     init(app: AppController) {
         self.app = app
@@ -65,6 +75,7 @@ final class SkinToolTipPresenter {
         let panel = self.panel ?? SkinToolTipPresenter.makePanel()
         self.panel = panel
         panel.contentView = SkinToolTipView(layout: layout, info: pending.info, icon: icon)
+        AppTheme.apply(app.state.uiTheme, to: panel)
         panel.setFrame(layout.frame, display: true)
         panel.level = NSWindow.Level(rawValue: max(NSWindow.Level.popUpMenu.rawValue, window.level.rawValue + 1))
         panel.orderFrontRegardless()

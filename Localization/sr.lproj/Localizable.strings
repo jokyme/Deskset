@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Датотека";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Сачувај";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Затвори";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Исеци";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Копирај";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Зумирај";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Помоћ";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "За овај Mac је спремна нова верзија за преузимање.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Верзија";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Затвори за сада. Следећа дневна провера може поново да вас подсети.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Скинови";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Отвори фасциклу са скиновима";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Отвори дневник";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Отклањање грешака";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Изаберите учитани скин у прозору „Управљај“.";
 
+/* Manage window: button. */
+"Open Log" = "Отвори дневник";
+
 /* Manage window: text. */
 "Save new layout" = "Сачувај нови распоред";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Замени";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Откажи";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Опште";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Искључи превлачење";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Ресетуј статистику";
+/* Settings window: VoiceOver description. */
+"Theme" = "Тема";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Доступно када се Deskset покреће из фасцикле Апликације.";
 
+/* Settings window: text. */
+"User interface" = "Корисничко сучеље";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Језик:";
 
+/* Settings window: label. */
+"Theme:" = "Тема:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Покретање:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Ажурирања:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверава једном дневно и сам преузима ажурирања; ви бирате када ћете их инсталирати.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Подразумевано увећање:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Ажурирања:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверава једном дневно и сам преузима ажурирања; ви бирате када ћете их инсталирати.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Изабрана фасцикла скина";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Назив";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Фонтови приложени уз ове скинове (не инсталирају се за цео систем): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Упозорење";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset није стигао на време да се припреми или затвори.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Аутоматски";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Светла";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Тамна";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Прикажи виртуелне интерфејсе";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Ресетуј статистику";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Копирај све";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Учитавање мрежних интерфејса…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Освежавање…";
+
+/* DebugInfoView: text. */
+"Display information" = "Подаци о екрану";
+
+/* DebugInfoView: text. */
+"Network information" = "Подаци о мрежи";
+
+/* DebugInfoView: text. */
+"Property" = "Својство";
+
+/* DebugInfoView: text. */
+"Value" = "Вредност";
+
+/* DebugInfoView: text. */
+"No displays available." = "Нема доступних екрана.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Нема мрежних интерфејса за приказ.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Мерења";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Променљиве";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Мерачи";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Праћење";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Освежи при промени датотеке";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Скин";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Додај праћење…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Копирај назив";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Копирај опсег";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Копирај број";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Копирај ниску";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Додај праћење";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Уреди мерење";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Копирај вредност";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Уреди променљиву";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Копирај тип";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Копирај границе";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Уреди мерач";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Уреди праћење";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Обриши праћење";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Филтер…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Филтрирај мерења и променљиве";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Активни скин";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Пређи на";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Мерења, променљиве и праћења скина";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Број";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Ниска";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Формула";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Изврши";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Тип израза:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Израз:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Израз за праћење";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Резултат праћења";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Дневник";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Додаци";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Екран";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Мрежа";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Отклањање грешака у Deskset-у";
+
+/* DebugWindowController: text. */
+"Time" = "Време";
+
+/* DebugWindowController: text. */
+"Type" = "Тип";
+
+/* DebugWindowController: text. */
+"Message" = "Порука";
+
+/* DebugWindowController: text. */
+"Source" = "Извор";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Грешка";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Обавештење";
+
+/* DebugWindowController: text. */
+"Log file" = "Датотека дневника";
+
+/* DebugWindowController: text. */
+"Start logging" = "Започни бележење";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Заустави бележење";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Обриши датотеку дневника";
+
+/* DebugWindowController: text. */
+"Show log file" = "Прикажи датотеку дневника";
+
+/* DebugWindowController: button. */
+"Clear" = "Очисти";
+
+/* DebugWindowController: text. */
+"Author" = "Аутор";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Сви наведени додаци уграђени су у Deskset и ажурирају се са апликацијом. Верзије одговарају Deskset-у; спољни додаци тренутно нису подржани.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (уграђени)";

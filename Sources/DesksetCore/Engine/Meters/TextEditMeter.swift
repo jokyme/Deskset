@@ -126,26 +126,29 @@ public final class TextEditMeter: Meter {
         let angle = double("Angle", 0)
         s.angle = angle.isFinite ? angle.truncatingRemainder(dividingBy: 2 * .pi) : 0
         s.antiAlias = antiAlias
-        s.accurateText = skin.settings.accurateText
+        s.accurateText = true
+        if !skin.settings.accurateText {
+            skin.logOnce("[\(name)] TextEdit: AccurateText=1 is recommended in [Rainmeter]", level: .warning)
+        }
         s.fontFolder = fontFolder
         s.trailingSpaces = true
 
+        multiline = bool("Multiline", false)
         clipStringW = optionalDouble("ClipStringW").flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         clipStringH = optionalDouble("ClipStringH").flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         switch int("ClipString", 0) {
         case 1:
             s.clip = widthOption == nil ? 0 : 1
-            s.wrap = widthOption != nil && heightOption != nil
+            s.wrap = multiline && widthOption != nil && heightOption != nil
             s.breakLongWords = true
         case 2:
             s.clip = 2
-            s.wrap = (widthOption ?? clipStringW) != nil
+            s.wrap = multiline && (widthOption ?? clipStringW) != nil
             s.breakLongWords = false
         default:
             s.clip = 0
         }
 
-        multiline = bool("Multiline", false)
         if let explicitSubmit = optionalDouble("SubmitOnEnter"), explicitSubmit.isFinite {
             submitOnEnter = Int(explicitSubmit) != 0
         } else {
@@ -171,9 +174,10 @@ public final class TextEditMeter: Meter {
         password = bool("Password", false)
         readOnly = bool("ReadOnly", false)
 
-        let configuredCase = option("StringCase")
+        let configuredCase = option("StringCase")?.trimmingCharacters(in: .whitespaces)
+        let hasStringCase = configuredCase.map { !$0.isEmpty } ?? false
         stringCase = Self.parseCase(configuredCase ?? "None")
-        inputCase = configuredCase == nil ? Self.parseCase(string("InputCase", "None")) : stringCase
+        inputCase = hasStringCase ? stringCase : Self.parseCase(string("InputCase", "None"))
 
         switch string("InputFilter", "None").trimmingCharacters(in: .whitespaces).lowercased() {
         case "integer": inputFilter = .integer
@@ -192,7 +196,7 @@ public final class TextEditMeter: Meter {
         baseStyle = s
 
         let previousText = inputText
-        if lastInitialText == nil || (dynamicVariables && !initialTextLocked) {
+        if lastInitialText == nil || ((dynamicVariables || skin.isPatchingOptions) && !initialTextLocked) {
             let initialText = readInitialText()
             // An unchanged default must not overwrite an explicit SetText or Clear on each update.
             if initialText != lastInitialText {
@@ -371,9 +375,10 @@ public final class TextEditMeter: Meter {
     public func actionInputMatches(for value: String) -> [String] {
         guard !inputRegExp.isEmpty, let match = PCRE.allMatches(inputRegExp, in: value)?.first else { return [] }
         let ns = value as NSString
+        let count = min(match.numberOfRanges, 11)
         var groups: [String] = []
-        groups.reserveCapacity(match.numberOfRanges)
-        for i in 0..<match.numberOfRanges {
+        groups.reserveCapacity(count)
+        for i in 0..<count {
             let r = match.range(at: i)
             if r.location != NSNotFound, r.location + r.length <= ns.length {
                 groups.append(ns.substring(with: r))
@@ -946,7 +951,7 @@ public final class TextEditMeter: Meter {
         switch style.clip {
         case 2:
             let maxWidth = widthOption ?? clipStringW
-            var size = host.textSize(text, style: style, wrapWidth: maxWidth, for: skin)
+            var size = host.textSize(text, style: style, wrapWidth: multiline ? maxWidth : nil, for: skin)
             if let maxWidth { size.width = min(size.width, maxWidth) }
             if heightOption == nil, let maxHeight = clipStringH { size.height = min(size.height, maxHeight) }
             return size

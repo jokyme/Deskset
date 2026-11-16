@@ -764,7 +764,12 @@ final class NowPlayingCenter {
         let backend = self.backend
         let download = coverDownload
         worker.async { [weak self] in
-            switch backend.artwork(app, track: track) {
+            var art = backend.artwork(app, track: track)
+            if art == nil, !track.file.isEmpty,
+               let local = NowPlayingCoverCache.localArtwork(forFile: track.file, album: track.album) {
+                art = .data(local)
+            }
+            switch art {
             case .data(let data):
                 MediaUIMainHop.async { self?.playerAnswered(app, job, data: data) }
             case .url(let url):
@@ -1105,6 +1110,180 @@ enum NowPlayingCoverCache {
            b[8] == 0x61, b[9] == 0x76, b[10] == 0x69, (b[11] == 0x66 || b[11] == 0x73) { return "avif" }
         if (b[0] == 0x49 && b[1] == 0x49) || (b[0] == 0x4D && b[1] == 0x4D) { return "tiff" }
         return nil
+    }
+
+    /// Reads local cover artwork for a track path: embedded Ogg Vorbis/Opus `METADATA_BLOCK_PICTURE` first,
+    /// then standard folder cover files (`cover.*`, `folder.*`, etc., including `.webp` and `.avif`).
+    static func localArtwork(forFile filePath: String, album: String = "") -> Data? {
+        guard !filePath.isEmpty else { return nil }
+        let fileURL = URL(fileURLWithPath: filePath)
+        let ext = fileURL.pathExtension.lowercased()
+        if ext == "ogg" || ext == "oga" || ext == "opus",
+           let embedded = extractOggPicture(at: fileURL) {
+            return embedded
+        }
+        let folder = fileURL.deletingLastPathComponent()
+        guard let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+              values.isDirectory == true, values.isSymbolicLink != true,
+              let entries = try? FileManager.default.contentsOfDirectory(
+                  at: folder,
+                  includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
+                  options: [.skipsHiddenFiles]
+              ) else {
+            return nil
+        }
+        let supportedExts: Set<String> = ["webp", "avif", "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif"]
+        var byName: [String: URL] = [:]
+        for item in entries {
+            let extLower = item.pathExtension.lowercased()
+            guard supportedExts.contains(extLower) else { continue }
+            byName[item.lastPathComponent.lowercased()] = item
+        }
+        var stems = ["cover", "folder", "front", "album", "albumart"]
+        let trackStem = fileURL.deletingPathExtension().lastPathComponent.trimmingCharacters(in: .whitespaces).lowercased()
+        if !trackStem.isEmpty { stems.append(trackStem) }
+        let albumStem = album.trimmingCharacters(in: .whitespaces).lowercased()
+        if !albumStem.isEmpty && !albumStem.contains("/") && !albumStem.contains("\\") { stems.append(albumStem) }
+        let extPriority = ["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "tiff", "tif"]
+        for stem in stems {
+            for extName in extPriority {
+                guard let url = byName["\(stem).\(extName)"],
+                      let data = readRegularImage(at: url) else { continue }
+                return data
+            }
+        }
+        return nil
+    }
+
+    private static func readRegularImage(at url: URL) -> Data? {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true,
+              (values.fileSize ?? 0) <= 10 * 1024 * 1024,
+              let data = try? Data(contentsOf: url),
+              imageExtension(data) != nil else {
+            return nil
+        }
+        return data
+    }
+
+    /// Parses Ogg Vorbis / Opus comment header packet (`\x03vorbis` / `OpusTags`) for `METADATA_BLOCK_PICTURE`.
+    static func extractOggPicture(at url: URL) -> Data? {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true,
+              let handle = try? FileHandle(forReadingFrom: url),
+              let headerData = try? handle.read(upToCount: 4 * 1024 * 1024),
+              headerData.count >= 28 else {
+            return nil
+        }
+        var offset = 0
+        var packetBuffer = Data()
+        var packetIndex = 0
+        let vorbisMagic: [UInt8] = [0x03, 0x76, 0x6F, 0x72, 0x62, 0x69, 0x73] // \x03vorbis
+        let opusMagic: [UInt8] = Array("OpusTags".utf8)
+        while offset + 27 <= headerData.count {
+            guard headerData[offset] == 0x4F, headerData[offset + 1] == 0x67,
+                  headerData[offset + 2] == 0x67, headerData[offset + 3] == 0x53 else {
+                break
+            }
+            let segCount = Int(headerData[offset + 26])
+            let segTableStart = offset + 27
+            let payloadStart = segTableStart + segCount
+            guard payloadStart <= headerData.count else { break }
+            var dataCursor = payloadStart
+            for s in 0..<segCount {
+                let segLen = Int(headerData[segTableStart + s])
+                guard dataCursor + segLen <= headerData.count else { return nil }
+                if packetIndex == 1 {
+                    packetBuffer.append(headerData[dataCursor..<(dataCursor + segLen)])
+                }
+                dataCursor += segLen
+                if segLen < 255 {
+                    if packetIndex == 1 {
+                        return extractVorbisCommentPicture(packet: packetBuffer,
+                                                           vorbisMagic: vorbisMagic,
+                                                           opusMagic: opusMagic)
+                    }
+                    packetBuffer.removeAll(keepingCapacity: true)
+                    packetIndex += 1
+                    if packetIndex > 2 { return nil }
+                }
+            }
+            offset = dataCursor
+        }
+        if packetIndex == 1, !packetBuffer.isEmpty {
+            return extractVorbisCommentPicture(packet: packetBuffer, vorbisMagic: vorbisMagic, opusMagic: opusMagic)
+        }
+        return nil
+    }
+
+    private static func extractVorbisCommentPicture(packet: Data, vorbisMagic: [UInt8], opusMagic: [UInt8]) -> Data? {
+        var cursor: Int
+        if packet.count >= vorbisMagic.count && Array(packet.prefix(vorbisMagic.count)) == vorbisMagic {
+            cursor = vorbisMagic.count
+        } else if packet.count >= opusMagic.count && Array(packet.prefix(opusMagic.count)) == opusMagic {
+            cursor = opusMagic.count
+        } else {
+            return nil
+        }
+        guard let vendorLen = readUInt32LE(packet, at: cursor) else { return nil }
+        cursor += 4 + Int(vendorLen)
+        guard cursor + 4 <= packet.count, let commentCount = readUInt32LE(packet, at: cursor) else { return nil }
+        cursor += 4
+        let count = min(Int(commentCount), 4096)
+        let prefix = "metadata_block_picture="
+        var fallback: Data?
+        for _ in 0..<count {
+            guard let len = readUInt32LE(packet, at: cursor) else { break }
+            cursor += 4
+            let entryLen = Int(len)
+            guard entryLen >= 0, cursor + entryLen <= packet.count else { break }
+            let slice = packet[cursor..<(cursor + entryLen)]
+            cursor += entryLen
+            guard let text = String(data: slice, encoding: .utf8),
+                  text.lowercased().hasPrefix(prefix) else { continue }
+            let encoded = String(text.dropFirst(prefix.count))
+            guard let block = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters),
+                  let parsed = parseFlacPictureBlock(block) else { continue }
+            if parsed.type == 3 { return parsed.data }
+            if fallback == nil { fallback = parsed.data }
+        }
+        return fallback
+    }
+
+    private static func parseFlacPictureBlock(_ data: Data) -> (type: UInt32, data: Data)? {
+        guard let type = readUInt32BE(data, at: 0),
+              let mimeLen = readUInt32BE(data, at: 4) else { return nil }
+        var cursor = 8
+        guard mimeLen <= 1024, cursor + Int(mimeLen) + 4 <= data.count else { return nil }
+        let mime = String(data: data[cursor..<(cursor + Int(mimeLen))], encoding: .utf8) ?? ""
+        cursor += Int(mimeLen)
+        guard mime != "-->",
+              let descLen = readUInt32BE(data, at: cursor) else { return nil }
+        cursor += 4
+        guard descLen <= 65_536, cursor + Int(descLen) + 20 <= data.count else { return nil }
+        cursor += Int(descLen) + 16 // skip description + width/height/depth/colors
+        guard let imgLen = readUInt32BE(data, at: cursor) else { return nil }
+        cursor += 4
+        guard imgLen > 0, imgLen <= 10 * 1024 * 1024, cursor + Int(imgLen) <= data.count else { return nil }
+        let img = Data(data[cursor..<(cursor + Int(imgLen))])
+        guard imageExtension(img) != nil else { return nil }
+        return (type, img)
+    }
+
+    private static func readUInt32LE(_ data: Data, at offset: Int) -> UInt32? {
+        guard offset >= 0, offset + 4 <= data.count else { return nil }
+        return UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
+    }
+
+    private static func readUInt32BE(_ data: Data, at offset: Int) -> UInt32? {
+        guard offset >= 0, offset + 4 <= data.count else { return nil }
+        return (UInt32(data[offset]) << 24)
+            | (UInt32(data[offset + 1]) << 16)
+            | (UInt32(data[offset + 2]) << 8)
+            | UInt32(data[offset + 3])
     }
 
     /// Downloads a cover (at most 10 MB, 15 s).

@@ -49,9 +49,9 @@ public final class PingMeasure: Measure, PluginLifecycle {
     }
 
     public override func computeValue() -> Double {
-        if counter == 0 { startPing() }
-        if counter < Int.max - 1 { counter += 1 }
-        if updateRate > 0 && counter >= updateRate { counter = 0 }
+        if SkinSection.advanceCycleCounter(&counter, by: pendingUpdateHits, rate: updateRate) {
+            startPing()
+        }
         return result
     }
 

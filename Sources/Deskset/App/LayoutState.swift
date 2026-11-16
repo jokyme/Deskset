@@ -19,7 +19,8 @@ struct LayoutState {
         var target = LayoutStateCodec.section("Rainmeter", options: rainmeterOptions)
         let old = LayoutStateCodec.section("Rainmeter", options: previous.rainmeterOptions)
         for key in ["SkinPath", "ConfigEditor", "DisableVersionCheck", "DisableAutoUpdate", "Language",
-                    "NormalStayDesktop", "SelectedColor", "HardwareAcceleration", "DefaultZoom", "ForceDefaultZoom"] {
+                    "UITheme", "NormalStayDesktop", "SelectedColor", "HardwareAcceleration",
+                    "DefaultZoom", "ForceDefaultZoom"] {
             if let value = old[key], !value.isEmpty { target.setValue(value, forKey: key) }
         }
         // Logging remains local even when its key is absent and its effective value is the default 0.

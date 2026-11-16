@@ -8,6 +8,7 @@ struct SkinDebugState: Equatable {
 
     let config: String
     let file: String
+    let meters: [MeterDebugItem]
     let measures: [MeasureDebugItem]
     let variables: [VariableDebugItem]
     let watchResults: [DebugWatchResult]
@@ -38,6 +39,19 @@ struct SkinDebugState: Equatable {
             } catch {
                 return DebugWatchResult(expression: expression, value: nil, error: String(describing: error))
             }
+        }
+        let meters = skin.meters.map { meter -> MeterDebugItem in
+            let frameText = "\(NumberFormatting.plain(meter.frame.x)), "
+                + "\(NumberFormatting.plain(meter.frame.y)), "
+                + "\(NumberFormatting.plain(meter.frame.width)) \u{00d7} "
+                + "\(NumberFormatting.plain(meter.frame.height))"
+            return MeterDebugItem(
+                name: meter.name,
+                typeName: meter.type,
+                frameText: frameText,
+                hidden: meter.hidden,
+                location: skin.sources.location(section: meter.name)
+            )
         }
         let measures = skin.measures.map { measure -> MeasureDebugItem in
             let numberText = NumberFormatting.plain(measure.value)
@@ -81,6 +95,7 @@ struct SkinDebugState: Equatable {
         return SkinDebugState(
             config: skin.config,
             file: skin.fileURL.lastPathComponent,
+            meters: meters,
             measures: measures,
             variables: variables,
             watchResults: watchResults,
@@ -120,6 +135,23 @@ struct DebugWatchResult: Equatable {
     let error: String?
 
     var id: UUID { expression.id }
+}
+
+/// A single meter row in the skin inspector.
+struct MeterDebugItem: Equatable {
+    let name: String
+    let typeName: String
+    let frameText: String
+    let hidden: Bool
+    let location: IniSourceLocation?
+
+    init(name: String, typeName: String, frameText: String, hidden: Bool, location: IniSourceLocation? = nil) {
+        self.name = name
+        self.typeName = typeName
+        self.frameText = frameText
+        self.hidden = hidden
+        self.location = location
+    }
 }
 
 /// A single measure row in the skin inspector.

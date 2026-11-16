@@ -124,15 +124,16 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
 
     init(app: AppController) {
         self.app = app
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 380),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = L("Create .rmskin Package")
-        window.minSize = NSSize(width: 540, height: 360)
+        window.minSize = NSSize(width: 600, height: 370)
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.center()
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         spec.outputDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
         build(in: window)
         refresh()
@@ -321,11 +322,14 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
             ?? L("No skin chosen")
         skinLabel.toolTip = spec.rootConfig?.path
         skinLabel.textColor = spec.rootConfig == nil ? .secondaryLabelColor : .labelColor
-        rebuild(layoutsList, items: spec.layouts.map { $0.lastPathComponent }, remove: #selector(removeLayout(_:)))
-        rebuild(pluginsList, items: spec.plugins.map(pluginDescription), remove: #selector(removePlugin(_:)))
+        rebuild(layoutsList, items: spec.layouts.map { (text: $0.lastPathComponent, toolTip: $0.path) },
+                remove: #selector(removeLayout(_:)))
+        rebuild(pluginsList, items: spec.plugins.map { (text: pluginDescription($0), toolTip: pluginToolTip($0)) },
+                remove: #selector(removePlugin(_:)))
         outputLabel.stringValue = spec.outputDirectory.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
         outputLabel.toolTip = spec.outputDirectory?.path
         headerLabel.stringValue = spec.headerImage?.lastPathComponent ?? L("None")
+        headerLabel.toolTip = spec.headerImage?.path
         headerLabel.textColor = spec.headerImage == nil ? .secondaryLabelColor : .labelColor
         removeHeaderButton.isHidden = spec.headerImage == nil
         mergeBox.state = spec.mergeSkins ? .on : .off
@@ -354,7 +358,7 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         if field.stringValue != value && field.currentEditor() == nil { field.stringValue = value }
     }
 
-    private func rebuild(_ list: NSStackView, items: [String], remove: Selector) {
+    private func rebuild(_ list: NSStackView, items: [(text: String, toolTip: String?)], remove: Selector) {
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if items.isEmpty {
             let none = NSTextField(labelWithString: L("None"))
@@ -367,16 +371,27 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
             button.isBordered = false
             button.tag = index
             button.toolTip = L("Remove")
-            list.addArrangedSubview(row([button, NSTextField(labelWithString: item)]))
+            let textLabel = NSTextField(labelWithString: item.text)
+            textLabel.lineBreakMode = .byTruncatingMiddle
+            textLabel.toolTip = item.toolTip
+            list.addArrangedSubview(row([button, textLabel]))
         }
     }
 
-    private func pluginDescription(_ plugin: RmskinPackageSpec.Plugin) -> String {
+    func pluginDescription(_ plugin: RmskinPackageSpec.Plugin) -> String {
+        let primaryPath = ((plugin.x64 ?? plugin.x86)?.path as NSString?)?.abbreviatingWithTildeInPath ?? plugin.fileName
         switch (plugin.x86 != nil, plugin.x64 != nil) {
-        case (true, true): return L("%@ (32-bit and 64-bit)", plugin.fileName)
-        case (true, false): return L("%@ (64-bit version missing)", plugin.fileName)
-        default: return L("%@ (32-bit version missing)", plugin.fileName)
+        case (true, true): return L("%@ (32-bit and 64-bit)", primaryPath)
+        case (true, false): return L("%@ (64-bit version missing)", primaryPath)
+        default: return L("%@ (32-bit version missing)", primaryPath)
         }
+    }
+
+    func pluginToolTip(_ plugin: RmskinPackageSpec.Plugin) -> String? {
+        var lines: [String] = []
+        if let x86 = plugin.x86 { lines.append("32-bit: \(x86.path)") }
+        if let x64 = plugin.x64 { lines.append("64-bit: \(x64.path)") }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     /// The skins of the package, or its layouts, for "After installation".
@@ -536,6 +551,31 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         addLayout(file.deletingLastPathComponent())
     }
 
+    func initialDirectory(for choice: Choice) -> URL? {
+        func existingDirectoryOrParent(_ url: URL) -> URL {
+            var isDirectory = ObjCBool(false)
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+                return isDirectory.boolValue ? url : url.deletingLastPathComponent()
+            }
+            return url.deletingLastPathComponent()
+        }
+        switch choice {
+        case .skin:
+            return spec.rootConfig.map(existingDirectoryOrParent) ?? app.skinsDirectory
+        case .layoutFolder:
+            return spec.layouts.last.map(existingDirectoryOrParent) ?? app.layoutsDirectory
+        case .plugin:
+            if let last = spec.plugins.last, let url = last.x64 ?? last.x86 {
+                return url.deletingLastPathComponent()
+            }
+            return app.skinsDirectory.appendingPathComponent("@Vault/Plugins", isDirectory: true)
+        case .output:
+            return spec.outputDirectory
+        case .header:
+            return spec.headerImage?.deletingLastPathComponent()
+        }
+    }
+
     private func choose(_ choice: Choice, then use: @escaping (URL) -> Void) {
         if let chooseForTesting {
             if let url = chooseForTesting(choice) { use(url) }
@@ -545,13 +585,11 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         panel.canChooseDirectories = [.skin, .layoutFolder, .output].contains(choice)
         panel.canChooseFiles = !panel.canChooseDirectories
         panel.allowsMultipleSelection = false
+        panel.directoryURL = initialDirectory(for: choice)
         switch choice {
-        case .skin: panel.directoryURL = app.skinsDirectory; panel.message = L("Choose the skin's root config folder.")
-        case .layoutFolder: panel.directoryURL = app.layoutsDirectory
-        case .plugin:
-            panel.allowedContentTypes = [.init(filenameExtension: "dll") ?? .data]
-            panel.directoryURL = app.skinsDirectory.appendingPathComponent("@Vault/Plugins", isDirectory: true)
-        case .output: panel.directoryURL = spec.outputDirectory
+        case .skin: panel.message = L("Choose the skin's root config folder.")
+        case .layoutFolder, .output: break
+        case .plugin: panel.allowedContentTypes = [.init(filenameExtension: "dll") ?? .data]
         case .header: panel.allowedContentTypes = [.bmp]
         }
         guard let window else { return }

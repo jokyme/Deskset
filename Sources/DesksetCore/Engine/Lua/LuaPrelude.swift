@@ -84,25 +84,7 @@ local function check(self, kind, method)
 end
 
 local function applyPairs(op, method, kind, target, ...)
-  local first = select(1, ...)
-  if type(first) == 'table' then
-    local n = select('#', ...)
-    local offset = (target ~= nil and kind == 0 or (target ~= nil and kind == nil)) and 1 or 0
-    for i = 1, n do
-      local t = select(i, ...)
-      if type(t) ~= 'table' then
-        error(format("bad argument #%d to '%s' (table expected, got %s)", i + offset, method, type(t)), 3)
-      end
-      if kind ~= nil then
-        host(op, kind, target, t[1], t[2])
-      elseif target ~= nil then
-        host(op, target, t[1], t[2])
-      else
-        host(op, t[1], t[2])
-      end
-    end
-  else
-    local k, v = select(1, ...), select(2, ...)
+  local function send(k, v)
     if kind ~= nil then
       host(op, kind, target, k, v)
     elseif target ~= nil then
@@ -110,6 +92,43 @@ local function applyPairs(op, method, kind, target, ...)
     else
       host(op, k, v)
     end
+  end
+  local function sendDict(tbl)
+    local keys = {}
+    for k in pairs(tbl) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    for _, k in ipairs(keys) do send(k, tbl[k]) end
+  end
+  local first = select(1, ...)
+  if type(first) == 'table' then
+    local n = select('#', ...)
+    local offset = (target ~= nil and kind == 0 or (target ~= nil and kind == nil)) and 1 or 0
+    if n == 1 and first[1] == nil then
+      sendDict(first)
+    elseif n == 1 and type(first[1]) == 'table' then
+      for j = 1, #first do
+        local entry = first[j]
+        if type(entry) ~= 'table' then
+          error(format("bad argument #%d to '%s' (table expected, got %s)", 1 + offset, method, type(entry)), 3)
+        end
+        send(entry[1], entry[2])
+      end
+    else
+      for i = 1, n do
+        local t = select(i, ...)
+        if type(t) ~= 'table' then
+          error(format("bad argument #%d to '%s' (table expected, got %s)", i + offset, method, type(t)), 3)
+        end
+        if t[1] == nil then
+          sendDict(t)
+        else
+          send(t[1], t[2])
+        end
+      end
+    end
+  else
+    local k, v = select(1, ...), select(2, ...)
+    send(k, v)
   end
 end
 

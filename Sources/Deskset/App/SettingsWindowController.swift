@@ -46,6 +46,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let languagePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     /// Where the language choice is kept (the self-tests use a temporary defaults suite).
     var languagePreference = LanguagePreference.standard
+    let uiThemePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let loginBox = NSButton(checkboxWithTitle: L("Launch Deskset at login"), target: nil, action: nil)
     let automaticUpdatesBox = NSButton(checkboxWithTitle: L("Automatically check for updates"), target: nil, action: nil)
     let checkUpdatesButton = NSButton(title: L("Check for Updates…"), target: nil, action: nil)
@@ -55,7 +56,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     let defaultZoomStepper = SkinZoomStepper()
     let forceZoomBox = NSButton(checkboxWithTitle: L("Apply to all skins"), target: nil, action: nil)
     let disableDraggingBox = NSButton(checkboxWithTitle: L("Disable dragging"), target: nil, action: nil)
-    let resetStatisticsButton = NSButton(title: L("Reset statistics"), target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -106,6 +106,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         window.toolbarStyle = .preference
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         let toolbar = NSToolbar(identifier: "DesksetSettings")
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
@@ -186,6 +187,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         languagePopUp.target = self
         languagePopUp.action = #selector(languageChosen)
         refreshLanguagePopUp()
+        for theme in AppUITheme.allCases {
+            uiThemePopUp.addItem(withTitle: theme.title)
+            uiThemePopUp.lastItem?.tag = theme.rawValue
+        }
+        uiThemePopUp.target = self
+        uiThemePopUp.action = #selector(uiThemeChosen)
+        uiThemePopUp.setAccessibilityLabel(L("Theme"))
         editorPopUp.target = self
         editorPopUp.action = #selector(editorChosen)
         editorPopUp.setAccessibilityLabel(L("Edit code with"))
@@ -222,9 +230,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         disableDraggingBox.action = #selector(disableDraggingToggled)
         disableDraggingBox.toolTip = L("Prevent dragging skins with the mouse.")
         disableDraggingBox.setAccessibilityLabel(L("Disable dragging"))
-        resetStatisticsButton.target = self
-        resetStatisticsButton.action = #selector(resetStatistics)
-        resetStatisticsButton.setAccessibilityLabel(L("Reset statistics"))
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
         automaticUpdatesBox.target = self
@@ -287,6 +292,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         ], spacingAfter: [1: 8])
     }
 
+    private func sectionTitle(_ text: String) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        return l
+    }
+
     private func makeGeneralPane() -> NSView {
         let path = NSTextField(labelWithString: (app.skinsDirectory.path as NSString).abbreviatingWithTildeInPath)
         path.lineBreakMode = .byTruncatingMiddle
@@ -303,19 +314,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         let zoom = NSStackView(views: [defaultZoomField, defaultZoomStepper, NSTextField(labelWithString: "%")])
         zoom.spacing = 4
         return makePane(rows: [
+            [NSGridCell.emptyContentView, sectionTitle(L("User interface"))],
             [label(L("Language:")), languagePopUp],
+            [label(L("Theme:")), uiThemePopUp],
+            [NSGridCell.emptyContentView, sectionTitle(L("General"))],
             [label(L("Startup:")), loginBox],
             [NSGridCell.emptyContentView, loginNote],
-            [label(L("Skins folder:")), folder],
-            [label(L("Default zoom:")), zoom],
-            [NSGridCell.emptyContentView, forceZoomBox],
-            [NSGridCell.emptyContentView, disableDraggingBox],
-            [NSGridCell.emptyContentView, resetStatisticsButton],
             [label(L("Updates:")), automaticUpdatesBox],
             [NSGridCell.emptyContentView, note(L("Deskset checks once a day and downloads updates itself; you choose when to install them."))],
             [NSGridCell.emptyContentView, updateButtons],
             [NSGridCell.emptyContentView, updateStatusLabel],
-        ], spacingAfter: [0: 8, 2: 8, 3: 8, 5: 8])
+            [NSGridCell.emptyContentView, sectionTitle(L("Skins"))],
+            [label(L("Skins folder:")), folder],
+            [label(L("Default zoom:")), zoom],
+            [NSGridCell.emptyContentView, forceZoomBox],
+            [NSGridCell.emptyContentView, disableDraggingBox],
+        ], spacingAfter: [2: 10, 5: 8, 9: 10, 11: 8, 13: 8])
     }
 
     // MARK: Editor list
@@ -385,6 +399,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontField.integerValue = Int(e.codeFontSize)
         fontStepper.doubleValue = e.codeFontSize
         liveReloadBox.state = e.liveReload ? .on : .off
+        uiThemePopUp.selectItem(withTag: app.state.uiTheme.rawValue)
         disableDraggingBox.state = app.state.disableDragging ? .on : .off
         loginBox.state = LaunchAtLogin.isEnabled ? .on : .off
         loginBox.isEnabled = LaunchAtLogin.isAvailable
@@ -558,8 +573,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         app.state.setDisableDragging(disableDraggingBox.state == .on)
     }
 
-    @objc private func resetStatistics() {
-        app.system.resetNetworkStatistics()
+    @objc func uiThemeChosen() {
+        guard let theme = AppUITheme(rawValue: uiThemePopUp.selectedTag()) else { return }
+        app.state.setUITheme(theme)
     }
 
     @objc private func loginToggled() {

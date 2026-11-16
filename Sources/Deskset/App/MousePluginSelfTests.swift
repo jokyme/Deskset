@@ -71,5 +71,85 @@ extension AppSelfTest {
             t.equal(v("Order"), "plugin-down meter-down plugin-up ", "the measure's LeftMouseUpAction ran")
             t.check(view.pointerPresses.isEmpty)
         }
+
+        t.suite("App: Mouse capture overlay covers multiple monitors, waits for held release, and handles Esc") {
+            final class FakeCaptureMonitorSource: MouseCaptureMonitorSource {
+                var handler: ((NSEvent, Bool) -> NSEvent?)?
+                func start(handler: @escaping (NSEvent, Bool) -> NSEvent?) { self.handler = handler }
+                func stop() { handler = nil }
+                func send(_ event: NSEvent, local: Bool) -> NSEvent? { handler?(event, local) }
+            }
+            guard let app = try makeApp(t), let c = app.activate(config: "App\\MousePlugin", file: nil) else { return }
+            let capture = app.mouseCapture
+            let monitor = FakeCaptureMonitorSource()
+            capture.use(monitor)
+            capture.screensProvider = {
+                [
+                    WindowGeometry.Screen(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                          visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1055)),
+                    WindowGeometry.Screen(frame: CGRect(x: 1920, y: 0, width: 2560, height: 1440),
+                                          visibleFrame: CGRect(x: 1920, y: 0, width: 2560, height: 1415)),
+                ]
+            }
+            defer {
+                capture.screensProvider = { WindowGeometry.currentScreens() }
+                capture.pressedButtonsProvider = { NSEvent.pressedMouseButtons }
+                capture.cancel(notifySkin: false)
+            }
+            var heldMask = 1 << 0
+            capture.pressedButtonsProvider = { heldMask }
+            c.skin.execute(
+                "[!EnableMeasure MeasureMouse][!SetOption MeasureMouse RelativeToSkin 0]"
+                + "[!SetOption MeasureMouse CaptureOverlayCursorName ARROW]"
+                + "[!SetOption MeasureMouse CaptureOverlayColor 10,20,30,40]"
+                + "[!SetOption MeasureMouse LeftMouseUpAction \"[!SetVariable Cap $MouseX$,$MouseY$]\"]"
+                + "[!UpdateMeasure MeasureMouse]",
+                from: nil
+            )
+            c.skin.execute("[!Mouse:StartCapture MeasureMouse]", from: nil)
+            t.equal(capture.activeOverlayPanels.count, 2, "one overlay panel created per screen")
+            t.equal(capture.activeOverlayPanels.map(\.frame), [
+                CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                CGRect(x: 1920, y: 0, width: 2560, height: 1440),
+            ], "overlay panels cover every monitor")
+            t.check(capture.isWaitingForInitialRelease)
+            t.check(SkinCursors.cursor(named: "ARROW", cursorsDirectory: nil) === NSCursor.arrow)
+
+            // Releasing the initially held button clears the hold without completing capture.
+            let heldRelease = NSEvent.mouseEvent(with: .leftMouseUp, location: NSPoint(x: 50, y: 50),
+                                                 modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                                 context: nil, eventNumber: 1, clickCount: 1, pressure: 0)!
+            _ = monitor.send(heldRelease, local: true)
+            heldMask = 0
+            t.check(!capture.isWaitingForInitialRelease)
+            t.equal(c.skin.variable("Cap"), nil)
+            t.check(capture.activeSession != nil)
+
+            // Next click completes capture against live screens and invokes LeftMouseUpAction.
+            let liveScreens = WindowGeometry.currentScreens()
+            capture.screensProvider = { liveScreens }
+            let primary = liveScreens[0]
+            let primaryH = WindowGeometry.primaryHeight(liveScreens)
+            let targetAppKitY = primaryH - ((primaryH - primary.frame.maxY) + 100)
+            let targetAppKitX = primary.frame.minX + 100
+            let secondClick = NSEvent.mouseEvent(with: .leftMouseUp,
+                                                 location: NSPoint(x: targetAppKitX, y: targetAppKitY),
+                                                 modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                                 context: nil, eventNumber: 2, clickCount: 1, pressure: 0)!
+            _ = monitor.send(secondClick, local: false)
+            t.equal(c.skin.variable("Cap"), "100,100")
+            t.check(capture.activeSession == nil)
+            t.equal(capture.activeOverlayPanels.count, 0)
+
+            // Escape cancels capture without executing any mouse action.
+            c.skin.execute("[!SetVariable Cap \"none\"][!Mouse:StartCapture MeasureMouse]", from: nil)
+            t.check(capture.activeSession != nil)
+            let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                       windowNumber: 0, context: nil, characters: "\u{1B}",
+                                       charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53)!
+            t.check(monitor.send(esc, local: true) == nil, "Esc consumed and cancels capture")
+            t.check(capture.activeSession == nil)
+            t.equal(c.skin.variable("Cap"), "none")
+        }
     }
 }

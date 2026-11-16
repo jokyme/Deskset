@@ -69,7 +69,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Skin zoom (Rainmeter 5.0)
 - Windows (Rainmeter): `Zoom` is an integer percentage from 10 to 500. `!SetZoomFactor Factor|Default [Config|*]`
   and `!SetZoomFactorGroup Factor|Default Group` set a skin or group; `DefaultZoom` and `ForceDefaultZoom` are global settings.
-- Mac (Deskset): Manage's Skins page has a Zoom field and stepper; Settings → General has Default zoom and Force.
+- Mac (Deskset): Manage's Skins page has a Zoom field and stepper; Settings → Skins has Default zoom and Force.
   Steps are one percentage point, or ten with Control. The skin menu's Zoom offers Default and
   80/90/100/110/120/130/140/150%. With no overrides, only Default is checked. Otherwise a common effective percentage
   is checked, inserting a custom value in order as a non-action item; different effective values leave all items unchecked.
@@ -100,7 +100,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Global DisableDragging
 - Windows (Rainmeter): `DisableDragging` defaults to `0`; enabling it prevents mouse dragging of active skins
   (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>).
-- Mac (Deskset): Settings → General provides Disable dragging. The saved global setting blocks ordinary mouse
+- Mac (Deskset): Settings → Skins provides Disable dragging. The saved global setting blocks ordinary mouse
   drags for existing and newly loaded skins, without rewriting each skin's Draggable preference. Enabling it ends
   an ordinary or selected-skin drag already in progress; disabling it requires a new press before dragging again.
   Click actions, pointer notifications and programmatic moves remain available. The existing Command override
@@ -186,8 +186,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### FadeDuration and fades
 - Windows (Rainmeter): FadeDuration (ms, default 250) for OnHover and `!ShowFade` / `!HideFade` / `!ToggleFade`.
 - Mac (Deskset): the same fades, plus a fade-in when a skin is loaded and a fade-out when it is unloaded (menu, Manage
-  window, `!ActivateConfig` / `!DeactivateConfig` / `!ToggleConfig`). A refresh or a switch to another variant does not
-  fade (it would flicker). Values are clamped to 0 … 10 000 ms (`!FadeDuration` too).
+  window, `!ActivateConfig` / `!DeactivateConfig` / `!ToggleConfig`). When a new fade starts while an earlier fade
+  is still animating (load, unload, hover, `!ShowFade` / `!HideFade`, or `SKIN:FadeWindow`), Deskset interpolates
+  smoothly from the window's current alpha instead of jumping back to the prior baseline. A refresh or a switch to
+  another variant does not fade (it would flicker). Values are clamped to 0 … 10 000 ms (`!FadeDuration` too).
 - Why: judgment call for load/unload; clamping keeps a typo from freezing a skin.
 - Skin impact: none.
 - Status: emulated
@@ -389,7 +391,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen in Settings ▸ Editor, Refresh Skin, Open Skin
   Folder, Unload Skin. FadeDuration and Load Order are set in the Manage window; StartHidden and AutoSelectScreen come
   from the skin's Default… options and bangs only. Zoom, Position, Transparency, On Hover and the window-setting checkboxes
-  apply to the selected group when this skin belongs to it; mixed values are unchecked. Refresh Skin and Unload Skin
+  apply to the selected group when this skin belongs to it; mixed values are unchecked. When a skin is currently selected,
+  its own `Draggable`, `Click Through` and `Keep on Screen` menu items (and matching temporary toggles) are locked to keep
+  the temporary selection state intact (matching Rainmeter 5.0). Refresh Skin and Unload Skin
   also apply to the selected group, clearing its selection as the instances stop.
 - Why: Mac menu conventions.
 - Skin impact: none.
@@ -406,7 +410,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Main menu (the tray menu)
 - Windows (Rainmeter): the notification-area icon's menu; `!TrayMenu` opens it.
 - Mac (Deskset): the menu bar icon's menu (Manage Skins…, Skins, Favorites, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
-  Folder, Open Log, Debug, Launch at Login, About, Quit); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
+  Folder, Debug, Launch at Login, About, Quit — `Open Log` is omitted from the main menu, matching Rainmeter 5.0); `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   the first launch shows it too. A second copy of Deskset hands its files over to the running one and quits.
 - Why: macOS 26 lets the user hide menu bar extras.
@@ -437,25 +441,25 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   `!Debug [Log|Display|Network|Plugins|Skin] [Config]`. About contains version information separately
   (<https://docs-v5.rainmeter.net/manual/user-interface/debug/>,
   <https://docs-v5.rainmeter.net/manual/user-interface/about/>, <https://www.rainmeter.net/changes-5.0/>).
-- Mac (Deskset): Debug uses the same five pages in a shared native window. Left-clicking the menu bar icon opens
-  Manage; Control-left-click opens Debug, and right-click opens the menu. The window remembers its size.
-  Log starts with the latest 50 messages, newest first; Type filters affect new messages, Clear empties the panel,
+- Mac (Deskset): Debug uses the same five pages (`Log`, `Skins`, `Plugins`, `Display`, `Network`) in a shared native window.
+  Left-clicking the menu bar icon opens Manage; Control-left-click opens Debug, and right-click opens the menu. The window remembers its size.
+  Log starts with the latest 50 messages, newest first, with SF Symbol status icons; Type filters affect new messages, Clear empties the panel,
   and Command-C copies selected message text. The live panel retains the existing 2,000-entry safety bound. The Log file menu starts/stops disk logging, opens the file or deletes
   it while stopping logging. Skins uses an active-config popup and a Name/Number/String table grouped into Measures,
-  Variables and Watch. A measure's Number tooltip exposes its unchanged range. Disabled measures are gray and paused
+  Variables, Meters and Watch. A measure's Number tooltip exposes its unchanged range. Disabled measures are gray and paused
   measures have a yellow background. Values display up to 512 characters plus an ellipsis; copies retain full values.
-  Filter searches measure and variable names and values; Jump to navigates the groups. Double-clicking a measure or
+  Filter searches measure, variable and meter names and values; Jump to navigates the groups. Double-clicking a measure or
   variable adds a string watch. The watch editor evaluates strings or formulas against current runtime values without
   an implicit skin update; Execute sends a string action through the skin's existing command queue. Inline script or
   plugin functions can perform their normal side effects. Watches live for this Debug window session, grouped by skin.
   Refresh on file change watches the selected skin's INI, included files and loaded Lua scripts, coalesces changes,
-  ignores unchanged contents and stops repeated refresh loops. Control-R or F5 refreshes the selected skin manually.
-  A measure's context menu can open its definition in the configured editor.
+  ignores unchanged contents and stops repeated refresh loops. `⌘R`, Control-R or F5 refreshes the selected skin manually.
+  Context menus on measures, meters and variables open their section definitions (`Edit measure`, `Edit meter`, `Edit variable`) in the configured editor.
   Display shows available macOS displays, logical screen/work areas and display-local physical pixel areas; a global
-  physical-pixel virtual desktop is unavailable on macOS. Network lists local interface facts and includes virtual
-  interfaces when selected. Display and Network support copying a value or the full list.
-  Plugins lists the registered built-in implementations with known aliases consolidated, the Deskset version marked
-  `(bundled)` and author `jokyme`. All listed implementations update with the app; external plugins remain unsupported.
+  physical-pixel virtual desktop is unavailable on macOS. Network lists local interface facts, includes virtual
+  interfaces when selected, and provides **Reset statistics** in its footer alongside `!ResetStats`. Display and Network support copying a value or the full list.
+  Plugins lists loaded non-built-in plugin implementations (built-in Rainmeter 5.0 measures promoted from plugins are filtered out)
+  with known aliases consolidated, the Deskset version marked `(bundled)` and author `jokyme`. All listed implementations update with the app; external plugins remain unsupported.
   About copies app version, bundle build number when available, architecture and program/settings/skin/log paths.
 - Why: native macOS controls and device APIs, existing command execution and bounded log storage.
 - Skin impact: use `!Debug` for diagnostics. Existing `!About` command tokens remain accepted but show version details.
@@ -490,7 +494,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   `network-statistics.json` in the app's settings folder. The primary desktop instance loads them before skins and
   saves them on exit. Its two-minute collection/save task starts with the first cumulative read and continues for
   that session after cumulative skins unload. Ordinary rate reads and Reset statistics alone do not start it.
-  Settings → General's Reset statistics and `!ResetStats` clear all totals through the same service; a following
+  Settings → General in the older documentation now maps to **Debug → Network's Reset statistics** (matching Rainmeter 5.0)
+  and `!ResetStats`; both clear all totals through the same service; a following
   measure-update bang sees the reset immediately. Raw interface counters and ordinary speed measurements remain
   unchanged. Recording a skin does not reset live statistics.
 - Why: one shared sampler avoids counting the same traffic repeatedly when multiple measures read an interface.
@@ -546,6 +551,39 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Status: emulated / partial. Windows behavior for a restart command with no current process, save/preparation
   failures, hidden skins and multi-selection Focus remains unverified. The legacy `RestartRainmeter.exe` helper is
   not mapped on macOS. Direct checks of native modifier-menu display remain incomplete.
+
+### Settings, UITheme, Debug tabs and update checks (Rainmeter 5.0)
+- Windows (Rainmeter 5.0): Settings uses `UITheme` (`0` System / Dark default, `1` Light, `2` Dark) across the
+  application UI, dialogs, tooltips and menus; Settings is organized into **User interface** (Language, Theme),
+  **General** (Run at startup, Updates, Reset statistics moved to Debug → Network) and **Skins** (Skins folder,
+  Default zoom, Force, Disable dragging). Update checks run 5 minutes after startup, respect `DisableAutoUpdate` /
+  `DisableVersionCheck` (`[Rainmeter]`), and remember cancelled versions until a newer release. Debug orders its tabs
+  as Log (initial 50 entries with severity icons), Skins (Measures, Variables and Meters with Edit meter / Edit variable
+  actions and `Ctrl+R` / `F5` refresh), Plugins (excluding built-in 5.0 measures promoted from plugins when no separate
+  plugin entry applies), Display and Network (with **Reset statistics**) (<https://www.rainmeter.net/changes-5.0/>).
+- Mac (Deskset):
+  - `UITheme` (`0`, `1`, `2`) applies live across Deskset's Manage, Settings, About, Debug, Packager, New Skin,
+    Code Editor, Studio windows, menus, alerts and skin tooltips; `UITheme` and `DisableAutoUpdate` are preserved
+    across ordinary layout loads alongside `DisableVersionCheck`.
+  - Settings groups **User interface** (`Language`, `Theme`), **General** (`Launch at login`, automatic updates),
+    and **Skins** (`Skins folder`, `Default zoom`, `Force`, `Disable dragging`); **Reset statistics** lives in
+    **Debug → Network** alongside `!ResetStats`.
+  - Debug follows the 5.0 tab order (`Log`, `Skins`, `Plugins`, `Display`, `Network`), displays SF Symbol status
+    icons and the initial 50 log entries on the Log tab, inspects **Measures**, **Variables** and **Meters** with
+    **Edit meter** / **Edit variable** jump actions and `⌘R` / Control-R / F5 refresh on the Skins tab, and filters
+    promoted 5.0 built-in measures (`CPU`, `Memory`, `Time`, `Power`, `NowPlaying`, `WebParser`, `UsageMonitor`, etc.)
+    out of the Plugins tab.
+  - Background update checks wait 5 minutes after launch, sync `DisableAutoUpdate` and `DisableVersionCheck` with
+    global settings, and suppress re-prompting for a version dismissed with Cancel until a newer release appears.
+  - Skin Packager (Manage's create-package tool) defaults to a `680×400` (minimum `600×370`) layout, displays full
+    32-bit/64-bit plugin paths with hover tooltips, and opens file panels at the currently selected paths.
+- Excluded from this compatibility pass: `Manage → Game mode`, CLI `[!Launch][!Bang]...` execution arguments, and
+  `#SETTINGSPATH#Crashes\` automatic crash dump folders remain unimplemented on macOS.
+- Why: native AppKit panels, menus and Settings groups map Rainmeter 5.0 workflows cleanly to macOS conventions.
+- Skin impact: skins using `Debug → Network` reset statistics, Debug → Skins meters/variables, `UITheme` preservation
+  and 5.0 Settings behavior match expected host behavior; skins depending on Game mode or CLI `[!Launch]` remain
+  unaffected.
+- Status: emulated (macOS self-tests pass; Windows desktop visual and dialog comparison remains pending)
 
 ### Safe Start
 - Windows (Rainmeter): the 5.0 changes specify holding Control+Shift for one second during startup, and an offer

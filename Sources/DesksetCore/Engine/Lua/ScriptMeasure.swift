@@ -890,6 +890,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
     /// their options (`Skin.ensureMeterGeometry`).
     private func meterGeometry(_ m: Meter, _ which: String, absolute: Bool) -> Double {
         skin.ensureMeterGeometry()
+        skin.layoutIfPending()
         let f = m.frame
         switch which {
         case "x": return absolute ? f.x : f.x - (m.container?.frame.x ?? 0)
@@ -931,6 +932,12 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             if !m.hidden { m.frame.height = h + m.padding.top + m.padding.bottom }
         }
         m.needsOptionRead = true
+        if (which == "w" || which == "h") && (m is StringMeter || m is TextEditMeter) {
+            m.readOptionsIfNeeded()
+            m.updateMeter()
+            m.noteDrawChange()
+            skin.markLayoutPending()
+        }
     }
 
     /// `os.execute`: macOS has no Windows command interpreter, and a shell command could block the skin. Commands

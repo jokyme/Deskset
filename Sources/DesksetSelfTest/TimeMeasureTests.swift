@@ -254,5 +254,18 @@ func runTimeMeasureTests(_ t: TestRunner) {
         t.equal(host.logs.filter { $0.contains("[Invalid] TimeStamp") }.count, 1, "dynamic errors do not spam the log")
         skin.execute("[!SetOption Invalid TimeStamp \"\"][!UpdateMeasure Invalid]", from: nil)
         t.equal(skin.measure(named: "Invalid")!.value, 11_644_477_200, "removing the timestamp returns to the clock")
+
+        // Invalid TimeStampLocale produces an error with value 0.
+        let (errSkin, errHost) = try makeSkin(t, """
+        [BadLocale]
+        Measure=Time
+        TimeStamp=2015-01-27
+        TimeStampFormat=%Y-%m-%d
+        TimeStampLocale=invalid-nonexistent-locale
+        """)
+        defer { errSkin.close() }
+        errSkin.update()
+        t.equal((errSkin.measure(named: "BadLocale") as! TimeMeasure).timestamp, 0)
+        t.check(errHost.logs.contains { $0.contains("[BadLocale] Invalid TimeStampLocale") })
     }
 }

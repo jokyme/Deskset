@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Súbor";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Uložiť";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Zavrieť";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Vystrihnúť";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Kopírovať";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Zväčšiť/zmenšiť";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Pomoc";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Pre tento Mac je pripravená na stiahnutie nová verzia.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Verzia";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Zatiaľ zavrieť. Pri ďalšej dennej kontrole vám to môže byť znova pripomenuté.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skiny";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Otvoriť priečinok skinov";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Otvoriť protokol";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Ladenie";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Označte načítaný skin v okne Spravovať.";
 
+/* Manage window: button. */
+"Open Log" = "Otvoriť protokol";
+
 /* Manage window: text. */
 "Save new layout" = "Uložiť nové rozloženie";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Nahradiť";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Zrušiť";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Všeobecné";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Vypnúť presúvanie";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Vynulovať štatistiky";
+/* Settings window: VoiceOver description. */
+"Theme" = "Vzhľad";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Dostupné, keď Deskset beží z priečinka Aplikácie.";
 
+/* Settings window: text. */
+"User interface" = "Používateľské rozhranie";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Jazyk:";
 
+/* Settings window: label. */
+"Theme:" = "Vzhľad:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Spúšťanie:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Aktualizácie:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset raz denne kontroluje a sám sťahuje aktualizácie; o tom, kedy ich nainštalovať, rozhodujete vy.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Predvolené zväčšenie:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Aktualizácie:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset raz denne kontroluje a sám sťahuje aktualizácie; o tom, kedy ich nainštalovať, rozhodujete vy.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Označený priečinok skinu";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Názov";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Písma priložené k týmto skinom (neinštalujú sa do celého systému): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Upozornenie";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset nestihol včas dokončiť prípravu alebo ukončenie.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automaticky";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Svetlý";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Tmavý";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Zobraziť virtuálne rozhrania";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Vynulovať štatistiky";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Kopírovať všetko";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Načítavajú sa sieťové rozhrania…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Obnovuje sa…";
+
+/* DebugInfoView: text. */
+"Display information" = "Informácie o displeji";
+
+/* DebugInfoView: text. */
+"Network information" = "Sieťové informácie";
+
+/* DebugInfoView: text. */
+"Property" = "Vlastnosť";
+
+/* DebugInfoView: text. */
+"Value" = "Hodnota";
+
+/* DebugInfoView: text. */
+"No displays available." = "Nie sú dostupné žiadne displeje.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Žiadne sieťové rozhrania na zobrazenie.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Merače";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Premenné";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Indikátory";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Sledovanie";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Obnoviť pri zmene súboru";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Pridať sledovanie…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Kopírovať názov";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Kopírovať rozsah";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Kopírovať číslo";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Kopírovať reťazec";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Pridať sledovanie";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Upraviť merač";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Kopírovať hodnotu";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Upraviť premennú";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Kopírovať typ";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Kopírovať hranice";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Upraviť indikátor";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Upraviť sledovanie";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Odstrániť sledovanie";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filter…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Filtrovať merače a premenné";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Aktívny skin";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Prejsť na";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Merače, premenné a sledovania skinu";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Číslo";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Reťazec";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Vzorec";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Spustiť";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Typ výrazu:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Výraz:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Sledovaný výraz";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Výsledok sledovania";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Záznam";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Pluginy";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Displej";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Sieť";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Ladenie Desksetu";
+
+/* DebugWindowController: text. */
+"Time" = "Čas";
+
+/* DebugWindowController: text. */
+"Type" = "Typ";
+
+/* DebugWindowController: text. */
+"Message" = "Správa";
+
+/* DebugWindowController: text. */
+"Source" = "Zdroj";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Chyba";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Oznámenie";
+
+/* DebugWindowController: text. */
+"Log file" = "Súbor záznamu";
+
+/* DebugWindowController: text. */
+"Start logging" = "Spustiť zaznamenávanie";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Zastaviť zaznamenávanie";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Odstrániť súbor záznamu";
+
+/* DebugWindowController: text. */
+"Show log file" = "Zobraziť súbor záznamu";
+
+/* DebugWindowController: button. */
+"Clear" = "Vymazať";
+
+/* DebugWindowController: text. */
+"Author" = "Autor";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Všetky uvedené pluginy sú súčasťou Desksetu a aktualizujú sa spolu s aplikáciou. Verzie zodpovedajú Desksetu; externé pluginy zatiaľ nie sú podporované.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (integrovaný)";

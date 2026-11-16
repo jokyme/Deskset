@@ -87,9 +87,9 @@ final class SkinWindowCompanions {
             guard owner == backdropOwner else { return }
             backdropOwner = nil
             backdrop?.release(after: 0)
-        case .showInputText(let id, let settings, let size):
+        case .showInputText(let id, let settings, let size, let zoomFactor):
             let prompt = SkinWindowCompanions.inputTextPromptFactory?(host)
-                ?? InputTextPanelPrompt(host: host, skinSize: size)
+                ?? InputTextPanelPrompt(host: host, skinSize: size, zoomFactor: zoomFactor)
             prompts[id] = prompt
             prompt.show(settings) { [weak self] text in
                 // The skin runs its measure's answer on its executor.

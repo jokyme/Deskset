@@ -5191,4 +5191,318 @@ private func runEngineCompatTests(_ t: TestRunner) {
         t.check(scene.elements.contains { $0.id.name == "metersvg" })
         t.check(scene.elements.contains { $0.id.name == "meterinput" })
     }
+
+    t.suite("Engine: Rainmeter 5.0 alignment — visibility, activeScreen, strict versions, skipped ticks, bang formulas") {
+        // 1. Strict SyntaxVersion (reject float/invalid) and AppVersion enforcement
+        let (floatSyntax, _) = try makeSkin(t, """
+        [Rainmeter]
+        SyntaxVersion=2.5
+        [Meter]
+        Meter=String
+        Text=bad
+        """)
+        t.equal(floatSyntax.isSupportedSyntaxVersion, false, "float SyntaxVersion=2.5 is rejected")
+        t.equal(floatSyntax.meters.count, 0)
+
+        let (newerApp, _) = try makeSkin(t, """
+        [Rainmeter]
+        AppVersion=5001000
+        [Meter]
+        Meter=String
+        Text=newer
+        """)
+        t.equal(newerApp.isSupportedAppVersion, false, "future AppVersion=5001000 is rejected")
+        t.equal(newerApp.meters.count, 0)
+
+        let (okApp, _) = try makeSkin(t, """
+        [Rainmeter]
+        AppVersion=5000000
+        [Meter]
+        Meter=String
+        Text=ok
+        """)
+        t.equal(okApp.isSupportedAppVersion, true)
+        t.equal(okApp.meters.count, 1)
+
+        // 2. activeScreen powers [$Display...] / [$SkinDpiFactor] regardless of AutoSelectScreen
+        final class MultiScreenHost: FakeHost {
+            var env = SkinEnvironment(
+                screens: [
+                    SkinScreen(area: SkinRect(x: 0, y: 0, width: 1920, height: 1080),
+                               workArea: SkinRect(x: 0, y: 25, width: 1920, height: 1055),
+                               dpiFactor: 1.0, name: "Primary"),
+                    SkinScreen(area: SkinRect(x: 1920, y: 0, width: 2560, height: 1440),
+                               workArea: SkinRect(x: 1920, y: 25, width: 2560, height: 1415),
+                               dpiFactor: 2.0, name: "SecondaryRetina"),
+                ],
+                currentScreen: 0,
+                activeScreen: 1
+            )
+            override func environment(for skin: Skin) -> SkinEnvironment { env }
+        }
+        let multiHost = MultiScreenHost()
+        let (dispSkin, _, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        OnDisplayMetricsChangeAction=[!SetVariable MetricsHit 1]
+        OnVisibilityChangeAction=[!SetVariable VisLog "[#VisLog][$SkinVisible]"]
+        [Variables]
+        MetricsHit=0
+        VisLog=
+        [MeterInfo]
+        Meter=String
+        DynamicVariables=1
+        Text=[$DisplayW],[$DisplayName],[$DisplayDeviceName],[$SkinDpiFactor],#SCREENAREAWIDTH#
+        """, host: multiHost)
+        dispSkin.update()
+        t.equal(text(dispSkin, "MeterInfo"), "2560,SecondaryRetina,\\\\.\\DISPLAY2,2,1920",
+                "[$Display...] and [$SkinDpiFactor] track activeScreen while #SCREENAREAWIDTH# keeps currentScreen")
+
+        // OnDisplayMetricsChangeAction & OnVisibilityChangeAction
+        dispSkin.displayMetricsDidChange()
+        dispSkin.update()
+        t.equal(dispSkin.variable("MetricsHit"), "1", "OnDisplayMetricsChangeAction runs on display metrics change")
+
+        multiHost.env.visible = false
+        dispSkin.visibilityDidChange(visible: false)
+        t.equal(dispSkin.variable("VisLog"), "0", "OnVisibilityChangeAction sees [$SkinVisible]=0")
+        multiHost.env.visible = true
+        dispSkin.visibilityDidChange(visible: true)
+        t.equal(dispSkin.variable("VisLog"), "01", "OnVisibilityChangeAction sees [$SkinVisible]=1")
+
+        // 3. Invisible mode skips UpdateDivider ticks & advances WebParser/Ping cycle counters
+        class TickEnvHost: FakeHost {
+            var env = SkinEnvironment()
+            override func environment(for skin: Skin) -> SkinEnvironment { env }
+        }
+        var tickUptime = 100.0
+        let tickHost = TickEnvHost()
+        let (tickSkin, _, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        Update=1000 | Invisible 5000
+        [MeasureStep]
+        Measure=Calc
+        UpdateDivider=6
+        Formula=MeasureStep + 1
+        """, host: tickHost)
+        tickSkin.clock = { tickUptime }
+        tickSkin.update()
+        t.close(value(tickSkin, "MeasureStep"), 1)
+        tickHost.env.visible = false
+        tickSkin.visibilityDidChange(visible: false)
+        tickUptime += 5.0
+        tickSkin.update()
+        t.close(value(tickSkin, "MeasureStep"), 1, "5s invisible elapsed -> ticks 1..5 skipped, divider 6 not hit yet")
+        tickUptime += 1.0
+        tickHost.env.visible = true
+        tickSkin.visibilityDidChange(visible: true)
+        tickSkin.update()
+        t.close(value(tickSkin, "MeasureStep"), 2, "at 6s total elapsed -> divider 6 fires immediately on wakeup")
+
+        var wpCounter = 1
+        t.equal(SkinSection.advanceCycleCounter(&wpCounter, by: 5, rate: 6), false)
+        t.equal(wpCounter, 0, "5 steps from counter 1 wraps cleanly to 0 for next fetch")
+        t.equal(SkinSection.advanceCycleCounter(&wpCounter, by: 1, rate: 6), true)
+        wpCounter = 1
+        t.equal(SkinSection.advanceCycleCounter(&wpCounter, by: 6, rate: 6), true, "6 steps crosses trigger")
+        t.equal(wpCounter, 1)
+
+        // 4. Bang formula evaluation (!Move, !SetWindowPosition, !MoveMeter, !ForceEnableVisibleMode Config)
+        let (bangSkin, bangHost, _) = try makeEngineSkin(t, """
+        [Rainmeter]
+        Update=1000 | Invisible 10000
+        [MVal]
+        Measure=Calc
+        Formula=15
+        [MeterBox]
+        Meter=String
+        X=5
+        Y=5
+        Text=hi
+        """)
+        bangSkin.update()
+        bangSkin.execute("[!Move \"(MVal * 2)\" \"(MVal + 5)\"][!SetWindowPosition (MVal)% \"(MVal * 2)%\"][!MoveMeter \"(MVal + 10)r\" \"(MVal * 2)\" MeterBox]",
+                         from: nil)
+        t.equal(bangHost.handled, [
+            Bang(name: "move", args: ["30", "20"]),
+            Bang(name: "setwindowposition", args: ["15%", "30%"]),
+        ])
+        t.close(frame(bangSkin, "MeterBox").x, 25)
+        t.close(frame(bangSkin, "MeterBox").y, 30)
+
+        bangSkin.execute("[!ForceEnableVisibleMode 1 OtherConfig]", from: nil)
+        t.equal(bangSkin.forceEnableVisibleMode, false, "!ForceEnableVisibleMode targeting another config does not mutate self")
+        t.equal(bangHost.forwarded.last?.0, Bang(name: "forceenablevisiblemode", args: ["1"]))
+        t.equal(bangHost.forwarded.last?.1, "OtherConfig")
+    }
+
+    t.suite("Engine: Rainmeter 5.0 alignment — measures & plugins (WebParser, UsageMonitor, Mouse)") {
+        // 1. WebParser JsonPointer=1 still delivers raw text to non-JsonPointer RegExp children
+        let jsonBody = #"{"user":{"name":"Ada"},"tag":"alpha"}"#
+        let mixedNode = WebParserNode(
+            options: WebParserOptions(name: "Root", jsonPointer: "1"),
+            children: [
+                WebParserNode(options: WebParserOptions(name: "JP", parentName: "Root", jsonPointer: "/user/name"),
+                              children: []),
+                WebParserNode(options: WebParserOptions(name: "RX", parentName: "Root", regExp: #""tag":"([^"]+)""#,
+                                                        stringIndex2: 1),
+                              children: []),
+            ]
+        )
+        let processed = WebParserProcessor.process(mixedNode, text: jsonBody)
+        t.equal(processed.value, "")
+        t.equal(processed.children[0].value, "Ada")
+        t.equal(processed.children[1].value, "alpha", "non-JsonPointer child receives raw response under JsonPointer=1")
+
+        // 2. UsageMonitor zero-value aggregates return empty string & first sample bypasses UpdateDivider once
+        final class FakeSamplerSystem: FakeSystem, ProcessSampleSource {
+            var pair: (previous: ProcessSnapshot?, latest: ProcessSnapshot?) = (nil, nil)
+            func processSamples() -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?)? { pair }
+        }
+        let umZero = try makeEngineSkin(t, """
+        [UMSum]
+        Measure=UsageMonitor
+        Category=Process
+        Counter=Working Set
+        Index=Sum
+        [UMAvg]
+        Measure=UsageMonitor
+        Category=Process
+        Counter=Working Set
+        Index=Average
+        [UMCount]
+        Measure=UsageMonitor
+        Category=Process
+        Counter=Working Set
+        Index=Count
+        """).0
+        let specWS = PerfCounters.spec(category: "Process", counter: "Working Set")!
+        let zeros = [PerfValue(name: "A", value: 0), PerfValue(name: "Idle", value: 0)]
+        t.equal((umZero.measure(named: "UMSum") as? UsageMonitorMeasure)?.select(zeros, spec: specWS).1, "")
+        t.equal((umZero.measure(named: "UMAvg") as? UsageMonitorMeasure)?.select(zeros, spec: specWS).1, "")
+        t.equal((umZero.measure(named: "UMCount") as? UsageMonitorMeasure)?.select(zeros, spec: specWS).1, "Count")
+        t.equal((umZero.measure(named: "UMCount") as? UsageMonitorMeasure)?.select([PerfValue(name: "Idle", value: 0)], spec: specWS).1, "")
+        t.equal((umZero.measure(named: "UMSum") as? UsageMonitorMeasure)?.ranking(zeros, ranks: false).status == .nothingCounted, false)
+        t.equal((umZero.measure(named: "UMCount") as? UsageMonitorMeasure)?.select([], spec: specWS).1, "")
+
+        let samplerSys = FakeSamplerSystem()
+        let firstSampleSkinURL = t.temporaryDirectory("um-first-sample").appendingPathComponent("Test.ini")
+        try """
+        [MeasureCPU]
+        Measure=UsageMonitor
+        Alias=CPU
+        UpdateDivider=10
+        [MeterCPU]
+        Meter=String
+        MeasureName=MeasureCPU
+        UpdateDivider=10
+        Text=%1
+        """.write(to: firstSampleSkinURL, atomically: true, encoding: .utf8)
+        let sampleHost = FakeHost()
+        let sampleSkin = Skin(config: "UMFirst", fileURL: firstSampleSkinURL,
+                              skinsDirectory: firstSampleSkinURL.deletingLastPathComponent(),
+                              system: samplerSys, host: sampleHost)
+        try sampleSkin.load()
+        defer { sampleSkin.close() }
+        sampleSkin.update() // tick 0: no samples yet -> 0
+        t.close(sampleSkin.measure(named: "MeasureCPU")?.value ?? -1, 0)
+        // Supply completed sample interval before UpdateDivider=10 expires.
+        let s1 = ProcessSnapshot(serial: 1, time: 10.0,
+                                 processes: [ProcessRecord(pid: 1, name: "App", userTime: 0.0, residentBytes: 1024,
+                                                           footprintBytes: 1024)],
+                                 processCount: 1, cores: [CoreTicks(user: 0, system: 0, idle: 0, nice: 0)],
+                                 hiddenCPU: 0, details: false)
+        let s2 = ProcessSnapshot(serial: 2, time: 11.0,
+                                 processes: [ProcessRecord(pid: 1, name: "App", userTime: 0.5, residentBytes: 1024,
+                                                           footprintBytes: 1024)],
+                                 processCount: 1, cores: [CoreTicks(user: 50, system: 0, idle: 50, nice: 0)],
+                                 hiddenCPU: 0, details: false)
+        samplerSys.pair = (s1, s2)
+        sampleSkin.update() // tick 1 (UpdateDivider=10 would normally skip)
+        t.check((sampleSkin.measure(named: "MeasureCPU")?.value ?? 0) > 0,
+                "first collected sample updates UsageMonitor before UpdateDivider=10 takes effect")
+
+        // 3. Mouse RelativeToSkin=0 multi-monitor, held-button drain on StartCapture & Pause cancellation
+        final class MonitorHost: SkinHost {
+            let base = FakeHost()
+            var env = SkinEnvironment(
+                windowFrame: SkinRect(x: 2000, y: 100, width: 200, height: 100),
+                screens: [
+                    SkinScreen(area: SkinRect(x: 0, y: 0, width: 1920, height: 1080),
+                               workArea: SkinRect(x: 0, y: 25, width: 1920, height: 1055)),
+                    SkinScreen(area: SkinRect(x: 1920, y: 0, width: 2560, height: 1440),
+                               workArea: SkinRect(x: 1920, y: 25, width: 2560, height: 1415)),
+                ],
+                activeScreen: 1
+            )
+            var lastCaptureRequest: MouseCaptureRequest?
+            func skinNeedsDisplay(_ skin: Skin) { base.skinNeedsDisplay(skin) }
+            func skin(_ skin: Skin, handle bang: Bang) -> Bool { base.skin(skin, handle: bang) }
+            func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) { base.skin(skin, forward: bang, toConfig: config) }
+            func skin(_ skin: Skin, execute target: String, arguments: [String]) { base.skin(skin, execute: target, arguments: arguments) }
+            func skin(_ skin: Skin, log message: String, level: SkinLogLevel) { base.skin(skin, log: message, level: level) }
+            func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
+                base.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
+            }
+            func imageSize(atPath path: String) -> (width: Double, height: Double)? { base.imageSize(atPath: path) }
+            func environment(for skin: Skin) -> SkinEnvironment { env }
+            func skin(_ skin: Skin, mouseCaptureRequest: MouseCaptureRequest?) {
+                lastCaptureRequest = mouseCaptureRequest
+            }
+        }
+        let mHost = MonitorHost()
+        let mDir = t.temporaryDirectory("mouse-monitor")
+        let mURL = mDir.appendingPathComponent("Test.ini")
+        try """
+        [M]
+        Measure=Mouse
+        RelativeToSkin=0
+        LeftMouseDownAction=[!Mouse:StartCapture M]
+        LeftMouseUpAction=[!SetVariable Captured "$MouseX$,$MouseY$"]
+        """.write(to: mURL, atomically: true, encoding: .utf8)
+        let mSkin = Skin(config: "MouseMonitor", fileURL: mURL, skinsDirectory: mDir.deletingLastPathComponent(),
+                         system: FakeSystem(), host: mHost)
+        try mSkin.load()
+        defer { mSkin.close() }
+        mSkin.update()
+        let mMeasure = mSkin.measure(named: "M") as? MouseMeasure
+        // Pressing left starts capture while left button is held; releasing that held press must not capture yet.
+        mSkin.pointerEvent(.pressed(.left, doubleClick: false), x: 10, y: 20)
+        t.equal(mMeasure?.isCapturing, true)
+        t.equal(mHost.lastCaptureRequest?.measureName, "M")
+        mSkin.pointerEvent(.released(.left), x: 15, y: 25)
+        t.equal(mSkin.variable("Captured"), nil, "held button release does not complete capture")
+        t.equal(mMeasure?.isCapturing, true)
+        // Next click completes capture and returns current-monitor coordinates (2000+30-1920=110, 100+40-0=140).
+        mSkin.pointerEvent(.pressed(.left, doubleClick: false), x: 30, y: 40)
+        mSkin.pointerEvent(.released(.left), x: 30, y: 40)
+        t.equal(mSkin.variable("Captured"), "110,140", "RelativeToSkin=0 reports monitor-relative coordinates")
+        t.equal(mMeasure?.isCapturing, false)
+        t.equal(mHost.lastCaptureRequest, nil)
+
+        // Pausing cancels capture cleanly.
+        mSkin.execute("[!Mouse:StartCapture M]", from: nil)
+        t.equal(mMeasure?.isCapturing, true)
+        mSkin.execute("[!PauseMeasure M]", from: nil)
+        t.equal(mMeasure?.isCapturing, false)
+        t.equal(mHost.lastCaptureRequest, nil)
+
+        // LineMeter formula in LineJoin MiterLimit & ShapeStroker.clippedMiterPatches
+        let lineSkin = try makeEngineSkin(t, """
+        [Variables]
+        Scale=2
+        [L]
+        Meter=Line
+        W=40
+        H=40
+        LineJoin=MiterOrBevel, (#Scale# + 2.5)
+        """).0
+        let line = lineSkin.meter(named: "L") as? LineMeter
+        t.equal(line?.lineJoin, .miterOrBevel)
+        t.close(line?.miterLimit ?? -1, 4.5)
+        let rightAngle = [ShapePoint(0, 0), ShapePoint(20, 0), ShapePoint(20, 20)]
+        t.check(!ShapeStroker.clippedMiterPatches(polyline: rightAngle, width: 8, limit: 1.2).isEmpty,
+                "corner exceeding MiterLimit generates clipped-miter square-off patch")
+        t.check(ShapeStroker.clippedMiterPatches(polyline: rightAngle, width: 8, limit: 20).isEmpty,
+                "large MiterLimit keeps native miter without patch")
+    }
 }

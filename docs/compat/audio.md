@@ -97,6 +97,16 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   tap for about 5 s.
 - Status: emulated
 
+### OnAudioStartAction and OnAudioEndAction (Rainmeter 5.0)
+- Windows (Rainmeter 5.0): `AudioLevel` adds `OnAudioStartAction` and `OnAudioEndAction` on parent measures, firing when
+  non-silent audio activity begins or falls silent.
+- Mac (Deskset): implemented on parent `AudioLevel` measures (`AudioLevelMeasure` / `AudioEngine`), executing
+  `OnAudioStartAction` when captured non-silent audio activity starts and `OnAudioEndAction` when capture returns to
+  silence.
+- Why: keeps visualizer visibility/idle actions in sync with audio activity.
+- Skin impact: skins using `OnAudioStartAction` / `OnAudioEndAction` toggle/animate automatically with audio playback.
+- Status: emulated
+
 ### Port=Output with an output device that also has inputs (USB audio interfaces, headsets, BlackHole)
 - Windows (Rainmeter): loopback capture never touches the endpoint's microphone.
 - Mac (Deskset): the private aggregate device that reads the tap normally has the output device as its main sub-device

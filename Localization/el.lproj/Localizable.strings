@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Αρχείο";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Αποθήκευση";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Κλείσιμο";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Αποκοπή";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Αντιγραφή";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Ζουμ";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Βοήθεια";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Μια νέα έκδοση για αυτό το Mac είναι έτοιμη για λήψη.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Έκδοση";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Κλείσιμο προς το παρόν. Ο επόμενος ημερήσιος έλεγχος μπορεί να σας το υπενθυμίσει ξανά.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skin";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Άνοιγμα φακέλου skin";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Άνοιγμα αρχείου καταγραφής";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Αποσφαλμάτωση";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Επιλέξτε ένα φορτωμένο skin στο παράθυρο «Διαχείριση».";
 
+/* Manage window: button. */
+"Open Log" = "Άνοιγμα αρχείου καταγραφής";
+
 /* Manage window: text. */
 "Save new layout" = "Αποθήκευση νέας διάταξης";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Αντικατάσταση";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Ακύρωση";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Γενικά";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Απενεργοποίηση μεταφοράς";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Επαναφορά στατιστικών";
+/* Settings window: VoiceOver description. */
+"Theme" = "Θέμα";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Διαθέσιμο όταν το Deskset εκτελείται από τον φάκελο «Εφαρμογές».";
 
+/* Settings window: text. */
+"User interface" = "Διεπαφή χρήστη";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Γλώσσα:";
 
+/* Settings window: label. */
+"Theme:" = "Θέμα:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Εκκίνηση:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Ενημερώσεις:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Το Deskset ελέγχει μία φορά την ημέρα και κατεβάζει μόνο του τις ενημερώσεις· εσείς επιλέγετε πότε θα τις εγκαταστήσετε.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Προεπιλεγμένο ζουμ:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Ενημερώσεις:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Το Deskset ελέγχει μία φορά την ημέρα και κατεβάζει μόνο του τις ενημερώσεις· εσείς επιλέγετε πότε θα τις εγκαταστήσετε.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Επιλεγμένος φάκελος skin";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Όνομα";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Γραμματοσειρές που συνοδεύουν αυτά τα skin (δεν εγκαθίστανται σε όλο το σύστημα): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Προειδοποίηση";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Το Deskset δεν ολοκλήρωσε εγκαίρως την προετοιμασία ή τον τερματισμό.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Αυτόματο";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Φωτεινό";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Σκοτεινό";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Εμφάνιση εικονικών διεπαφών";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Επαναφορά στατιστικών";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Αντιγραφή όλων";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Φόρτωση διεπαφών δικτύου…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Ανανέωση…";
+
+/* DebugInfoView: text. */
+"Display information" = "Πληροφορίες οθόνης";
+
+/* DebugInfoView: text. */
+"Network information" = "Πληροφορίες δικτύου";
+
+/* DebugInfoView: text. */
+"Property" = "Ιδιότητα";
+
+/* DebugInfoView: text. */
+"Value" = "Τιμή";
+
+/* DebugInfoView: text. */
+"No displays available." = "Δεν υπάρχουν διαθέσιμες οθόνες.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Δεν υπάρχουν διεπαφές δικτύου για εμφάνιση.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Μετρήσεις";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Μεταβλητές";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Μετρητές";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Παρακολούθηση";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Ανανέωση κατά την αλλαγή αρχείου";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Προσθήκη παρακολούθησης…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Αντιγραφή ονόματος";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Αντιγραφή εύρους";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Αντιγραφή αριθμού";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Αντιγραφή συμβολοσειράς";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Προσθήκη παρακολούθησης";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Επεξεργασία μέτρησης";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Αντιγραφή τιμής";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Επεξεργασία μεταβλητής";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Αντιγραφή τύπου";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Αντιγραφή ορίων";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Επεξεργασία μετρητή";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Επεξεργασία παρακολούθησης";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Διαγραφή παρακολούθησης";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Φίλτρο…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Φιλτράρισμα μετρήσεων και μεταβλητών";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Ενεργό skin";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Μετάβαση σε";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Μετρήσεις, μεταβλητές και παρακολουθήσεις του skin";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Αριθμός";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Συμβολοσειρά";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Τύπος";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Εκτέλεση";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Τύπος έκφρασης:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Έκφραση:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Έκφραση παρακολούθησης";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Αποτέλεσμα παρακολούθησης";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Αρχείο καταγραφής";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Πρόσθετα";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Οθόνη";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Δίκτυο";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Εντοπισμός σφαλμάτων Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "Ώρα";
+
+/* DebugWindowController: text. */
+"Type" = "Τύπος";
+
+/* DebugWindowController: text. */
+"Message" = "Μήνυμα";
+
+/* DebugWindowController: text. */
+"Source" = "Πηγή";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Σφάλμα";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Ειδοποίηση";
+
+/* DebugWindowController: text. */
+"Log file" = "Αρχείο καταγραφής";
+
+/* DebugWindowController: text. */
+"Start logging" = "Έναρξη καταγραφής";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Διακοπή καταγραφής";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Διαγραφή αρχείου καταγραφής";
+
+/* DebugWindowController: text. */
+"Show log file" = "Εμφάνιση αρχείου καταγραφής";
+
+/* DebugWindowController: button. */
+"Clear" = "Εκκαθάριση";
+
+/* DebugWindowController: text. */
+"Author" = "Δημιουργός";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Όλα τα αναφερόμενα πρόσθετα είναι ενσωματωμένα στο Deskset και ενημερώνονται μαζί με την εφαρμογή. Οι εκδόσεις αντιστοιχούν στο Deskset· προς το παρόν δεν υποστηρίζονται εξωτερικά πρόσθετα.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (ενσωματωμένο)";

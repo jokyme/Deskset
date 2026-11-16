@@ -968,6 +968,61 @@ private func runWebParserActionTests(_ t: TestRunner) {
         skin.execute("[!CommandMeasure ChildB Reset][!CommandMeasure Parent Bogus]", from: nil)
     }
 
+    t.suite("WebParser: !WebParser:Refetch / :ClearResults and legacy UpdateData / ResetData compatibility") {
+        let dir = t.temporaryDirectory("webparser-compat-bangs")
+        let dataURL = dir.appendingPathComponent("feed.txt")
+        try "v=one".write(to: dataURL, atomically: true, encoding: .utf8)
+        let (skin, host) = try makeSkin(t, """
+        [Parent]
+        Measure=WebParser
+        URL=file://\(dataURL.path)
+        RegExp=v=(.*)
+        StringIndex=1
+        UpdateRate=100
+        FinishAction=[!SetVariable Done "[Parent]"]
+
+        [Child]
+        Measure=WebParser
+        URL=[Parent]
+        StringIndex=1
+        """)
+        updateAndSettle(skin)
+        t.equal(str(skin, "Parent"), "one")
+        t.equal(str(skin, "Child"), "one")
+
+        // Canonical 5.0 ClearResults clears values; Refetch reloads updated data.
+        skin.execute("[!WebParser:ClearResults Parent]", from: nil)
+        t.equal(str(skin, "Parent"), "")
+        t.equal(str(skin, "Child"), "")
+        try "v=two".write(to: dataURL, atomically: true, encoding: .utf8)
+        skin.execute("[!WebParser:Refetch Parent]", from: nil)
+        t.check(waitUntil { str(skin, "Parent") == "two" }, "Refetch loads new value")
+        t.equal(str(skin, "Child"), "two")
+
+        // Deprecated pre-RC2 aliases ResetData / UpdateData and command forms remain functional.
+        skin.execute("[!WebParser:ResetData Parent]", from: nil)
+        t.equal(str(skin, "Parent"), "")
+        t.equal(str(skin, "Child"), "")
+        try "v=three".write(to: dataURL, atomically: true, encoding: .utf8)
+        skin.execute("[!WebParser:UpdateData Parent]", from: nil)
+        t.check(waitUntil { str(skin, "Parent") == "three" }, "UpdateData alias loads new value")
+        t.equal(str(skin, "Child"), "three")
+
+        // Omitted selector inside a WebParser measure works for both canonical and legacy aliases.
+        let parent = skin.measure(named: "Parent")
+        skin.execute("[!WebParser:ResetData]", from: parent)
+        t.equal(str(skin, "Parent"), "")
+        try "v=four".write(to: dataURL, atomically: true, encoding: .utf8)
+        skin.execute("[!WebParser:UpdateData]", from: parent)
+        t.check(waitUntil { str(skin, "Parent") == "four" }, "omitted-selector UpdateData reloads parent")
+        skin.execute("[!CommandMeasure Parent ResetData]", from: nil)
+        t.equal(str(skin, "Parent"), "")
+        try "v=five".write(to: dataURL, atomically: true, encoding: .utf8)
+        skin.execute("[!CommandMeasure Parent UpdateData]", from: nil)
+        t.check(waitUntil { str(skin, "Parent") == "five" }, "!CommandMeasure UpdateData alias reloads parent")
+        t.check(!host.logs.contains { $0.contains("Unknown command") })
+    }
+
     t.suite("WebParser: OnChangeAction runs on the first completed read") {
         let (skin, _) = try makeSkin(t, """
         [Parent]

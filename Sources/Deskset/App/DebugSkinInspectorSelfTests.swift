@@ -85,6 +85,23 @@ enum DebugSkinInspectorSelfTests {
                 t.equal(view.currentSkinState?.watchResults.first?.value, "12")
                 view.showWatchEditor(initial: formula)
                 t.check(view.editor != nil)
+                guard let meterRow = row("MeterBack", in: view), let labelRow = row("Label", in: view) else {
+                    return t.check(false, "meter and variable rows are visible")
+                }
+                t.check(view.currentSkinState?.meters.first { $0.name == "MeterBack" }?.location != nil)
+                view.testTable.selectRowIndexes(IndexSet(integer: meterRow), byExtendingSelection: false)
+                view.menuNeedsUpdate(view.testMenu)
+                t.check(view.testMenu.indexOfItem(withTitle: "Edit meter") >= 0, "meter rows offer Edit meter jump")
+                view.testTable.selectRowIndexes(IndexSet(integer: labelRow), byExtendingSelection: false)
+                view.menuNeedsUpdate(view.testMenu)
+                t.check(view.testMenu.indexOfItem(withTitle: "Edit variable") >= 0, "variable rows offer Edit variable jump")
+                if let cmdR = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                               timestamp: 0, windowNumber: 0, context: nil, characters: "r",
+                                               charactersIgnoringModifiers: "r", isARepeat: false, keyCode: 15) {
+                    let prevRuntime = app.controller(for: "DebugUI\\Alpha")?.runtime
+                    t.check(view.performKeyEquivalent(with: cmdR), "Command-R refreshes the inspected skin")
+                    t.check(AppSelfTest.spin { app.controller(for: "DebugUI\\Alpha")?.runtime !== prevRuntime })
+                }
                 app.deactivate(config: "DebugUI\\Alpha")
                 view.reloadActiveSkinsList()
                 t.check(AppSelfTest.spin { view.currentSkinState?.config == "DebugUI\\Beta" })

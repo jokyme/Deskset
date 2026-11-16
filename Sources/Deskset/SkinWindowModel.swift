@@ -130,6 +130,10 @@ struct SkinWindowFacts: Equatable {
     var display: CGDirectDisplayID?
     /// Whether any part of the window can be seen (occlusion).
     var isVisible: Bool
+    /// Whether the skin window is occluded by another window (or hidden for testing) while shown.
+    var isOccluded: Bool
+    /// Whether the desktop session or displays are locked/asleep.
+    var isScreenLocked: Bool
     /// Whether the window is on screen at all (ordered in).
     var isOrderedIn: Bool
     /// The backing scale factor of the window's screen.
@@ -150,6 +154,7 @@ struct SkinWindowFacts: Equatable {
     var sequence: Int
 
     init(frame: CGRect, screen: Int? = nil, display: CGDirectDisplayID? = nil, isVisible: Bool,
+         isOccluded: Bool = false, isScreenLocked: Bool = false,
          isOrderedIn: Bool = false, scale: CGFloat, colorSpace: CGColorSpace? = nil,
          appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
          settings: SkinWindowSettings = SkinWindowSettings(), frameZoomFactor: Double = 1,
@@ -159,6 +164,8 @@ struct SkinWindowFacts: Equatable {
         self.screen = screen
         self.display = display
         self.isVisible = isVisible
+        self.isOccluded = isOccluded
+        self.isScreenLocked = isScreenLocked
         self.isOrderedIn = isOrderedIn
         self.scale = scale
         self.colorSpace = colorSpace
@@ -413,13 +420,10 @@ struct SkinWindowModel {
     private mutating func operation(for bang: Bang, screens: [WindowGeometry.Screen]) -> SkinWindowOperation? {
         let a = bang.args
         func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
-        func setFlag(_ flag: SkinWindowFlag) -> SkinWindowOperation {
+        func setFlag(_ flag: SkinWindowFlag) -> SkinWindowOperation? {
+            if settings.isSelected && flag.isTemporaryWhileSelected { return nil }
             let value = SkinVisibility.flag(arg(0), current: settings.effectiveValue(for: flag))
-            if settings.isSelected && flag.isTemporaryWhileSelected {
-                settings.selectedFlagOverrides[flag] = value
-            } else {
-                settings[keyPath: flag.setting] = value
-            }
+            settings[keyPath: flag.setting] = value
             return .flag(flag, value)
         }
         func setHidden(_ hidden: Bool, fade: Bool) -> SkinWindowOperation {

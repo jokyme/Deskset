@@ -175,6 +175,20 @@ public enum BangCatalog {
     /// Rainmeter 5.0 colon-namespaced bangs (`!Skin:Load`, `!Loop:Reset`, `!WebParser:Refetch`, `!TextEdit:Focus`…).
     private static let namespacedByName: [String: BangDefinition] = makeNamespacedCatalog()
 
+    /// Every documented colon-namespaced bang (`!Skin:Load`, `!Loop:Reset`, `!WebParser:Refetch`, `!TextEdit:Focus`…),
+    /// sorted by display name.
+    public static let allNamespaced: [BangDefinition] = namespacedByName.values
+        .sorted { $0.displayName < $1.displayName }
+
+    /// Every bang accepted as a spell-check candidate (`all` + non-deprecated `allNamespaced` + `!Skin:*` counterparts).
+    public static var spellCheckNames: [String] {
+        var names = all.map(\.displayName) + allNamespaced.filter { !$0.isDeprecated }.map(\.displayName)
+        for base in all where base.configParameterIndex != nil || base.category == .skin || base.category == .skinGroup {
+            names.append("!Skin:" + String(base.displayName.dropFirst()))
+        }
+        return names
+    }
+
     // MARK: - Table
 
     private static func makeCatalog() -> [BangDefinition] {
@@ -239,7 +253,7 @@ public enum BangCatalog {
         add(["!ToggleConfig"], ["Config", "File?"], .skin)
         add(["!Update"], ["Config?"], .skin)
         add(["!SetUpdate"], ["Milliseconds", "Config?"], .skin)
-        add(["!ForceEnableVisibleMode"], ["Setting?", "Config?"], .skin, config: false)
+        add(["!ForceEnableVisibleMode"], ["Setting?", "Config?"], .skin)
         add(["!Redraw"], ["Config?"], .skin)
         add(["!Refresh"], ["Config?"], .skin)
         add(["!Delay"], ["milliseconds"], .skin)
@@ -311,14 +325,23 @@ public enum BangCatalog {
 
     private static func makeNamespacedCatalog() -> [String: BangDefinition] {
         var map: [String: BangDefinition] = [:]
-        func add(_ displayNames: [String], _ params: [String], _ category: BangDefinition.Category) {
+        func add(_ displayNames: [String], _ params: [String], _ category: BangDefinition.Category,
+                 deprecated: Bool = false) {
             let parameters = params.map { p -> BangParameter in
                 p.hasSuffix("?") ? BangParameter(String(p.dropLast()), optional: true) : BangParameter(p)
+            }
+            let configIndex: Int?
+            if params.first == "Config" || params.first == "Config?" {
+                configIndex = 0
+            } else if let idx = params.firstIndex(where: { $0 == "Config" || $0 == "Config?" }) {
+                configIndex = idx
+            } else {
+                configIndex = nil
             }
             for display in displayNames {
                 let name = canonicalName(display)
                 map[name] = BangDefinition(name: name, displayName: display, parameters: parameters,
-                                           category: category, configParameterIndex: name.hasPrefix("skin:") ? 0 : nil)
+                                           category: category, isDeprecated: deprecated, configParameterIndex: configIndex)
             }
         }
 
@@ -338,8 +361,8 @@ public enum BangCatalog {
         add(["!RunCommand:Run", "!RunCommand:Close", "!RunCommand:Kill"], ["Measure?", "Config?"], .measure)
 
         // !WebParser:
-        add(["!WebParser:Refetch", "!WebParser:ClearResults", "!WebParser:ResetData"], ["Measure?", "Config?"], .measure)
-        add(["!WebParser:UpdateData"], ["Measure?", "Data?", "Config?"], .measure)
+        add(["!WebParser:Refetch", "!WebParser:ClearResults"], ["Measure?", "Config?"], .measure)
+        add(["!WebParser:UpdateData", "!WebParser:ResetData"], ["Measure?", "Config?"], .measure, deprecated: true)
 
         // !RecycleManager:
         add(["!RecycleManager:EmptyBin", "!RecycleManager:EmptyBinSilent", "!RecycleManager:OpenBin"],

@@ -80,9 +80,8 @@ content; before, those areas stayed empty.
 - Status: identical
 
 ### Script file encoding
-- Windows (Rainmeter): the Unicode tips page says a .lua file must be UTF-16 to use Unicode, and "NEVER encode a .lua
-  script file in UTF-8. The Rainmeter implementation of Lua will not be able to properly read it." ANSI files work
-  for plain text.
+- Windows (Rainmeter): earlier releases required UTF-16 for Unicode scripts; Rainmeter 5.0 added UTF-8 BOM support
+  alongside UTF-16 and ANSI code pages.
 - Mac (Deskset): the file is decoded like .ini files (UTF-8 with or without BOM, UTF-16 LE/BE with or without BOM,
   UTF-32 with BOM, otherwise the ANSI code page) and handed to Lua as UTF-8. A first line starting with `#` is
   ignored (like `luaL_loadfile`).
@@ -230,7 +229,8 @@ content; before, those areas stayed empty.
 - Mac (Deskset): GetX() / GetY() are the position relative to the meter's container (the skin for ordinary meters);
   GetX(true) / GetY(true) the position in the skin. GetW / GetH include Padding and are 0 for hidden meters. SetX…SetH
   work like `!SetOption Meter X value` (the option stays set) and move / resize the meter at once so later Get calls
-  in the same script see the new value; the full layout follows at the next update or `!Redraw`. SetW / SetH set the
+  in the same script (including immediate `SetW` / `SetH` dimension updates matching Rainmeter 5.0) see the new
+  position and size; the full layout follows at the next update or `!Redraw`. SetW / SetH set the
   W / H options (Padding is added to them as usual). Hide / Show work like `!HideMeter` / `!ShowMeter`. GetOption sees
   MeterStyle values. GetNumberOption also works on meters. Meters are laid out at the end of the skin's first
   update; before that (in the main chunk, in Initialize() and in the first Update()) the first Get / Set call lays
@@ -392,6 +392,7 @@ content; before, those areas stayed empty.
   `string.ucbyte`, `string.ucchar`), plus `SKIN:SetOption(Section, Option, Value)`,
   `SKIN:SetOptionGroup(Group, Option, Value)`, `SKIN:SetVariable(Name, Value)`, `SKIN:ReadTextFile(Path)`,
   `SKIN:WriteTextFile(Path, Content)`, `Meter:SetOption(Option, Value)` and `Measure:SetOption(Option, Value)`.
-- Mac (Deskset): all supported; `SKIN:ReadTextFile` decodes UTF-8 / UTF-16 / ANSI files and `SKIN:WriteTextFile`
-  writes UTF-8 files under `#SKINSPATH#` or `#SETTINGSPATH#`.
+- Mac (Deskset): all supported; `string.uc*` enforces UTF-8 locale/Unicode semantics via Deskset's UTF-8 string helpers,
+  `SKIN:ReadTextFile` decodes UTF-8 / UTF-16 / ANSI files and `SKIN:WriteTextFile` writes UTF-8 files under `#SKINSPATH#`
+  or `#SETTINGSPATH#`.
 - Status: identical

@@ -240,8 +240,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
 
     public override func computeValue() -> Double {
         if parentName == nil {
-            if updateCounter == 0 { startFetch(force: false) }
-            advanceCounter()
+            if SkinSection.advanceCycleCounter(&updateCounter, by: pendingUpdateHits, rate: options.updateRate) {
+                startFetch(force: false)
+            }
         }
         rawString = resultString
         return resultNumber
@@ -251,13 +252,12 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// only on `!CommandMeasure … Update`, which is what the documented counter does); a counter already past a newly
     /// lowered UpdateRate wraps at once.
     private func advanceCounter() {
-        if updateCounter < Int.max - 1 { updateCounter += 1 }
-        if options.updateRate > 0 && updateCounter >= options.updateRate { updateCounter = 0 }
+        _ = SkinSection.advanceCycleCounter(&updateCounter, by: 1, rate: options.updateRate)
     }
 
     public override func execute(command: String) {
         switch command.trimmingCharacters(in: .whitespaces).lowercased() {
-        case "update", "refetch":
+        case "update", "refetch", "updatedata":
             readOptionsIfNeeded()
             guard parentName == nil else {
                 skin.log("WebParser [\(name)]: !CommandMeasure Update is only valid on a parent measure", level: .warning)
@@ -268,7 +268,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             startFetch(force: true)
             updateCounter = 0
             advanceCounter()
-        case "reset", "clearresults":
+        case "reset", "clearresults", "resetdata":
             guard parentName == nil else {
                 skin.log("WebParser [\(name)]: !CommandMeasure Reset is only valid on a parent measure", level: .warning)
                 return

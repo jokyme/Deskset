@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "ไฟล์";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "บันทึก";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "ปิด";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "ตัด";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "คัดลอก";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "ซูม";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "วิธีใช้";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "มีเวอร์ชันใหม่สำหรับ Mac เครื่องนี้พร้อมให้ดาวน์โหลด";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "เวอร์ชัน";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "ปิดไว้ก่อน การตรวจสอบประจำวันครั้งถัดไปอาจแจ้งเตือนคุณอีกครั้ง";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "สกิน";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "เปิดโฟลเดอร์สกิน";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "เปิดบันทึก";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "ดีบัก";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "เลือกสกินที่โหลดอยู่ในหน้าต่าง “จัดการ”";
 
+/* Manage window: button. */
+"Open Log" = "เปิดบันทึก";
+
 /* Manage window: text. */
 "Save new layout" = "บันทึกเลย์เอาต์ใหม่";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "แทนที่";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "ยกเลิก";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "ทั่วไป";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "ปิดการลาก";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "รีเซ็ตสถิติ";
+/* Settings window: VoiceOver description. */
+"Theme" = "ธีม";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "ใช้ได้เมื่อ Deskset ทำงานจากโฟลเดอร์แอปพลิเคชัน";
 
+/* Settings window: text. */
+"User interface" = "ส่วนติดต่อผู้ใช้";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "ภาษา:";
 
+/* Settings window: label. */
+"Theme:" = "ธีม:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "การเริ่มต้น:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "การอัปเดต:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset ตรวจสอบวันละครั้งและดาวน์โหลดการอัปเดตเอง คุณเป็นผู้เลือกว่าจะติดตั้งเมื่อใด";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "การซูมเริ่มต้น:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "การอัปเดต:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset ตรวจสอบวันละครั้งและดาวน์โหลดการอัปเดตเอง คุณเป็นผู้เลือกว่าจะติดตั้งเมื่อใด";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "โฟลเดอร์สกินที่เลือก";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "ชื่อ";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "แบบอักษรที่รวมมากับสกินเหล่านี้ (ไม่ได้ติดตั้งทั้งระบบ): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "คำเตือน";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset เตรียมการหรือออกไม่ทันเวลา";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "อัตโนมัติ";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "สว่าง";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "มืด";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "แสดงอินเทอร์เฟซเสมือน";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "รีเซ็ตสถิติ";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "คัดลอกทั้งหมด";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "กำลังโหลดอินเทอร์เฟซเครือข่าย…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "กำลังรีเฟรช…";
+
+/* DebugInfoView: text. */
+"Display information" = "ข้อมูลจอภาพ";
+
+/* DebugInfoView: text. */
+"Network information" = "ข้อมูลเครือข่าย";
+
+/* DebugInfoView: text. */
+"Property" = "คุณสมบัติ";
+
+/* DebugInfoView: text. */
+"Value" = "ค่า";
+
+/* DebugInfoView: text. */
+"No displays available." = "ไม่มีจอภาพที่ใช้งานได้";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "ไม่มีอินเทอร์เฟซเครือข่ายที่จะแสดง";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "ตัววัดค่า";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "ตัวแปร";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "มิเตอร์";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "เฝ้าดู";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "รีเฟรชเมื่อไฟล์เปลี่ยนแปลง";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "สกิน";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "เพิ่มการเฝ้าดู…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "คัดลอกชื่อ";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "คัดลอกช่วง";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "คัดลอกตัวเลข";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "คัดลอกสตริง";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "เพิ่มการเฝ้าดู";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "แก้ไขตัววัดค่า";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "คัดลอกค่า";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "แก้ไขตัวแปร";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "คัดลอกชนิด";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "คัดลอกขอบเขต";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "แก้ไขมิเตอร์";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "แก้ไขการเฝ้าดู";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "ลบการเฝ้าดู";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "ตัวกรอง…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "กรองตัววัดค่าและตัวแปร";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "สกินที่ใช้งานอยู่";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "ข้ามไปยัง";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "ตัววัดค่า ตัวแปร และการเฝ้าดูของสกิน";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "ตัวเลข";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "สตริง";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "สูตร";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "เรียกใช้";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "ชนิดนิพจน์:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "นิพจน์:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "นิพจน์ที่เฝ้าดู";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "ผลการเฝ้าดู";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "บันทึก";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "ปลั๊กอิน";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "จอภาพ";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "เครือข่าย";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "ดีบัก Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "เวลา";
+
+/* DebugWindowController: text. */
+"Type" = "ชนิด";
+
+/* DebugWindowController: text. */
+"Message" = "ข้อความ";
+
+/* DebugWindowController: text. */
+"Source" = "แหล่งที่มา";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "ข้อผิดพลาด";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "แจ้งเตือน";
+
+/* DebugWindowController: text. */
+"Log file" = "ไฟล์บันทึก";
+
+/* DebugWindowController: text. */
+"Start logging" = "เริ่มการบันทึก";
+
+/* DebugWindowController: text. */
+"Stop logging" = "หยุดการบันทึก";
+
+/* DebugWindowController: text. */
+"Delete log file" = "ลบไฟล์บันทึก";
+
+/* DebugWindowController: text. */
+"Show log file" = "แสดงไฟล์บันทึก";
+
+/* DebugWindowController: button. */
+"Clear" = "ล้าง";
+
+/* DebugWindowController: text. */
+"Author" = "ผู้เขียน";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "ปลั๊กอินทั้งหมดในรายการนี้รวมอยู่ใน Deskset และอัปเดตพร้อมกับแอป เวอร์ชันตรงกับ Deskset และยังไม่รองรับปลั๊กอินภายนอกในขณะนี้";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (รวมในแอป)";

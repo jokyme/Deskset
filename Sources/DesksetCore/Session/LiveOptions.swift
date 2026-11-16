@@ -115,8 +115,8 @@ public enum LiveOptions {
                                     "maskimagename", "maskimagepath", "maskimageflip", "maskimagerotate",
                                     "macdecodesize"]),
         "bar": imageKeys().union(["barcolor", "barimage", "barorientation", "flip", "barborder"]),
-        "line": ["linecount", "linewidth", "horizontallines", "horizontallinecolor", "autoscale", "graphstart",
-                 "graphorientation", "flip", "transformstroke"],
+        "line": ["linecount", "linewidth", "linejoin", "horizontallines", "horizontallinecolor", "autoscale",
+                 "graphstart", "graphorientation", "flip", "transformstroke"],
         "histogram": Set(["primarycolor", "secondarycolor", "bothcolor", "autoscale", "graphstart", "graphorientation",
                           "flip", "secondarymeasurename", "primaryimage", "secondaryimage", "bothimage"])
             .union(["primary", "secondary", "both"].flatMap { prefix in
@@ -132,6 +132,14 @@ public enum LiveOptions {
                                                                "bitmapextend", "bitmapdigits", "bitmapalign",
                                                                "bitmapseparation", "bitmaptransitionframes"]),
         "shape": [],
+        "svg": ["svgimage"],
+        "textedit": ["initialtext", "placeholdertext", "multiline", "submitonenter", "fontface", "fontweight",
+                     "stringstyle", "fontsize", "fontcolor", "stringalign", "stringeffect", "fonteffectcolor",
+                     "clipstring", "clipstringw", "clipstringh", "angle", "stringcase", "inputcase", "password",
+                     "readonly", "maxlength", "inputfilter", "inputregexp", "placeholderfontface",
+                     "placeholderfontsize", "placeholderfontcolor", "placeholderstringstyle", "caretcolor",
+                     "selectioncolor", "focusborderwidth", "focusbordercolor", "onfocusaction", "onsubmitaction",
+                     "ondismissaction"],
     ]
 
     /// Numbered families of each meter type (`Shape`, `Shape2`…).
@@ -144,6 +152,8 @@ public enum LiveOptions {
         "button": ["colormatrix"],
         "bitmap": ["colormatrix"],
         "shape": ["shape"],
+        "svg": ["attribute"],
+        "textedit": ["inlinesetting", "inlinepattern"],
     ]
 
     // MARK: Measures

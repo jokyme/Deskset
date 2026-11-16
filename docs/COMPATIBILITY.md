@@ -71,7 +71,7 @@ shipped with Deskset.
 | Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 10 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider, MSI Afterburner | Any other Windows DLL (PowershellRM, ActiveNet, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layout wallpaper and Windows parity limits are described in [Layouts](compat/layouts.md) |
-| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, visible/invisible `Update` rates, `OnDisplayMetricsChange`, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; Windows desktop comparison of zoom/selection and initial dynamic-anchor timing is pending |
+| Windows and window settings | emulated | Dragging, snapping, click-through, transparency, smooth fades, 10–500% zoom and its menu/Manage controls, default/forced zoom, Control-Option selection and DragGroup, selected-skin flag lock, visible/invisible `Update` rates (with display occlusion), `OnVisibilityChangeAction`, `OnDisplayMetricsChangeAction`, `UITheme` (`0`/`1`/`2`), Settings reorganization, Debug (5 tabs) and `Reset statistics` in Debug → Network, all position bangs | macOS window levels and point-based geometry; ⌘ for ordinary drag override; `Game mode`, CLI `[!Launch][!Bang]...` and `Crashes\` dumps remain excluded; Windows desktop comparison pending |
 
 ---
 
@@ -147,9 +147,9 @@ by the 15 tested packages.
 | --- | --- | --- |
 | ActionTimer | identical | Lists, Wait, Repeat, Execute, Stop (`!ActionTimer:Execute/Stop` too); drift-free timing on the main run loop |
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
-| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; missed playback notifications are checked once a second, listeners rebuilt after sleep; permission changes are watched from the first tap; `Type=MacPermission` tells a missing permission |
+| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; `OnAudioStartAction` / `OnAudioEndAction`; missed playback notifications are checked once a second, listeners rebuilt after sleep; permission changes are watched from the first tap; `Type=MacPermission` tells a missing permission |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
-| DragDrop | emulated | `Action=Path\|Move\|Copy\|Shortcut\|Delete`, `Path`, `Bounds`, parent options, multiple files and drag actions; shortcuts are symbolic links and Delete uses the macOS Trash |
+| DragDrop | emulated | `Action=Path\|Move\|Copy\|Shortcut\|Delete`, `Path`, `Bounds`, parent options, multiple files, drag actions (`OnOverAction` 20 ms timer / `[$File]`); shortcuts are symbolic links and Delete uses the macOS Trash |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |
 | FolderInfo | emulated | Background scans; Mac hidden / system files |
 | InputText | emulated | Native text field in a non-activating panel; works even on Stay Topmost skins |
@@ -185,7 +185,7 @@ by the 15 tested packages.
 | GetActiveTitle | partial | Window title only with Accessibility / Screen Recording, else the app name |
 | IsFullScreen | partial | Full-screen detection works; the process name is a Mac app name (`Safari`), never `chrome.exe` |
 | MSI Afterburner (`MSIAfterburner`) | emulated | GPU temperature, usage, clock and memory (unified memory on Apple silicon), fan speed as % of the fastest fan's maximum; `Memory clock` 0 on Apple silicon; see §9.3 |
-| Mouse | emulated | Actions on mouse input anywhere on the skin (drag sliders); a press is followed outside the skin until its release; RequireDragging Start / Stop; see §9.8 |
+| Mouse | emulated | Actions on mouse input anywhere on the skin (drag sliders); a press is followed outside the skin until its release; RequireDragging Start / Stop and `!Mouse:StartCapture` / `!Mouse:StopCapture` overlay capture (`CaptureOverlayColor`, `CaptureOverlayCursorName`); see §9.8 |
 | Slider (the Mouse plugin's version 2) | emulated | ClickAction, DragAction, HoldAction, ReleaseAction and MoveAction for the left, right or middle button, on the skin and anywhere else on the screen (no permission needed); see §9.9 |
 | SysColor | emulated | Windows color slots mapped to macOS semantic colors (accent, highlight, window, text…) |
 | WebNowPlaying | partial | Shows Music / Spotify; the browser extension (web players) is not supported |
@@ -466,7 +466,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
     Windows way is a judgment call: skins compare them with Windows values.
   - `[$Skin…]` / `[$Display…]`: skin coordinates are points, so `[$SkinX/Y/W/H]` match Windows at 100 % scaling;
     physical values (`[$SkinPhysicalX/Y/W/H]`, `[$DisplayPhysical…]`) multiply by the display's backing scale (2 on
-    Retina) and the skin's zoom factor; `[$SkinDpiFactor]` / `[$DisplayDpiFactor]` are `2` on Retina displays.
+    Retina), independent of skin zoom; `[$SkinDpiFactor]` / `[$DisplayDpiFactor]` are `2` on Retina displays.
 - **Why:** judgment calls where the manual is silent; macOS draws every Unicode plane; the Mac has none of Windows'
   environment variables.
 - **Skin impact:** none for valid skins; paths built from other Windows-only environment variables usually do not exist.
@@ -665,7 +665,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** Best = the active interface (wired before Wi-Fi); 0 = all active interfaces except VPN tunnels, AWDL,
   bridges and similar virtual ones (no double counting); a Windows adapter name (`Wi-Fi`, `Realtek PCIe GBE…`) or an
   index that does not exist falls back to Best (logged once). `Cumulative=1` reads shared per-interface totals kept
-  across sessions. Settings → General's Reset statistics and `!ResetStats` clear those totals without changing raw
+  across sessions. Debug → Network's Reset statistics and `!ResetStats` clear those totals without changing raw
   speed counters. Collection/save starts with cumulative use, repeats every two minutes for that session, and saves
   on exit. Details and remaining Windows comparison items: [Cumulative network statistics](compat/app.md#cumulative-network-statistics).
 - **Why:** macOS interface names (`en0`) differ from Windows adapter names.
@@ -736,8 +736,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 #### Rainmeter 5.0 measure options (`DragDrop`, `NumberConversionFormat`)
 - **Windows:** Rainmeter 5.0 builds in `Measure=DragDrop` (the former Drag&Drop plugin: `Action=Path|Move|Copy|Shortcut|Delete`,
-  `Path`, `Silent`, `ReplaceIfExists`, `ProcessAllFiles` with `$FileNr$`, `Parent` and `Bounds` on child measures,
-  `OnDropAction` / `OnEnterAction` / `OnLeaveAction`; `FancyRenderer` was removed) and `NumberConversionFormat=Locale` on
+  `Path`, `Silent`, `ReplaceIfExists`, `ProcessAllFiles` with `$FileNr$` and `[$File]`, `Parent` and `Bounds` on child measures,
+  `OnDropAction` / `OnEnterAction` / `OnLeaveAction` / `OnOverAction`; `FancyRenderer` was removed) and `NumberConversionFormat=Locale` on
   String, Registry and WebParser measures (numbers read in the Windows regional format, e.g. `1.234,56` as 1234.56).
 - **Mac:** both supported (`Plugin=Drag&Drop` / `Plugin=DragDrop` too); files are dropped from Finder. `Shortcut` makes a
   symbolic link instead of a `.lnk`, `Delete` moves the item to the Trash; `FancyRenderer` is ignored with a log line.
@@ -755,8 +755,8 @@ The [DragDrop manual](https://docs-v5.rainmeter.net/manual/measures/dragdrop/) s
 but does not specify dialog grouping or the order of confirmation and `OnDropAction`. Deskset publishes the dropped
 path and runs `OnDropAction` when the drop is accepted; moving files to the Trash waits for confirmation. Windows
 desktop comparison of those details remains pending. A directory collision with `ReplaceIfExists=1` replaces the
-destination tree as a whole; Windows directory-merging behavior remains unconfirmed. `OnOverAction` currently follows native drag updates rather
-than a separate 20 ms timer.
+destination tree as a whole; Windows directory-merging behavior remains unconfirmed. `OnOverAction` runs on a 20 ms
+hover timer while dragging within the bounds alongside native drag updates.
 
 #### Other measure details (judgment calls)
 - **Windows:** the manual does not settle these.
@@ -1140,7 +1140,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   global default is `DefaultZoom` / `ForceDefaultZoom` in Rainmeter.ini's `[Rainmeter]` section (Manage → Settings).
 - **Mac:** the `Default…` options work the same, with state.json in place of Rainmeter.ini; positions accept the WindowX /
   WindowY forms (`%`, `R` / `B`, formulas, `@N`), and anchors continue to apply during resizing. Zoom uses integer
-  percentages from 10–500%. Manage has a Zoom field/stepper; Settings → General has Default zoom and Force. The skin
+  percentages from 10–500%. Manage has a Zoom field/stepper; Settings → Skins has Default zoom and Force. The skin
   menu's Zoom contains Default and 80–150% presets at 10-point intervals, inserting a current custom value
   as a checked no-op. Missing `Zoom` inherits the global default; explicit 100% is an override. Default clears it;
   Force disables per-skin controls but preserves overrides for when Force is turned off. The official 5.0
@@ -1169,7 +1169,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Global `DisableDragging`
 - **Windows:** `DisableDragging` defaults to `0`; enabling it prevents mouse dragging of active skins
   (<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>).
-- **Mac:** Settings → General provides Disable dragging. The saved option blocks ordinary mouse drags for existing
+- **Mac:** Settings → Skins provides Disable dragging. The saved option blocks ordinary mouse drags for existing
   and newly loaded skins without changing their Draggable preferences, and ends an ordinary or selected-skin drag
   already in progress.
   Disabling it requires a new press before dragging again. Click actions and programmatic moves remain available;
@@ -1269,11 +1269,13 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Status:** partial. Exact Windows submenu labels/order, menu conversion/rounding, SavePosition-off persistence,
   cross-screen KeepOnScreen timing and active-list sorting remain unverified; current verification is on macOS.
 
-#### Display changes (`OnDisplayMetricsChange`)
-- **Windows:** `[Rainmeter] OnDisplayMetricsChange` is an action; since Rainmeter 5.0 it runs when any display's layout,
-  resolution or scaling changes.
+#### Display changes and visibility updates (`OnDisplayMetricsChangeAction`, `OnVisibilityChangeAction`)
+- **Windows:** `[Rainmeter] OnDisplayMetricsChangeAction` (legacy alias `OnDisplayMetricsChange`) is an action; since
+  Rainmeter 5.0 it runs when any display's layout, resolution or scaling changes, and `Update=<visible> | Invisible <invisible>`
+  with `OnVisibilityChangeAction` controls visibility/occlusion update transitions.
 - **Mac:** when displays are connected, disconnected, rearranged or change resolution, skins with a saved position are
-  placed from it again (a skin returns to a display that comes back), then `OnDisplayMetricsChange` runs.
+  placed from it again (a skin returns to a display that comes back), then `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange`
+  runs. Window occlusion detection drives `Invisible` update intervals and `OnVisibilityChangeAction`.
 - **Why:** follows the 5.0 manual while preserving saved display placement.
 - **Skin impact:** skins that computed their layout from `#SCREENAREAWIDTH#` without DynamicVariables and do not refresh
   in that action keep their layout until refreshed (as on Windows).
@@ -1304,13 +1306,15 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   failure, hidden and multi-selection limits. The Windows legacy helper remains unmapped.
 
 #### Rainmeter 5.0 features not implemented yet
-- **Windows:** `Rainmeter.exe [!Launch][!Bang]` can launch before executing bangs. Rainmeter also provides crash
-  dumps.
-- **Mac:** these remain unimplemented. Debug, Safe Start, Restart/Focus, explicit target-first skin commands,
-  compound skin selectors, the seven media-key SendKey names and the Skin Packager
-  ([§11.2](#skin-packager-create-rmskin-package)) are implemented; see their compatibility limits.
-- **Why:** the remaining launch and crash-dump workflows are not implemented yet.
-- **Skin impact:** use existing load and refresh operations until the remaining commands are available.
+- **Windows:** `Rainmeter.exe [!Launch][!Bang]` executes bangs right after launch, Manage exposes **Game mode**, and
+  `#SETTINGSPATH#Crashes\` stores automatic crash dumps.
+- **Mac:** these three features remain excluded / unimplemented on this branch. Debug, Safe Start, Restart/Focus,
+  explicit target-first skin commands, compound skin selectors, the seven media-key SendKey names, `UITheme`, Settings
+  reorganization, `OnVisibilityChangeAction`, `OnDisplayMetricsChangeAction`, `!Mouse:StartCapture` / `:StopCapture`,
+  AudioLevel `OnAudioStartAction` / `:OnAudioEndAction`, and the Skin Packager ([§11.2](#skin-packager-create-rmskin-package))
+  are implemented; see their compatibility limits.
+- **Why:** excluded from this branch / macOS host model differences.
+- **Skin impact:** use existing load and refresh operations instead of CLI `[!Launch]` or Game mode.
 - **Status:** not supported
 
 #### Sleep, displays asleep, other user sessions
@@ -1438,7 +1442,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Main menu (the tray menu)
 - **Windows:** the notification-area icon's menu; `!TrayMenu` opens it.
 - **Mac:** the menu bar icon's menu (Manage Skins…, Skins, Favorites, Layouts, loaded skins, Refresh All, Install Skin…, Open Skins
-  Folder, Open Log, Launch at Login, About, Help, Quit); Help opens the
+  Folder, Debug, Launch at Login, About, Help, Quit — omitting the standalone Open Log item, matching Rainmeter 5.0); Help opens the
+  Compatibility documentation. Settings uses User interface (`Language`, `Theme` [`UITheme=0|1|2`]), General (`Launch at Login`, automatic update checks after a 5-minute startup delay with `DisableAutoUpdate` / `DisableVersionCheck` sync and cancelled-version skip), and Skins (`Skins folder`, `Default zoom`, `Force`, `Disable dragging`). When skins are selected, `Draggable`, `Click Through` and `Keep on Screen` lock in the skin menu. New fades smoothly interpolate from current alpha.
   [Rainmeter manual](https://docs.rainmeter.net/). `!TrayMenu` pops it up at the pointer. macOS may hide menu bar icons
   (System Settings → Menu Bar): opening Deskset again from Finder, Spotlight or Launchpad shows the Manage window, and
   so does the first launch. A second copy of Deskset hands the files it was opened with to the running one and quits.
@@ -1504,7 +1509,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### About (Log, Skins, Plugins, Version)
 - **Windows:** four About tabs for logs, active skin values, installed plugins and version/paths
   (<https://docs.rainmeter.net/manual/user-interface/about/>).
-- **Mac:** all four pages open from About, Manage's Open Log, the skin's Deskset submenu and `!About` (also via CLI).
+- **Mac:** Debug uses a standalone 5-tab native window (`Log` showing initial 50 messages with SF Symbol severity icons;
+  `Skins` showing Measures, Variables, Meters and Watch with `Edit measure`/`Edit meter`/`Edit variable` jumps and `⌘R`/Ctrl-R/F5 refresh;
+  `Plugins` excluding promoted 5.0 built-in measures; `Display`; and `Network` containing **Reset statistics**), separate from **About** (opened from the menu bar menu, Manage, skin submenus, `!About`, and `!Debug`).
+  `UITheme` (`0`, `1`, `2`) applies live across windows, alerts, menus and skin tooltips.
   Log starts with 20 recent entries, adds new messages at the top, filters only future messages, clears only the panel
   and copies selected message text with Command-C. The existing 2,000-entry history limit also bounds this panel.
   Skins shows live measure ranges/numbers/strings and user variables, with disabled/paused highlighting and complete
@@ -1514,7 +1522,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Why:** macOS UI and clipboard conventions, existing log limits and built-in plugin implementations.
 - **Skin impact:** Windows DLL metadata is unavailable. Unknown `!About` tabs fall back to Log; Measures selects Skins.
 - **Status:** partial; macOS tests cover these behaviors. Windows desktop comparison of edge cases remains pending;
-  Rainmeter 5.0's separate Debug window remains outside this implementation.
+  See [Debug and About](compat/app.md#debug-and-about) for details (Windows desktop comparison remains pending).
 
 #### Persistent file logging
 - **Windows:** `Logging` defaults to `0` and settings are saved automatically. Start logging enables file output;
@@ -1794,7 +1802,7 @@ paths and a few functions that have no Mac meaning. Details: [`compat/lua.md`](c
 - **Status:** identical
 
 #### Script file encoding
-- **Windows:** a `.lua` file must be UTF-16 for Unicode; "NEVER encode a .lua script file in UTF-8".
+- **Windows:** earlier releases required UTF-16 for Unicode scripts; Rainmeter 5.0 added UTF-8 BOM support alongside ANSI and UTF-16.
 - **Mac:** decoded like `.ini` files (UTF-8 with or without BOM, UTF-16, UTF-32, else ANSI) and passed to Lua as
   UTF-8; a first line starting with `#` is ignored.
 - **Why:** Lua sees text as UTF-8 either way; accepting UTF-8 is a leniency.
@@ -1891,8 +1899,8 @@ paths and a few functions that have no Mac meaning. Details: [`compat/lua.md`](c
 #### Rainmeter 5.0 Unicode string functions (`string.uc*`)
 - **Windows:** Rainmeter 5.0 adds character-based (codepoint) `string.ucfind`, `ucmatch`, `ucgmatch`, `ucgsub`, `uclen`,
   `ucsub`, `uclower`, `ucupper`, `ucreverse`, `ucbyte` and `ucchar`; scripts saved with a UTF-8 BOM are read as Unicode.
-- **Mac:** all supported, both as `string.ucfind(s, …)` and as `s:ucfind(…)`.
-- **Why:** as documented in the Rainmeter 5.0 manual.
+- **Mac:** all supported (`string.uc*` enforces UTF-8 locale/Unicode semantics), both as `string.ucfind(s, …)` and as `s:ucfind(…)`.
+- **Why:** as documented in the Rainmeter 5.0 manual (`SetW`/`SetH` also update dimensions immediately).
 - **Skin impact:** none.
 - **Status:** identical
 
@@ -2202,6 +2210,7 @@ Intel Macs are untested.
   Bytes`, `Committed Bytes`, `Commit Limit`…), Paging File, Network Interface (bytes/sec), LogicalDisk / PhysicalDisk
   (free space, bytes/sec), System (processes, threads, uptime, load). Index, Name, Blacklist / Whitelist, Rollup,
   Percent, RawValue and PIDToName follow the manual (names also match case-insensitively and without `.exe`).
+  Initial sampling runs before `UpdateDivider` skips later cycles so first-load readings populate promptly.
   Thermal Zone Information (`\_TZ.CPU`, the hottest CPU sensor, in K) and GPU Engine (Alias=GPU: one instance "GPU",
   the whole GPU's usage) read the hardware sensors (§9.3); per-process GPU memory and anything else read 0, the rest
   listed as a compatibility note.
@@ -2377,7 +2386,9 @@ Intel Macs are untested.
   capturing to happen outside borders"; without it a paused or disabled measure needs DynamicVariables=1 and an update.
 - **Mac:** with RequireDragging=1 the actions run only between Start and Stop (the commands also work while the measure
   is disabled or paused); without it Start / Stop are ignored with a warning. Disabling or pausing stops the actions at
-  once; enabling works without an update (the documented update works too).
+  once; enabling works without an update (the documented update works too). `!Mouse:StartCapture` / `!Mouse:StopCapture`
+  (and `StartCapture` / `StopCapture`) display a capture overlay using `CaptureOverlayColor` and
+  `CaptureOverlayCursorName` (default `ARROW`) to capture pointer events across screens until stopped.
 - **Why:** judgment — published skins start the measure from the meter being dragged and stop it on release, and skins
   with one measure per slider rely on only the started one reacting.
 - **Skin impact:** none expected.
@@ -2494,6 +2505,13 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   visualizer is loaded. Not on macOS 13 – 14.1, nor for `Port=Input`.
 - **Why:** a visualizer at rest should not look like it records, nor keep the output device awake.
 - **Skin impact:** none; a system sound starts the tap for about 5 s.
+- **Status:** emulated
+
+#### `AudioLevel`: `OnAudioStartAction` and `OnAudioEndAction`
+- **Windows:** Rainmeter 5.0 adds `OnAudioStartAction` and `OnAudioEndAction` on parent `AudioLevel` measures.
+- **Mac:** implemented natively on parent measures when non-silent audio activity begins or returns to silence.
+- **Why:** aligns idle/visualizer state actions with Rainmeter 5.0.
+- **Skin impact:** visualizers can show or hide automatically when audio starts or stops.
 - **Status:** emulated
 
 #### `Port=Output` on macOS 13 – 14.1
@@ -2689,7 +2707,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 #### NowPlaying: lyrics and cover art
 - **Windows:** lyrics are downloaded from a lyrics website; Cover is a path to an image file.
 - **Mac:** lyrics are the ones stored with the track in Music.app (no web lookup). Covers (Music's artwork or
-  Spotify's artwork URL) are written to `~/Library/Caches/Deskset/NowPlaying/` with a new file name per track; "" while
+  Spotify's artwork URL) are written to `~/Library/Caches/Deskset/NowPlaying/` with a new file name per track
+  (including `.webp` / `.avif` images and embedded `.ogg` cover art); "" while
   there is no cover, so `Substitute="":"#@#NoCover.png"` works. A local file's cover is Music's artwork. For tracks
   streamed from Apple Music, Music's artwork arrives seconds late or not at all and right after a track change is often
   the previous track's picture, so they are looked up at once with Apple's public iTunes Search API (artist + title;
@@ -2712,7 +2731,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Mac:** one shared background poller, once a second, only for running players and only while a skin needs data
   (paused after 30 s without readers); values appear one update after loading. TrackChangeAction runs on a real track
   change (not for the first track, not on stop). PlayerPath is used only when it names a Mac `.app`. All commands work;
-  Spotify: Stop = pause, no ratings; playback commands never launch a closed player.
+  Spotify: Stop = pause, no ratings; playback commands never launch a closed player. Deskset intentionally keeps
+  AppleScript / `NSWorkspace` `OpenPlayer`, `ClosePlayer` and `TogglePlayer` support for `PlayerName=Spotify`.
 - **Why:** Apple Events are slow and must never block the skins.
 - **Skin impact:** data can be up to one second old (position is interpolated).
 - **Status:** emulated
@@ -2960,7 +2980,8 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 
 WebParser follows the manual, including Rainmeter 5.0's `JsonPointer` (RFC 6901 JSON Pointer extraction on parent and
 child measures; `JsonPointer=1` parses JSON without selecting a value), the `!WebParser:Refetch` /
-`!WebParser:ClearResults` bangs, and encoding detection of local `file://` URLs with `CodePage=0`; the regular expressions are PCRE
+`!WebParser:ClearResults` bangs (with `!WebParser:UpdateData` / `!WebParser:ResetData` retained as deprecated
+aliases for pre-RC2 compatibility), and encoding detection of local `file://` URLs with `CodePage=0`; the regular expressions are PCRE
 patterns translated to ICU (see
 [Actions, bangs, Substitute and regular expressions](#actions-bangs-substitute-and-regular-expressions)). The notes
 below come from the implementation notes of the WebParser work and its review, checked against the current code.
@@ -3128,7 +3149,8 @@ Deskset installs more kinds of packages than Rainmeter does, so older skins can 
   Manage's skin list (it starts with the selected skin's root config), keeping the bottom bar narrow enough. The package installs with Deskset's installer
   (checked by the self-tests); it has not been installed on a Windows desktop yet. Choices made for Windows:
   `RMSKIN.ini` is UTF-16 LE with a BOM and CRLF line ends; file names are stored in Unicode normal form C with the ZIP
-  UTF-8 flag; the archive has no `__MACOSX` folder or other Mac metadata. Hidden means a name starting with `.`,
+  UTF-8 flag; the archive has no `__MACOSX` folder or other Mac metadata. The Packager window (`680×400`, minimum
+  `600×370`) shows full 32-bit/64-bit plugin paths with hover tooltips and opens file choosers at the selected paths. Hidden means a name starting with `.`,
   Windows Explorer's `desktop.ini` / `Thumbs.db`, or Finder's hidden flag; symbolic links are left out and listed
   after the package is made. The minimum Rainmeter version defaults to 5.0, the Rainmeter release whose skin features
   Deskset implements; no minimum Windows version is written (Rainmeter 5.0 removed that option). The Windows plugin

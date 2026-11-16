@@ -2579,5 +2579,54 @@ enum AudioSelfTests {
                 t.check(skin.width > 0 && skin.height > 0, "\(config) has a size")
             }
         }
+
+        t.suite("App: Audio event-driven OnAudioStartAction and OnAudioEndAction wake Update=-1 skins") {
+            let ini = """
+            [Rainmeter]
+            Update=-1
+            [Audio]
+            Measure=AudioLevel
+            Port=Output
+            OnAudioStartAction=[!SetVariable EventLog "[#EventLog]start;"]
+            OnAudioEndAction=[!SetVariable EventLog "[#EventLog]end;"]
+            [Variables]
+            EventLog=
+            """
+            let dir = t.temporaryDirectory("audio-events")
+            let url = dir.appendingPathComponent("Test.ini")
+            try ini.write(to: url, atomically: true, encoding: .utf8)
+            let skin = Skin(config: "AudioEvents", fileURL: url, skinsDirectory: dir.deletingLastPathComponent(),
+                            system: SystemMonitor.shared, host: host)
+            try skin.load()
+            defer { skin.close() }
+            let engine = makeEngine { _ in FakeBackend() }
+            let measure = skin.measure(named: "Audio") as! AudioLevelMeasure
+            measure.engine = engine
+            measure.system = { fakeSnapshot() }
+            measure.prepareSystem = {}
+            measure.mayCapture = { _ in true }
+
+            // Initial update subscribes the parent; no regular polling updates follow under Update=-1.
+            skin.update()
+            engine.drain()
+            guard let analyzer = measure.analyzer else {
+                t.check(false, "parent has analyzer")
+                return
+            }
+            func waitMain(timeout: TimeInterval = 3, until condition: () -> Bool) -> Bool {
+                let end = Date().addingTimeInterval(timeout)
+                while !condition() && Date() < end {
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+                }
+                return condition()
+            }
+            analyzer.publishGiven(channels: 2, sampleRate: 48_000, rms: [0.4, 0.4], peak: [0.6, 0.6],
+                                  bands: [], fft: [])
+            t.check(waitMain { (skin.variable("EventLog") ?? "").contains("start;") },
+                    "OnAudioStartAction fired via event callback without polling computeValue")
+            analyzer.reset()
+            t.check(waitMain { (skin.variable("EventLog") ?? "") == "start;end;" },
+                    "OnAudioEndAction fired on audio stop without polling computeValue")
+        }
     }
 }

@@ -98,6 +98,8 @@ public final class TimeMeasure: Measure {
     private var timeStampFormulaValue: Double?
     private var timeStampFormat: String?
     private var timeStampLocale: Locale?
+    private var timeStampLocaleRaw = ""
+    private var timeStampLocaleInvalid = false
     private var loggedTimeStampError = false
     /// Windows timestamp (seconds since 1601, wall clock) of the last update; `[Measure:TimeStamp]`.
     public private(set) var timestamp = 0.0
@@ -117,7 +119,11 @@ public final class TimeMeasure: Measure {
             ?? TimeFormatting.defaultLocale
         timeStampText = string("TimeStamp").trimmingCharacters(in: .whitespaces)
         timeStampFormat = option("TimeStampFormat")
-        timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"), local: systemLocale)
+        let rawTSLocale = option("TimeStampLocale")?.trimmingCharacters(in: .whitespaces) ?? ""
+        timeStampLocaleRaw = rawTSLocale
+        timeStampLocale = TimeFormatting.locale(fromOption: rawTSLocale.isEmpty ? nil : rawTSLocale,
+                                                local: systemLocale)
+        timeStampLocaleInvalid = !rawTSLocale.isEmpty && timeStampLocale == nil
         // A mask owns the input, including text that begins with '(' or a number. Without a mask, the manual
         // allows a parenthesized timestamp formula; do not parse date strings as numeric prefixes.
         timeStampFormulaValue = nil
@@ -129,8 +135,15 @@ public final class TimeMeasure: Measure {
     public override func computeValue() -> Double {
         let clock = skin.skinClock
         let systemLocale = skin.locale
+        let hasMask = !(timeStampFormat?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
         if timeStampText.isEmpty {
             timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
+        } else if timeStampLocaleInvalid && hasMask {
+            if !loggedTimeStampError {
+                loggedTimeStampError = true
+                skin.log("[\(name)] Invalid TimeStampLocale \"\(timeStampLocaleRaw)\"", level: .error)
+            }
+            timestamp = 0
         } else if let timeStampFormulaValue {
             timestamp = timeStampFormulaValue
         } else if let parsed = TimeFormatting.parseTimeStamp(timeStampText, format: timeStampFormat,

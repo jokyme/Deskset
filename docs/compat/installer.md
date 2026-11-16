@@ -479,8 +479,10 @@ Skins folder) and `.severalPackages([names])`.
   400×60 header bitmap, Variables files and Merge skins (mutually exclusive). Load previous (Shift deletes), Back.
   Hidden files are skipped; the result is `Name_Version.rmskin`.
 - Mac (Deskset): `RmskinPackager` (DesksetCore) checks the settings (`problems`) and writes the package (`build`);
-  `SkinPackagerWindowController` is the window, opened from the box icon next to "Create new skin" above Manage's skin
-  list (with the selected skin's root config); a text button in the bottom bar would push Manage past its minimum width.
+  `SkinPackagerWindowController` is the window (`680×400` default, minimum `600×370`), opened from the box icon next to
+  "Create new skin" above Manage's skin list (with the selected skin's root config); a text button in the bottom bar
+  would push Manage past its minimum width. Plugin rows show full 32-bit/64-bit paths with full-path hover tooltips,
+  and file selection panels open at the currently chosen root config, header image, variable file or output directory.
   - Layout: `RMSKIN.ini`, optional `RMSKIN.bmp`, `Skins/<root>/…`, `Layouts/<name>/…`, `Plugins/32bit|64bit/<dll>`;
     ZIP from `ditto -c -k --norsrc --noextattr --noacl --noqtn`, then the 16-byte footer.
   - `RMSKIN.ini`: UTF-16 LE with BOM, CRLF; keys Name, Author, Version, LoadType/Load (only with a choice),

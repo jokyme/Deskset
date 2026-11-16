@@ -132,8 +132,8 @@ public enum IniWriter {
     /// The text-level operation behind `writeValue`: returns `text` with `key=value` set in `[section]`.
     /// Only the updated line changes (or new lines are inserted); all other characters are kept exactly.
     ///
-    /// Value handling (the manual is silent): line breaks in `value` become spaces (option values must stay on one
-    /// line), and a value with leading or trailing spaces/tabs is wrapped in double quotes because a reader trims
+    /// Value handling (Rainmeter 5.0): line breaks in `value` are encoded as `#CRLF#` (so multiline text survives
+    /// `!WriteKeyValue`), and a value with leading or trailing spaces/tabs is wrapped in double quotes because a reader trims
     /// unquoted values, so it reads back unchanged. Any other value is written exactly as given — including one that
     /// is itself wrapped in a pair of quotes (`"x"`), which a reader then strips like any quoted value, as it would
     /// for a hand-written `Key="x"` (skins use this to store `"  padded  "` text).
@@ -274,9 +274,9 @@ public enum IniWriter {
     private static func encodeValue(_ value: String) -> String {
         var v = value
         if containsLineBreak(v) {
-            v = v.replacingOccurrences(of: "\r\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
-                .replacingOccurrences(of: "\n", with: " ")
+            v = v.replacingOccurrences(of: "\r\n", with: "#CRLF#")
+                .replacingOccurrences(of: "\r", with: "#CRLF#")
+                .replacingOccurrences(of: "\n", with: "#CRLF#")
         }
         if let first = v.unicodeScalars.first, let last = v.unicodeScalars.last,
            IniSyntax.isBlank(first) || IniSyntax.isBlank(last) {

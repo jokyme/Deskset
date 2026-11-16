@@ -289,5 +289,62 @@ enum AppUpdateControllerSelfTests {
             settings.close()
           }
         }
+
+        t.suite("App: Updates: 5-minute startup delay, DisableAutoUpdate INI sync and cancelled flow suppression") {
+            t.equal(AppUpdateController.initialCheckDelay, 300)
+
+            let delayedState = state(t), delayedFetcher = Fetcher()
+            let delayed = AppUpdateController(state: delayedState, service: delayedFetcher, currentVersion: "0.2.0",
+                                              initialDelay: 0.05)
+            delayed.start()
+            t.equal(delayedFetcher.completions.count, 0, "automatic startup check waits for the initial delay")
+            t.check(AppSelfTest.spin(timeout: 5) { delayedFetcher.completions.count == 1 },
+                    "automatic startup check fires once the initial delay elapses")
+            delayedFetcher.completions[0](.success(nil))
+            delayed.stop()
+
+            let cancelledStartState = state(t), cancelledStartFetcher = Fetcher()
+            let cancelledStart = AppUpdateController(state: cancelledStartState, service: cancelledStartFetcher,
+                                                     currentVersion: "0.2.0", initialDelay: 0.05)
+            cancelledStart.start()
+            cancelledStart.stop()
+            _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.08))
+            t.equal(cancelledStartFetcher.completions.count, 0, "stop cancels a pending startup delay timer")
+
+            let iniState = state(t), iniFetcher = Fetcher()
+            let iniUpdates = AppUpdateController(state: iniState, service: iniFetcher, currentVersion: "0.2.0",
+                                                 initialDelay: 0)
+            iniState.replaceLayout(LayoutState(skins: [:], order: [], rainmeterOptions: ["DisableAutoUpdate": "1"]))
+            t.check(!iniUpdates.automaticallyChecks, "DisableAutoUpdate=1 disables automatic update checks")
+            iniUpdates.checkAutomaticallyIfDue()
+            t.equal(iniFetcher.completions.count, 0)
+            iniState.replaceLayout(LayoutState(skins: [:], order: [], rainmeterOptions: ["DisableVersionCheck": "1"]))
+            t.check(!iniUpdates.automaticallyChecks, "legacy DisableVersionCheck=1 also disables automatic checks")
+            iniUpdates.setAutomaticallyChecks(true)
+            t.check(iniUpdates.automaticallyChecks)
+            t.equal(iniState.data.rainmeterOptions["DisableAutoUpdate"], "0")
+            t.equal(iniState.data.rainmeterOptions["DisableVersionCheck"], "0")
+
+            let appState = state(t)
+            let app = AppController(state: appState, presentsWindows: false)
+            let appFetcher = Fetcher()
+            app.updates = AppUpdateController(state: appState, service: appFetcher, currentVersion: "0.2.0", initialDelay: 0)
+            let offered = release("0.3.0")
+            app.updateFlow.start(offered)
+            appFetcher.completions.removeAll()
+            app.updateFlow.dismiss()
+            t.equal(appState.updates.skippedVersion, "0.3.0",
+                    "cancelling an update flow skips further automatic prompts for that version")
+            var notices: [AppUpdateController.Notice] = []
+            app.updates.onNotice = { notice, _ in notices.append(notice); return true }
+            app.updates.checkAutomaticallyIfDue()
+            appFetcher.completions[0](.success(offered))
+            t.equal(notices, [], "cancelled update version is suppressed during automatic checks")
+            appState.updateUpdates { $0.lastCheckAttempt = Date(timeIntervalSince1970: 0) }
+            app.updates.checkAutomaticallyIfDue()
+            let newer = release("0.4.0")
+            appFetcher.completions[1](.success(newer))
+            t.equal(notices, [.available(newer)], "newer versions still notify automatically")
+        }
     }
 }

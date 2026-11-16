@@ -14,11 +14,12 @@ enum DebugSelfTests {
             guard let app = try AppSelfTest.makeApp(t),
                   let focus = app.activate(config: "App\\Focus", file: "Focus.ini") else { return }
             defer { DebugWindowController.window(for: app)?.close(); AboutWindowController.window(for: app)?.close() }
-            t.equal(DebugWindowController.Tab.allCases.map(\.rawValue), ["Log", "Skins", "Display", "Network", "Plugins"])
+            t.equal(DebugWindowController.Tab.allCases.map(\.rawValue), ["Log", "Skins", "Plugins", "Display", "Network"])
             t.equal(DebugWindowController.Tab.parse("sKiN"), .skins)
             t.equal(DebugWindowController.Tab.parse("Network"), .network)
             let menu = NSMenu(); app.buildMainMenu(menu)
             t.check(menu.item(withTitle: "Debug") != nil)
+            t.check(menu.item(withTitle: "Open Log") == nil, "Open Log is removed from the main context menu")
             let skinMenu = app.skinMenu(for: focus, includeCustomItems: true)
             t.check(skinMenu.item(withTitle: "Debug Skin") != nil)
             app.openLogAction()
@@ -60,6 +61,10 @@ enum DebugSelfTests {
             t.equal(debug.displayedLogs.count, 50)
             t.equal(debug.displayedLogs.first?.message, "History-55")
             t.equal(debug.displayedLogs.last?.message, "History-6")
+            let typeCol = debug.testLogTable.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("type"))
+            let typeCell = debug.tableView(debug.testLogTable, viewFor: typeCol, row: 0) as? NSTableCellView
+            t.check(typeCell?.imageView?.image != nil && typeCell?.textField?.stringValue == "Notice",
+                    "log type rows render a status icon and label")
             debug.testLogTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             debug.menuNeedsUpdate(debug.testLogMenu)
             Log.write("New message"); debug.pollLogNow()
@@ -99,9 +104,14 @@ enum DebugSelfTests {
             defer { debug.close() }
             t.equal(debug.testPluginsTable.tableColumns.map(\.title), ["Name", "Version", "Author"])
             let names = debug.plugins.map(\.name)
-            t.check(names.count >= 15)
+            t.check(names.count >= 13)
             t.equal(names, names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
-            t.equal(names.filter { $0.lowercased().hasPrefix("itunes") }.count, 1)
+            t.check(!names.contains("ActionTimer") && !names.contains("AudioLevel")
+                    && !names.contains("Mouse") && !names.contains("NowPlaying")
+                    && !names.contains { $0.lowercased().hasPrefix("itunes") },
+                    "promoted built-in 5.0 measures are omitted from Debug Plugins")
+            t.check(names.contains("AppVolume") && names.contains("FrostedGlass")
+                    && names.contains("MacWeather") && names.contains("WebNowPlaying"))
             t.check(debug.plugins.allSatisfy { $0.version == "\(AppVersion.current) (bundled)" && $0.author == "jokyme" })
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
                 debug.window?.appearance = NSAppearance(named: appearance)

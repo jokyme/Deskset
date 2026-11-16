@@ -259,6 +259,64 @@ func runIniDiagnosticsTests(_ t: TestRunner) {
         }
         t.check(checked >= 30, "checked \(checked) skins")
     }
+
+    t.suite("INI diagnostics: Rainmeter 5.0 Measure @Inherit, namespaced bangs, SVGImage and built-in measures") {
+        let ini = """
+            [BaseMeasure]
+            Substitute="a":"b"
+
+            [MeasureOK]
+            Measure=UsageMonitor
+            Alias=CPU
+            Index=Count
+            @Inherit=BaseMeasure
+            NumberConversionFormat=Locale
+
+            [MeasureMissingInherit]
+            Measure=Calc
+            @Inherit=MissingBase
+            Formula=1
+
+            [MeasureTimer]
+            Measure=ActionTimer
+            ActionList1=Stop
+            ActionList2=Wait 10
+
+            [MeasureDrop]
+            Measure=DragDrop
+            Action=Path
+            Bounds=0,0,50,50
+            OnDropAction=[!WebParser:Refetchh MeasureOK][!Skin:Loadd Other]
+
+            [MeterInlineSVG]
+            Meter=SVG
+            SVGImage=<svg width="10" height="10"></svg>
+            Attribute=svg | opacity | 0.5
+
+            [MeterMissingSVG]
+            Meter=SVG
+            SVGImage=#@#missing.svg
+
+            [MeterInput]
+            Meter=TextEdit
+            Multiline=1
+            StringAlign=JustifyCenter
+            InputFilter=RegExp
+            InputRegExp=.*
+
+            [MeterLine]
+            Meter=Line
+            LineJoin=Miter, (5+5)
+            """
+        let (skin, _) = try makeSkin(t, ini)
+        let found = IniDiagnostics.check(skin)
+        t.equal(found.map(\.kind), [
+            .missingStyle(name: "MissingBase"),
+            .unknownBang(name: "!WebParser:Refetchh", suggestion: "!WebParser:Refetch"),
+            .unknownBang(name: "!Skin:Loadd", suggestion: "!Skin:Load"),
+            .missingImage(path: "#@#missing.svg"),
+        ], "\(found)")
+    }
 }
 
 /// A host whose settings folder is a folder of the test's own.

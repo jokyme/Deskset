@@ -28,6 +28,7 @@ enum SkinCursors {
 
     private static func builtIn(_ name: String) -> NSCursor? {
         switch name {
+        case "ARROW": return .arrow
         case "HAND": return .pointingHand
         case "TEXT": return .iBeam
         case "CROSS": return .crosshair

@@ -417,6 +417,8 @@ extension Skin {
         // Everything that may follow another section, again in file order, each meter taking its values as it is read
         // (as an update does); the frames are laid out anew before the next read of one, so a section sees the new
         // places and sizes of the ones before it.
+        isPatchingOptions = true
+        defer { isPatchingOptions = false }
         for section in ordered
         where plan.changed[ObjectIdentifier(section)] != nil || plan.readAgain.contains(ObjectIdentifier(section)) {
             markLayoutPending()

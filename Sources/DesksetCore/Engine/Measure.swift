@@ -588,8 +588,16 @@ open class Measure: SkinSection {
     /// `!PauseMeasure` / `!UnpauseMeasure`: a paused measure keeps its values.
     func setPaused(_ flag: Bool) {
         if !flag && paused { needsOptionRead = true }
+        let changed = flag != paused
         paused = flag
+        if changed { pausedStateChanged() }
     }
+
+    /// Called when the measure has just been paused or unpaused.
+    open func pausedStateChanged() {}
+
+    /// True while a measure is waiting on its first asynchronous sample before normal `UpdateDivider` skips apply.
+    var needsInitialSampleUpdate: Bool { false }
 }
 
 // MARK: - Seeding (Session/Seeding.swift)

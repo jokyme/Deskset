@@ -324,12 +324,12 @@ public enum IniHighlighter {
 
     /// First characters that make `[…]` something other than a classic section variable.
     private static let notSectionStart: Set<UInt16> = [
-        Unit.hash, Unit.ampersand, Unit.backslash, Unit.dollar, Unit.exclamation, Unit.doubleQuote, Unit.singleQuote,
-        Unit.space, Unit.tab,
+        Unit.hash, Unit.percent, Unit.ampersand, Unit.backslash, Unit.dollar, Unit.exclamation, Unit.doubleQuote,
+        Unit.singleQuote, Unit.space, Unit.tab,
     ]
 
-    /// Nesting syntax `[#…]`, `[&…]`, `[\…]`, `[$…]`: the whole construct up to its matching `]`, inner constructs
-    /// included (`[#Color[#Index]]` is one token).
+    /// Nesting syntax `[#…]`, `[%…]`, `[&…]`, `[\…]`, `[$…]`: the whole construct up to its matching `]`, inner
+    /// constructs included (`[#Color[#Index]]` is one token).
     private static func paintNestedVariables(_ u: [UInt16], _ r: Range<Int>, into painter: inout Painter) {
         // Matching brackets in one pass (a stack), so an unterminated construct does not make the scan quadratic.
         var match = [Int](repeating: -1, count: r.count)
@@ -346,7 +346,7 @@ public enum IniHighlighter {
             guard u[i] == Unit.openBracket else { i += 1; continue }
             let kind: Kind
             switch u[i + 1] {
-            case Unit.hash, Unit.backslash, Unit.dollar: kind = .variable
+            case Unit.hash, Unit.percent, Unit.backslash, Unit.dollar: kind = .variable
             case Unit.ampersand: kind = .sectionVariable
             default: i += 1; continue
             }
@@ -441,6 +441,7 @@ public enum IniHighlighter {
         static let doubleQuote: UInt16 = 0x22
         static let hash: UInt16 = 0x23
         static let dollar: UInt16 = 0x24
+        static let percent: UInt16 = 0x25
         static let ampersand: UInt16 = 0x26
         static let singleQuote: UInt16 = 0x27
         static let openParen: UInt16 = 0x28

@@ -175,8 +175,9 @@ final class InputTextPanel: NSPanel {
 /// The AppKit input box, positioned over the skin window at the measure's X/Y/W/H (a window companion: main thread).
 final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDelegate, NSWindowDelegate {
     private weak var host: SkinCompanionHost?
-    /// The skin's width (points) when it asked for the box: the default width of the box.
+    /// The skin's width (logical points) and zoom factor when it asked for the box.
     private let skinWidth: Double
+    private let zoomFactor: Double
     private var panel: InputTextPanel?
     private var field: NSTextField?
     private var completion: ((String?) -> Void)?
@@ -186,9 +187,10 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
     private var becameKey = false
     private weak var previousKeyWindow: NSWindow?
 
-    init(host: SkinCompanionHost, skinSize: CGSize) {
+    init(host: SkinCompanionHost, skinSize: CGSize, zoomFactor: Double = 1.0) {
         self.host = host
         skinWidth = Double(skinSize.width)
+        self.zoomFactor = zoomFactor.isFinite && zoomFactor > 0 ? zoomFactor : 1.0
     }
 
     deinit {
@@ -199,12 +201,16 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
     /// width (at least 40), H to the font's line height plus 6 (Judgment: the manual gives no defaults).
     /// X / Y are clamped to ±`maxOffset` points: AppKit raises an uncaught exception (the app would quit) for a window
     /// frame outside the 32-bit integer range, which a skin's formula (`X=(1/0.0000001)`, `Y=1e300`) can produce.
-    static func frame(_ s: InputTextSettings, skinFrame: CGRect, skinWidth: Double, lineHeight: CGFloat) -> CGRect {
+    static func frame(_ s: InputTextSettings, skinFrame: CGRect, skinWidth: Double, lineHeight: CGFloat,
+                      zoomFactor: Double = 1.0) -> CGRect {
+        let scale = zoomFactor.isFinite && zoomFactor > 0 ? zoomFactor : 1.0
         func clamped(_ v: Double) -> Double { v.isFinite ? min(max(v, -maxOffset), maxOffset) : 0 }
-        let x = clamped(s.x), y = clamped(s.y)
-        let skinW = skinWidth.isFinite ? skinWidth : 0
-        let width = CGFloat(s.width.flatMap { $0 > 0 && $0.isFinite ? $0 : nil } ?? max(skinW - x, 40))
-        let height = CGFloat(s.height.flatMap { $0 > 0 && $0.isFinite ? $0 : nil } ?? Double(ceil(lineHeight + 6)))
+        let x = clamped(s.x) * scale, y = clamped(s.y) * scale
+        let skinW = (skinWidth.isFinite ? skinWidth : 0) * scale
+        let explicitW = s.width.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }.map { $0 * scale }
+        let explicitH = s.height.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }.map { $0 * scale }
+        let width = CGFloat(explicitW ?? max(skinW - x, 40 * scale))
+        let height = CGFloat(explicitH ?? Double(ceil(lineHeight + 6 * CGFloat(scale))))
         let w = min(max(width, 4), 8192), h = min(max(height, 4), 8192)
         return CGRect(x: skinFrame.minX + CGFloat(x), y: skinFrame.maxY - CGFloat(y) - h, width: w, height: h)
     }
@@ -222,10 +228,11 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
         }
     }
 
-    static func font(_ s: InputTextSettings) -> NSFont {
+    static func font(_ s: InputTextSettings, zoomFactor: Double = 1.0) -> NSFont {
+        let scale = zoomFactor.isFinite && zoomFactor > 0 ? zoomFactor : 1.0
         var style = TextStyle()
         style.fontFace = s.fontFace
-        style.fontSize = s.fontSize
+        style.fontSize = s.fontSize * scale
         style.bold = s.bold
         style.italic = s.italic
         return Fonts.font(for: style)
@@ -240,10 +247,10 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
             return
         }
         let skinWindow = host.skinWindow
-        let font = InputTextPanelPrompt.font(settings)
+        let font = InputTextPanelPrompt.font(settings, zoomFactor: zoomFactor)
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
         let frame = InputTextPanelPrompt.frame(settings, skinFrame: skinWindow.frame, skinWidth: skinWidth,
-                                               lineHeight: lineHeight)
+                                               lineHeight: lineHeight, zoomFactor: zoomFactor)
         let panel = InputTextPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                                    backing: .buffered, defer: false)
         panel.isOpaque = false
@@ -348,9 +355,10 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
 
     private func followSkinWindow() {
         guard let host, let panel else { return }
-        let font = InputTextPanelPrompt.font(settings)
+        let font = InputTextPanelPrompt.font(settings, zoomFactor: zoomFactor)
         let frame = InputTextPanelPrompt.frame(settings, skinFrame: host.skinWindow.frame, skinWidth: skinWidth,
-                                               lineHeight: ceil(font.ascender - font.descender + font.leading))
+                                               lineHeight: ceil(font.ascender - font.descender + font.leading),
+                                               zoomFactor: zoomFactor)
         panel.setFrameOrigin(frame.origin)
     }
 

@@ -38,6 +38,9 @@ open class SkinSection {
     /// Set by `!SetOption` and on load; dynamic sections re-read every update anyway.
     var needsOptionRead = true
     var updateTick = 0
+    /// Number of UpdateDivider hits collapsed into the current `performUpdate()` (1 normally, >1 when waking or
+    /// updating under `Update=… | Invisible …`).
+    var pendingUpdateHits = 1
 
     /// Mouse action state bangs (meters and `[Rainmeter]` only). Missing entries are `.enabled`.
     var mouseActionStates: [MouseEventKind: MouseActionState] = [:] {
@@ -378,9 +381,38 @@ open class SkinSection {
     /// A negative divider means "only the first update and explicit bangs" (manual: "If UpdateDivider=-1 or any
     /// negative number, then the measure is only updated once when the skin is loaded or refreshed"). 0 counts as 1.
     func consumeUpdateTick() -> Bool {
-        defer { if updateTick < Int.max { updateTick += 1 } }
-        if updateDivider < 0 { return updateTick == 0 }
-        return updateTick % max(updateDivider, 1) == 0
+        consumeUpdateTicks(1) > 0
+    }
+
+    /// Advances `updateTick` by `step` ticks (default 1) and returns how many updates hit the `updateDivider` schedule.
+    func consumeUpdateTicks(_ step: Int) -> Int {
+        let count = max(step, 1)
+        let start = updateTick
+        if updateTick <= Int.max - count {
+            updateTick += count
+        } else {
+            updateTick = Int.max
+        }
+        if updateDivider < 0 { return start == 0 ? 1 : 0 }
+        let divider = max(updateDivider, 1)
+        let end = start <= Int.max - (count - 1) ? start + count - 1 : Int.max
+        let prior = start == 0 ? -1 : (start - 1) / divider
+        return max(0, (end / divider) - prior)
+    }
+
+    /// Advances an UpdateRate-style cyclic counter by `steps` updates (triggering when reaching or wrapping through 0).
+    static func advanceCycleCounter(_ counter: inout Int, by steps: Int, rate: Int) -> Bool {
+        let step = max(steps, 1)
+        let triggered = counter == 0 || (rate > 0 && counter + step > rate)
+        if counter <= Int.max - step {
+            counter += step
+        } else {
+            counter = Int.max
+        }
+        if rate > 0 && counter >= rate {
+            counter %= rate
+        }
+        return triggered
     }
 
     public func isInGroup(_ group: String) -> Bool {

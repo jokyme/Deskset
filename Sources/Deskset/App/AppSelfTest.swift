@@ -93,6 +93,7 @@ enum AppSelfTest {
         MetadataEditingSelfTests.run(t)
         MenuNavigationSelfTests.run(t)
         TransparencyUISelfTests.run(t)
+        UIThemeSelfTests.run(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         WeatherSelfTests.run(t)

@@ -154,6 +154,58 @@ func runDragDropMeasureTests(_ t: TestRunner) {
         t.equal(host.requests.count, 0)
         t.check(f.effects.records.isEmpty)
     }
+
+    t.suite("DragDrop: Bounds formulas, bracketed meter, 20ms OnOverAction and single-pass variables") {
+        let executor = VirtualTimeExecutor(start: Date(timeIntervalSince1970: 0),
+                                           timeZone: TimeZone(secondsFromGMT: 0)!)
+        let root = t.temporaryDirectory("dragdrop-hover-bounds")
+        let skinURL = root.appendingPathComponent("Skin.ini")
+        try """
+        [Box]
+        Meter=Image
+        X=10
+        Y=10
+        W=50
+        H=40
+        SolidColor=0,0,0,255
+        [DDBracket]
+        Measure=DragDrop
+        Bounds=[Box]
+        [DD]
+        Measure=DragDrop
+        Action=Path
+        Bounds=(5+5),(10*2),(10+20),(20+20)
+        OnOverAction=[!SetVariable HoverCount "([#HoverCount]+1)"][!SetVariable OverMeta "$Name$|$File$"]
+        [Variables]
+        HoverCount=0
+        """.write(to: skinURL, atomically: true, encoding: .utf8)
+        let host = FakeHost()
+        let skin = Skin(config: "DDBounds", fileURL: skinURL, skinsDirectory: root,
+                        system: FakeSystem(), host: host)
+        skin.runInVirtualTime(executor)
+        try skin.load()
+        defer { skin.close() }
+        skin.update()
+        let dd = skin.measure(named: "DD") as! DragDropMeasure
+        let bracket = skin.measure(named: "DDBracket") as! DragDropMeasure
+        t.check(bracket.contains(x: 20, y: 20))
+        t.check(!bracket.contains(x: 5, y: 5))
+        t.check(dd.contains(x: 15, y: 30))
+        t.check(!dd.contains(x: 5, y: 30))
+
+        // Single-pass variable substitution prevents "$Name$" inside filename from re-expanding.
+        let specialFile = root.appendingPathComponent("$Name$.txt").path
+        dd.handleDragEnter(files: [specialFile], x: 15, y: 30)
+        t.equal(skin.variable("HoverCount"), "1")
+        t.equal(skin.variable("OverMeta"), "$Name$|\(specialFile)")
+
+        executor.advance(by: 0.065)
+        t.equal(skin.variable("HoverCount"), "4", "OnOverAction repeats ~20ms while hovering")
+
+        dd.handleDragLeave(files: [specialFile], x: 0, y: 0)
+        executor.advance(by: 0.1)
+        t.equal(skin.variable("HoverCount"), "4", "leaving stops the 20ms hover timer")
+    }
 }
 
 private struct DragDropFixture {

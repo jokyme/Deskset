@@ -131,6 +131,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Loads the skin and registers its fonts (`@Resources/Fonts`). On the executor.
     func load(configState: SkinState? = nil) throws -> LoadResult {
         try skin.load()
+        if !skin.isSupportedSyntaxVersion {
+            throw NSError(domain: "DesksetSkinLoad", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Unsupported SyntaxVersion in skin"])
+        }
+        if !skin.isSupportedAppVersion {
+            throw NSError(domain: "DesksetSkinLoad", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Unsupported AppVersion=\(skin.settings.appVersion)"])
+        }
         if let configState {
             skin.applyConfigGroups(group: configState.group, dragGroup: configState.dragGroup)
         }
@@ -305,6 +313,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             return true
         case .windowFacts(let facts):
             let wasHidden = model.settings.hidden
+            let wasSkinVisible = isSkinVisible
             let oldSettings = model.settings
             let oldZoom = model.settings.zoomFactor
             model.take(facts)
@@ -315,8 +324,19 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                 skin.applyHostZoomFactor(model.settings.zoomOverridePercent.map { Double($0) / 100 },
                                          previousEffectiveZoomFactor: oldZoom)
             }
-            if model.settings.hidden != wasHidden, skin.settings.invisibleUpdate != nil {
-                startTimer()
+            let nowSkinVisible = isSkinVisible
+            if nowSkinVisible != wasSkinVisible || model.settings.hidden != wasHidden {
+                if nowSkinVisible != wasSkinVisible {
+                    skin.visibilityDidChange(visible: nowSkinVisible)
+                }
+                if skin.settings.invisibleUpdate != nil {
+                    startTimer()
+                }
+                if nowSkinVisible && !wasSkinVisible && skin.settings.invisibleUpdate != nil
+                    && !updatesPaused && SkinRuntime.updateInterval(skin.effectiveUpdate) != nil
+                    && skin.canRunVisibilityUpdate {
+                    skin.update()
+                }
             }
             return true
         case .setZoom(let percent, let completion):
@@ -357,6 +377,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.pointerEvent(event, x: x, y: y)
         case .outsidePointer(let event, let x, let y):
             skin.outsidePointerEvent(event, x: x, y: y)
+        case .completeMouseCapture(let measureName, let button, let skinX, let skinY, let screenX, let screenY):
+            skin.completeMouseCapture(measureName: measureName, button: button, skinX: skinX, skinY: skinY,
+                                      screenPoint: (screenX, screenY))
+        case .cancelMouseCapture(let measureName):
+            skin.cancelMouseCapture(measureName: measureName)
         case .hover(let x, let y):
             skin.mouseMoved(x: x, y: y)
         case .exited:
@@ -690,11 +715,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                     screens: screens, zoomFactor: zoom), zoomFactor: zoom, screens: screens)
             }
         }
+        let wasSkinVisible = isSkinVisible
         guard var change = candidate.apply(bang, screens: screens) else { return }
         model = candidate
         if isPosition { initialPlacement = nil }
         change.whileClosing = isClosing
         skin.invalidateEnvironment()
+        let nowSkinVisible = isSkinVisible
         if let size {
             requestedSize = size
             request(.resize(size, zoomFactor: zoom))
@@ -707,8 +734,16 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.applyHostZoomFactor(percent.map { Double($0) / 100 }, previousEffectiveZoomFactor: previousZoom)
         }
         if Thread.isMainThread, case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
+        if nowSkinVisible != wasSkinVisible {
+            skin.visibilityDidChange(visible: nowSkinVisible)
+        }
         if case .hidden = change.operation, skin.settings.invisibleUpdate != nil {
             startTimer()
+        }
+        if nowSkinVisible && !wasSkinVisible && skin.settings.invisibleUpdate != nil
+            && !updatesPaused && SkinRuntime.updateInterval(skin.effectiveUpdate) != nil
+            && skin.canRunVisibilityUpdate {
+            skin.update()
         }
     }
 
@@ -1076,6 +1111,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// The needs travel in the snapshot, published when the work ends (`.snapshotChanged(.outsidePointerNeeds)`).
     func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
 
+    func skin(_ skin: Skin, mouseCaptureRequest: MouseCaptureRequest?) {
+        HostCallAudit.note(self, "mouseCapture")
+        guard !isRetiredForLayout else { return }
+        request(.mouseCapture(mouseCaptureRequest))
+    }
+
     func skinWillBeginWork(_ skin: Skin) {
         HostCallAudit.note(self, "skinWillBeginWork")
         workActivity?.begin()
@@ -1176,6 +1217,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return Images.size(atPath: path)
     }
 
+    private var isSkinVisible: Bool {
+        !model.settings.hidden
+            && !(model.facts?.isScreenLocked ?? false)
+            && !(model.facts?.isOccluded ?? false)
+    }
+
     /// The environment store's screens, paths and appearance with the window model's place, Z position and screen
     /// (AutoSelectScreen). Debug builds compare it with the live window's while the skin runs on the main executor.
     func environment(for skin: Skin) -> SkinEnvironment {
@@ -1183,7 +1230,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         let settings = model.settings
         var env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
                                                       autoSelectScreen: settings.autoSelectScreen,
-                                                      visible: !settings.hidden, zoomFactor: settings.zoomFactor)
+                                                      visible: isSkinVisible, zoomFactor: settings.zoomFactor)
         env.defaultZoomFactor = Double(settings.defaultZoomPercent) / 100
         env.forceDefaultZoom = settings.forceDefaultZoom
         #if DEBUG
@@ -1233,7 +1280,8 @@ extension SkinRuntime: SkinCompanionChannel {
         let id = lastCompanionID
         inputTextAnswers[id] = answered
         let size = CGSize(width: skin.width.isFinite ? skin.width : 0, height: skin.height.isFinite ? skin.height : 0)
-        request(.companion(.showInputText(id: id, settings: settings, skinSize: size)))
+        request(.companion(.showInputText(id: id, settings: settings, skinSize: size,
+                                         zoomFactor: skin.effectiveZoomFactor)))
         return id
     }
 

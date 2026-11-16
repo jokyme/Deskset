@@ -76,7 +76,10 @@ func runCommandRoutingTests(_ t: TestRunner) {
         t.equal(BangCatalog.definition(for: "Move")?.parameters.map(\.name), ["X", "Y", "Config"])
         t.equal(BangCatalog.definition(for: "SetOption")?.configParameterIndex, 3)
         t.check(!BangCatalog.isKnown("Skin:WriteKeyValue"), "a FilePath is not a Config")
-        t.equal(BangCatalog.definition(for: "Loop:Reset")?.configParameterIndex, nil)
+        t.equal(BangCatalog.definition(for: "Loop:Reset")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "WebParser:Refetch")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "Audio:SetVolume")?.configParameterIndex, 2)
+        t.equal(BangCatalog.definition(for: "ForceEnableVisibleMode")?.configParameterIndex, 1)
         let action = #"[!Skin:SetVariable Other Probe """(1+1)"""]"#
         t.equal(ActionParser.parse(action), [.bang(Bang(name: "skin:setvariable", args: ["Other", "Probe", "(1+1)"]))])
         t.equal(ActionParser.parseDetailed(action).first?.quoting, [.none, .none, .magic])
@@ -284,6 +287,47 @@ func runCommandRoutingTests(_ t: TestRunner) {
         t.check(host.logs.contains { $0.contains("SendMessage 1026 5 6") })
         skin.execute("[!ActionTimer:Execute]", from: timer)
         t.equal(timer?.runningLists, [], "an incomplete payload does not invent an ActionList")
+
+        // Measure named "1" does not hijack [!ActionTimer:Execute 1] when selector is omitted.
+        let (numSkin, numHost) = try makeSkin(t, """
+        [1]
+        Measure=Calc
+        Formula=1
+        [Timer]
+        Measure=ActionTimer
+        ActionList1=Wait 10000
+        [LoopM]
+        Measure=Loop
+        """)
+        defer { numSkin.close() }
+        numSkin.update()
+        let numTimer = numSkin.measure(named: "Timer") as? ActionTimerMeasure
+        numSkin.execute("[!ActionTimer:Execute 1]", from: numTimer)
+        t.equal(numTimer?.runningLists, [1], "numeric-named unrelated measure does not shadow ActionTimer payload")
+
+        // Type-filtered wildcard on namespaced bang ignores non-matching measures and forwards Config.
+        numSkin.execute("[!Loop:Reset *]", from: nil)
+        t.check(!numHost.logs.contains { $0.contains("Unsupported bang") })
+        numSkin.execute("[!Loop:Reset LoopM PeerConfig]", from: nil)
+        t.equal(numHost.forwarded.last?.0, Bang(name: "loop:reset", args: ["LoopM"]))
+        t.equal(numHost.forwarded.last?.1, "PeerConfig")
+
+        // Legacy !WebParser:UpdateData / !WebParser:ResetData remain accepted as deprecated aliases for Refetch / ClearResults.
+        t.check(BangCatalog.isKnown("!WebParser:UpdateData"))
+        t.check(BangCatalog.isKnown("!WebParser:ResetData"))
+        t.equal(BangCatalog.definition(for: "WebParser:UpdateData")?.isDeprecated, true)
+        t.equal(BangCatalog.definition(for: "WebParser:ResetData")?.isDeprecated, true)
+        t.equal(BangCatalog.definition(for: "WebParser:UpdateData")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "WebParser:ResetData")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "WebParser:Refetch")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "WebParser:ClearResults")?.configParameterIndex, 1)
+        t.equal(BangCatalog.definition(for: "WebParser:Refetch")?.isDeprecated, false)
+        t.equal(BangCatalog.definition(for: "WebParser:ClearResults")?.isDeprecated, false)
+        t.check(!BangCatalog.spellCheckNames.contains("!WebParser:UpdateData"))
+        t.check(!BangCatalog.spellCheckNames.contains("!WebParser:ResetData"))
+        numSkin.execute("[!WebParser:ResetData MissingWeb PeerConfig]", from: nil)
+        t.equal(numHost.forwarded.last?.0, Bang(name: "webparser:resetdata", args: ["MissingWeb"]))
+        t.equal(numHost.forwarded.last?.1, "PeerConfig")
     }
 
     t.suite("Command routing: new aliases do not bypass Studio action isolation") {

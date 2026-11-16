@@ -475,7 +475,7 @@ public enum EditorComponents {
         case "Time": options.append((key: "Format", value: "%H:%M"))
         case "Calc": options.append((key: "Formula", value: "0"))
         case "String": options.append((key: "String", value: "Text"))
-        case "PowerPlugin": options.append((key: "PowerState", value: "Percent"))
+        case "Power", "PowerPlugin": options.append((key: "PowerState", value: "Percent"))
         default: break
         }
         return Section(name: name, options: options)

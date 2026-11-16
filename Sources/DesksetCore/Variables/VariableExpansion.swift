@@ -197,6 +197,7 @@ final class VarExpansion {
         func isNameByte(_ b: UInt8) -> Bool {
             (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)
                 || b == UInt8(ascii: "_") || b == UInt8(ascii: "(") || b == UInt8(ascii: ")")
+                || b == UInt8(ascii: "-") || b == UInt8(ascii: ".")
         }
         var out = VarMarkedText()
         var i = 0
@@ -416,9 +417,11 @@ final class VarExpansion {
             }
 
         case VarByte.ampersand:
+            if Self.isEscape(body[...]) {
+                return fullSyntax ? escaped(prefix: prefix, body) : nil
+            }
             // Nested section variables are section variables: only resolved when section lookup is enabled.
             guard sectionLookup != nil else { return nil }
-            if Self.isEscape(body[...]) { return escaped(prefix: prefix, body) }
             return sectionValue(body[...])
 
         case VarByte.backslash:
@@ -429,20 +432,20 @@ final class VarExpansion {
             return .literal(String(Character(scalar)).utf8)
 
         case VarByte.dollar:
-            guard eventLookup != nil || dollarLookup != nil else { return nil }
             if Self.isEscape(body[...]) {
                 return fullSyntax ? escaped(prefix: prefix, body) : nil
             }
+            guard eventLookup != nil || dollarLookup != nil else { return nil }
             guard !body.isEmpty, canLookUp, let value = lookupDollar(String(decoding: body, as: UTF8.self)) else {
                 return nil
             }
             return .literal(value.utf8)
 
         case VarByte.percent:
-            guard let lookup = environmentLookup else { return nil }
             if Self.isEscape(body[...]) {
                 return fullSyntax ? escaped(prefix: prefix, body) : nil
             }
+            guard let lookup = environmentLookup else { return nil }
             guard !body.isEmpty, substitutions < Self.maxSubstitutions, canLookUp else { return nil }
             lookups += 1
             guard let value = lookup(String(decoding: body, as: UTF8.self)), record(value) else { return nil }
@@ -466,7 +469,7 @@ final class VarExpansion {
     // MARK: Stage 3 — classic section variables
 
     private func expandSections(_ m: VarMarkedText) -> VarMarkedText {
-        guard sectionLookup != nil, scan(m.count) else { return m }
+        guard scan(m.count) else { return m }
         let n = m.count
         var out = VarMarkedText()
         var i = 0

@@ -366,14 +366,31 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
     private var onOverAction = ""
     private var lastDroppedPath = ""
     private var isHovering = false
+    private var hoverState: (file: String, x: Double, y: Double)?
+    private var overTimer: SkinScheduledWork?
     private var closed = false
+
+    deinit {
+        overTimer?.cancel()
+    }
 
     public required init(name: String, section: IniSection, skin: Skin, type: String) {
         super.init(name: name, section: section, skin: skin, type: type)
         rawString = ""
     }
 
-    public func skinWillClose() { closed = true }
+    public func skinWillClose() {
+        closed = true
+        stopHoverState()
+    }
+
+    public override func disabledStateChanged() {
+        if disabled { stopHoverState() }
+    }
+
+    public override func pausedStateChanged() {
+        if paused { stopHoverState() }
+    }
 
     public override func readMeasureOptions() {
         if option("FancyRenderer") != nil {
@@ -428,13 +445,25 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
     /// is empty).
     public func contains(x: Double, y: Double) -> Bool {
         if boundsSpec.isEmpty { return true }
-        let parts = boundsSpec.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        if parts.count == 4,
-           let bx = Double(parts[0]), let by = Double(parts[1]),
-           let bw = Double(parts[2]), let bh = Double(parts[3]) {
-            return x >= bx && x <= bx + bw && y >= by && y <= by + bh
+        let parts = OptionValue.split(boundsSpec, separator: ",")
+        if parts.count == 4 {
+            let values: [Double?] = Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+                skin.formulaValue(of: $0, from: self)
+            }) {
+                parts.map { OptionValue.number($0) }
+            }
+            if let bx = values[0], let by = values[1], let bw = values[2], let bh = values[3],
+               bx.isFinite, by.isFinite, bw.isFinite, bh.isFinite {
+                return x >= bx && x <= bx + bw && y >= by && y <= by + bh
+            }
         }
-        if let meter = skin.meter(named: boundsSpec) {
+        let meterName: String
+        if boundsSpec.hasPrefix("["), boundsSpec.hasSuffix("]"), boundsSpec.count > 2 {
+            meterName = String(boundsSpec.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+        } else {
+            meterName = boundsSpec
+        }
+        if let meter = skin.meter(named: meterName) {
             guard !meter.hidden else { return false }
             let r = meter.frame
             return x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
@@ -446,25 +475,42 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
         if needsOptionRead { readOptionsIfNeeded() }
         guard isActive else { return }
         if contains(x: x, y: y) {
+            let file = files.first ?? ""
+            hoverState = (file, x, y)
             if !isHovering {
                 isHovering = true
-                runDragAction(onEnterAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+                runDragAction(onEnterAction, file: file, fileNr: 1, x: x, y: y)
             }
-            runDragAction(onOverAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+            guard isHovering, isActive else {
+                stopHoverState()
+                return
+            }
+            runDragAction(onOverAction, file: file, fileNr: 1, x: x, y: y)
+            startHoverOverTimerIfNeeded()
         }
     }
 
     public func handleDragMove(files: [String], x: Double, y: Double) {
         if needsOptionRead { readOptionsIfNeeded() }
-        guard isActive else { return }
+        guard isActive else {
+            stopHoverState()
+            return
+        }
         if contains(x: x, y: y) {
+            let file = files.first ?? ""
+            hoverState = (file, x, y)
             if !isHovering {
                 isHovering = true
-                runDragAction(onEnterAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+                runDragAction(onEnterAction, file: file, fileNr: 1, x: x, y: y)
             }
-            runDragAction(onOverAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
+            guard isHovering, isActive else {
+                stopHoverState()
+                return
+            }
+            runDragAction(onOverAction, file: file, fileNr: 1, x: x, y: y)
+            startHoverOverTimerIfNeeded()
         } else if isHovering {
-            isHovering = false
+            stopHoverState()
             runDragAction(onLeaveAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
         }
     }
@@ -472,7 +518,7 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
     public func handleDragLeave(files: [String], x: Double, y: Double) {
         if needsOptionRead { readOptionsIfNeeded() }
         guard isHovering else { return }
-        isHovering = false
+        stopHoverState()
         guard isActive else { return }
         runDragAction(onLeaveAction, file: files.first ?? "", fileNr: 1, x: x, y: y)
     }
@@ -480,7 +526,7 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
     @discardableResult
     public func handleDrop(files: [String], x: Double, y: Double) -> Bool {
         if needsOptionRead { readOptionsIfNeeded() }
-        isHovering = false
+        stopHoverState()
         guard isActive, !files.isEmpty, contains(x: x, y: y) else { return false }
         let list = processAllFiles ? files : [files[0]]
         let confirmDelete = dropAction == .delete && !silent && skin.sideEffects.isLive
@@ -545,6 +591,29 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
         }
     }
 
+    private func startHoverOverTimerIfNeeded() {
+        guard overTimer == nil, isHovering, isActive,
+              !onOverAction.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        overTimer = skin.executor.timer(interval: 0.02, leeway: 0.002, repeats: true) { [weak self] in
+            self?.fireHoverOverTick()
+        }
+    }
+
+    private func fireHoverOverTick() {
+        guard !closed, isHovering, isActive, let state = hoverState else {
+            stopHoverState()
+            return
+        }
+        runDragAction(onOverAction, file: state.file, fileNr: 1, x: state.x, y: state.y)
+    }
+
+    private func stopHoverState() {
+        isHovering = false
+        hoverState = nil
+        overTimer?.cancel()
+        overTimer = nil
+    }
+
     private func runDragAction(_ action: String, file: String, fileNr: Int, x: Double, y: Double) {
         guard !action.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         let trimmedFile = file.hasSuffix("/") && file.count > 1 ? String(file.dropLast()) : file
@@ -553,20 +622,39 @@ public final class DragDropMeasure: Measure, PluginLifecycle {
         let ext = ns.pathExtension
         let baseName = ext.isEmpty ? fullName : (fullName as NSString).deletingPathExtension
         let directory = ns.deletingLastPathComponent
-        let replacements: [(String, String)] = [
-            ("$Name$", baseName),
-            ("$Directory$", directory),
-            ("$Type$", ext),
-            ("$File$", file),
-            ("$FileNr$", "\(fileNr)"),
-            ("$MouseX$", "\(Int(x.rounded()))"),
-            ("$MouseY$", "\(Int(y.rounded()))"),
-        ]
-        var expanded = action
-        for (token, value) in replacements {
-            expanded = expanded.replacingOccurrences(of: token, with: value, options: .caseInsensitive)
-        }
+        let expanded = Self.substituteEventTokens(action, values: [
+            "name": baseName,
+            "directory": directory,
+            "type": ext,
+            "file": file,
+            "filenr": "\(fileNr)",
+            "mousex": "\(Int(x.rounded()))",
+            "mousey": "\(Int(y.rounded()))",
+        ])
         skin.execute(expanded, from: self)
+    }
+
+    private static func substituteEventTokens(_ text: String, values: [String: String]) -> String {
+        var out = ""
+        out.reserveCapacity(text.count)
+        var i = text.startIndex
+        while i < text.endIndex {
+            if text[i] == "$" {
+                let after = text.index(after: i)
+                if let end = text[after...].firstIndex(of: "$"),
+                   text.distance(from: after, to: end) <= 12 {
+                    let key = text[after..<end].lowercased()
+                    if let replacement = values[key] {
+                        out.append(replacement)
+                        i = text.index(after: end)
+                        continue
+                    }
+                }
+            }
+            out.append(text[i])
+            i = text.index(after: i)
+        }
+        return out
     }
 }
 

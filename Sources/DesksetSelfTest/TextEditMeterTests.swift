@@ -621,4 +621,61 @@ func runTextEditMeterTests(_ t: TestRunner) {
         t.check(!m.handleKeyInput(.insert("y")))
         t.equal(m.inputText, "x")
     }
+
+    t.suite("TextEdit: 5.0 alignment — AccurateText warning, single-line ClipString=2, empty StringCase, MatchN cap") {
+        let (warnSkin, warnHost) = try makeSkin(t, """
+        [Rainmeter]
+        AccurateText=0
+        [InputSingle]
+        Meter=TextEdit
+        W=80
+        ClipString=2
+        Text=Placeholder
+        InputFilter=RegExp
+        InputRegExp=(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)
+        [InputCaseOnly]
+        Meter=TextEdit
+        W=80
+        StringCase=
+        InputCase=Upper
+        """)
+        warnSkin.update()
+        let single = warnSkin.meter(named: "InputSingle") as? TextEditMeter
+        t.check(single != nil)
+        t.check(warnHost.logs.contains { $0.contains("AccurateText=1") }, "warns once when AccurateText=0")
+        t.equal(single?.style.wrap, false, "single-line TextEdit never wraps under ClipString=2")
+        let matches = single?.actionInputMatches(for: "abcdefghijkl") ?? []
+        t.equal(matches.count, 11, "[$Input:MatchN] exposes Match0..Match10 (11 entries max)")
+
+        let caseOnly = warnSkin.meter(named: "InputCaseOnly") as? TextEditMeter
+        caseOnly?.focus()
+        _ = caseOnly?.handleKeyInput(.insert("ab"))
+        t.equal(caseOnly?.inputText, "AB", "empty StringCase= does not block InputCase=Upper")
+
+        // naturalSize for single-line ClipString=2 keeps single-line height and clamps width.
+        let sizeHost = FakeHost()
+        sizeHost.textSizer = { text, _, wrapWidth in
+            if let wrapWidth, text.count > 10 { return (wrapWidth, 40) }
+            return (Double(text.count) * 8, 14)
+        }
+        let sURL = t.temporaryDirectory("te-clip2").appendingPathComponent("Test.ini")
+        try """
+        [Rainmeter]
+        AccurateText=1
+        [InputClip]
+        Meter=TextEdit
+        W=80
+        ClipString=2
+        InitialText=a very long single line input text
+        """.write(to: sURL, atomically: true, encoding: .utf8)
+        let sizeSkin = Skin(config: "TEClip", fileURL: sURL, skinsDirectory: sURL.deletingLastPathComponent(),
+                            system: FakeSystem(), host: sizeHost)
+        try sizeSkin.load()
+        defer { sizeSkin.close() }
+        sizeSkin.update()
+        let clipMeter = sizeSkin.meter(named: "InputClip") as! TextEditMeter
+        let clipSize = clipMeter.naturalSize()
+        t.equal(clipSize.width, 80, "single-line ClipString=2 clamps width")
+        t.equal(clipSize.height, 14, "single-line ClipString=2 keeps single-line height")
+    }
 }

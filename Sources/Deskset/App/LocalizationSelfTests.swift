@@ -100,7 +100,7 @@ enum LocalizationSelfTests {
             defer { Localization.pseudo = previous }
 
             // What the skins and the Mac put in the UI is data, not the app's text.
-            var data: Set<String> = ["Deskset", "TextEdit", "%", "~100%", "@0", "–", "—", "·", "…"]
+            var data: Set<String> = ["Deskset", "TextEdit", "%", "~100%", "@0", "–", "—", "·", "…", "jokyme"]
             for config in app.library {
                 data.insert(config.name)
                 data.formUnion(config.name.split(separator: "\\").map(String.init))
@@ -189,6 +189,22 @@ enum LocalizationSelfTests {
             }
             visit(manage.window?.title, "Manage title")
             manage.close()
+            let debug = DebugWindowController.show(app: app, tab: .log)
+            for tab in DebugWindowController.Tab.allCases {
+                debug.selectTab(tab)
+                if let content = debug.window?.contentView { visit(view: content, "Debug \(tab)") }
+            }
+            visit(debug.window?.title, "Debug title")
+            debug.close()
+            let packager = SkinPackagerWindowController(app: app)
+            if let content = packager.window?.contentView { visit(view: content, "Packager") }
+            visit(packager.window?.title, "Packager title")
+            packager.close()
+            let watchEditor = DebugWatchEditorController(preview: { _, done in done("") },
+                                                           execute: { _ in }, save: { _ in })
+            if let content = watchEditor.window?.contentView { visit(view: content, "WatchEditor") }
+            visit(watchEditor.window?.title, "WatchEditor title")
+            watchEditor.close()
             t.equal(untranslated, [], "text that does not go through L")
         }
     }

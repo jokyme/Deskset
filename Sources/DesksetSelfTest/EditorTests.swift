@@ -260,7 +260,7 @@ func runEditorModelTests(_ t: TestRunner) {
 
     t.suite("Editor: new data sources") {
         func type(_ name: String) -> EditorSchema.MeasureType? { EditorSchema.measureTypes.first { $0.name == name } }
-        guard let cpu = type("CPU"), let power = type("PowerPlugin"), let time = type("Time") else {
+        guard let cpu = type("CPU"), let power = type("Power"), let slider = type("Slider"), let time = type("Time") else {
             return t.check(false, "types")
         }
         let first = EditorComponents.measureSection(cpu, existing: ["rainmeter"])
@@ -270,7 +270,10 @@ func runEditorModelTests(_ t: TestRunner) {
         t.equal(EditorComponents.measureSection(cpu, existing: ["measurecpu"]).name, "MeasureCPU2", "a free name")
         let battery = EditorComponents.measureSection(power, existing: [])
         t.equal(battery.name, "MeasurePower")
-        t.equal(battery.options.map { "\($0.key)=\($0.value)" }, ["Measure=Plugin", "Plugin=PowerPlugin", "PowerState=Percent"],
+        t.equal(battery.options.map { "\($0.key)=\($0.value)" }, ["Measure=Power", "PowerState=Percent"],
+                "Rainmeter 5.0 built-in measure form")
+        let sliderSection = EditorComponents.measureSection(slider, existing: [])
+        t.equal(sliderSection.options.map { "\($0.key)=\($0.value)" }, ["Measure=Plugin", "Plugin=Slider"],
                 "plugins as Measure=Plugin + Plugin=")
         t.equal(EditorComponents.measureSection(time, existing: []).options.last?.value, "%H:%M", "a time shows the time")
         // Every type makes a section the engine reads as that type.

@@ -9,14 +9,14 @@ final class DebugWatchEditorController: NSWindowController, NSWindowDelegate, NS
     private let save: (DebugWatchExpression) -> Void
     private let onClose: () -> Void
 
-    private let stringButton = NSButton(radioButtonWithTitle: "String", target: nil, action: nil)
-    private let formulaButton = NSButton(radioButtonWithTitle: "Formula", target: nil, action: nil)
+    private let stringButton = NSButton(radioButtonWithTitle: L("String"), target: nil, action: nil)
+    private let formulaButton = NSButton(radioButtonWithTitle: L("Formula"), target: nil, action: nil)
     private let expressionView = NSTextView()
     private let resultView = NSTextView()
-    private let copyButton = NSButton(title: "Copy", target: nil, action: nil)
-    private let executeButton = NSButton(title: "Execute", target: nil, action: nil)
-    private let saveButton = NSButton(title: "Save", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    private let copyButton = NSButton(title: L("Copy"), target: nil, action: nil)
+    private let executeButton = NSButton(title: L("Execute"), target: nil, action: nil)
+    private let saveButton = NSButton(title: L("Save"), target: nil, action: nil)
+    private let cancelButton = NSButton(title: L("Cancel"), target: nil, action: nil)
 
     private var kind: DebugWatchExpression.Kind
     private var revision: UInt64 = 0
@@ -45,7 +45,7 @@ final class DebugWatchEditorController: NSWindowController, NSWindowDelegate, NS
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 340),
             styleMask: [.titled, .closable], backing: .buffered, defer: false
         )
-        window.title = initial == nil ? "Add watch" : "Edit watch"
+        window.title = initial == nil ? L("Add watch") : L("Edit watch")
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.center()
@@ -195,8 +195,8 @@ final class DebugWatchEditorController: NSWindowController, NSWindowDelegate, NS
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        let typeLabel = NSTextField(labelWithString: "Expression type:")
-        let expressionLabel = NSTextField(labelWithString: "Expression:")
+        let typeLabel = NSTextField(labelWithString: L("Expression type:"))
+        let expressionLabel = NSTextField(labelWithString: L("Expression:"))
         let typeRow = NSStackView(views: [typeLabel, stringButton, formulaButton])
         typeRow.orientation = .horizontal
         typeRow.alignment = .centerY
@@ -220,8 +220,8 @@ final class DebugWatchEditorController: NSWindowController, NSWindowDelegate, NS
         let expressionScroll = makeTextScrollView(expressionView, editable: true)
         let resultScroll = makeTextScrollView(resultView, editable: false)
         expressionView.delegate = self
-        expressionView.setAccessibilityLabel("Watch expression")
-        resultView.setAccessibilityLabel("Watch result")
+        expressionView.setAccessibilityLabel(L("Watch expression"))
+        resultView.setAccessibilityLabel(L("Watch result"))
 
         let spacer = NSView()
         let buttonRow = NSStackView(views: [copyButton, executeButton, spacer, saveButton, cancelButton])

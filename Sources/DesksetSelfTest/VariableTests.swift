@@ -253,11 +253,25 @@ private func variableEscapeTests(_ t: TestRunner) {
         // Double escaping gives two levels of protection.
         t.equal(d.resolve("#**MyColor**#"), "#*MyColor*#")
         t.equal(d.resolve("[**MeasureTime2**]"), "[*MeasureTime2*]")
-        // Section-variable escapes are only consumed where section variables are resolved.
-        t.equal(s.resolve("[*MeasureName*]"), "[*MeasureName*]")
-        t.equal(s.resolve("[&*MeasureName*]"), "[&*MeasureName*]")
+        // Escapes work even when DynamicVariables=0 (sectionLookup == nil).
+        t.equal(s.resolve("[*MeasureName*]"), "[MeasureName]")
+        t.equal(s.resolve("[&*MeasureName*]"), "[&MeasureName]")
+        t.equal(s.resolve("[%*EnvName*]"), "[%EnvName]")
+        t.equal(s.resolve("[$*EventName*]"), "[$EventName]")
         t.equal(s.resolve("#*VarName*#"), "#VarName#")
         t.equal(s.resolve("[#*VarName*]"), "[#VarName]")
+        // 1-character, hyphenated, and dotted environment variable names (Rainmeter 5.0).
+        setenv("X", "one", 1)
+        setenv("FOO-BAR.1", "hyphen-dot", 1)
+        defer { unsetenv("X"); unsetenv("FOO-BAR.1") }
+        t.equal(BuiltInVariables.environmentValue("X"), "one")
+        t.equal(BuiltInVariables.environmentValue("FOO-BAR.1"), "hyphen-dot")
+        t.equal(s.resolve("[#*VarName*]|[%X]|[%FOO-BAR.1]"), "[#VarName]|one|hyphen-dot")
+        t.equal(s.resolve("[%X]"), "one")
+        // With legacy %Var% enabled (SyntaxVersion=1), 1-char / hyphen / dot names also resolve.
+        var legacy = VariableResolver(variableLookup: vtVariables([:]))
+        legacy.legacyEnvironmentVariables = true
+        t.equal(legacy.resolve("%X%|%FOO-BAR.1%"), "one|hyphen-dot")
         // Not escapes: too short.
         t.equal(d.resolve("#*#"), "#*#")
         t.equal(d.resolve("#**#"), "#**#")
@@ -1091,7 +1105,7 @@ private func variableReviewTests(_ t: TestRunner) {
         let alphabet: [String] = ["#", "[", "]", "&", "\\", "$", ":", "!", " ", "%", "/", ",", "A", "x", "1", "é", "☃",
                                   "\"", "\n", "\r\n", "\u{0}", "😀", "@", "(", ")", "#A#", "[#A]", "[&A:2]", "$A$"]
         let none = VariableResolver(variableLookup: { _ in nil }, sectionLookup: { _, _ in nil },
-                                    eventLookup: { _ in nil })
+                                    eventLookup: { _ in nil }, environmentLookup: { _ in nil })
         var rng = VTRandom(state: 7)
         var mismatches: [String] = []
         for _ in 0..<20_000 {

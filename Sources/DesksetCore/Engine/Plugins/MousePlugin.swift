@@ -61,6 +61,8 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
     public private(set) var isCapturing = false
     public var captureOverlayColor: RGBA { settings.captureOverlayColor }
     public var captureOverlayCursorName: String { settings.captureOverlayCursorName }
+    /// Buttons already held when `!Mouse:StartCapture` started must release before a click can be captured.
+    private var ignoredInitialButtons: Set<MouseButton> = []
     private(set) var closed = false
 
     private struct Move {
@@ -135,9 +137,11 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
             if needsOptionRead { readOptionsIfNeeded() }
             guard !closed && !disabled && !paused else { return }
             for m in skin.measures.compactMap({ $0 as? MouseMeasure }) where m !== self && m.isCapturing {
-                m.stopCapture()
+                m.stopCapture(notifyHost: false)
             }
             isCapturing = true
+            ignoredInitialButtons = skin.heldPointerButtons
+            skin.notifyMouseCaptureChanged()
             return
         }
         if verb == "stopcapture" {
@@ -158,12 +162,29 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
     }
 
     public func stopCapture() {
+        stopCapture(notifyHost: true)
+    }
+
+    private func stopCapture(notifyHost: Bool) {
+        let wasCapturing = isCapturing
         isCapturing = false
+        ignoredInitialButtons.removeAll()
+        if wasCapturing && notifyHost {
+            skin.notifyMouseCaptureChanged()
+        }
+    }
+
+    public override func disabledStateChanged() {
+        if disabled && isCapturing { stopCapture() }
+    }
+
+    public override func pausedStateChanged() {
+        if paused && isCapturing { stopCapture() }
     }
 
     public func skinWillClose() {
         closed = true
-        isCapturing = false
+        stopCapture()
         dropPendingMove()
     }
 
@@ -194,12 +215,11 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
             run(settings.eventActions[button.downKind], x: x, y: y)
         case .up(let button):
             flushPendingMove()
-            let wasCapturing = isCapturing
-            if wasCapturing { isCapturing = false }
-            if wasCapturing, !closed && !disabled && !paused {
-                if let action = settings.eventActions[button.upKind], !action.isEmpty {
-                    skin.executePointerAction(action, from: self, x: x, y: y, relativeToSkin: settings.relativeToSkin)
+            if isCapturing {
+                if ignoredInitialButtons.remove(button) != nil || !ignoredInitialButtons.isEmpty {
+                    return
                 }
+                completeCapturedRelease(button: button, skinX: x, skinY: y)
             } else {
                 run(settings.eventActions[button.upKind], x: x, y: y)
             }
@@ -260,6 +280,18 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
             guard let self else { return }
             self.moveTimer = nil
             self.flushPendingMove()
+        }
+    }
+
+    func completeCapturedRelease(button: MouseButton, skinX: Double, skinY: Double,
+                                 screenPoint: (x: Double, y: Double)? = nil) {
+        guard isCapturing && !closed && !disabled && !paused else { return }
+        isCapturing = false
+        ignoredInitialButtons.removeAll()
+        skin.notifyMouseCaptureChanged()
+        if let action = settings.eventActions[button.upKind], !action.isEmpty {
+            skin.executePointerAction(action, from: self, x: skinX, y: skinY,
+                                      relativeToSkin: settings.relativeToSkin, screenPoint: screenPoint)
         }
     }
 

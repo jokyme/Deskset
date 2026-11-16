@@ -105,6 +105,10 @@ public final class StringMeter: Meter {
             // Judgment: any other value behaves like 0.
             s.clip = 0
         }
+        if s.horizontalAlign == .justify && s.clip == 0 && (widthOption ?? clipStringW) != nil {
+            // Justified alignment wraps lines to fit the fixed width even without ClipString.
+            s.wrap = true
+        }
 
         template = option("Text")
         // An empty value is "not set" (the !SetOption guide: setting "" removes the option), so `Text=` or
@@ -394,6 +398,11 @@ public final class StringMeter: Meter {
             if heightOption == nil, let maxHeight = clipStringH { size.height = min(size.height, maxHeight) }
             return size
         default:
+            if style.wrap, let maxWidth = widthOption ?? clipStringW {
+                var size = host.textSize(text, style: style, wrapWidth: maxWidth, for: skin)
+                size.width = min(size.width, maxWidth)
+                return size
+            }
             return host.textSize(text, style: style, wrapWidth: nil, for: skin)
         }
     }

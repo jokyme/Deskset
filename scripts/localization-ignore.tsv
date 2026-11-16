@@ -14,6 +14,15 @@ App/CodeEditorSettings.swift	Sublime Text	app name
 App/CodeEditorSettings.swift	Nova	app name
 App/CodeEditorSettings.swift	Xcode	app name
 App/CodeEditorSettings.swift	JetBrains IDE	app family name
+App/DebugWindowController.swift	Audio	plugin identifier
+App/DebugWindowController.swift	Bluetooth	plugin identifier
+App/DebugWindowController.swift	Brightness	plugin identifier
+App/DebugWindowController.swift	Chameleon	plugin identifier
+App/DebugWindowController.swift	Media	plugin identifier
+App/DebugWindowController.swift	Mouse	plugin identifier
+App/DebugWindowController.swift	Process	plugin identifier
+App/DebugWindowController.swift	Registry	plugin identifier
+App/DebugWindowController.swift	Slider	plugin identifier
 App/ManageModel.swift	Metadata	INI section name
 App/NewSkinModel.swift	Templates	folder name in the settings folder
 AppController.swift	Deskset skin engine	thread name

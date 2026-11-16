@@ -96,6 +96,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         window.title = StudioText[.studioWindow]
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         window.onControlTab = { [weak self] backward in self?.cycleFocus(backward: backward) }
         window.onDone = { [weak self] in self?.doneAction(nil) }
         window.autorecalculatesKeyViewLoop = true

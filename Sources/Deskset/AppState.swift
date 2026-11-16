@@ -3,6 +3,7 @@ import Foundation
 
 extension Notification.Name {
     static let desksetGlobalSettingsChanged = Notification.Name("DesksetGlobalSettingsChanged")
+    static let desksetUIThemeChanged = Notification.Name("DesksetUIThemeChanged")
 }
 
 /// Per-config window settings (Rainmeter keeps these in Rainmeter.ini; see
@@ -396,9 +397,51 @@ final class AppState {
 
     var disableDragging: Bool { rainmeterFlag("DisableDragging") }
     var fileLoggingEnabled: Bool { rainmeterFlag("Logging") }
+    var disablesAutoUpdate: Bool {
+        if let key = data.rainmeterOptions.keys.sorted().first(where: { $0.caseInsensitiveCompare("DisableAutoUpdate") == .orderedSame }) {
+            return LayoutStateCodec.configInteger(data.rainmeterOptions[key]) != 0
+        }
+        if let key = data.rainmeterOptions.keys.sorted().first(where: { $0.caseInsensitiveCompare("DisableVersionCheck") == .orderedSame }) {
+            return LayoutStateCodec.configInteger(data.rainmeterOptions[key]) != 0
+        }
+        return false
+    }
+    var uiTheme: AppUITheme {
+        let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare("UITheme") == .orderedSame }
+        let raw = LayoutStateCodec.configInteger(key.flatMap { data.rainmeterOptions[$0] }, fallback: 0)
+        return AppUITheme(rawValue: raw) ?? .auto
+    }
 
     func setDisableDragging(_ enabled: Bool) { setRainmeterFlag("DisableDragging", enabled: enabled) }
     func setFileLoggingEnabled(_ enabled: Bool) { setRainmeterFlag("Logging", enabled: enabled) }
+    func setDisableAutoUpdate(_ disabled: Bool) {
+        let previous = data.rainmeterOptions
+        func writeFlag(_ name: String, value: String) {
+            let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+            data.rainmeterOptions = data.rainmeterOptions.filter {
+                $0.key == key || $0.key.caseInsensitiveCompare(name) != .orderedSame
+            }
+            data.rainmeterOptions[key] = value
+        }
+        writeFlag("DisableAutoUpdate", value: disabled ? "1" : "0")
+        if !disabled,
+           data.rainmeterOptions.keys.contains(where: { $0.caseInsensitiveCompare("DisableVersionCheck") == .orderedSame }) {
+            writeFlag("DisableVersionCheck", value: "0")
+        }
+        guard previous != data.rainmeterOptions else { return }
+        scheduleSave()
+        NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
+    }
+    func setUITheme(_ theme: AppUITheme) {
+        let previous = data.rainmeterOptions
+        let key = previous.keys.sorted().first { $0.caseInsensitiveCompare("UITheme") == .orderedSame } ?? "UITheme"
+        data.rainmeterOptions = previous.filter { $0.key == key || $0.key.caseInsensitiveCompare("UITheme") != .orderedSame }
+        data.rainmeterOptions[key] = String(theme.rawValue)
+        guard previous != data.rainmeterOptions else { return }
+        scheduleSave()
+        NotificationCenter.default.post(name: .desksetUIThemeChanged, object: self)
+        NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
+    }
 
     private func rainmeterFlag(_ name: String) -> Bool {
         let key = data.rainmeterOptions.keys.sorted().first { $0.caseInsensitiveCompare(name) == .orderedSame }
@@ -491,14 +534,18 @@ final class AppState {
 
     /// Replaces layout settings and passthrough INI data. Editor, update and installation preferences remain local.
     func replaceLayout(_ layout: LayoutState) {
-        let previousFlags = (disableDragging, fileLoggingEnabled)
+        let previousFlags = (disableDragging, fileLoggingEnabled, disablesAutoUpdate)
+        let previousTheme = uiTheme
         data.skins = layout.skins
         data.skinOrder = layout.order
         data.rainmeterOptions = layout.rainmeterOptions
         data.trayMeasureOptions = layout.trayMeasureOptions
         data.hasLoadedLayout = true
         scheduleSave()
-        if previousFlags != (disableDragging, fileLoggingEnabled) {
+        if previousTheme != uiTheme {
+            NotificationCenter.default.post(name: .desksetUIThemeChanged, object: self)
+        }
+        if previousFlags != (disableDragging, fileLoggingEnabled, disablesAutoUpdate) || previousTheme != uiTheme {
             NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
         }
     }

@@ -1923,4 +1923,43 @@ private func runLuaHardeningTests(_ t: TestRunner) {
         t.equal(h.inline("same"), "1")
         t.equal(h.inline("opened"), "1")
     }
+
+    t.suite("Lua: Rainmeter 5.0 alignment — UTF-8 character classes, table option forms, SetW wrapping re-layout") {
+        let h = try harness(t, #"""
+            function Update()
+              word = string.ucmatch('  café_123', '%a+') or ''
+              lower = string.ucmatch('Éé', '%l+') or ''
+              SKIN:SetVariable({ DVarA = 'one', DVarB = 'two' })
+              local m = SKIN:GetMeter('Label')
+              m:SetOption({ Text = 'Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa', FontSize = 12 })
+              SKIN:SetOptionGroup('Grp', { { 'ToolTipText', 'GroupedTip' } })
+              m:SetW(400)
+              wideH = m:GetH()
+              m:SetW(60)
+              narrowH = m:GetH()
+              return word .. '|' .. lower
+            end
+            """#, extra: """
+            [Label]
+            Meter=String
+            Group=Grp
+            W=400
+            ClipString=2
+            FontSize=12
+            Text=Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa
+            """)
+        h.host.textSizer = { text, _, wrapWidth in
+            let maxW = wrapWidth ?? 10_000
+            let charsPerLine = max(1, Int(maxW / 8))
+            let lines = max(1, (text.count + charsPerLine - 1) / charsPerLine)
+            return (min(Double(text.count) * 8, maxW), Double(lines) * 14)
+        }
+        h.update()
+        t.equal(h.string(), "café|é", "xlocale UTF-8 %a/%l match non-ASCII letters")
+        t.equal(h.variable("DVarA"), "one")
+        t.equal(h.variable("DVarB"), "two")
+        t.equal(h.skin.meter(named: "Label")?.rawOption("ToolTipText"), "GroupedTip")
+        t.check((Double(h.inline("narrowH") ?? "0") ?? 0) > (Double(h.inline("wideH") ?? "0") ?? 0),
+                "SetW immediately re-measures wrapping StringMeter for GetH()")
+    }
 }

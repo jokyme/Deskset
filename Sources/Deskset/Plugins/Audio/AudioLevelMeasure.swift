@@ -120,7 +120,7 @@ struct AudioLevelChildOptions: Equatable {
     }
 }
 
-final class AudioLevelMeasure: Measure {
+final class AudioLevelMeasure: Measure, PluginLifecycle {
     /// Reads the Mac's audio (virtual time: noted, see `Measure.liveInputs`).
     override var liveInputs: [BackgroundWorkKind] { [.audio] }
 
@@ -153,6 +153,7 @@ final class AudioLevelMeasure: Measure {
     /// The parent's analyzer is subscribed to `engine` (see `subscribeIfNeeded`).
     private(set) var subscribed = false
     private(set) var isAudioPlaying = false
+    private var closed = false
     private var onAudioStartAction = ""
     private var onAudioEndAction = ""
     private var loggedMessages: Set<String> = []
@@ -195,7 +196,34 @@ final class AudioLevelMeasure: Measure {
         if let p = options.invalidPort {
             logOnce("[\(name)] AudioLevel: unknown Port=\(p); using Output", level: .warning)
         }
-        analyzer = AudioAnalyzer(settings: options.analysis)
+        let created = AudioAnalyzer(settings: options.analysis)
+        let executor = skin.executor
+        created.activityChangedHandler = { [weak self] active in
+            executor.async { [weak self] in
+                self?.handleAudioActivityChange(active)
+            }
+        }
+        analyzer = created
+    }
+
+    func skinWillClose() {
+        closed = true
+        isAudioPlaying = false
+        guard subscribed, let analyzer else {
+            self.analyzer?.activityChangedHandler = nil
+            return
+        }
+        subscribed = false
+        analyzer.activityChangedHandler = nil
+        engine.unsubscribe(analyzer)
+    }
+
+    private func handleAudioActivityChange(_ active: Bool) {
+        guard !closed, parentName.isEmpty, subscribed, !disabled, !paused else { return }
+        guard active != isAudioPlaying else { return }
+        isAudioPlaying = active
+        let action = active ? onAudioStartAction : onAudioEndAction
+        if !action.isEmpty { skin.execute(action, from: self) }
     }
 
     /// `!DisableMeasure` on a parent releases its capture (the source stops 3 s after its last analyzer left, and with it

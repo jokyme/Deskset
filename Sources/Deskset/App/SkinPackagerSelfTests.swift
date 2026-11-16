@@ -63,9 +63,24 @@ enum SkinPackagerSelfTests {
             packager.setSkin(answers[.skin]!)
             packager.addLayout(layout)
             packager.addPlugin(answers[.plugin]!)
+            let header = dir.appendingPathComponent("Header.bmp")
+            try Data().write(to: header)
+            packager.edit { $0.headerImage = header }
             t.equal(packager.spec.plugins.count, 1)
             t.check(packager.spec.plugins.first?.x86 != nil, "the 32-bit version is found next to the 64-bit one")
-            packager.edit { $0.author = "Tester"; $0.version = "2.1"; $0.outputDirectory = output }
+            if let plugin = packager.spec.plugins.first {
+                let text = packager.pluginDescription(plugin)
+                let tip = packager.pluginToolTip(plugin) ?? ""
+                t.check(text.contains("64bit/Glow.dll"), "plugin label includes the plugin path: \(text)")
+                t.check(tip.contains("32-bit:") && tip.contains("64-bit:"), "plugin tooltip includes both architecture paths")
+            }
+            t.equal(packager.initialDirectory(for: .skin)?.standardizedFileURL, answers[.skin]?.standardizedFileURL)
+            t.equal(packager.initialDirectory(for: .layoutFolder)?.standardizedFileURL, layout.standardizedFileURL)
+            t.equal(packager.initialDirectory(for: .plugin)?.standardizedFileURL,
+                    dir.appendingPathComponent("64bit").standardizedFileURL)
+            t.equal(packager.initialDirectory(for: .header)?.standardizedFileURL, dir.standardizedFileURL)
+            packager.edit { $0.headerImage = nil; $0.author = "Tester"; $0.version = "2.1"; $0.outputDirectory = output }
+            t.equal(packager.initialDirectory(for: .output)?.standardizedFileURL, output.standardizedFileURL)
             packager.next()
             t.equal(packager.step, 2)
             packager.back()
