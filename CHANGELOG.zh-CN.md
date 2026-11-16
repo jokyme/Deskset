@@ -2,6 +2,46 @@
 
 [English](CHANGELOG.md)
 
+## 1.1.0
+
+这一版在引擎、measure、绘制、宿主界面、Debug 窗口、Skin Studio 以及兼容性文档上全面对齐 Rainmeter 5.0，同时保留了 macOS 特性与既有皮肤兼容性。
+
+### 新增
+
+- **应用外观主题（`UITheme`）。** 在设置中切换「跟随系统 / 浅色 / 深色」（`UITheme=0|1|2`），实时作用于管理窗口、设置、关于、Debug、打包器、新建皮肤、代码编辑器、Skin Studio、菜单、弹窗及皮肤工具提示；普通布局加载时会保留 `UITheme` 与 `DisableAutoUpdate`。
+- **`Plugin=Mouse` 屏幕捕获遮罩。** 新增 `!Mouse:StartCapture` / `!Mouse:StopCapture`，支持 `CaptureOverlayColor` 与 `CaptureOverlayCursorName`（默认 `ARROW`）。
+- **音频活动动作。** 为 `AudioLevel` 父 measure 新增 `OnAudioStartAction` 与 `OnAudioEndAction`，在非静音音频开始或回落到静音时触发。
+- **可见性与环境变量扩展。** 基于窗口遮挡检测驱动 `Update=... | Invisible ...` 与 `OnVisibilityChangeAction`；支持正式名称 `OnDisplayMetricsChangeAction`（保留 `OnDisplayMetricsChange` 兼容别名）、支持嵌套变量的 `[%Variable]` 环境变量查找，以及 `!WriteKeyValue` 中的 `#CRLF#` 展开。
+- **Debug Meters 检查与多语言化。** `Debug → Skins` 在 Measures 和 Variables 之外新增 Meters 检查，提供 `Edit meter` / `Edit variable` 跳转与 `⌘R` 刷新；Log 页增加级别图标；Debug、监视编辑器与皮肤打包器现已接入全部 38 种语言。
+
+### 变更与改进
+
+- **调整设置分页与菜单栏菜单。** 设置重新划分为「用户界面」、「通用」与「皮肤」（将 Reset statistics 移至 **Debug → Network**），主菜单移除独立的 `Open Log` 项。
+- **Debug 标签页顺序与 Plugins 列表。** 标签页顺序调整为 `Log`、`Skins`、`Plugins`、`Display`、`Network`；`Plugins` 页过滤掉已提升为 5.0 内置 measure 的项目。
+- **内置 measure 提升与 Skin Studio 补齐。** 更新 EditorSchema、LiveOptions、IniHighlighter、IniDiagnostics 与 BangCatalog，补全 `SVG`、`TextEdit`、`StringAlign=Justify*`、`LineJoin`、`ARROW` 捕获光标、19 个已内置化 5.0 measure（保留旧 `*Plugin` 别名）、measure 与 meter 上的 `@Inherit`、`[%EnvVar]` 语法高亮及 `SVGImage` / `@Inherit` 诊断检查。
+- **皮肤打包器与自动更新检查。** 调整打包器窗口尺寸（默认 `680×400`，最小 `600×370`）、显示 32/64 位插件完整路径及悬停提示，并在当前所选路径打开文件选择面板；后台自动更新检查改为启动 5 分钟后触发，双向同步 `DisableAutoUpdate` 与 `DisableVersionCheck`，并在新版本发布前不再重复提示用户点 Cancel 取消的版本。
+- **NowPlaying 封面与 Spotify 控制。** 新增 `.webp`、`.avif` 与 `.ogg` 内嵌封面解码，并在 macOS 上故意保留了 Spotify 的 `OpenPlayer` / `ClosePlayer` / `TogglePlayer` 控制。
+- **DragDrop、UsageMonitor 与旧版 WebParser bang 兼容。** 为 DragDrop 补齐 20 ms `OnOverAction` 悬停计时与 `[$File]` 替换；`UsageMonitor` 首次采样不再被 `UpdateDivider` 跳过；保留 `!WebParser:UpdateData` / `!WebParser:ResetData` 作为 `!WebParser:Refetch` / `!WebParser:ClearResults` 的兼容别名。
+
+### 修复
+
+- 修复 `[$SkinPhysical*]` 与 `[$DisplayPhysical*]` 缩放计算，使其仅乘以显示器 backing scale，不受皮肤缩放影响。
+- 选中皮肤期间禁用其上下文菜单与状态接口中的 `Draggable`、`Click Through` 与 `Keep on Screen` 开关。
+- 修复连续窗口淡入淡出叠加时的透明度跳变、Lua `Meter:SetW` / `SetH` 立即生效与 `string.uc*` UTF-8 区域语义、`TextEdit` `InitialText` 热更新一致性，以及 `StringAlign=Justify*` 与 `LineJoin` 渲染。
+
+### 已知限制
+
+- 仅限 Windows 的插件 DLL 与 Windows 可执行程序仍无法在 macOS 上运行；`Manage → Game mode`、命令行 `[!Launch][!Bang]...` 参数及 `#SETTINGSPATH#Crashes\` 自动崩溃转储暂未实现。
+- 硬件传感器读数因 Mac 机型而异且为近似值，Windows 字体会替换为相近的 Mac 字体。
+- Skin Studio 与兼容性提示目前仍为英文；Debug 与打包器中新增的 38 种语言译文尚待母语者在 Weblate 上审校。
+- 打包器生成的 `.rmskin` 包及细节边缘情况尚待在 Windows 桌面上与 Rainmeter 进行实际对照。
+
+### 升级说明
+
+- 从 1.0.0 升级会完整保留原有皮肤、布局与设置。在更新提示中点击 **Update**，或在 Deskset 菜单中选择 **Check for Updates…**，也可以直接下载对应你 Mac 架构的 `.dmg` 安装包。依然支持 macOS 13 及以上的 Apple 芯片和 Intel Mac。
+
+[查看此版本的全部改动](https://github.com/jokyme/Deskset/compare/v1.0.0...v1.1.0)
+
 ## 1.0.0
 
 Deskset 1.0 是第一个稳定版：把 Rainmeter 在 Windows 上的完整体验原生搬到了 Mac 上。和 0.6.1 相比表面上变化不大；这个版本号的意思是，0.x 各版积累下来的东西——皮肤引擎、文房小组件、Skin Studio、布局、应用内更新和 38 种语言——已经完整到可以放心使用了。

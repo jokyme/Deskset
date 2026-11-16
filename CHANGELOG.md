@@ -2,6 +2,46 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 1.1.0
+
+This release brings Deskset into alignment with Rainmeter 5.0 across the engine, measures, rendering, desktop host UI, Debug window, Skin Studio, and compatibility documentation, while preserving macOS enhancements and existing skin compatibility.
+
+### Added
+
+- **Application themes (`UITheme`).** Choose System, Light, or Dark appearance in Settings (`UITheme=0|1|2`), applied live across Manage, Settings, About, Debug, Packager, New Skin, Code Editor, Skin Studio windows, menus, alerts, and skin tooltips. `UITheme` and `DisableAutoUpdate` are preserved across ordinary layout loads.
+- **Screen capture overlay for `Plugin=Mouse`.** Added `!Mouse:StartCapture` and `!Mouse:StopCapture` with `CaptureOverlayColor` and `CaptureOverlayCursorName` (default `ARROW`).
+- **Audio activity actions.** Added `OnAudioStartAction` and `OnAudioEndAction` on `AudioLevel` parent measures when non-silent audio capture begins or falls silent.
+- **Visibility & environment extensions.** Added window occlusion detection to drive `Update=... | Invisible ...` and `OnVisibilityChangeAction`, canonical `OnDisplayMetricsChangeAction` (retaining `OnDisplayMetricsChange`), `[%Variable]` environment variable lookup with nested resolution, and `#CRLF#` expansion in `!WriteKeyValue`.
+- **Meters inspector & localization in Debug.** Debug → Skins now lists Meters alongside Measures and Variables with `Edit meter` / `Edit variable` shortcuts and `⌘R` refresh, Log adds severity icons, and Debug, the Watch editor, and Skin Packager are localized across all 38 languages.
+
+### Changed and improved
+
+- **Reorganized Settings & tray menu.** Settings is structured into **User interface**, **General**, and **Skins** (moving Reset statistics to **Debug → Network**), and standalone `Open Log` is removed from the menu bar menu.
+- **Debug tab ordering & Plugins list.** Debug tabs follow `Log`, `Skins`, `Plugins`, `Display`, and `Network`; `Plugins` excludes the built-in 5.0 measures promoted from legacy plugins.
+- **Promoted built-in measures & Skin Studio updates.** Updated EditorSchema, LiveOptions, IniHighlighter, IniDiagnostics, BangCatalog, and Skin Studio completions for `SVG`, `TextEdit`, `StringAlign=Justify*`, `LineJoin`, `ARROW` capture cursor choice, the 19 promoted 5.0 built-in measures (retaining legacy `*Plugin` aliases), `@Inherit` on both measures and meters, `[%EnvVar]` highlighting, and `SVGImage` / `@Inherit` diagnostics.
+- **Skin Packager & Update checks.** Expanded the Packager window (`680×400`, minimum `600×370`), added full 32-bit/64-bit plugin path display with hover tooltips, and opened file choosers at the currently selected paths. Automatic update checks wait 5 minutes after startup, sync `DisableAutoUpdate` and `DisableVersionCheck`, and skip re-prompting for a version dismissed with Cancel until a newer release appears.
+- **NowPlaying covers & Spotify control.** Added `.webp`, `.avif`, and embedded `.ogg` cover decoding while intentionally preserving `OpenPlayer`, `ClosePlayer`, and `TogglePlayer` controls for Spotify on macOS.
+- **DragDrop, UsageMonitor & legacy WebParser bangs.** Added a 20 ms `OnOverAction` hover timer and `[$File]` substitution to DragDrop, initial sampling in `UsageMonitor` before `UpdateDivider` skips later cycles, and backward-compatible support for `!WebParser:UpdateData` / `!WebParser:ResetData` alongside `!WebParser:Refetch` / `!WebParser:ClearResults`.
+
+### Fixed
+
+- Fixed `[$SkinPhysical*]` and `[$DisplayPhysical*]` scaling so values multiply by display backing scale independently of skin zoom.
+- Disabled per-skin `Draggable`, `Click Through`, and `Keep on Screen` menu/state toggles while a skin is selected.
+- Interpolated consecutive window fades smoothly from current visual alpha instead of resetting, applied immediate dimension updates in `Meter:SetW` / `SetH`, aligned `string.uc*` UTF-8 locale behavior, fixed `TextEdit` `InitialText` live patching, and aligned `StringAlign=Justify*` and Shape/Line `LineJoin` rendering.
+
+### Known limitations
+
+- Windows-only plugin DLLs and Windows programs launched by skins cannot run on macOS; `Manage → Game mode`, command-line `[!Launch][!Bang]...` arguments, and `#SETTINGSPATH#Crashes\` automatic crash dumps remain unimplemented.
+- Hardware sensor readings vary by Mac model and remain close approximations, and Windows fonts are replaced by similar Mac fonts.
+- Skin Studio and compatibility notes remain in English; new Debug and Packager strings across all 38 languages have not yet been reviewed by native speakers on Weblate.
+- Packages created with Skin Packager and detailed Windows parity edge cases remain pending comparison on a Windows desktop.
+
+### Upgrading
+
+- Your skins, saved layouts, and settings are preserved when upgrading from 1.0.0. Choose **Update** in the update notice or **Check for Updates…** in the Deskset menu, or download the disk image for your Mac. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v1.0.0...v1.1.0)
+
 ## 1.0.0
 
 Deskset 1.0 is the first stable release: the complete Rainmeter experience, as it is on Windows, running natively on the Mac. Little changes on the surface since 0.6.1; the version marks that what the 0.x releases built up — the skin engine, the Stationery widgets, the Skin Studio, layouts, in-app updates and 38 languages — is complete enough to rely on.
