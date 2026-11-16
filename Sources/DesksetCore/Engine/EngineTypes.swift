@@ -258,6 +258,9 @@ public struct SkinEnvironment: Equatable {
     /// Index into `screens` of the monitor the skin is on, for `#SCREENAREAX#`-style variables without `@N`
     /// (manual: the primary monitor unless the skin auto-selects its screen). 0 = primary.
     public var currentScreen: Int
+    /// Index into `screens` of the monitor the skin window currently sits on, regardless of `AutoSelectScreen`,
+    /// for `[$Display…]`, `[$DisplayDevice…]`, and `[$SkinDpiFactor]` / `[$SkinPhysical…]`. 0 = primary.
+    public var activeScreen: Int
     /// Skin zoom factor (`[$SkinZoomFactor]` / `!SetZoomFactor`), default 1.0.
     public var zoomFactor: Double
     /// Application default zoom and its override of per-config zoom settings.
@@ -292,6 +295,7 @@ public struct SkinEnvironment: Equatable {
                 zPosition: Int = 0,
                 configEditor: String = "/System/Applications/TextEdit.app",
                 currentScreen: Int = 0,
+                activeScreen: Int? = nil,
                 zoomFactor: Double = 1.0,
                 defaultZoomFactor: Double = 1.0,
                 forceDefaultZoom: Bool = false,
@@ -306,6 +310,7 @@ public struct SkinEnvironment: Equatable {
         self.zPosition = zPosition
         self.configEditor = configEditor
         self.currentScreen = currentScreen
+        self.activeScreen = activeScreen ?? currentScreen
         self.zoomFactor = zoomFactor
         self.defaultZoomFactor = defaultZoomFactor
         self.forceDefaultZoom = forceDefaultZoom
@@ -372,6 +377,23 @@ public protocol SkinHost: AnyObject {
     /// host that keeps a snapshot of the skin builds it again here when `skin.snapshotGeneration` moved. Default:
     /// nothing.
     func skinDidFinishWork(_ skin: Skin)
+    /// `Mouse` capture overlay state changed (`!Mouse:StartCapture`, `!Mouse:StopCapture`, disable, pause, close).
+    func skin(_ skin: Skin, mouseCaptureRequest: MouseCaptureRequest?)
+}
+
+/// Request describing an active `!Mouse:StartCapture` desktop overlay session.
+public struct MouseCaptureRequest: Equatable, Sendable {
+    public let measureName: String
+    public let overlayColor: RGBA
+    public let overlayCursorName: String
+    public let relativeToSkin: Bool
+
+    public init(measureName: String, overlayColor: RGBA, overlayCursorName: String, relativeToSkin: Bool) {
+        self.measureName = measureName
+        self.overlayColor = overlayColor
+        self.overlayCursorName = overlayCursorName
+        self.relativeToSkin = relativeToSkin
+    }
 }
 
 /// Input a skin took (`Skin.inputMirror`), which another instance of the same widget can take too (`Skin.replay`): the
@@ -433,4 +455,5 @@ extension SkinHost {
     public func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {}
     public func skinWillBeginWork(_ skin: Skin) {}
     public func skinDidFinishWork(_ skin: Skin) {}
+    public func skin(_ skin: Skin, mouseCaptureRequest: MouseCaptureRequest?) {}
 }

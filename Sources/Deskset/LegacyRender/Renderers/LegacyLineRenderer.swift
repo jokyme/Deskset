@@ -71,10 +71,13 @@ extension LegacySkinRenderer {
         let geometry = meter.geometry
         for (index, line) in meter.lines.enumerated() where line.measure != nil && line.color.a > 0 {
             let path = CGMutablePath()
+            var points: [ShapePoint] = []
+            points.reserveCapacity(count)
             for age in stride(from: count - 1, through: 0, by: -1) {
                 let p = geometry.point(age: age, fraction: meter.fraction(line: index, age: age), wholePixels: aliased)
                 let mapped = CGPoint(x: p.x, y: p.y).applying(transform)
                 let point = CGPoint(x: mapped.x + offset.x, y: mapped.y + offset.y)
+                points.append(ShapePoint(Double(point.x), Double(point.y)))
                 if age == count - 1 {
                     path.move(to: point)
                 } else {
@@ -85,9 +88,39 @@ extension LegacySkinRenderer {
                 // A single sample: a dot (zero-length segment with a round cap).
                 path.addLine(to: path.currentPoint)
             }
+            let patches = meter.lineJoin == .miter
+                ? ShapeStroker.clippedMiterPatches(polyline: points, width: meter.lineWidth, limit: meter.miterLimit)
+                : []
+            let needsLayer = !patches.isEmpty && line.color.a < 255
+            if needsLayer {
+                ctx.saveGState()
+                ctx.setAlpha(CGFloat(line.color.a) / 255.0)
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+            }
+            let paintColor = needsLayer ? RGBA(r: line.color.r, g: line.color.g, b: line.color.b, a: 255).legacyCGColor
+                                        : line.color.legacyCGColor
             ctx.addPath(path)
-            ctx.setStrokeColor(line.color.legacyCGColor)
+            ctx.setStrokeColor(paintColor)
             ctx.strokePath()
+            if !patches.isEmpty {
+                ctx.setFillColor(paintColor)
+                for patch in patches {
+                    let patchPath = CGMutablePath()
+                    patchPath.move(to: CGPoint(x: patch.start.x, y: patch.start.y))
+                    for seg in patch.segments {
+                        if case .line(let q) = seg.kind {
+                            patchPath.addLine(to: CGPoint(x: q.x, y: q.y))
+                        }
+                    }
+                    patchPath.closeSubpath()
+                    ctx.addPath(patchPath)
+                    ctx.fillPath()
+                }
+            }
+            if needsLayer {
+                ctx.endTransparencyLayer()
+                ctx.restoreGState()
+            }
         }
     }
 

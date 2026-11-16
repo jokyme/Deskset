@@ -7,6 +7,43 @@ enum GraphDrawValueSelfTests {
         historyVersions(t)
         imageValues(t)
         emptyValues(t)
+        lineJoinTests(t)
+    }
+
+    private static func lineJoinTests(_ t: AppTestRunner) {
+        t.suite("Runtime: LineRenderer distinguishes LineJoin=Miter from MiterOrBevel") {
+            func renderPixels(join: String) -> Data? {
+                let ini = """
+                [Rainmeter]
+                Update=-1
+                [V]
+                Measure=Calc
+                Formula=(Counter % 2 = 0) ? 10 : 90
+                MinValue=0
+                MaxValue=100
+                [L]
+                Meter=Line
+                MeasureName=V
+                X=0
+                Y=0
+                W=24
+                H=48
+                LineWidth=8
+                LineColor=255,255,255,255
+                LineJoin=\(join)
+                """
+                guard let loaded = SkinDrawingSelfTests.load(t, ini, "line-join-\(join)") else { return nil }
+                defer { withExtendedLifetime(loaded.host) { loaded.skin.close() } }
+                for _ in 0..<4 { loaded.skin.update() }
+                guard let line = loaded.skin.meter(named: "L") as? LineMeter else { return nil }
+                let value = Value.line(line.lower())
+                return check(t, value, reference: line, join).first ?? nil
+            }
+            let miter = renderPixels(join: "Miter, 1.5")
+            let miterOrBevel = renderPixels(join: "MiterOrBevel, (1 + 0.5)")
+            t.check(hasPixels(miter) && hasPixels(miterOrBevel))
+            t.check(miter != miterOrBevel, "LineJoin=Miter squares off exceeded miters instead of beveling")
+        }
     }
 
     private static func capturedValues(_ t: AppTestRunner) {

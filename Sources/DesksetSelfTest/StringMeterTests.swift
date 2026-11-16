@@ -922,4 +922,18 @@ func runStringMeterReviewTests(_ t: TestRunner) {
         t.equal(e.utf16.count % 2, 0, "surrogate pairs are never split")
         t.check(e.unicodeScalars.allSatisfy { $0 == "😀" })
     }
+
+    t.suite("StringMeter: StringAlign=Justify with width wraps without ClipString") {
+        let (skin, _) = try makeSkin(t, """
+        [UnclippedJustify]
+        Meter=String
+        W=90
+        StringAlign=Justify
+        Text=Rainmeter five justify wrapping alignment across multiple lines
+        """)
+        let m = stringMeter(skin, "UnclippedJustify")
+        t.equal(m?.style.horizontalAlign, .justify)
+        t.equal(m?.style.clip, 0)
+        t.equal(m?.style.wrap, true)
+    }
 }

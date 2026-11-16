@@ -379,7 +379,8 @@ private struct Checker {
         for o in options {
             let key = o.key.lowercased()
             let isMeasure = Self.isNumbered(key, "measurename"), isImage = Self.imageKeys(type).contains(key)
-            guard isMeasure || isImage || key == "meterstyle" || key == "@inherit" else { continue }
+            let isSVG = type == "svg" && key == "svgimage"
+            guard isMeasure || isImage || isSVG || key == "meterstyle" || key == "@inherit" else { continue }
             let value = resolve(o.value, in: meter.name).trimmingCharacters(in: .whitespaces)
             if isMeasure {
                 if !value.isEmpty, !value.contains("["), !value.contains("#"), measures[value.lowercased()] == nil {
@@ -387,11 +388,14 @@ private struct Checker {
                 }
             }
             if key == "meterstyle" || key == "@inherit" {
-                let names = value.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                for name in names where !name.contains("#") && !name.contains("[")
-                    && document.section(named: name) == nil {
-                    add(owner: o.owner, key: o.key, part: .word(name), kind: .missingStyle(name: name),
-                        meters: [meter.name])
+                checkStyleReferences(o.value, owner: o.owner, key: o.key, in: meter.name, meters: [meter.name])
+            }
+            if isSVG, !value.isEmpty, !value.contains("["), !value.contains("#"),
+               !value.contains("%"), !value.hasPrefix("<"), !value.lowercased().contains("<svg") {
+                let path = skin.readablePath(skin.absolutePath(value))
+                if !FileManager.default.fileExists(atPath: path) {
+                    add(owner: o.owner, key: o.key, part: .value,
+                        kind: .missingImage(path: o.value.trimmingCharacters(in: .whitespaces)), meters: [meter.name])
                 }
             }
             // `%1`: the name comes from the meter's measure while it runs.
@@ -405,6 +409,15 @@ private struct Checker {
                         kind: .missingImage(path: o.value.trimmingCharacters(in: .whitespaces)), meters: [meter.name])
                 }
             }
+        }
+    }
+
+    mutating func checkStyleReferences(_ raw: String, owner: String, key: String, in section: String,
+                                         meters: [String]) {
+        let resolved = resolve(raw, in: section).trimmingCharacters(in: .whitespaces)
+        let names = resolved.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        for name in names where !name.contains("#") && !name.contains("[") && document.section(named: name) == nil {
+            add(owner: owner, key: key, part: .word(name), kind: .missingStyle(name: name), meters: meters)
         }
     }
 
@@ -445,6 +458,9 @@ private struct Checker {
             guard lower != "plugin", lower != "script", EditorSchema.measureType(type: type) != nil else { continue }
             let index = SchemaIndex.measure(type)
             let users = metersShowing(section.name)
+            if let inherit = section.value(forKey: "@Inherit") {
+                checkStyleReferences(inherit, owner: section.name, key: "@Inherit", in: section.name, meters: users)
+            }
             var seen: Set<String> = []
             for e in section.entries where seen.insert(e.key.lowercased()).inserted {
                 let key = e.key.lowercased()
@@ -485,7 +501,7 @@ private struct Checker {
     // MARK: Bangs
 
     mutating func checkBangs(_ places: [String: [(meter: String, type: String, taken: Taken)]]) {
-        let names = BangCatalog.all.map(\.displayName)
+        let names = BangCatalog.spellCheckNames
         for section in document.sections {
             var seen: Set<String> = []
             for e in section.entries where seen.insert(e.key.lowercased()).inserted {
@@ -756,13 +772,16 @@ private final class SchemaIndex {
         self.candidates = candidates
     }
 
-    /// The option `key` names: itself, or the first of a numbered family (`IfCondition2`, `Shape3`).
+    /// The option `key` names: itself, or the first of a numbered family (`IfCondition2`, `ActionList2`, `Shape3`).
     func property(_ key: String) -> Entry? {
         let lower = key.trimmingCharacters(in: .whitespaces).lowercased()
         if let e = entries[lower] { return e }
         let digits = lower.reversed().prefix { $0.isASCII && $0.isNumber }.count
         guard digits > 0, digits < lower.count else { return nil }
-        return entries[String(lower.dropLast(digits))]
+        let number = lower.suffix(digits)
+        guard number.first != "0", let n = Int(number), n >= 2 else { return nil }
+        let base = String(lower.dropLast(digits))
+        return entries[base] ?? entries[base + "1"]
     }
 
     /// Whether the type takes `key`: one of its options, a numbered copy of one (the engine reads any option that way

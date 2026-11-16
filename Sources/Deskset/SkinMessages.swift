@@ -27,6 +27,11 @@ enum SkinMessage {
     case pointer(PointerEvent, x: Double, y: Double)
     /// Pointer input elsewhere on the screen for `Plugin=Slider` measures (`Skin.outsidePointerEvent`).
     case outsidePointer(PointerEvent, x: Double, y: Double)
+    /// Completed release from `!Mouse:StartCapture` overlay (`Skin.completeMouseCapture`).
+    case completeMouseCapture(measureName: String, button: MouseButton,
+                              skinX: Double, skinY: Double, screenX: Double, screenY: Double)
+    /// Cancels active `!Mouse:StartCapture` (`Skin.cancelMouseCapture`).
+    case cancelMouseCapture(measureName: String?)
     /// The pointer moved over the skin (`Skin.mouseMoved`).
     case hover(x: Double, y: Double)
     /// The pointer left the skin (`Skin.mouseExited`).
@@ -252,6 +257,8 @@ enum SkinRequest {
     /// The skin published a snapshot in which something the main thread acts on changed (`SkinSnapshotChanges`): the
     /// tooltip areas, the compatibility notes, what it wants of the mouse outside its window… Posted only then.
     case snapshotChanged(SkinSnapshotChanges)
+    /// `!Mouse:StartCapture` / `!Mouse:StopCapture` desktop overlay request changed.
+    case mouseCapture(MouseCaptureRequest?)
 
     /// Requests produced by OnCloseAction can finish while the old desktop is closing.
     var isClosingAction: Bool {
@@ -260,6 +267,7 @@ enum SkinRequest {
         case .window(let change): return change.whileClosing
         case .forward(_, _, _, let whileClosing): return whileClosing
         case .open(_, let whileClosing): return whileClosing
+        case .mouseCapture: return false
         default: return false
         }
     }
@@ -269,9 +277,9 @@ enum SkinRequest {
 enum SkinCompanionRequest {
     /// FrostedGlass's backdrop behind the window, in `style`, for the measure `owner` (nil: that measure let go of it).
     case frostedGlass(owner: Int, style: FrostedGlassStyle?)
-    /// InputText's box `id` over the window, for a skin of `skinSize` points; its answer comes back as
-    /// `SkinMessage.inputTextAnswered`.
-    case showInputText(id: Int, settings: InputTextSettings, skinSize: CGSize)
+    /// InputText's box `id` over the window, for a skin of `skinSize` logical points at `zoomFactor`; its answer
+    /// comes back as `SkinMessage.inputTextAnswered`.
+    case showInputText(id: Int, settings: InputTextSettings, skinSize: CGSize, zoomFactor: Double)
     /// The box `id` closes without an answer (its measure went, or asked again).
     case cancelInputText(id: Int)
     /// Confirm moving these dropped files to the Trash. The answer is `SkinMessage.fileTrashAnswered`.

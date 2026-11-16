@@ -39,8 +39,7 @@ extension TimeFormatting {
     /// The mask uses the Time Format codes and literal text (manual examples: `%Y-%m-%dT%H:%M:%SZ`,
     /// `%a, %#d %b %Y %H:%M:%S`, `%#m/%#d/%Y %H:%M:%S`, `%A, %B %#d, %Y at %H:%M:%S`, and with
     /// `TimeStampLocale=de-DE` `%A, %d. %b %Y %H:%M:%S`). "If the year is not defined … 1900 will be used";
-    /// time zone information is not evaluated and the result is "independent of any time zone"; `%z` / `%Z`
-    /// "cannot be used" (→ nil). `locale` supplies day/month/AM-PM names (TimeStampLocale).
+    /// `%z` / `%Z` convert parsed local timestamps to UTC. `locale` supplies day/month/AM-PM names (TimeStampLocale).
     ///
     /// Judgment (strptime-like): numbers may have fewer digits than their field width and may be preceded by
     /// spaces; `%a`/`%A` and `%b`/`%B`/`%h` accept both abbreviated and full names (case-insensitive, English
@@ -513,13 +512,40 @@ struct MaskParser {
             if !foldedName.isEmpty, pos + foldedName.count <= input.count,
                Array(input[pos..<(pos + foldedName.count)]) == foldedName {
                 pos += foldedName.count
-                return currentZone.secondsFromGMT()
+                return MaskParser.timeZoneOffset(for: currentZone, daylight: daylight)
             }
         }
         if let off = name(MaskParser.knownTimeZoneCandidates, asciiWordBoundary: true) {
             return off
         }
         return parseNumericOffset(requireSign: true)
+    }
+
+    private static func timeZoneOffset(for zone: TimeZone, daylight: Bool) -> Int {
+        // Use a deterministic modern reference date (2020-01-01 UTC) to look up IANA standard/DST transitions.
+        let ref = Date(timeIntervalSince1970: 1_577_836_800)
+        let isDSTNow = zone.isDaylightSavingTime(for: ref)
+        if daylight == isDSTNow {
+            return zone.secondsFromGMT(for: ref)
+        }
+        if let next = zone.nextDaylightSavingTimeTransition(after: ref) {
+            let afterTransition = next.addingTimeInterval(7200)
+            if zone.isDaylightSavingTime(for: afterTransition) == daylight {
+                return zone.secondsFromGMT(for: afterTransition)
+            }
+            if let second = zone.nextDaylightSavingTimeTransition(after: afterTransition) {
+                let afterSecond = second.addingTimeInterval(7200)
+                if zone.isDaylightSavingTime(for: afterSecond) == daylight {
+                    return zone.secondsFromGMT(for: afterSecond)
+                }
+            }
+        }
+        let currentOffset = zone.secondsFromGMT(for: ref)
+        let currentDST = Int(zone.daylightSavingTimeOffset(for: ref).rounded())
+        if !daylight {
+            return isDSTNow ? currentOffset - currentDST : currentOffset
+        }
+        return currentOffset + Int(zone.daylightSavingTimeOffset(for: ref).rounded())
     }
 
     /// Matches `primary` (a locale composite) and falls back to `fallback` (the English pattern) from the same

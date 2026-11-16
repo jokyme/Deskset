@@ -208,7 +208,7 @@ public enum BuiltInVariables {
     /// process environment (exact case first, then case-insensitive).
     public static func environmentValue(_ name: String) -> String? {
         guard !name.isEmpty,
-              name.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_()".unicodeScalars.contains($0) })
+              name.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_()-.".unicodeScalars.contains($0) })
         else { return nil }
         let home = NSHomeDirectory()
         switch name.uppercased() {
@@ -234,7 +234,6 @@ public enum BuiltInVariables {
             return "AMD64"
             #endif
         default:
-            guard name.count >= 2 else { return nil }
             let env = ProcessInfo.processInfo.environment
             if let exact = env[name] { return exact }
             if let upper = env[name.uppercased()] { return upper }

@@ -315,6 +315,8 @@ final class ProcessSampler: @unchecked Sendable {
     private let lock = NSLock()
     /// Each subscriber, and whether it reads `proc_taskinfo`'s counters (`ProcessSnapshot.details`).
     private var subscribers: [ObjectIdentifier: Bool] = [:]
+    /// Per-subscriber callbacks in deterministic registration order, invoked outside `lock`.
+    private var sampleObservers: [(id: ObjectIdentifier, notify: (Bool) -> Void)] = []
     private var timer: DispatchSourceTimer?
     /// Counts the timers started: a sample of an older one is not kept.
     private var timerGeneration = 0
@@ -324,10 +326,15 @@ final class ProcessSampler: @unchecked Sendable {
 
     /// Starts sampling for `owner` (idempotent; a later call changes what it needs). `details`: it reads counters
     /// only `proc_taskinfo` has (`PerfCounterSpec.needsDetails`); while no subscriber does, samples leave them out.
-    func subscribe(_ owner: AnyObject, details: Bool = true) {
+    func subscribe(_ owner: AnyObject, details: Bool = true, onSample: ((Bool) -> Void)? = nil) {
         lock.lock()
         defer { lock.unlock() }
-        let inserted = subscribers.updateValue(details, forKey: ObjectIdentifier(owner)) == nil
+        let id = ObjectIdentifier(owner)
+        let inserted = subscribers.updateValue(details, forKey: id) == nil
+        sampleObservers.removeAll { $0.id == id }
+        if let onSample {
+            sampleObservers.append((id, onSample))
+        }
         if inserted && subscribers.count == 1 { startTimer() }
     }
 
@@ -339,6 +346,7 @@ final class ProcessSampler: @unchecked Sendable {
     func unsubscribe(id: ObjectIdentifier) {
         lock.lock()
         defer { lock.unlock() }
+        sampleObservers.removeAll { $0.id == id }
         let removed = subscribers.removeValue(forKey: id) != nil
         if removed && subscribers.isEmpty { stopTimer() }
     }
@@ -428,7 +436,10 @@ final class ProcessSampler: @unchecked Sendable {
         let snapshot = ProcessSnapshot(serial: serial, time: now, processes: visible, processCount: total,
                                        cores: cores, hiddenCPU: hiddenCPU, details: details)
         snapshots = (previous, snapshot)
+        let observers = sampleObservers.map(\.notify)
+        let hasPrevious = previous != nil
         lock.unlock()
+        for notify in observers { notify(hasPrevious) }
     }
 
     /// Synchronous sample for tests.

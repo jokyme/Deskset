@@ -622,9 +622,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   tunnels, AWDL / low-latency WLAN, bridges and similar virtual ones (so traffic is not counted twice); a Windows
   adapter name or alias (`Wi-Fi`, `Ethernet`, `Intel(R) …`) or an index that does not exist falls back to Best
   (logged once). Rates use the real time between samples; `Cumulative=1` reads the shared per-interface statistics,
-  persisted across app sessions and cleared by Reset statistics or `!ResetStats`. Ordinary rates keep using raw
-  counters. See [Cumulative network statistics](app.md#cumulative-network-statistics) for collection, storage and
-  remaining Windows comparison items.
+  Counters. See [Cumulative network statistics](app.md#cumulative-network-statistics) for collection, storage and
+  remaining Windows comparison items. Statistics are cleared by Debug → Network's Reset statistics or `!ResetStats`.
 - Why: macOS interface names (en0, en1…) differ from Windows adapter names; virtual interfaces would double-count.
 - Skin impact: skins that name a Windows adapter measure the active Mac interface instead.
 - Status: emulated
@@ -1067,29 +1066,33 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 
 ### Rainmeter 5.0 engine additions
 - Windows (Rainmeter 5.0): `[Rainmeter] SyntaxVersion` (`1` default, `2` disables legacy `%Name%` environment
-  expansion) / `AppVersion`, `Update=<visible> | Invisible <invisible>` (`Invisible 0` pauses regular updates while
-  hidden), `OnDisplayMetricsChange`, `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`,
-  `[%EnvVar]` and (`SyntaxVersion=1`) `%EnvVar%`, `[$Skin…]`, `[$Display…]` / `[$DisplayDevice…@N]`, unbracketed
-  measure names and `$Skin…`/`$Display…` variables in formulas, `Group=a|b` / `Group=a&b`, 2-argument
-  `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`, `!ForceEnableVisibleMode`, `!SetZoomFactor` /
-  `!SetZoomFactorGroup`, colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`, `!ActionTimer:Execute/Stop`,
-  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults`,
+  expansion) / `[%Variable]` direct environment lookup / `AppVersion` (dotted `"5.0.0.x"` string form),
+  `Update=<visible> | Invisible <invisible>` (`Invisible 0` pauses regular updates while hidden/occluded),
+  `OnVisibilityChangeAction`, `OnDisplayMetricsChange` / `OnDisplayMetricsChangeAction`, `@Inherit=Sec1 | Sec2`
+  (meters and measures), `[%EnvVar]` and (`SyntaxVersion=1`) `%EnvVar%`, `[$Skin…]`, `[$Display…]` / `[$DisplayDevice…@N]`, unbracketed
+  measure names and `$Skin…`/`$Display…` variables in formulas, `!WriteKeyValue` `#CRLF#` expansion,
+  `Group=a|b` / `Group=a&b`, 2-argument `[!SetOption Option Value]`, `!CommandMeasureGroup`, `!SetUpdate`,
+  `!ForceEnableVisibleMode`, `!SetZoomFactor` / `!SetZoomFactorGroup`, colon-namespaced bangs (`!Skin:…`, `!TextEdit:…`, `!Loop:Reset`, `!ActionTimer:Execute/Stop`,
+  `!RunCommand:Run/Close/Kill`, `!WebParser:Refetch/ClearResults` (retaining legacy `!WebParser:UpdateData/ResetData`),
   `!RecycleManager:EmptyBin/EmptyBinSilent/OpenBin`, `!Audio:…`, `!NowPlaying:…`, `!Mouse:StartCapture/StopCapture`,
-  `!WindowMessage:Send`), `Measure=DragDrop` (`Action=Path|Move|Copy|Shortcut|Delete`, `Path`, `Silent`,
+  `!WindowMessage:Send`), `Measure=AudioLevel` `OnAudioStartAction` / `OnAudioEndAction`, `Measure=DragDrop` (`Action=Path|Move|Copy|Shortcut|Delete`, `Path`, `Silent`,
   `ReplaceIfExists`, `ProcessAllFiles` / `$FileNr$`, `Parent`, `Bounds`, `OnDropAction` / `OnEnterAction` /
-  `OnLeaveAction`), `NumberConversionFormat=Locale` (`String` / `Registry` / `WebParser`), `TimeStampFormat` ISO 8601
-  tokens (`%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z`) and week/ordinal dates, Calc `UseRandomSeed`, Loop `ResetValue`,
-  WebParser `JsonPointer`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
+  `OnLeaveAction` / `OnOverAction` / `[$File]`), `Measure=UsageMonitor` initial sampling before `UpdateDivider`,
+  NowPlaying `.webp` / `.avif` / `.ogg` cover decoding, `NumberConversionFormat=Locale` (`String` / `Registry` / `WebParser`),
+  `TimeStampFormat` ISO 8601 tokens (`%F`, `%g`, `%G`, `%u`, `%V`, `%z`, `%Z`) and week/ordinal dates, Calc `UseRandomSeed`,
+  Loop `ResetValue`, WebParser `JsonPointer` / `Header` / `UrlEncode`, `Meter=SVG` (`SVGImage`, `Attribute` / `Attribute2…`,
   `[Meter:Attribute(selector, attr)]`), `Meter=TextEdit` (`[$Input]`, `[$Input:MatchN]`, `!TextEdit:*`),
   `StringAlign=Justify…`, and Shape `LineJoin`.
-- Mac (Deskset): the above are implemented. The official 5.0 `!SetZoomFactor` and `!SetZoomFactorGroup` support
+- Mac (Deskset): the above are implemented (including display-occlusion detection for `Invisible` / `OnVisibilityChangeAction`,
+  built-in `Measure=` aliases for former plugins alongside `Measure=Plugin`, and Skin Studio schema/highlighter/diagnostic
+  support; Skin Packager is implemented in the Deskset app). The official 5.0 `!SetZoomFactor` and `!SetZoomFactorGroup` support
   a factor or Default; zoom uses integer percentages from 10–500%. Missing per-skin zoom inherits `DefaultZoom`;
   `ForceDefaultZoom` applies the global value without deleting overrides. Rendering and input coordinates follow
   effective zoom, and zoom changes request a redraw independently of regular updates. The zoom UI and
   Control-Option selection/DragGroup behavior are described in [App](app.md); Windows desktop comparison is pending.
   `!Skin:` commands accept an explicit skin target first; the four config aliases and the scope of omitted selectors
   are described below. `!SendKey` uses the existing Mac media-key backend ([Media and UI](media-ui.md#sendkey-rainmeter-50)).
-  Skin Packager remains unimplemented.
+  `Manage → Game mode`, CLI `[!Launch][!Bang]...` execution, and `#SETTINGSPATH#Crashes\` automatic crash dumps remain excluded.
 - Status: identical / emulated (see `docs/COMPATIBILITY.md` §1 for the full table)
 
 ### SVG resources

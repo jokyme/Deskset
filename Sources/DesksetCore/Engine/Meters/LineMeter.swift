@@ -70,16 +70,19 @@ public final class LineMeter: Meter {
         }
         lines = newLines
         lineWidth = double("LineWidth", 1).clamped(0, 1000)
-        let joinParts = string("LineJoin", "Miter").split(separator: ",", maxSplits: 1).map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }
+        let joinParts = OptionValue.split(string("LineJoin", "Miter"), separator: ",")
         switch joinParts.first?.lowercased() ?? "miter" {
         case "bevel": lineJoin = .bevel
         case "round": lineJoin = .round
         case "miterorbevel": lineJoin = .miterOrBevel
         default: lineJoin = .miter
         }
-        if joinParts.count == 2, let ml = Double(joinParts[1]), ml.isFinite {
+        let parsedMiter = joinParts.count >= 2 ? Formula.withLookup({ [unowned skin = self.skin, unowned self] in
+            skin.formulaValue(of: $0, from: self)
+        }) {
+            OptionValue.number(joinParts[1])
+        } : nil
+        if let ml = parsedMiter, ml.isFinite {
             miterLimit = ml.clamped(1, 1000)
         } else {
             miterLimit = double("MiterLimit", 10).clamped(1, 1000)

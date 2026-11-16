@@ -14,9 +14,11 @@
  *   script's time or instruction budget is used up (deskset_lua_check_budget), which stops the call like the hook.
  */
 #include <ctype.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <string.h>
 #include <wctype.h>
+#include <xlocale.h>
 
 #include "lauxlib.h"
 #include "lua.h"
@@ -180,19 +182,30 @@ static const char *classend(MatchState *ms, const char *p) {
     }
 }
 
+static locale_t deskset_utf8_locale = NULL;
+static void init_utf8_locale(void) {
+    deskset_utf8_locale = newlocale(LC_CTYPE_MASK, "UTF-8", NULL);
+}
+static locale_t utf8_locale(void) {
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    pthread_once(&once, init_utf8_locale);
+    return deskset_utf8_locale;
+}
+
 static int match_class(int c, int cl) {
     int res;
     int ascii = (c >= 0 && c < 128);
+    locale_t loc = ascii ? NULL : utf8_locale();
     switch (tolower(cl)) {
-    case 'a': res = ascii ? isalpha(c) : iswalpha((wint_t)c); break;
-    case 'c': res = ascii ? iscntrl(c) : iswcntrl((wint_t)c); break;
-    case 'd': res = ascii ? isdigit(c) : iswdigit((wint_t)c); break;
-    case 'l': res = ascii ? islower(c) : iswlower((wint_t)c); break;
-    case 'p': res = ascii ? ispunct(c) : iswpunct((wint_t)c); break;
-    case 's': res = ascii ? isspace(c) : iswspace((wint_t)c); break;
-    case 'u': res = ascii ? isupper(c) : iswupper((wint_t)c); break;
-    case 'w': res = ascii ? isalnum(c) : iswalnum((wint_t)c); break;
-    case 'x': res = ascii ? isxdigit(c) : iswxdigit((wint_t)c); break;
+    case 'a': res = ascii ? isalpha(c) : (loc ? iswalpha_l((wint_t)c, loc) : iswalpha((wint_t)c)); break;
+    case 'c': res = ascii ? iscntrl(c) : (loc ? iswcntrl_l((wint_t)c, loc) : iswcntrl((wint_t)c)); break;
+    case 'd': res = ascii ? isdigit(c) : (loc ? iswdigit_l((wint_t)c, loc) : iswdigit((wint_t)c)); break;
+    case 'l': res = ascii ? islower(c) : (loc ? iswlower_l((wint_t)c, loc) : iswlower((wint_t)c)); break;
+    case 'p': res = ascii ? ispunct(c) : (loc ? iswpunct_l((wint_t)c, loc) : iswpunct((wint_t)c)); break;
+    case 's': res = ascii ? isspace(c) : (loc ? iswspace_l((wint_t)c, loc) : iswspace((wint_t)c)); break;
+    case 'u': res = ascii ? isupper(c) : (loc ? iswupper_l((wint_t)c, loc) : iswupper((wint_t)c)); break;
+    case 'w': res = ascii ? isalnum(c) : (loc ? iswalnum_l((wint_t)c, loc) : iswalnum((wint_t)c)); break;
+    case 'x': res = ascii ? isxdigit(c) : (loc ? iswxdigit_l((wint_t)c, loc) : iswxdigit((wint_t)c)); break;
     case 'z': res = (c == 0); break;
     default: return (cl == c);
     }

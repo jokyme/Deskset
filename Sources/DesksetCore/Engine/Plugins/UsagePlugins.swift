@@ -34,6 +34,9 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
     private var rawValue = false
     private var pidToName = false
     private var subscribed = false
+    private var closed = false
+    private var hasEvaluatedOnce = false
+    private var hasCollectedUsableSample = false
     private var lastSystemReading: PerfCounters.RawReading?
     private var cachedSerial: Int?
     private var cachedResult: (Double, String) = (0, "")
@@ -41,11 +44,29 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 
     override var tracksValueRange: Bool { true }
 
+    override var needsInitialSampleUpdate: Bool {
+        guard !closed, subscribed, !disabled, !paused, hasEvaluatedOnce, !hasCollectedUsableSample,
+              let spec, spec.needsProcesses || spec.usesCores else { return false }
+        let read = ProcessSampler.readSamples(for: skin, details: spec.needsDetails)
+        return Self.hasUsableSample(read.samples, needsPrevious: needsPreviousSample)
+    }
+
+    private var needsPreviousSample: Bool {
+        guard let spec, !rawValue else { return false }
+        return spec.kind == .rate || spec.kind == .timer || spec.kind == .inverseTimer
+    }
+
+    private static func hasUsableSample(_ samples: (previous: ProcessSnapshot?, latest: ProcessSnapshot?),
+                                        needsPrevious: Bool) -> Bool {
+        samples.latest != nil && (!needsPrevious || samples.previous != nil)
+    }
+
     deinit {
         if subscribed { ProcessSampler.shared.unsubscribe(id: ObjectIdentifier(self)) }
     }
 
     public func skinWillClose() {
+        closed = true
         if subscribed {
             subscribed = false
             ProcessSampler.shared.unsubscribe(self)
@@ -98,6 +119,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             spec = newSpec
             lastSystemReading = nil
             cachedSerial = nil
+            hasCollectedUsableSample = false
         }
         let rawIndex = string("Index", "0").trimmingCharacters(in: .whitespaces).lowercased()
         switch rawIndex {
@@ -124,11 +146,24 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         if needsSampler {
             // Again on every read of the options: what the counter needs of a sample may have changed.
             subscribed = true
-            ProcessSampler.shared.subscribe(self, details: spec?.needsDetails == true)
+            let executor = skin.executor
+            ProcessSampler.shared.subscribe(self, details: spec?.needsDetails == true) { [weak self] _ in
+                executor.async { [weak self] in
+                    self?.handleSamplerNotification()
+                }
+            }
         } else if subscribed {
             subscribed = false
             ProcessSampler.shared.unsubscribe(self)
         }
+    }
+
+    private func handleSamplerNotification() {
+        guard !closed, subscribed, !disabled, !paused, hasEvaluatedOnce, !hasCollectedUsableSample,
+              let spec else { return }
+        let read = ProcessSampler.readSamples(for: skin, details: spec.needsDetails)
+        guard Self.hasUsableSample(read.samples, needsPrevious: needsPreviousSample) else { return }
+        skin.refreshMeasureFromFirstSample(self)
     }
 
     static func names(_ list: String) -> [String] {
@@ -136,6 +171,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
     }
 
     public override func computeValue() -> Double {
+        hasEvaluatedOnce = true
         guard let spec else {
             rawString = ""
             return 0
@@ -144,6 +180,9 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         if spec.needsProcesses || spec.usesCores {
             let read = ProcessSampler.readSamples(for: skin, details: spec.needsDetails)
             let samples = read.samples
+            if Self.hasUsableSample(samples, needsPrevious: needsPreviousSample) {
+                hasCollectedUsableSample = true
+            }
             guard let latest = samples.latest else {
                 rawString = cachedResult.1
                 return cachedResult.0
@@ -272,9 +311,9 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             break
         case .noTotal:
             report("percent", "UsageMonitor [\(name)]: Percent=1 needs a _Total instance; the value is 0")
-            return (0, index == 0 ? "Total" : index == -1 ? "Average" : index == -2 ? "Count" : "")
+            return (0, "")
         case .nothingCounted:
-            return (0, index == 0 ? "Total" : index == -1 ? "Average" : index == -2 ? "Count" : "")
+            return (0, "")
         }
         let values = ranking.values
         func label(_ v: PerfValue) -> String {
@@ -292,11 +331,13 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         }
         switch index {
         case 0:
-            return (values.reduce(0) { $0 + $1.value }, "Total")
+            let sum = values.reduce(0) { $0 + $1.value }
+            return (sum, sum != 0 ? "Total" : "")
         case -1:
-            return (values.isEmpty ? 0 : values.reduce(0) { $0 + $1.value } / Double(values.count), "Average")
+            let avg = values.isEmpty ? 0 : values.reduce(0) { $0 + $1.value } / Double(values.count)
+            return (avg, avg != 0 ? "Average" : "")
         case -2:
-            return (Double(values.count), "Count")
+            return (Double(values.count), values.isEmpty ? "" : "Count")
         default:
             let sorted = ranking.ranked
             guard index - 1 < sorted.count else { return (0, "") }

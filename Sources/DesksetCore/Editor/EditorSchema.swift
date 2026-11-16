@@ -332,6 +332,9 @@ public enum EditorSchema {
         Choice("RightCenter", "Right · Middle"),
         Choice("LeftBottom", "Left · Bottom"), Choice("CenterBottom", "Center · Bottom"),
         Choice("RightBottom", "Right · Bottom"),
+        Choice("Justify", "Justify · Top", aliases: ["JustifyTop"]),
+        Choice("JustifyCenter", "Justify · Middle"),
+        Choice("JustifyBottom", "Justify · Bottom"),
     ]
 
     static let stringStyle: [Choice] = [Choice("Normal", "Regular"), Choice("Bold", "Bold", symbol: "bold"),
@@ -364,7 +367,7 @@ public enum EditorSchema {
     /// `MouseActionCursorName`: every built-in name has a Mac cursor (SkinCursors in the app); a `.cur` / `.ani` file
     /// name from the skin's `@Resources\Cursors` can be typed instead.
     public static let cursorNames: [Choice] = [
-        ("HAND", "Pointing hand"), ("TEXT", "Text (I-beam)"), ("CROSS", "Crosshair"), ("NO", "Not allowed"),
+        ("ARROW", "Arrow"), ("HAND", "Pointing hand"), ("TEXT", "Text (I-beam)"), ("CROSS", "Crosshair"), ("NO", "Not allowed"),
         ("SIZE_NS", "Resize up/down"), ("SIZE_WE", "Resize left/right"), ("HELP", "Help"), ("BUSY", "Busy"),
         ("PEN", "Pen"), ("SIZE_ALL", "Move"), ("SIZE_NESW", "Resize diagonal ↗"), ("SIZE_NWSE", "Resize diagonal ↘"),
         ("UPARROW", "Up arrow"), ("WAIT", "Wait"),
@@ -535,7 +538,7 @@ public enum EditorSchema {
 
     /// Every `Meter=` type the engine draws (Skin.makeMeter).
     public static let meterTypes = ["String", "Image", "Bar", "Line", "Histogram", "Roundline", "Rotator", "Button",
-                                    "Bitmap", "Shape"]
+                                    "Bitmap", "Shape", "SVG", "TextEdit"]
 
     /// The cards of a meter type, after Position and Size (which the inspector draws itself): the type's own cards,
     /// then Box Behind It (most types), When Clicked and Layer. Empty for types the engine does not draw.
@@ -552,6 +555,8 @@ public enum EditorSchema {
         case "button": groups = buttonGroups + [boxGroup()]
         case "bitmap": groups = bitmapGroups + [boxGroup()]
         case "shape": groups = shapeGroups + [boxGroup(forShape: true)]
+        case "svg": groups = svgGroups + [boxGroup()]
+        case "textedit": groups = textEditGroups + [boxGroup()]
         default: return []
         }
         groups += [interaction, behavior]
@@ -681,6 +686,10 @@ public enum EditorSchema {
             Property("LineColor", "Line", .color, default: "255,255,255,255", level: .essential),
             Property("LineWidth", "Thickness", num(0, 1000, step: 0.5, unit: "px"), default: "1", level: .essential,
                      partOf: "LineColor"),
+            Property("LineJoin", "Corner join", pick(list(["Miter", "Bevel", "Round", "MiterOrBevel"])),
+                     default: "MiterOrBevel",
+                     help: "Miter, Bevel, Round, or MiterOrBevel (optionally with , miter limit)",
+                     otherValues: .any),
             graphBackground,
             Property("GraphStart", "New values appear on the", pick(graphStart), default: "Right", level: .essential),
             Property("HorizontalLines", "Grid lines", flag("Show grid lines"), default: "0"),
@@ -799,6 +808,68 @@ public enum EditorSchema {
         ], moreSummary: "rotate, scale, skew, dashes, line ends", moreTitle: "More Shape Options"),
     ]
 
+    static let svgGroups: [Group] = [
+        Group(title: "SVG", properties: [
+            Property("SVGImage", "SVG", .text, help: "An SVG file path or inline <svg> markup", level: .essential),
+            Property("Attribute", "Attribute", .text,
+                     help: "selector | attribute | value; Attribute2… for more", numbered: true),
+        ], moreSummary: "dynamic attributes", moreTitle: "More SVG Options"),
+    ]
+
+    static let inputFilters: [Choice] = [
+        Choice("None", "None"), Choice("Integer", "Integer"), Choice("Decimal", "Decimal"),
+        Choice("Numeric", "Digits only"), Choice("RegExp", "Regular expression"),
+    ]
+
+    static let textEditGroups: [Group] = [
+        Group(title: "Text", properties: [
+            Property("InitialText", "Initial text", .text, placeholder: "empty", level: .essential),
+            Property("PlaceholderText", "Placeholder", .text, placeholder: "Type placeholder…", level: .essential),
+            Property("Multiline", "Multiline", flag("Allow multiple lines"), default: "0", level: .essential),
+            Property("SubmitOnEnter", "Submit on Enter", flag("Enter submits instead of inserting a newline"),
+                     default: "1", defaultWhen: [ConditionalDefault("0", when: [.equals("Multiline", "1")])]),
+            Property("FontFace", "Font", .font, default: "Arial", level: .essential),
+            Property("FontWeight", "Weight", pick(fontWeights, style: .popup), default: "400",
+                     placeholder: "Regular", otherValues: .numbers, level: .essential, partOf: "FontFace"),
+            Property("StringStyle", "Italic", pick(stringStyle), default: "Normal", level: .essential, partOf: "FontFace"),
+            Property("FontSize", "Size", num(0, 1000, step: 1, unit: "pt"), default: "10", level: .essential),
+            Property("FontColor", "Color", .color, default: "0,0,0,255", level: .essential),
+            Property("StringAlign", "Align", .alignment9, default: "Left"),
+            Property("StringEffect", "Effect", pick(stringEffect), default: "None"),
+            Property("FontEffectColor", "Effect color", .color, default: "0,0,0,255",
+                     visibleWhen: [.notEquals("StringEffect", "None")]),
+            Property("ClipString", "If it's too long", pick(clipString, style: .popup), default: "0"),
+            Property("ClipStringW", "Grow up to width", num(0, nil, step: 1, unit: "px"), placeholder: "none",
+                     visibleWhen: [.equals("ClipString", "2")]),
+            Property("ClipStringH", "Grow up to height", num(0, nil, step: 1, unit: "px"), placeholder: "none",
+                     visibleWhen: [.equals("ClipString", "2")]),
+            Property("Angle", "Rotation", .angle(unit: .radians, orientation: true), default: "0"),
+            Property("StringCase", "Capitals", pick(stringCase), default: "None"),
+            Property("InputCase", "Input case", pick(stringCase), default: "None",
+                     visibleWhen: [.equals("StringCase", "None")]),
+            Property("Password", "Password", flag("Mask typed characters"), default: "0"),
+            Property("ReadOnly", "Read-only", flag("Allow selection without editing"), default: "0"),
+            Property("MaxLength", "Maximum length", num(0, nil, step: 1), default: "0", placeholder: "no limit"),
+            Property("InputFilter", "Input filter", pick(inputFilters, style: .popup), default: "None"),
+            Property("InputRegExp", "Pattern", .text, visibleWhen: [.equals("InputFilter", "RegExp")]),
+            Property("PlaceholderFontFace", "Placeholder font", .font, visibleWhen: [.isSet("PlaceholderText")]),
+            Property("PlaceholderFontSize", "Placeholder size", num(0, 1000, step: 1, unit: "pt"),
+                     visibleWhen: [.isSet("PlaceholderText")]),
+            Property("PlaceholderFontColor", "Placeholder color", .color, visibleWhen: [.isSet("PlaceholderText")]),
+            Property("PlaceholderStringStyle", "Placeholder style", pick(stringStyle), default: "Normal",
+                     visibleWhen: [.isSet("PlaceholderText")]),
+            Property("CaretColor", "Caret color", .color, default: "255,255,255,255"),
+            Property("SelectionColor", "Selection color", .color, default: "0,60,107,255"),
+            Property("FocusBorderWidth", "Focus border", num(0, nil, step: 1, unit: "px"), default: "0"),
+            Property("FocusBorderColor", "Focus border color", .color, default: "0,0,0,255",
+                     visibleWhen: [.notEquals("FocusBorderWidth", "0")]),
+            Property("OnFocusAction", "When focused", .action),
+            Property("OnSubmitAction", "When submitted", .action),
+            Property("OnDismissAction", "When dismissed", .action),
+            antiAlias,
+        ], moreSummary: "multiline, input filter, colors, actions", moreTitle: "More Text Input Options"),
+    ]
+
     // MARK: - Measures
 
     /// A measure type or plugin in plain words.
@@ -849,31 +920,31 @@ public enum EditorSchema {
         type("NowPlaying", "Now playing", "music.note", both: true),
         type("MediaKey", "Media keys", "playpause", both: true),
         type("WiFiStatus", "Wi-Fi signal", "wifi", both: true),
-        type("PowerPlugin", "Battery", "battery.75percent", plugin: true, aliases: ["Power"]),
-        type("ActionTimer", "Timed actions", "stopwatch", plugin: true),
-        type("CoreTemp", "CPU temperature", "thermometer.medium", plugin: true),
-        type("AdvancedCPU", "Processor time by app", "chart.bar.xaxis", plugin: true),
-        type("PingPlugin", "Ping time", "antenna.radiowaves.left.and.right", plugin: true, aliases: ["Ping"]),
-        type("RunCommand", "Shell command", "terminal", plugin: true),
-        type("QuotePlugin", "Random quote or file", "quote.bubble", plugin: true, aliases: ["Quote"]),
-        type("FileView", "Folder browser", "folder", plugin: true),
-        type("FolderInfo", "Folder size", "folder.circle", plugin: true),
-        type("UsageMonitor", "Top apps", "list.number", plugin: true),
-        type("PerfMon", "Performance counter", "gauge", plugin: true, aliases: ["PerfMonPlugin"]),
-        type("ResMon", "Open files", "square.stack.3d.up", plugin: true),
-        type("SpeedFanPlugin", "Temperatures and fans", "fanblades", plugin: true, aliases: ["SpeedFan"]),
-        type("WindowMessagePlugin", "Window messages", "envelope", plugin: true, aliases: ["WindowMessage"], mac: false),
+        type("Power", "Battery", "battery.75percent", both: true, aliases: ["PowerPlugin"]),
+        type("ActionTimer", "Timed actions", "stopwatch", both: true),
+        type("CoreTemp", "CPU temperature", "thermometer.medium", both: true),
+        type("AdvancedCPU", "Processor time by app", "chart.bar.xaxis", both: true),
+        type("Ping", "Ping time", "antenna.radiowaves.left.and.right", both: true, aliases: ["PingPlugin"]),
+        type("RunCommand", "Shell command", "terminal", both: true),
+        type("Quote", "Random quote or file", "quote.bubble", both: true, aliases: ["QuotePlugin"]),
+        type("FileView", "Folder browser", "folder", both: true),
+        type("FolderInfo", "Folder size", "folder.circle", both: true),
+        type("UsageMonitor", "Top apps", "list.number", both: true),
+        type("PerfMon", "Performance counter", "gauge", both: true, aliases: ["PerfMonPlugin"]),
+        type("ResMon", "Open files", "square.stack.3d.up", both: true),
+        type("SpeedFan", "Temperatures and fans", "fanblades", both: true, aliases: ["SpeedFanPlugin"]),
+        type("WindowMessage", "Window messages", "envelope", both: true, aliases: ["WindowMessagePlugin"], mac: false),
         type("VirtualDesktops", "Virtual desktops", "square.split.2x2", plugin: true),
-        type("Mouse", "Mouse input", "computermouse", plugin: true),
+        type("Mouse", "Mouse input", "computermouse", both: true),
         type("Slider", "Mouse input (Slider)", "slider.horizontal.3", plugin: true),
         type("MacSensors", "Temperatures, fans and power", "gauge.with.dots.needle.50percent", plugin: true),
         type("MSIAfterburner", "Graphics card (MSI Afterburner)", "flame", plugin: true),
-        type("AudioLevel", "Sound", "waveform", plugin: true),
-        type("Win7AudioPlugin", "Volume", "speaker.wave.2", plugin: true, aliases: ["Win7Audio", "Audio"]),
+        type("AudioLevel", "Sound", "waveform", both: true),
+        type("Audio", "Volume", "speaker.wave.2", both: true, aliases: ["Win7AudioPlugin", "Win7Audio"]),
         type("AppVolume", "App volume", "speaker.wave.2.circle", plugin: true),
-        type("iTunesPlugin", "Now playing (iTunes)", "music.note.list", plugin: true, aliases: ["iTunes"]),
+        type("iTunes", "Now playing (iTunes)", "music.note.list", both: true, aliases: ["iTunesPlugin"]),
         type("WebNowPlaying", "Now playing (any player)", "play.rectangle", plugin: true),
-        type("InputText", "Text input box", "keyboard", plugin: true),
+        type("InputText", "Text input box", "keyboard", both: true),
         type("FrostedGlass", "Blurred glass background", "camera.filters", plugin: true),
         type("Chameleon", "Colors from the wallpaper", "paintpalette", plugin: true),
         type("IsFullScreen", "Full-screen app", "arrow.up.left.and.arrow.down.right", plugin: true),
@@ -938,7 +1009,7 @@ public enum EditorSchema {
                 LiveDataChoice("Both", "Download and upload together", type: "NetTotal"),
             ]),
             LiveDataChoice("Disk space", "Free or used space on a disk", type: "FreeDiskSpace", options: ["Drive": "/"]),
-            LiveDataChoice("Battery", "Charge level and status", type: "PowerPlugin"),
+            LiveDataChoice("Battery", "Charge level and status", type: "Power"),
             LiveDataChoice("Temperature", "How warm the chip is; also fans and power", type: "MacSensors",
                            options: ["Sensor": "cpu"]),
             LiveDataChoice("Time and date", "The current time or date", type: "Time"),
@@ -1065,7 +1136,7 @@ public enum EditorSchema {
     static func rangeProperties(_ name: String) -> [Property] {
         let tracking: Set<String> = ["NetIn", "NetOut", "NetTotal", "Calc", "WebParser", "Script", "CoreTemp",
                                      "MacSensors", "MSIAfterburner", "MacWeather", "MacSun"]
-        let automatic: [String: String] = ["CPU": "100", "PowerPlugin": "100", "Win7AudioPlugin": "100"]
+        let automatic: [String: String] = ["CPU": "100", "Power": "100", "Audio": "100"]
         let net = name.hasPrefix("Net")
         var list: [Property] = []
         if name != "Loop" {
@@ -1116,6 +1187,8 @@ public enum EditorSchema {
         Property("Substitute", "Replace text", .text, help: "\"old\":\"new\", \"old2\":\"new2\""),
         Property("RegExpSubstitute", "Patterns", flag("Replace using patterns"), default: "0",
                  visibleWhen: [.isSet("Substitute")]),
+        Property("NumberConversionFormat", "Number conversion",
+                 pick([Choice("Default", "Dot decimal"), Choice("Locale", "System locale")]), default: "Default"),
         Property("UpdateDivider", "Update every", num(-1, nil, step: 1, unit: "updates"), default: "1",
                  help: "-1 = only when the widget opens"),
         Property("Disabled", "Turned off", flag("Turned off (reads 0)"), default: "0"),
@@ -1247,7 +1320,7 @@ public enum EditorSchema {
         case "Script":
             return [Property("ScriptFile", "Script", .text, help: "A Lua file, relative to the widget's folder",
                              level: .essential)]
-        case "PowerPlugin":
+        case "Power":
             return [Property("PowerState", "Shows",
                              pick([Choice("Percent", "Charge (%)"), Choice("ACLine", "Plugged in"), Choice("Status", "Status"),
                                    Choice("Status2", "Status flags"), Choice("Lifetime", "Time left"),
@@ -1255,6 +1328,26 @@ public enum EditorSchema {
                                   style: .popup), default: "Percent", level: .essential),
                     Property("Format", "Format", .format(presets: ["%H:%M", "%#H:%M"], preview: .time), default: "%H:%M",
                              visibleWhen: [.equals("PowerState", "Lifetime")], level: .essential)]
+        case "DragDrop":
+            let main: [Condition] = [.isNotSet("Parent")]
+            return [Property("Parent", "Parent", .sectionRef(.measure), placeholder: "none (this is the parent)"),
+                    Property("Action", "Action",
+                             pick([Choice("Path", "Report path"), Choice("Copy", "Copy file"),
+                                   Choice("Move", "Move file"), Choice("Shortcut", "Create alias"),
+                                   Choice("Delete", "Move to Trash")], style: .popup),
+                             default: "Path", level: .essential),
+                    Property("Path", "Destination folder", .text,
+                             visibleWhen: [.equals("Action", "Copy", "Move", "Shortcut")]),
+                    Property("Silent", "Silent", flag("Suppress delete confirmation"), default: "0"),
+                    Property("ReplaceIfExists", "Replace", flag("Overwrite existing files"), default: "0"),
+                    Property("ProcessAllFiles", "All files", flag("Process every dropped item"), default: "0"),
+                    Property("Bounds", "Drop area", .text, visibleWhen: main),
+                    Property("FancyRenderer", "Preview (legacy)", flag("Ignored in Rainmeter 5.0"), default: "1",
+                             visibleWhen: main),
+                    Property("OnDropAction", "When dropped", .action),
+                    Property("OnEnterAction", "When dragged over", .action),
+                    Property("OnOverAction", "While hovering", .action),
+                    Property("OnLeaveAction", "When drag leaves", .action)]
         default:
             return pluginSettings(name)
         }
@@ -1304,9 +1397,11 @@ public enum EditorSchema {
                  level: .essential),
         Property("RegExp", "Pattern", .text, help: "Regular expression, e.g. (?siU)<title>(.*)</title>",
                  level: .essential),
+        Property("JsonPointer", "JSON pointer", .text, help: "Extract JSON value instead of using a pattern"),
         Property("StringIndex", "Piece", num(0, 1000, step: 1), default: "0", help: "Which captured piece to show",
                  level: .essential),
         Property("StringIndex2", "Sub-piece", num(0, 1000, step: 1), default: "0", visibleWhen: [.isSet("RegExp")]),
+        Property("Header", "HTTP header", .text, help: "Name: Value; Header2… for more", numbered: true),
         Property("UpdateRate", "Reload every", num(1, nil, step: 1, unit: "updates"), default: "600"),
         Property("DecodeCharacterReference", "Decode entities",
                  pick([Choice("0", "No"), Choice("1", "All"), Choice("2", "Numeric only"), Choice("3", "Named only")],
@@ -1336,7 +1431,7 @@ public enum EditorSchema {
         switch name {
         case "ActionTimer":
             return [Property("ActionList1", "Sequence 1", .action,
-                             help: "e.g. Step1 | Wait 10 | Repeat Step2, 5, 20; ActionList2… for more"),
+                             help: "e.g. Step1 | Wait 10 | Repeat Step2, 5, 20; ActionList2… for more", numbered: true),
                     Property("IgnoreWarnings", "Warnings", flag("Don't warn when a running sequence starts again"),
                              default: "0")]
         case "CoreTemp":
@@ -1360,7 +1455,7 @@ public enum EditorSchema {
                     Property("CPUExclude", "Leave out apps", .text, help: "Names separated by ;"),
                     Property("TopProcess", "Shows", pick([Choice("0", "Total"), Choice("1", "Busiest app's value"),
                                                           Choice("2", "Busiest app's name")]), default: "0")]
-        case "PingPlugin":
+        case "Ping":
             return [Property("DestAddress", "Address", .text, help: "Host name or IP address"),
                     Property("UpdateRate", "Ping every", num(1, nil, step: 1, unit: "updates"), default: "32"),
                     Property("Timeout", "Timeout", num(0, nil, step: 100, unit: "milliseconds"), default: "30000"),
@@ -1375,7 +1470,7 @@ public enum EditorSchema {
                     Property("OutputType", "Output encoding", pick(list(["UTF16", "UTF8", "ANSI"])), default: "UTF16"),
                     Property("OutputFile", "Save output to", .text),
                     Property("FinishAction", "When finished", .action)]
-        case "QuotePlugin":
+        case "Quote":
             return [Property("PathName", "File or folder", .text, help: "A text file (random line) or a folder (random file)"),
                     Property("Separator", "Separator", .text, placeholder: "new line"),
                     Property("Subfolders", "Subfolders", flag("Include subfolders"), default: "1"),
@@ -1421,8 +1516,12 @@ public enum EditorSchema {
                                    Choice("VRAM", "Video memory", supportedOnMac: false, note: perApp),
                                    Choice("VRAMSHARED", "Shared video memory", supportedOnMac: false, note: perApp)],
                                   style: .popup)),
-                    Property("Index", "Rank", num(-1, nil, step: 1), default: "0",
-                             help: "0 = total, -1 = average, N = the Nth busiest app"),
+                    Property("Index", "Rank",
+                             pick([Choice("0", "Total"), Choice("-1", "Average all"), Choice("Count", "Matching count"),
+                                   Choice("Sum", "Sum"), Choice("Average", "Average")], style: .popup),
+                             default: "0",
+                             help: "0 = total, -1 = average, N = the Nth busiest app, or Count / Sum / Average",
+                             otherValues: .numbers),
                     Property("Name", "App", .text, help: "A specific app instead of a rank"),
                     Property("Blacklist", "Leave out", .text, default: "_Total|Idle"),
                     Property("Rollup", "Combine", flag("Add up apps with the same name"), default: "1"),
@@ -1443,7 +1542,7 @@ public enum EditorSchema {
                                    Choice("Handle", "Open files"),
                                    Choice("Window", "Windows", supportedOnMac: false, note: "0 on the Mac")]), default: "GDI"),
                     Property("ProcessName", "App", .text, placeholder: "whole system")]
-        case "SpeedFanPlugin":
+        case "SpeedFan":
             return [Property("SpeedFanType", "Sensor", pick([Choice("Temperature", "Temperature"), Choice("Fan", "Fan"),
                                                              Choice("Voltage", "Voltage")]), default: "Temperature"),
                     Property("SpeedFanNumber", "Number", num(0, nil, step: 1), default: "0",
@@ -1471,23 +1570,48 @@ public enum EditorSchema {
                                    Choice("CPU clock", "CPU clock"), Choice("CPU power", "CPU power"),
                                    Choice("RAM usage", "Memory used (MB)")], style: .popup),
                              help: "The name MSI Afterburner shows, such as GPU temperature", otherValues: .any)]
-        case "WindowMessagePlugin":
+        case "WindowMessage":
             return [Property("WindowName", "Window title", .text, help: "Windows only; always 0 on the Mac"),
                     Property("WindowClass", "Window class", .text)]
         case "Mouse":
             return [Property("LeftMouseDragAction", "While dragging", .action,
-                             help: "$MouseX$ and $MouseY$ are the pointer position; Right…, Middle…, X1…, X2… for "
-                                 + "the other buttons", level: .essential),
+                             help: "$MouseX$ and $MouseY$ are the pointer position", level: .essential),
                     Property("LeftMouseDownAction", "When pressed", .action),
                     Property("LeftMouseUpAction", "When released", .action),
-                    Property("MouseMoveAction", "When the pointer moves", .action),
+                    Property("RightMouseDragAction", "While right-dragging", .action),
+                    Property("RightMouseDownAction", "When right-pressed", .action),
+                    Property("RightMouseUpAction", "When right-released", .action),
+                    Property("MiddleMouseDragAction", "While middle-dragging", .action),
+                    Property("MiddleMouseDownAction", "When middle-pressed", .action),
+                    Property("MiddleMouseUpAction", "When middle-released", .action),
+                    Property("X1MouseDragAction", "While back-dragging", .action),
+                    Property("X1MouseDownAction", "When back-pressed", .action),
+                    Property("X1MouseUpAction", "When back-released", .action),
+                    Property("X2MouseDragAction", "While forward-dragging", .action),
+                    Property("X2MouseDownAction", "When forward-pressed", .action),
+                    Property("X2MouseUpAction", "When forward-released", .action),
+                    Property("LeftMouseDoubleClickAction", "Double-click", .action),
+                    Property("RightMouseDoubleClickAction", "Right double-click", .action),
+                    Property("MiddleMouseDoubleClickAction", "Middle double-click", .action),
+                    Property("X1MouseDoubleClickAction", "Back double-click", .action),
+                    Property("X2MouseDoubleClickAction", "Forward double-click", .action),
+                    Property("MouseScrollUpAction", "Scroll up", .action),
+                    Property("MouseScrollDownAction", "Scroll down", .action),
+                    Property("MouseScrollLeftAction", "Scroll left", .action),
+                    Property("MouseScrollRightAction", "Scroll right", .action),
+                    Property("MouseOverAction", "Pointer enters", .action),
+                    Property("MouseLeaveAction", "Pointer leaves", .action),
+                    Property("MouseMoveAction", "When the pointer moves", .action, legacyKeys: ["MoveAction"]),
                     Property("RelativeToSkin", "Position from", pick([Choice("1", "The widget's corner"),
                                                                        Choice("0", "The screen's corner")]),
                              default: "1"),
                     Property("RequireDragging", "Start and stop", flag("Only between the Start and Stop commands"),
                              default: "0", help: "The commands are sent with !CommandMeasure"),
                     Property("UpdateRate", "Move actions at most every", num(0, 10_000, step: 1, unit: "milliseconds"),
-                             default: "20", help: "0 = on every move")]
+                             default: "20", help: "0 = on every move"),
+                    Property("CaptureOverlayColor", "Capture tint", .color, default: "0,0,0,0"),
+                    Property("CaptureOverlayCursorName", "Capture cursor", pick(cursorNames, style: .popup),
+                             default: "ARROW", otherValues: .any)]
         case "Slider":
             return [Property("DragAction", "While dragging", .action,
                              help: "$MouseX$ and $MouseY$ are the pointer position", level: .essential),
@@ -1527,7 +1651,7 @@ public enum EditorSchema {
                                         "Lyrics", "MacPermission"]), style: .popup), default: "Title"),
                     Property("DisableLeadingZero", "Short times", flag("Write times as 3:05 instead of 03:05"), default: "0"),
                     Property("TrackChangeAction", "When the track changes", .action)]
-        case "iTunesPlugin":
+        case "iTunes":
             return [Property("Command", "Shows",
                              pick(list(["GetCurrentTrackName", "GetCurrentTrackArtist", "GetCurrentTrackAlbum",
                                         "GetCurrentTrackArtwork", "GetCurrentTrackTime", "GetPlayerPosition",
@@ -1559,7 +1683,8 @@ public enum EditorSchema {
                     Property("WiFiListStyle", "List style", num(0, 7, step: 1), default: "0", visibleWhen: listing),
                     Property("WiFiListLimit", "Networks in the list", num(1, nil, step: 1), default: "5", visibleWhen: listing)]
         case "InputText":
-            return [Property("Command1", "Command", .action, help: "$UserInput$ is the typed text; Command2… for more"),
+            return [Property("Command1", "Command", .action,
+                             help: "$UserInput$ is the typed text; Command2… for more", numbered: true),
                     Property("DefaultValue", "Text in the box", .text),
                     Property("InputNumber", "Numbers", flag("Numbers only"), default: "0"),
                     Property("Password", "Password", flag("Hide the typed characters"), default: "0"),
@@ -1661,6 +1786,8 @@ public enum EditorSchema {
             Property("PeakDecay", "Peak falls", num(0, 10_000, step: 10, unit: "milliseconds"), default: "2500",
                      visibleWhen: main),
             Property("FFTIdx", "Slice", num(0, nil, step: 1), default: "0", visibleWhen: [.equals("Type", "FFT", "FFTFreq")]),
+            Property("OnAudioStartAction", "When audio starts", .action, visibleWhen: main),
+            Property("OnAudioEndAction", "When audio stops", .action, visibleWhen: main),
         ]
     }()
 
@@ -1712,16 +1839,22 @@ public enum EditorSchema {
         let k = key.trimmingCharacters(in: .whitespaces)
         let digits = k.reversed().prefix { $0.isASCII && $0.isNumber }.count
         let base = String(k.dropLast(digits)).lowercased()
-        let index: Int
-        if digits == 0 {
-            index = 1
-        } else {
-            let number = k.suffix(digits)
-            guard number.first != "0", let n = Int(number), n >= 2 else { return nil }
-            index = n
-        }
+        let number = k.suffix(digits)
+        let zeroPrefixed = digits > 0 && number.first == "0"
+        let parsedNumber = (!zeroPrefixed && digits > 0) ? Int(number) : nil
         for g in groups {
-            for p in g.properties where p.numbered && p.key.lowercased() == base { return (p, index) }
+            for p in g.properties where p.numbered {
+                let pLower = p.key.lowercased()
+                if pLower.hasSuffix("1") {
+                    if let n = parsedNumber, n >= 1, base + "1" == pLower {
+                        return (p, n)
+                    }
+                } else if pLower == base {
+                    if digits == 0 { return (p, 1) }
+                    if let n = parsedNumber, n >= 2 { return (p, n) }
+                    return nil
+                }
+            }
         }
         return nil
     }
@@ -1764,9 +1897,10 @@ public enum EditorSchema {
         let (h, v) = StringMeter.parseAlign(value)
         let name: String
         switch h {
-        case .left, .justify: name = "Left"
+        case .left: name = "Left"
         case .center: name = "Center"
         case .right: name = "Right"
+        case .justify: name = "Justify"
         }
         let suffix: String
         switch v {

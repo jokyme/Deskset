@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Tệp";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Lưu";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Đóng";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Cắt";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Sao chép";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Thu phóng";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Trợ giúp";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Đã có phiên bản mới sẵn sàng tải về cho máy Mac này.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Phiên bản";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Đóng lúc này. Lần kiểm tra hằng ngày tiếp theo có thể nhắc lại bạn.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skin";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Mở thư mục skin";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Mở nhật ký";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Gỡ lỗi";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Hãy chọn một skin đã tải trong cửa sổ Quản lý.";
 
+/* Manage window: button. */
+"Open Log" = "Mở nhật ký";
+
 /* Manage window: text. */
 "Save new layout" = "Lưu bố cục mới";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Thay thế";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Hủy";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Cài đặt chung";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Tắt kéo";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Đặt lại số liệu thống kê";
+/* Settings window: VoiceOver description. */
+"Theme" = "Giao diện";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Khả dụng khi Deskset chạy từ thư mục Ứng dụng.";
 
+/* Settings window: text. */
+"User interface" = "Giao diện người dùng";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Ngôn ngữ:";
 
+/* Settings window: label. */
+"Theme:" = "Chủ đề:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Khởi động:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Cập nhật:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kiểm tra mỗi ngày một lần và tự tải bản cập nhật về; bạn quyết định khi nào cài đặt.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Thu phóng mặc định:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Cập nhật:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kiểm tra mỗi ngày một lần và tự tải bản cập nhật về; bạn quyết định khi nào cài đặt.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Thư mục skin đã chọn";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Tên";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Phông chữ đi kèm các skin này (không cài đặt cho toàn hệ thống): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Cảnh báo";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset không kịp chuẩn bị hoặc thoát.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Tự động";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Sáng";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Tối";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Hiển thị giao diện ảo";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Đặt lại số liệu thống kê";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Sao chép tất cả";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Đang tải giao diện mạng…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Đang làm mới…";
+
+/* DebugInfoView: text. */
+"Display information" = "Thông tin màn hình";
+
+/* DebugInfoView: text. */
+"Network information" = "Thông tin mạng";
+
+/* DebugInfoView: text. */
+"Property" = "Thuộc tính";
+
+/* DebugInfoView: text. */
+"Value" = "Giá trị";
+
+/* DebugInfoView: text. */
+"No displays available." = "Không có màn hình nào khả dụng.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Không có giao diện mạng để hiển thị.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Bộ đo";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Biến";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Chỉ báo";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Theo dõi";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Làm mới khi tệp thay đổi";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Thêm mục theo dõi…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Sao chép tên";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Sao chép phạm vi";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Sao chép số";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Sao chép chuỗi";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Thêm mục theo dõi";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Chỉnh sửa bộ đo";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Sao chép giá trị";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Chỉnh sửa biến";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Sao chép loại";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Sao chép giới hạn";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Chỉnh sửa chỉ báo";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Chỉnh sửa mục theo dõi";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Xóa mục theo dõi";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Lọc…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Lọc bộ đo và biến";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Skin đang hoạt động";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Chuyển tới";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Bộ đo, biến và mục theo dõi của skin";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Số";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Chuỗi";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Công thức";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Thực thi";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Loại biểu thức:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Biểu thức:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Biểu thức theo dõi";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Kết quả theo dõi";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Nhật ký";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Plugin";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Màn hình";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Mạng";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Gỡ lỗi Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "Thời gian";
+
+/* DebugWindowController: text. */
+"Type" = "Loại";
+
+/* DebugWindowController: text. */
+"Message" = "Thông báo";
+
+/* DebugWindowController: text. */
+"Source" = "Nguồn";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Lỗi";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Thông báo";
+
+/* DebugWindowController: text. */
+"Log file" = "Tệp nhật ký";
+
+/* DebugWindowController: text. */
+"Start logging" = "Bắt đầu ghi nhật ký";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Dừng ghi nhật ký";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Xóa tệp nhật ký";
+
+/* DebugWindowController: text. */
+"Show log file" = "Hiển thị tệp nhật ký";
+
+/* DebugWindowController: button. */
+"Clear" = "Xóa";
+
+/* DebugWindowController: text. */
+"Author" = "Tác giả";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Tất cả các plugin được liệt kê đều được tích hợp sẵn trong Deskset và cập nhật cùng với ứng dụng. Phiên bản khớp với Deskset; các plugin bên ngoài hiện chưa được hỗ trợ.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (tích hợp sẵn)";

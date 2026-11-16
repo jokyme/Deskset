@@ -20,13 +20,24 @@ final class DebugLogTableView: NSTableView, NSMenuItemValidation {
 /// Diagnostics for loaded skins and the current desktop environment.
 final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     enum Tab: String, CaseIterable, Equatable {
-        case log = "Log", skins = "Skins", display = "Display", network = "Network", plugins = "Plugins"
+        case log = "Log", skins = "Skins", plugins = "Plugins", display = "Display", network = "Network"
+
+        var title: String {
+            switch self {
+            case .log: return L("Log")
+            case .skins: return L("Skins")
+            case .plugins: return L("Plugins")
+            case .display: return L("Display")
+            case .network: return L("Network")
+            }
+        }
+
         static func parse(_ raw: String?) -> Tab {
             switch (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "skin", "skins": return .skins
+            case "plugins": return .plugins
             case "display": return .display
             case "network": return .network
-            case "plugins": return .plugins
             default: return .log
             }
         }
@@ -58,12 +69,12 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
     private unowned let app: AppController
     private var isSessionOpen = false
     private(set) var selectedTab: Tab = .log
-    private let tabBar = NSSegmentedControl(labels: Tab.allCases.map(\.rawValue), trackingMode: .selectOne, target: nil, action: nil)
+    private let tabBar = NSSegmentedControl(labels: Tab.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
     private let tabContainer = NSView()
     private var tabViews: [Tab: NSView] = [:]
     let skinInspector: DebugSkinInspectorView
     let displayInfo = DebugInfoView(kind: .display)
-    let networkInfo = DebugInfoView(kind: .network)
+    let networkInfo: DebugInfoView
     private(set) var displayedLogs: [Log.Line] = []
     private(set) var lastSeenLogID: UInt64 = 0
     private(set) var filterError = true, filterWarning = true, filterNotice = true, filterDebug = true
@@ -80,15 +91,19 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
     init(app: AppController) {
         self.app = app
         skinInspector = DebugSkinInspectorView(app: app)
+        networkInfo = DebugInfoView(kind: .network, onResetStatistics: { [weak app] in
+            app?.system.resetNetworkStatistics()
+        })
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 570),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        w.title = "Debug Deskset"
+        w.title = L("Debug Deskset")
         w.minSize = NSSize(width: 680, height: 420)
         w.isReleasedWhenClosed = false
         w.tabbingMode = .disallowed
         w.center()
         if app.presentsWindows { w.setFrameAutosaveName("Deskset.Debug") }
         super.init(window: w)
+        AppTheme.register(w, app: app)
         w.delegate = self
         plugins = Self.loadRegisteredPlugins()
         buildUI()
@@ -121,11 +136,11 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
 
         let bottomBar = NSView()
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
-        let closeButton = NSButton(title: "Close", target: self, action: #selector(closeButtonClicked))
+        let closeButton = NSButton(title: L("Close"), target: self, action: #selector(closeButtonClicked))
         closeButton.keyEquivalent = "\u{1b}"
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(closeButton)
-        let helpButton = NSButton(title: "Help", target: self, action: #selector(openHelp))
+        let helpButton = NSButton(title: L("Help"), target: self, action: #selector(openHelp))
         helpButton.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(helpButton)
 
@@ -174,26 +189,31 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
 
     private func buildLogTab() -> NSView {
         let container = NSView()
-        configureTable(logTable, columns: [("type", "Type", 72, 60, 100), ("time", "Time", 104, 90, 140),
-                                          ("source", "Source", 160, 100, 280), ("message", "Message", 400, 180, 2000)],
+        configureTable(logTable, columns: [("type", L("Type"), 88, 72, 120), ("time", L("Time"), 104, 90, 140),
+                                          ("source", L("Source"), 160, 100, 280), ("message", L("Message"), 384, 180, 2000)],
                        allowsMultipleSelection: true)
         logMenu.autoenablesItems = false; logMenu.delegate = self
-        for title in ["Copy", "Copy all"] {
+        for title in [L("Copy"), L("Copy all")] {
             let item = NSMenuItem(title: title, action: #selector(copyMenuValue(_:)), keyEquivalent: "")
             item.target = self; logMenu.addItem(item)
         }
         logTable.menu = logMenu
         logTable.onCopy = { [weak self] in self?.copySelectedLogs() }
         logTable.canCopy = { [weak self] in self?.resolveLogMessagesForCopy() != nil }
-        typeButton.addItems(withTitles: ["Type", "Error", "Warning", "Notice", "Debug"])
+        typeButton.addItems(withTitles: [L("Type"), L("Error"), L("Warning"), L("Notice"), L("Debug")])
         typeButton.menu?.autoenablesItems = false
-        for item in typeButton.itemArray.dropFirst() {
+        for (offset, item) in typeButton.itemArray.dropFirst().enumerated() {
+            item.tag = offset + 1
             item.target = self; item.action = #selector(toggleType(_:)); item.state = .on
         }
-        fileButton.addItems(withTitles: ["Log file", "Start logging", "Stop logging", "Show log file", "Delete log file"])
+        fileButton.addItems(withTitles: [L("Log file"), L("Start logging"), L("Stop logging"),
+                                         L("Show log file"), L("Delete log file")])
         fileButton.menu?.autoenablesItems = false; fileButton.menu?.delegate = self
-        for item in fileButton.itemArray.dropFirst() { item.target = self; item.action = #selector(logFileAction(_:)) }
-        let clear = NSButton(title: "Clear", target: self, action: #selector(clearLogPanel))
+        for (offset, item) in fileButton.itemArray.dropFirst().enumerated() {
+            item.tag = offset + 1
+            item.target = self; item.action = #selector(logFileAction(_:))
+        }
+        let clear = NSButton(title: L("Clear"), target: self, action: #selector(clearLogPanel))
         let bar = NSStackView(views: [typeButton, fileButton, NSView(), clear])
         bar.orientation = .horizontal; bar.spacing = 8
         let scroll = wrapInScrollView(logTable)
@@ -209,20 +229,20 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
     }
     @objc private func toggleType(_ sender: NSMenuItem) {
         let enabled = sender.state != .on
-        switch sender.title {
-        case "Error": setLogFilter(error: enabled)
-        case "Warning": setLogFilter(warning: enabled)
-        case "Notice": setLogFilter(notice: enabled)
-        case "Debug": setLogFilter(debug: enabled)
+        switch sender.tag {
+        case 1: setLogFilter(error: enabled)
+        case 2: setLogFilter(warning: enabled)
+        case 3: setLogFilter(notice: enabled)
+        case 4: setLogFilter(debug: enabled)
         default: break
         }
     }
     @objc private func logFileAction(_ sender: NSMenuItem) {
-        switch sender.title {
-        case "Start logging": app.setFileLoggingEnabled(true)
-        case "Stop logging": app.setFileLoggingEnabled(false)
-        case "Show log file": Log.flush(); Workspace.edit(Log.fileURL)
-        case "Delete log file":
+        switch sender.tag {
+        case 1: app.setFileLoggingEnabled(true)
+        case 2: app.setFileLoggingEnabled(false)
+        case 3: Log.flush(); Workspace.edit(Log.fileURL)
+        case 4:
             do { try app.deleteLogFile() }
             catch { Log.write("Could not delete log file: \(error.localizedDescription)", level: .error) }
         default: break
@@ -235,16 +255,16 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
         configureTable(
             pluginsTable,
             columns: [
-                ("name", "Name", 240, 140, 380),
-                ("version", "Version", 140, 90, 220),
-                ("author", "Author", 320, 140, 500),
+                ("name", L("Name"), 240, 140, 380),
+                ("version", L("Version"), 140, 90, 220),
+                ("author", L("Author"), 320, 140, 500),
             ],
             allowsEmptySelection: true
         )
         let scroll = wrapInScrollView(pluginsTable)
 
         let note = NSTextField(
-            wrappingLabelWithString: "All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported."
+            wrappingLabelWithString: L("All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported.")
         )
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
@@ -423,10 +443,10 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
 
     static func formatLogType(_ level: SkinLogLevel) -> String {
         switch level {
-        case .error: return "Error"
-        case .warning: return "Warning"
-        case .notice: return "Notice"
-        case .debug: return "Debug"
+        case .error: return L("Error")
+        case .warning: return L("Warning")
+        case .notice: return L("Notice")
+        case .debug: return L("Debug")
         }
     }
 
@@ -436,6 +456,8 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
 
     static func loadRegisteredPlugins() -> [PluginInfo] {
         CorePlugins.register()
+        AudioPlugins.register()
+        MediaUIPlugins.register()
         let canonicalNames: [String: String] = [
             "actiontimer": "ActionTimer",
             "advancedcpu": "AdvancedCPU",
@@ -495,14 +517,16 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
             "windowmessage": "WindowMessagePlugin",
             "windowmessageplugin": "WindowMessagePlugin",
         ]
+        let builtInMeasureTypes = Set(MeasureRegistry.registeredMeasures.values.map(ObjectIdentifier.init))
         var uniqueNames = Set<String>()
-        for key in MeasureRegistry.registeredPlugins.keys {
+        for (key, type) in MeasureRegistry.registeredPlugins {
+            if builtInMeasureTypes.contains(ObjectIdentifier(type)) { continue }
             let display = canonicalNames[key.lowercased()] ?? key
             uniqueNames.insert(display)
         }
         return uniqueNames
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-            .map { PluginInfo(name: $0, version: "\(AppVersion.current) (bundled)", author: "jokyme") }
+            .map { PluginInfo(name: $0, version: L("%@ (bundled)", AppVersion.current), author: "jokyme") }
     }
 
     private func writeToPasteboard(_ string: String) {
@@ -517,10 +541,10 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
             for (item, value) in zip(menu.items, values) { item.representedObject = value; item.isEnabled = value != nil }
         } else if menu === fileButton.menu {
             let exists = FileManager.default.fileExists(atPath: Log.fileURL.path)
-            menu.item(withTitle: "Start logging")?.isEnabled = !Log.fileLoggingEnabled
-            menu.item(withTitle: "Stop logging")?.isEnabled = Log.fileLoggingEnabled
-            menu.item(withTitle: "Show log file")?.isEnabled = exists
-            menu.item(withTitle: "Delete log file")?.isEnabled = exists
+            menu.item(withTag: 1)?.isEnabled = !Log.fileLoggingEnabled
+            menu.item(withTag: 2)?.isEnabled = Log.fileLoggingEnabled
+            menu.item(withTag: 3)?.isEnabled = exists
+            menu.item(withTag: 4)?.isEnabled = exists
         }
     }
     func refreshLogFileMenu() {
@@ -539,8 +563,38 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate, NSTable
             let line = displayedLogs[row]
             switch key {
             case "type":
+                let symbolName: String
+                let tint: NSColor
+                switch line.level {
+                case .error: symbolName = "xmark.circle.fill"; tint = .systemRed
+                case .warning: symbolName = "exclamationmark.triangle.fill"; tint = .systemOrange
+                case .notice: symbolName = "info.circle"; tint = .secondaryLabelColor
+                case .debug: symbolName = "ant"; tint = .secondaryLabelColor
+                }
+                let cell = NSTableCellView()
+                let icon = NSImageView()
+                if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: Self.formatLogType(line.level)) {
+                    icon.image = image.withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
+                }
+                icon.contentTintColor = tint
                 label.stringValue = Self.formatLogType(line.level)
                 label.textColor = line.level == .error ? .systemRed : line.level == .warning ? .systemOrange : .labelColor
+                icon.translatesAutoresizingMaskIntoConstraints = false
+                label.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(icon)
+                cell.addSubview(label)
+                cell.imageView = icon
+                cell.textField = label
+                NSLayoutConstraint.activate([
+                    icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                    icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    icon.widthAnchor.constraint(equalToConstant: 13),
+                    icon.heightAnchor.constraint(equalToConstant: 13),
+                    label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 4),
+                    label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
+                    label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                ])
+                return cell
             case "time": label.stringValue = Self.formatLogTime(line.date); label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
             case "source": label.stringValue = line.source ?? "—"
             default: label.stringValue = line.message; label.toolTip = line.message

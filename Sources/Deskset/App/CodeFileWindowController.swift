@@ -40,6 +40,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = codeView
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes
             app?.state.updateEditor { $0.codeFontSize = min(max(Double(size), range.lowerBound), range.upperBound) }

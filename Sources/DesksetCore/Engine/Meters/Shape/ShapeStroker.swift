@@ -119,6 +119,26 @@ public enum ShapeStroker {
         return polygon([v, a, a + u * sa, b - w * sb, b])
     }
 
+    /// Clipped-miter square-off patches for an open polyline stroked with `LineJoin=Miter` beyond `limit`.
+    public static func clippedMiterPatches(polyline: [ShapePoint], width: Double, limit: Double) -> [ShapeSubpath] {
+        guard width > 0, width.isFinite else { return [] }
+        let h = width / 2
+        let clampedLimit = max(limit.isFinite ? limit : 10, 1)
+        var clean: [ShapePoint] = []
+        clean.reserveCapacity(polyline.count)
+        for p in polyline where clean.last.map({ $0.distance(to: p) > 1e-9 }) ?? true { clean.append(p) }
+        guard clean.count >= 3 else { return [] }
+        var patches: [ShapeSubpath] = []
+        for i in 1..<(clean.count - 1) {
+            guard let u = (clean[i] - clean[i - 1]).normalized,
+                  let w = (clean[i + 1] - clean[i]).normalized,
+                  let patch = clippedMiter(at: clean[i], incoming: u, outgoing: w, halfWidth: h,
+                                           limit: clampedLimit) else { continue }
+            patches.append(patch)
+        }
+        return patches
+    }
+
     // MARK: Bounds
 
     /// Bounds of everything the plan paints (the "widened" bounds): the body of every flattened edge (± half the

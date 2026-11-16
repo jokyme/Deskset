@@ -141,7 +141,7 @@ enum SkinZoomSelfTests {
 
     private static func selectionFlagTests(_ t: AppTestRunner) {
         for mode: SkinThreading in [.main, .engine] {
-            t.suite("App: skin zoom: \(mode.rawValue) selected flag bangs stay temporary and menus update saved values") {
+            t.suite("App: skin zoom: \(mode.rawValue) selected flag bangs and menu items are disabled and menus update saved values") {
                 guard let app = try AppSelfTest.makeApp(t, threading: mode) else { return }
                 try SkinWindowModelSelfTests.write(app, ["SelectedFlags": """
                 [Rainmeter]
@@ -162,17 +162,26 @@ enum SkinZoomSelfTests {
                     app.skinSelection.toggle(c)
                     t.check(c.facts.settings.effectiveDraggable)
                     t.check(!c.facts.settings.effectiveClickThrough && !c.facts.settings.effectiveKeepOnScreen)
-                    c.runtime.send(.execute("[!Draggable -1][!ClickThrough -1][!KeepOnScreen -1]", section: nil))
-                    t.check(AppSelfTest.spin(timeout: 30) {
-                        let settings = c.facts.settings
-                        return !settings.effectiveDraggable && settings.effectiveClickThrough && settings.effectiveKeepOnScreen
-                    }, "toggle bangs use the temporary effective values")
-                    t.check(c.window.ignoresMouseEvents, "a selected ClickThrough bang takes effect")
+                    let menu = app.skinMenu(for: c, includeCustomItems: false, discoverLibrary: false)
+                    let settingsSubmenu = menu.items.first { $0.title == L("Settings") }?.submenu
+                    let disabledTitles = [L("Draggable"), L("Click Through"), L("Keep on Screen")]
+                    for title in disabledTitles {
+                        t.check(settingsSubmenu?.items.first { $0.title == title }?.isEnabled == false,
+                                "\(title) menu item is disabled while selected")
+                    }
+                    t.check(settingsSubmenu?.items.first { $0.title == L("Save Position") }?.isEnabled == true,
+                            "Save Position remains enabled while selected")
+                    c.runtime.send(.execute("[!Draggable 0][!ClickThrough 1][!KeepOnScreen 1]", section: nil))
+                    _ = c.runtime.exclusive { _ in true }
+                    t.check(c.facts.settings.effectiveDraggable && !c.facts.settings.effectiveClickThrough
+                            && !c.facts.settings.effectiveKeepOnScreen,
+                            "selection ignores Draggable, ClickThrough and KeepOnScreen bangs")
+                    t.check(!c.window.ignoresMouseEvents, "ClickThrough bang does not apply while selected")
                     t.check(c.state.draggable && !c.state.clickThrough && !c.state.keepOnScreen,
                             "bangs do not overwrite the saved settings")
                     app.changeSettings(of: c) { $0.draggable = false; $0.keepOnScreen = true }
-                    t.check(!c.facts.settings.effectiveDraggable && c.facts.settings.effectiveClickThrough,
-                            "menu edits retain the temporary values until deselection")
+                    t.check(c.facts.settings.effectiveDraggable && !c.facts.settings.effectiveClickThrough,
+                            "menu edits retain selection behavior until deselection")
                     app.skinSelection.clear()
                     t.check(AppSelfTest.spin(timeout: 30) {
                         c.runtime.exclusive { _ in c.runtime.model.settings.isSelected == false } == true

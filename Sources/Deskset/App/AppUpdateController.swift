@@ -17,26 +17,34 @@ final class AppUpdateController {
     }
 
     static let checkInterval: TimeInterval = 24 * 60 * 60
+    static let initialCheckDelay: TimeInterval = 5 * 60
     let currentVersion: String
     private let state: AppState
     private let service: AppUpdateFetching
+    private let initialDelay: TimeInterval
     private let now: () -> Date
     /// Returns whether the notice could be shown. A busy modal window can defer automatic notices.
     var onNotice: ((Notice, Bool) -> Bool)?
     var onChange: (() -> Void)?
     private(set) var status: Status = .idle
     private(set) var availableRelease: AppRelease?
+    private var startupTimer: Timer?
+    private var startupDelayElapsed = false
     private var timer: Timer?
     private var started = false
     private var cancelRequest: (() -> Void)?
     private var generation = 0
     private var manualRequest = false
+    private var settingsObserver: NSObjectProtocol?
 
     init(state: AppState, service: AppUpdateFetching = GitHubAppUpdateService(),
-         currentVersion: String = AppVersion.current, now: @escaping () -> Date = { Date() }) {
+         currentVersion: String = AppVersion.current,
+         initialDelay: TimeInterval = AppUpdateController.initialCheckDelay,
+         now: @escaping () -> Date = { Date() }) {
         self.state = state
         self.service = service
         self.currentVersion = currentVersion
+        self.initialDelay = initialDelay
         self.now = now
         // Keep a previously announced update visible across launches, even while the daily request is throttled.
         // The canonical latest page works with both `v1.2.3` and `1.2.3` release tags.
@@ -48,11 +56,21 @@ final class AppUpdateController {
             availableRelease = release
             status = .available(release)
         }
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .desksetGlobalSettingsChanged, object: state, queue: .main
+        ) { [weak self] _ in
+            self?.syncConfiguration()
+        }
     }
 
-    deinit { timer?.invalidate(); cancelRequest?() }
+    deinit {
+        startupTimer?.invalidate()
+        timer?.invalidate()
+        cancelRequest?()
+        if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+    }
 
-    var automaticallyChecks: Bool { state.updates.automaticallyChecks }
+    var automaticallyChecks: Bool { state.updates.automaticallyChecks && !state.disablesAutoUpdate }
     var isChecking: Bool { status == .checking }
     var menuTitle: String { isChecking ? L("Checking for Updates…") : L("Check for Updates…") }
 
@@ -71,13 +89,30 @@ final class AppUpdateController {
     func start() {
         guard !started else { return }
         started = true
-        configureTimer()
         changed()
+        if initialDelay <= 0 {
+            completeStartupDelay()
+        } else {
+            startupDelayElapsed = false
+            startupTimer = scheduleTimer(interval: initialDelay, repeats: false,
+                                         tolerance: min(15, initialDelay / 10)) { $0.completeStartupDelay() }
+        }
+    }
+
+    private func completeStartupDelay() {
+        startupTimer?.invalidate()
+        startupTimer = nil
+        guard started else { return }
+        startupDelayElapsed = true
+        configureTimer()
         checkAutomaticallyIfDue()
     }
 
     func stop() {
         started = false
+        startupDelayElapsed = false
+        startupTimer?.invalidate()
+        startupTimer = nil
         timer?.invalidate()
         timer = nil
         cancelCheck()
@@ -85,20 +120,36 @@ final class AppUpdateController {
 
     func setAutomaticallyChecks(_ enabled: Bool) {
         state.updateUpdates { $0.automaticallyChecks = enabled }
-        if !enabled, isChecking, !manualRequest { cancelCheck() }
+        state.setDisableAutoUpdate(!enabled)
+        if !automaticallyChecks, isChecking, !manualRequest { cancelCheck() }
         configureTimer()
         changed()
-        if enabled, started { checkAutomaticallyIfDue() }
+        if automaticallyChecks, started, startupDelayElapsed { checkAutomaticallyIfDue() }
+    }
+
+    private func syncConfiguration() {
+        if !automaticallyChecks, isChecking, !manualRequest { cancelCheck() }
+        configureTimer()
+        changed()
+        if automaticallyChecks, started, startupDelayElapsed { checkAutomaticallyIfDue() }
     }
 
     private func configureTimer() {
         timer?.invalidate()
         timer = nil
-        guard started, automaticallyChecks else { return }
-        let timer = Timer(timeInterval: 60 * 60, repeats: true) { [weak self] _ in self?.checkAutomaticallyIfDue() }
-        timer.tolerance = 60
+        guard started, startupDelayElapsed, automaticallyChecks else { return }
+        timer = scheduleTimer(interval: 60 * 60, repeats: true, tolerance: 60) { $0.checkAutomaticallyIfDue() }
+    }
+
+    private func scheduleTimer(interval: TimeInterval, repeats: Bool, tolerance: TimeInterval,
+                               action: @escaping (AppUpdateController) -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: repeats) { [weak self] _ in
+            guard let self else { return }
+            action(self)
+        }
+        timer.tolerance = tolerance
         RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        return timer
     }
 
     func checkAutomaticallyIfDue() {

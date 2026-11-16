@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fail";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Salvesta";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Sulge";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Lõika";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Kopeeri";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Suumi";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Abi";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Selle Maci jaoks on allalaadimiseks valmis uus versioon.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Versioon";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Sulge praegu. Järgmine igapäevane kontroll võib teile uuesti meelde tuletada.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Kestad";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Ava kestade kaust";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Ava logi";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Silumine";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Valige aknas „Halda“ laaditud kest.";
 
+/* Manage window: button. */
+"Open Log" = "Ava logi";
+
 /* Manage window: text. */
 "Save new layout" = "Salvesta uus paigutus";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Asenda";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Tühista";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Üldine";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Keela lohistamine";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Lähtesta statistika";
+/* Settings window: VoiceOver description. */
+"Theme" = "Teema";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Saadaval, kui Deskset käivitatakse kaustast Rakendused.";
 
+/* Settings window: text. */
+"User interface" = "Kasutajaliides";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Keel:";
 
+/* Settings window: label. */
+"Theme:" = "Teema:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Käivitamine:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Uuendused:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kontrollib kord päevas ja laadib uuendused ise alla; millal need paigaldada, otsustate teie.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Vaikesuum:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Uuendused:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kontrollib kord päevas ja laadib uuendused ise alla; millal need paigaldada, otsustate teie.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Valitud kesta kaust";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Nimi";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Nende kestadega kaasas olevad fondid (ei paigaldata kogu süsteemile): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Hoiatus";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset ei jõudnud õigel ajal ettevalmistusi lõpetada ega väljuda.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automaatne";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Hele";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Tume";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Kuva virtuaalliidesed";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Lähtesta statistika";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Kopeeri kõik";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Võrguliideste laadimine…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Värskendamine…";
+
+/* DebugInfoView: text. */
+"Display information" = "Kuva teave";
+
+/* DebugInfoView: text. */
+"Network information" = "Võrguteave";
+
+/* DebugInfoView: text. */
+"Property" = "Atribuut";
+
+/* DebugInfoView: text. */
+"Value" = "Väärtus";
+
+/* DebugInfoView: text. */
+"No displays available." = "Kuvasid pole saadaval.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Võrguliideseid pole kuvada.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Mõõtmised";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Muutujad";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Näidikud";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Jälgimine";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Värskenda faili muutumisel";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Kest";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Lisa jälgimine…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Kopeeri nimi";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Kopeeri vahemik";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Kopeeri arv";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Kopeeri string";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Lisa jälgimine";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Muuda mõõtmist";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Kopeeri väärtus";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Muuda muutujat";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Kopeeri tüüp";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Kopeeri piirid";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Muuda näidikut";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Muuda jälgimist";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Kustuta jälgimine";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filter…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Filtreeri mõõtmisi ja muutujaid";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Aktiivne kest";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Hüppa asukohta";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Kesta mõõtmised, muutujad ja jälgimised";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Arv";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "String";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Valem";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Käivita";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Avaldise tüüp:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Avaldis:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Jälgitav avaldis";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Jälgimise tulemus";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Logi";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Pistikprogrammid";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Ekraan";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Võrk";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Deskseti silumine";
+
+/* DebugWindowController: text. */
+"Time" = "Aeg";
+
+/* DebugWindowController: text. */
+"Type" = "Tüüp";
+
+/* DebugWindowController: text. */
+"Message" = "Sõnum";
+
+/* DebugWindowController: text. */
+"Source" = "Allikas";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Viga";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Teade";
+
+/* DebugWindowController: text. */
+"Log file" = "Logifail";
+
+/* DebugWindowController: text. */
+"Start logging" = "Alusta logimist";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Peata logimine";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Kustuta logifail";
+
+/* DebugWindowController: text. */
+"Show log file" = "Kuva logifail";
+
+/* DebugWindowController: button. */
+"Clear" = "Tühjenda";
+
+/* DebugWindowController: text. */
+"Author" = "Autor";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Kõik loetletud pistikprogrammid on Deskseti sisse ehitatud ja neid uuendatakse koos rakendusega. Versioonid vastavad Desksetile; väliseid pistikprogramme praegu ei toetata.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (sisseehitatud)";

@@ -65,6 +65,7 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = L("About Deskset"); w.minSize = NSSize(width: 680, height: 360); w.isReleasedWhenClosed = false; w.center()
         super.init(window: w); w.delegate = self
+        AppTheme.register(w, app: app)
         guard let content = w.contentView else { return }
         let body = buildVersionTab()
         let close = NSButton(title: L("Close"), target: self, action: #selector(closeButtonClicked))

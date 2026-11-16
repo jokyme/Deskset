@@ -1547,11 +1547,16 @@ enum EditorStyle {
         case "rotator": return "dial.medium"
         case "button": return "hand.tap"
         case "bitmap": return "number.square"
+        case "svg": return "photo.on.rectangle"
+        case "textedit": return "character.cursor.ibeam"
         case "macglass": return "rectangle.on.rectangle"
         case "macsymbol": return "star.square"
-        case "calc", "time", "cpu", "memory", "netin", "netout", "nettotal", "freespace", "uptime", "nowplaying",
-             "script", "webparser", "plugin", "loop", "mediakey", "sysinfo", "registry", "recyclemanager",
-             "process", "ping", "fileview", "folderinfo", "inputtext", "audiolevel", "wifistatus", "hotkeys":
+        case "calc", "time", "cpu", "memory", "physicalmemory", "swapmemory", "netin", "netout", "nettotal",
+             "freediskspace", "freespace", "uptime", "nowplaying", "script", "webparser", "plugin", "loop",
+             "mediakey", "sysinfo", "registry", "recyclemanager", "process", "ping", "fileview", "folderinfo",
+             "inputtext", "audiolevel", "audio", "itunes", "dragdrop", "drag&drop", "power", "actiontimer",
+             "coretemp", "advancedcpu", "runcommand", "quote", "usagemonitor", "perfmon", "resmon", "speedfan",
+             "windowmessage", "mouse", "wifistatus", "hotkeys":
             return "gauge.medium"
         default:
             return "square.stack.3d.up"

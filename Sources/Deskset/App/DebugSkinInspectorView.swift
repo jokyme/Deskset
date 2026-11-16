@@ -23,15 +23,28 @@ private final class DebugInspectorRowView: NSTableRowView {
 
 final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDelegate,
                                     NSSearchFieldDelegate, NSMenuDelegate {
-    enum Group: String, CaseIterable { case measures = "Measures", variables = "Variables", watch = "Watch" }
+    enum Group: String, CaseIterable {
+        case measures = "Measures", variables = "Variables", meters = "Meters", watch = "Watch"
+
+        var title: String {
+            switch self {
+            case .measures: return L("Measures")
+            case .variables: return L("Variables")
+            case .meters: return L("Meters")
+            case .watch: return L("Watch")
+            }
+        }
+    }
     private enum Row {
-        case group(Group), measure(MeasureDebugItem), variable(VariableDebugItem), watch(DebugWatchResult)
+        case group(Group), measure(MeasureDebugItem), variable(VariableDebugItem), meter(MeterDebugItem),
+             watch(DebugWatchResult)
 
         var identity: String {
             switch self {
             case .group(let group): return "group:\(group.rawValue)"
             case .measure(let value): return "measure:\(value.name.lowercased())"
             case .variable(let value): return "variable:\(value.name.lowercased())"
+            case .meter(let value): return "meter:\(value.name.lowercased())"
             case .watch(let value): return "watch:\(value.id)"
             }
         }
@@ -50,12 +63,12 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
     private let consumerID = UUID()
     private let editorConsumerID = UUID()
     private let configPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let refreshCheck = NSButton(checkboxWithTitle: "Refresh on file change", target: nil, action: nil)
-    private let skinButton = NSButton(title: "Skin", target: nil, action: nil)
+    private let refreshCheck = NSButton(checkboxWithTitle: L("Refresh on file change"), target: nil, action: nil)
+    private let skinButton = NSButton(title: L("Skin"), target: nil, action: nil)
     private let table = DebugInspectorTableView()
     private let filterField = NSSearchField()
     private let jumpPopup = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let addWatchButton = NSButton(title: "Add watch…", target: nil, action: nil)
+    private let addWatchButton = NSButton(title: L("Add watch…"), target: nil, action: nil)
     private let contextMenu = NSMenu()
     private let fileRefresh = DebugFileRefresh()
     private var rows: [Row] = []
@@ -215,7 +228,8 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard isActive, window?.attachedSheet == nil else { return super.performKeyEquivalent(with: event) }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if event.keyCode == 96 || (modifiers.contains(.control) && event.charactersIgnoringModifiers?.lowercased() == "r") {
+        if event.keyCode == 96 || ((modifiers.contains(.control) || modifiers.contains(.command))
+                                    && event.charactersIgnoringModifiers?.lowercased() == "r") {
             refreshNow()
             return true
         }
@@ -263,16 +277,19 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         if let state = currentSkinState {
             let measures = state.measures.filter { matches([$0.name, $0.number, $0.string]) }
             let variables = state.variables.filter { matches([$0.name, $0.value]) }
+            let meters = state.meters.filter { matches([$0.name, $0.typeName, $0.frameText]) }
             if !measures.isEmpty { rows += [.group(.measures)] + measures.map { .measure($0) } }
             if !variables.isEmpty { rows += [.group(.variables)] + variables.map { .variable($0) } }
+            if !meters.isEmpty { rows += [.group(.meters)] + meters.map { .meter($0) } }
             if !state.watchResults.isEmpty { rows += [.group(.watch)] + state.watchResults.map { .watch($0) } }
         }
         table.reloadData()
         if let selection, let index = rows.firstIndex(where: { $0.identity == selection }) {
             table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         } else { table.deselectAll(nil) }
-        for group in Group.allCases {
-            jumpPopup.item(withTitle: group.rawValue)?.isEnabled = rows.contains { row in
+        for item in jumpPopup.itemArray.dropFirst() {
+            guard let group = item.representedObject as? Group else { continue }
+            item.isEnabled = rows.contains { row in
                 if case .group(let value) = row { return value == group }; return false
             }
         }
@@ -283,7 +300,8 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
     }
 
     @objc private func jumpToGroup(_ sender: NSMenuItem) {
-        guard let group = Group(rawValue: sender.title), let index = rows.firstIndex(where: {
+        guard let group = (sender.representedObject as? Group) ?? Group(rawValue: sender.title),
+              let index = rows.firstIndex(where: {
             if case .group(let candidate) = $0 { return candidate == group }; return false
         }) else { return }
         table.scrollRowToVisible(index)
@@ -298,6 +316,7 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         switch row {
         case .measure(let value): return value.string
         case .variable(let value): return value.value
+        case .meter(let value): return value.frameText
         case .watch(let value): return value.error ?? value.value ?? ""
         default: return nil
         }
@@ -307,6 +326,10 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         switch selectedRow(context: true) {
         case .measure(let value): addWatch(DebugWatchExpression(kind: .string, text: "[\(value.name)]"))
         case .variable(let value): addWatch(DebugWatchExpression(kind: .string, text: "#\(value.name)#"))
+        case .meter(let value):
+            if let location = value.location {
+                CodeEditorRouter.open(file: location.file, line: location.line, app: app)
+            }
         default: break
         }
     }
@@ -370,6 +393,7 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
             self.editor = nil
         })
         editor = newEditor
+        AppTheme.register(newEditor.window, app: app)
         if app.presentsWindows { newEditor.show(relativeTo: window) } else { newEditor.startPreviewing() }
     }
 
@@ -396,22 +420,31 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         }
         switch selectedRow(context: true) {
         case .measure(let value):
-            item("Copy name", .copy(value.name))
-            item("Copy range", .copy(value.range))
-            item("Copy number", .copy(value.number))
-            item("Copy string", .copy(value.string))
+            item(L("Copy name"), .copy(value.name))
+            item(L("Copy range"), .copy(value.range))
+            item(L("Copy number"), .copy(value.number))
+            item(L("Copy string"), .copy(value.string))
             menu.addItem(.separator())
-            item("Add watch", .add("[\(value.name)]"))
-            if let location = value.location { item("Edit measure", .source(location)) }
+            item(L("Add watch"), .add("[\(value.name)]"))
+            if let location = value.location { item(L("Edit measure"), .source(location)) }
         case .variable(let value):
-            item("Copy value", .copy(value.value))
+            item(L("Copy value"), .copy(value.value))
             menu.addItem(.separator())
-            item("Add watch", .add("#\(value.name)#"))
+            item(L("Add watch"), .add("#\(value.name)#"))
+            if let location = value.location { item(L("Edit variable"), .source(location)) }
+        case .meter(let value):
+            item(L("Copy name"), .copy(value.name))
+            item(L("Copy type"), .copy(value.typeName))
+            item(L("Copy bounds"), .copy(value.frameText))
+            if let location = value.location {
+                menu.addItem(.separator())
+                item(L("Edit meter"), .source(location))
+            }
         case .watch(let value):
-            item("Copy value", .copy(value.error ?? value.value ?? ""))
+            item(L("Copy value"), .copy(value.error ?? value.value ?? ""))
             menu.addItem(.separator())
-            item("Edit watch", .edit(value.expression))
-            item("Delete watch", .delete(value.id))
+            item(L("Edit watch"), .edit(value.expression))
+            item(L("Delete watch"), .delete(value.id))
         default: break
         }
     }
@@ -471,7 +504,7 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         label.stringValue = ""
         switch rows[index] {
         case .group(let group):
-            if column == "name" { label.stringValue = group.rawValue; label.font = .boldSystemFont(ofSize: 12) }
+            if column == "name" { label.stringValue = group.title; label.font = .boldSystemFont(ofSize: 12) }
         case .measure(let value):
             switch column {
             case "name": label.stringValue = value.name
@@ -483,6 +516,14 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         case .variable(let value):
             if column == "name" { label.stringValue = value.name }
             if column == "string" { label.stringValue = value.displayValue }
+        case .meter(let value):
+            switch column {
+            case "name": label.stringValue = value.name
+            case "number": label.stringValue = value.typeName
+            case "string": label.stringValue = value.frameText
+            default: break
+            }
+            if value.hidden { label.textColor = .tertiaryLabelColor }
         case .watch(let result):
             if column == "name" { label.stringValue = SkinDebugState.truncateForDisplay(result.expression.text) }
             let valueColumn = result.expression.kind == .formula ? "number" : "string"
@@ -501,15 +542,16 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         skinButton.action = #selector(showSkinMenu(_:))
         addWatchButton.target = self
         addWatchButton.action = #selector(addWatchClicked(_:))
-        filterField.placeholderString = "Filter…"
+        filterField.placeholderString = L("Filter…")
         filterField.delegate = self
         filterField.sendsSearchStringImmediately = true
-        filterField.setAccessibilityLabel("Filter measures and variables")
-        configPopup.setAccessibilityLabel("Active skin")
-        jumpPopup.addItem(withTitle: "Jump to")
+        filterField.setAccessibilityLabel(L("Filter measures and variables"))
+        configPopup.setAccessibilityLabel(L("Active skin"))
+        jumpPopup.addItem(withTitle: L("Jump to"))
         jumpPopup.menu?.autoenablesItems = false
         for group in Group.allCases {
-            let item = NSMenuItem(title: group.rawValue, action: #selector(jumpToGroup(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: group.title, action: #selector(jumpToGroup(_:)), keyEquivalent: "")
+            item.representedObject = group
             item.target = self
             item.isEnabled = false
             jumpPopup.menu?.addItem(item)
@@ -523,13 +565,13 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.target = self
         table.doubleAction = #selector(doubleClickRow(_:))
-        table.setAccessibilityLabel("Skin measures, variables and watches")
+        table.setAccessibilityLabel(L("Skin measures, variables and watches"))
         table.onCopy = { [weak self] in
             guard let self, let value = self.copyValue(for: self.selectedRow()) else { return }
             self.copyToClipboard(value)
         }
         table.canCopy = { [weak self] in self?.copyValue(for: self?.selectedRow()) != nil }
-        for (id, title, width) in [("name", "Name", 200.0), ("number", "Number", 120.0), ("string", "String", 360.0)] {
+        for (id, title, width) in [("name", L("Name"), 200.0), ("number", L("Number"), 120.0), ("string", L("String"), 360.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title
             column.width = width

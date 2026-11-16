@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fichier";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Enregistrer";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Fermer";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Couper";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Copier";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Réduire/agrandir";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Aide";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Une nouvelle version est prête à être téléchargée pour ce Mac.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Version";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Fermer pour l’instant. La prochaine vérification quotidienne pourra vous le rappeler.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skins";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Ouvrir le dossier des skins";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Ouvrir le journal";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Débogage";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Sélectionnez un skin chargé dans la fenêtre Gérer.";
 
+/* Manage window: button. */
+"Open Log" = "Ouvrir le journal";
+
 /* Manage window: text. */
 "Save new layout" = "Enregistrer une nouvelle disposition";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Remplacer";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Annuler";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Général";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Désactiver le déplacement";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Réinitialiser les statistiques";
+/* Settings window: VoiceOver description. */
+"Theme" = "Thème";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Disponible lorsque Deskset est exécuté depuis le dossier Applications.";
 
+/* Settings window: text. */
+"User interface" = "Interface utilisateur";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Langue :";
 
+/* Settings window: label. */
+"Theme:" = "Thème :";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Démarrage :";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Mises à jour :";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset vérifie une fois par jour et télécharge lui-même les mises à jour ; vous choisissez quand les installer.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Zoom par défaut :";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Mises à jour :";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset vérifie une fois par jour et télécharge lui-même les mises à jour ; vous choisissez quand les installer.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Dossier du skin sélectionné";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Nom";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Polices fournies avec ces skins (non installées pour tout le système) : %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Avertissement";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset n’a pas terminé sa préparation ou sa fermeture à temps.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automatique";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Clair";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Sombre";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Afficher les interfaces virtuelles";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Réinitialiser les statistiques";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Tout copier";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Chargement des interfaces réseau…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Actualisation…";
+
+/* DebugInfoView: text. */
+"Display information" = "Informations d’affichage";
+
+/* DebugInfoView: text. */
+"Network information" = "Informations réseau";
+
+/* DebugInfoView: text. */
+"Property" = "Propriété";
+
+/* DebugInfoView: text. */
+"Value" = "Valeur";
+
+/* DebugInfoView: text. */
+"No displays available." = "Aucun écran disponible.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Aucune interface réseau à afficher.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Mesures";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Variables";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Compteurs";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Surveillance";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Actualiser si le fichier change";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Ajouter une surveillance…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Copier le nom";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Copier la plage";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Copier le nombre";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Copier la chaîne";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Ajouter une surveillance";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Modifier la mesure";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Copier la valeur";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Modifier la variable";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Copier le type";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Copier les limites";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Modifier le compteur";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Modifier la surveillance";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Supprimer la surveillance";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filtrer…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Filtrer les mesures et variables";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Skin actif";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Aller à";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Mesures, variables et surveillances du skin";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Nombre";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Chaîne";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Formule";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Exécuter";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Type d’expression :";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Expression :";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Expression surveillée";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Résultat surveillé";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Journal";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Plug-ins";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Écran";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Réseau";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Déboguer Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "Heure";
+
+/* DebugWindowController: text. */
+"Type" = "Type";
+
+/* DebugWindowController: text. */
+"Message" = "Message";
+
+/* DebugWindowController: text. */
+"Source" = "Source";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Erreur";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Avis";
+
+/* DebugWindowController: text. */
+"Log file" = "Fichier journal";
+
+/* DebugWindowController: text. */
+"Start logging" = "Démarrer la journalisation";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Arrêter la journalisation";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Supprimer le fichier journal";
+
+/* DebugWindowController: text. */
+"Show log file" = "Afficher le fichier journal";
+
+/* DebugWindowController: button. */
+"Clear" = "Effacer";
+
+/* DebugWindowController: text. */
+"Author" = "Auteur";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Tous les plug-ins répertoriés sont intégrés à Deskset et mis à jour avec l’app. Les versions correspondent à Deskset ; les plug-ins externes ne sont pas pris en charge pour le moment.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (intégré)";

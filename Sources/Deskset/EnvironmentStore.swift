@@ -71,9 +71,12 @@ final class EnvironmentStore {
                                                appearance: MacAppearance.current.value(),
                                                visible: visible, zoomFactor: zoomFactor)
         env.zPosition = zPosition
-        if autoSelectScreen, let frame = windowFrame, frame.width > 1 || frame.height > 1,
+        if let frame = windowFrame, frame.width > 1 || frame.height > 1,
            let index = WindowGeometry.screenIndex(for: frame, screens: screens), index < env.screens.count {
-            env.currentScreen = index
+            env.activeScreen = index
+            if autoSelectScreen {
+                env.currentScreen = index
+            }
         }
         return env
     }

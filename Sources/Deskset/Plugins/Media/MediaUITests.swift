@@ -1791,5 +1791,69 @@ enum MediaUITests {
                 }
             }
         }
+
+        t.suite("App: MediaUI local WebP/AVIF folder covers, Ogg Vorbis picture, and Spotify OpenPlayer kept") {
+            let root = t.temporaryDirectory("mediaui-local-art")
+            let albumDir = root.appendingPathComponent("Album", isDirectory: true)
+            try FileManager.default.createDirectory(at: albumDir, withIntermediateDirectories: true)
+
+            // 1. Folder .webp cover fallback
+            let webpBytes = Data([0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50])
+            let songA = albumDir.appendingPathComponent("track.flac")
+            try Data().write(to: songA)
+            let coverWebp = albumDir.appendingPathComponent("cover.webp")
+            try webpBytes.write(to: coverWebp)
+            t.equal(NowPlayingCoverCache.localArtwork(forFile: songA.path), webpBytes, "reads folder cover.webp")
+
+            // 2. Folder .avif cover fallback
+            try FileManager.default.removeItem(at: coverWebp)
+            let avifBytes = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66])
+            let folderAvif = albumDir.appendingPathComponent("folder.avif")
+            try avifBytes.write(to: folderAvif)
+            t.equal(NowPlayingCoverCache.localArtwork(forFile: songA.path), avifBytes, "reads folder.avif")
+            try FileManager.default.removeItem(at: folderAvif)
+
+            // 3. Embedded Ogg Vorbis METADATA_BLOCK_PICTURE
+            let pngBytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            func u32BE(_ v: UInt32) -> Data { Data([UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)]) }
+            func u32LE(_ v: UInt32) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]) }
+            var flacBlock = Data()
+            flacBlock += u32BE(3) // front cover
+            let mime = Data("image/png".utf8)
+            flacBlock += u32BE(UInt32(mime.count)) + mime
+            flacBlock += u32BE(0) // description
+            flacBlock += u32BE(0) + u32BE(0) + u32BE(0) + u32BE(0)
+            flacBlock += u32BE(UInt32(pngBytes.count)) + pngBytes
+            let commentEntry = Data("METADATA_BLOCK_PICTURE=\(flacBlock.base64EncodedString())".utf8)
+            var commentPacket = Data([0x03]) + Data("vorbis".utf8)
+            commentPacket += u32LE(0) + u32LE(1) + u32LE(UInt32(commentEntry.count)) + commentEntry
+            func oggPage(packet: Data, seq: UInt32) -> Data {
+                var segs: [UInt8] = []
+                var rem = packet.count
+                while rem >= 255 { segs.append(255); rem -= 255 }
+                segs.append(UInt8(rem))
+                var page = Data("OggS".utf8) + Data([0, 0]) + Data(repeating: 0, count: 8)
+                page += u32LE(1) + u32LE(seq) + u32LE(0)
+                page.append(UInt8(segs.count))
+                page.append(contentsOf: segs)
+                page += packet
+                return page
+            }
+            let oggURL = albumDir.appendingPathComponent("song.ogg")
+            var oggData = oggPage(packet: Data([0x01]) + Data("vorbis".utf8) + Data(repeating: 0, count: 23), seq: 0)
+            oggData += oggPage(packet: commentPacket, seq: 1)
+            try oggData.write(to: oggURL)
+            t.equal(NowPlayingCoverCache.localArtwork(forFile: oggURL.path), pngBytes,
+                    "decodes Ogg Vorbis METADATA_BLOCK_PICTURE")
+
+            // 4. Spotify player launch/quit commands remain supported on macOS
+            let spotifySnap = NowPlayingSnapshot(app: .spotify)
+            t.equal(NowPlayingRequest.nowPlaying("OpenPlayer").flatMap { MediaPlayerCommand.resolve($0, spotifySnap, now: 0) },
+                    .open)
+            t.equal(NowPlayingRequest.nowPlaying("ClosePlayer").flatMap { MediaPlayerCommand.resolve($0, spotifySnap, now: 0) },
+                    .quit)
+            t.equal(NowPlayingRequest.nowPlaying("TogglePlayer").flatMap { MediaPlayerCommand.resolve($0, spotifySnap, now: 0) },
+                    .toggleOpen)
+        }
     }
 }

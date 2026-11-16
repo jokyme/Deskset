@@ -433,9 +433,9 @@ func runIniTests(_ t: TestRunner) {
     }
 
     t.suite("Ini: writer value and name handling") {
-        // Line breaks cannot be stored in a value.
+        // Line breaks in !WriteKeyValue become #CRLF# so multiline values round-trip cleanly.
         let nl = try IniWriter.updating("[S]\n", value: "a\nb\r\nc\rd", key: "K", section: "S")
-        t.equal(nl, "[S]\nK=a b c d\n")
+        t.equal(nl, "[S]\nK=a#CRLF#b#CRLF#c#CRLF#d\n")
         // Leading/trailing blanks survive via quotes; the reader gets the exact value back.
         let padded = try IniWriter.updating("[S]\n", value: " - ", key: "Sep", section: "S")
         t.equal(padded, "[S]\nSep=\" - \"\n")
@@ -774,7 +774,7 @@ func runIniTests(_ t: TestRunner) {
             let key = names[rnd(names.count)], section = names[rnd(names.count)], value = values[rnd(values.count)]
             guard let out = try? IniWriter.updating(text, value: value, key: key, section: section) else { continue }
             written += 1
-            var expected = value.replacingOccurrences(of: "\n", with: " ")
+            var expected = value.replacingOccurrences(of: "\n", with: "#CRLF#")
             if let f = expected.unicodeScalars.first, let l = expected.unicodeScalars.last,
                f == " " || f == "\t" || l == " " || l == "\t" {
                 // written in protective quotes → read back unchanged

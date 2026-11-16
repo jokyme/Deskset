@@ -14,6 +14,7 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
     let primary: NSButton = MaintenanceActionButton(title: L("Retry"), target: nil, action: nil)
     let secondary: NSButton = MaintenanceActionButton(title: L("Cancel"), target: nil, action: nil)
     let manualDownload: NSButton = MaintenanceActionButton(title: L("Download Manually…"), target: nil, action: nil)
+    var onCancelVersion: ((AppRelease) -> Void)?
     private let presentsWindows: Bool
     private let service: AppUpdateFetching
     private let downloader: AppUpdateDownloading
@@ -152,7 +153,9 @@ final class AppUpdateFlow: NSWindowController, NSWindowDelegate {
 
     @objc func dismiss() {
         guard phase != .preparing else { return }
+        let cancelledRelease = phase != .failed ? release : nil
         if phase != .ready { cancelAndCleanUp() }
+        if let cancelledRelease { onCancelVersion?(cancelledRelease) }
         // Close emits willClose so AppActivation releases the temporary Dock/menu-bar presence.
         // The window is retained and a Ready payload remains available when the user comes back.
         window?.close()

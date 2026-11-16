@@ -137,10 +137,14 @@ public struct RmskinManifest: Equatable {
     /// package ("Rainmeter will not install the skin on a system that does not meet the requirements"); Deskset only
     /// warns, since the skins may not need anything newer.
     public var requiresNewerRainmeter: Bool {
-        let minimum = minimumRainmeter.trimmingCharacters(in: .whitespaces)
+        RmskinManifest.requiresNewerRainmeter(minimumRainmeter)
+    }
+
+    public static func requiresNewerRainmeter(_ version: String) -> Bool {
+        let minimum = version.trimmingCharacters(in: .whitespaces)
         guard !minimum.isEmpty else { return false }
-        let release = RmskinManifest.versionComponents(minimum).prefix(3).map(String.init).joined(separator: ".")
-        return !RmskinManifest.version(RmskinManifest.compatibleRainmeterVersion, isAtLeast: release)
+        let release = versionComponents(minimum).prefix(3).map(String.init).joined(separator: ".")
+        return !Self.version(compatibleRainmeterVersion, isAtLeast: release)
     }
 
     public static func versionComponents(_ version: String) -> [Int] {

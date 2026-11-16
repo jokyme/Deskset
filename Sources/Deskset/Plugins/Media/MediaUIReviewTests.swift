@@ -48,6 +48,20 @@ enum MediaUIReviewTests {
             noWidth.x = 1e300
             let w = InputTextPanelPrompt.frame(noWidth, skinFrame: skinFrame, skinWidth: .nan, lineHeight: 16).width
             t.equal(w, 40, "a missing W with a hostile X or skin width falls back to the minimum")
+
+            var zoomed = InputTextSettings()
+            zoomed.x = 10
+            zoomed.y = 20
+            zoomed.width = 100
+            zoomed.height = 30
+            zoomed.fontSize = 12
+            let zoomedFrame = InputTextPanelPrompt.frame(zoomed, skinFrame: skinFrame, skinWidth: 300, lineHeight: 18,
+                                                         zoomFactor: 2.0)
+            t.equal(zoomedFrame, CGRect(x: 120, y: 600, width: 200, height: 60),
+                    "InputText X, Y, W, H scale with skin zoom factor")
+            let baseFontSize = InputTextPanelPrompt.font(zoomed, zoomFactor: 1.0).pointSize
+            t.equal(InputTextPanelPrompt.font(zoomed, zoomFactor: 2.0).pointSize, baseFontSize * 2.0,
+                    "InputText fontSize scales with skin zoom factor")
         }
     }
 

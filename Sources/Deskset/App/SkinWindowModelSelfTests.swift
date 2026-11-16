@@ -556,6 +556,14 @@ enum SkinWindowModelSelfTests {
             SkinView.deliverFileDrag(c, .entered, files: ["/tmp/demo.txt"], x: 20, y: 20)
             SkinView.deliverFileDrag(c, .dropped, files: ["/tmp/demo.txt"], x: 20, y: 20)
             t.equal(c.skin.variable("DroppedFile"), "/tmp/demo.txt", "DragDropMeasure received dropped file from SkinView")
+
+            // 7. Unsupported SyntaxVersion and AppVersion fail cleanly without leaving an active window
+            try write(app, [
+                "BadSyntax": "[Rainmeter]\nSyntaxVersion=2.5\n[M]\nMeter=String\nText=no\n",
+                "FutureApp": "[Rainmeter]\nAppVersion=6000000\n[M]\nMeter=String\nText=no\n",
+            ])
+            t.check(app.activate(config: "Model\\BadSyntax", file: nil) == nil, "unsupported SyntaxVersion fails to activate")
+            t.check(app.activate(config: "Model\\FutureApp", file: nil) == nil, "unsupported AppVersion fails to activate")
         }
     }
 

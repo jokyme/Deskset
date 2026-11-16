@@ -18,12 +18,13 @@ enum StudioCodeWords {
             let shows = m.rawOption("MeasureName").map { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? false
             return shows ? "number" : "text"
         case "bar": return "bar"
-        case "image", "bitmap": return "picture"
+        case "image", "bitmap", "svg": return "picture"
         case "line", "histogram": return "graph"
         case "roundline": return "ring"
         case "rotator": return "hand"
         case "button": return "button"
         case "shape": return "shape"
+        case "textedit": return "text"
         default: return "part"
         }
     }

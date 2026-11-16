@@ -182,7 +182,8 @@ does not restore its previous playback queue.
   ≤ 10 MB, 15 s timeout) is written to `~/Library/Caches/Deskset/NowPlaying/cover-<player>-<track id>.<jpg|png|…>`; a
   new file name per track (so Image meters never keep a stale cached picture) and older covers of that player are
   deleted. "" while there is no cover, so `Substitute="":"#@#NoCover.png"` works. Covers are fetched only while at
-  least one measure of type Cover exists.
+  least one measure of type Cover exists. Rainmeter 5.0 `.webp`, `.avif`, and `.ogg` cover containers/extensions
+  (including embedded artwork bytes and `.webp`/`.avif` ImageIO decoding) are supported alongside JPEG and PNG.
   - Local files: Music's artwork, asked for as soon as the track is seen.
   - Tracks streamed from Apple Music (no file): Music's scripting interface is no reliable source for them — their
     artwork arrives seconds late or not at all, and right after a track change Music often still hands out the
@@ -270,6 +271,8 @@ does not restore its previous playback queue.
   (position 0–100 %, volume 0–100, rating 0–5); relative values use the current state; arguments may be formulas
   `(…)`. SetRepeat 1 = repeat all; -1 toggles off ↔ all. Spotify: Stop = pause (Spotify has no stop), SetRating is
   ignored. OpenPlayer launches / activates the player, ClosePlayer quits it politely, TogglePlayer does either.
+  (While Rainmeter 5.0 dropped `OpenPlayer` / `ClosePlayer` / `TogglePlayer` from the built-in Windows Spotify plugin,
+  Deskset intentionally preserves AppleScript / `NSWorkspace` player-launch control for `PlayerName=Spotify` on macOS.)
   Judgment: playback commands never launch a closed player (only OpenPlayer/TogglePlayer do). After a command the
   player is polled again after 0.25 s. An unknown command logs a warning.
   Right before a command, Deskset checks again which players are running (NSRunningApplication, no Apple Event), so a

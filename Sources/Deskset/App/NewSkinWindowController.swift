@@ -79,6 +79,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         window.center()
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         buildInterface()
         try reload()
     }

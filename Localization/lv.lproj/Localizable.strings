@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fails";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Saglabāt";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Aizvērt";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Izgriezt";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Kopēt";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Tālummaiņa";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Palīdzība";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Šim Mac datoram ir gatava lejupielādei jauna versija.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Versija";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Pagaidām aizvērt. Nākamajā ikdienas pārbaudē jums var atgādināt vēlreiz.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Apvalki";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Atvērt apvalku mapi";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Atvērt žurnālu";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Atkļūdošana";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Logā „Pārvaldīt” atlasiet ielādētu apvalku.";
 
+/* Manage window: button. */
+"Open Log" = "Atvērt žurnālu";
+
 /* Manage window: text. */
 "Save new layout" = "Saglabāt jaunu izkārtojumu";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Aizstāt";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Atcelt";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Vispārīgi";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Atspējot vilkšanu";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Atiestatīt statistiku";
+/* Settings window: VoiceOver description. */
+"Theme" = "Motīvs";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Pieejams, kad Deskset tiek palaista no mapes „Lietotnes”.";
 
+/* Settings window: text. */
+"User interface" = "Lietotāja saskarne";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Valoda:";
 
+/* Settings window: label. */
+"Theme:" = "Motīvs:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Startēšana:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Atjauninājumi:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset pārbauda reizi dienā un pati lejupielādē atjauninājumus; kad tos instalēt, izlemjat jūs.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Noklusējuma tālummaiņa:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Atjauninājumi:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset pārbauda reizi dienā un pati lejupielādē atjauninājumus; kad tos instalēt, izlemjat jūs.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Atlasītā apvalka mape";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Nosaukums";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Šiem apvalkiem pievienotie fonti (netiek instalēti visai sistēmai): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Brīdinājums";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset nepaspēja laikus sagatavoties vai iziet.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automātiski";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Gaišs";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Tumšs";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Rādīt virtuālās saskarnes";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Atiestatīt statistiku";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Kopēt visu";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Ielādē tīkla saskarnes…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Atsvaidzina…";
+
+/* DebugInfoView: text. */
+"Display information" = "Displeja informācija";
+
+/* DebugInfoView: text. */
+"Network information" = "Tīkla informācija";
+
+/* DebugInfoView: text. */
+"Property" = "Rekvizīts";
+
+/* DebugInfoView: text. */
+"Value" = "Vērtība";
+
+/* DebugInfoView: text. */
+"No displays available." = "Nav pieejamu displeju.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Nav tīkla saskarņu, ko parādīt.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Mērījumi";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Mainīgie";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Mērītāji";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Novērošana";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Atsvaidzināt pēc faila izmaiņām";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Apvalks";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Pievienot novērošanu…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Kopēt nosaukumu";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Kopēt diapazonu";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Kopēt skaitli";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Kopēt virkni";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Pievienot novērošanu";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Rediģēt mērījumu";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Kopēt vērtību";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Rediģēt mainīgo";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Kopēt tipu";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Kopēt robežas";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Rediģēt mērītāju";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Rediģēt novērošanu";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Dzēst novērošanu";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filtrs…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Filtrēt mērījumus un mainīgos";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Aktīvais apvalks";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Pāriet uz";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Apvalka mērījumi, mainīgie un novērošanas";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Skaitlis";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Virkne";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Formula";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Izpildīt";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Izteiksmes tips:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Izteiksme:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Novērošanas izteiksme";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Novērošanas rezultāts";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Žurnāls";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Spraudņi";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Displejs";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Tīkls";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Deskset atkļūdošana";
+
+/* DebugWindowController: text. */
+"Time" = "Laiks";
+
+/* DebugWindowController: text. */
+"Type" = "Tips";
+
+/* DebugWindowController: text. */
+"Message" = "Ziņojums";
+
+/* DebugWindowController: text. */
+"Source" = "Avots";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Kļūda";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Paziņojums";
+
+/* DebugWindowController: text. */
+"Log file" = "Žurnāla fails";
+
+/* DebugWindowController: text. */
+"Start logging" = "Sākt žurnalēšanu";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Apturēt žurnalēšanu";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Dzēst žurnāla failu";
+
+/* DebugWindowController: text. */
+"Show log file" = "Rādīt žurnāla failu";
+
+/* DebugWindowController: button. */
+"Clear" = "Notīrīt";
+
+/* DebugWindowController: text. */
+"Author" = "Autors";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Visi norādītie spraudņi ir iebūvēti Deskset un tiek atjaunināti kopā ar lietotni. Versijas atbilst Deskset; ārējie spraudņi pašlaik netiek atbalstīti.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (iebūvēts)";

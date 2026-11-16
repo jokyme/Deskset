@@ -87,8 +87,18 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Lua `SKIN:FadeWindow`: the alpha (0…255) the window was faded to, and the saved AlphaValue it stands in for.
     /// It is not saved: a refresh, or any change of the saved AlphaValue (!SetTransparency, the menu, the Manage
     /// window), ends it.
+    struct ActiveFade: Equatable {
+        var start: CGFloat
+        var target: CGFloat
+        var startTime: TimeInterval
+        var duration: TimeInterval
+    }
+
     private(set) var fadedAlpha: (value: Int, base: Int)?
-    private var fadeGeneration = 0
+    private(set) var fadeGeneration = 0
+    private(set) var activeFade: ActiveFade?
+    /// Monotonic clock used to interpolate in-flight fade interruptions (injected in self-tests).
+    var fadeNow: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
 
     /// The last of the skin's own window changes applied here (`SkinWindowFacts.modelSequence`).
     private var appliedModelSequence = 0
@@ -410,6 +420,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// skin has drawn (a skin that started hidden draws its first frame here). The headless self-tests call it to see
     /// what the window would show: without presented windows nothing is ordered in.
     func orderIn(alpha: CGFloat) {
+        activeFade = nil
         runtime.send(.firstFrame)
         willOrderIn?()
         guard app.presentsWindows else { return }
@@ -425,6 +436,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// frame, until that copy settles (`closeReplacedWindow`). Its InputText boxes close now.
     func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil, keepsWindow: Bool = false) {
         guard !isStopped, !isClosing else { return }
+        app.mouseCapture.clear(for: self)
         app.skinSelection.remove(self)
         app.skinToolTips.hide(for: view)
         startWaiters = []
@@ -447,6 +459,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         let window = self.window
         window.delegate = nil
         fadeGeneration += 1
+        let start = activeFade != nil ? currentFadeAlpha() : nil
+        activeFade = nil
         let duration = fadeOut && window.isVisible && app.presentsWindows
             ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
         let content = self.content, companions = self.companions!
@@ -463,6 +477,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             content.teardown()
             return
         }
+        if let start { window.alphaValue = start }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             window.animator().alphaValue = 0
@@ -556,6 +571,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         fadedAlpha = (to, state.alphaValue)
         defer { publishFacts() }
         guard !isHiddenByBang else { return }
+        activeFade = nil
         let duration = SkinVisibility.fadeSeconds(state.fadeDuration)
         if duration > 0 && app.presentsWindows && window.isVisible { window.alphaValue = CGFloat(from) / 255 }
         animateAlpha(to: targetAlpha, duration: duration)
@@ -602,19 +618,39 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         runtime.send(.frameWanted)
     }
 
+    func currentFadeAlpha() -> CGFloat {
+        guard let active = activeFade, active.duration > 0 else { return window.alphaValue }
+        let t = min(max((fadeNow() - active.startTime) / active.duration, 0), 1)
+        let eased = t * t * (3 - 2 * t)
+        return active.start + (active.target - active.start) * CGFloat(eased)
+    }
+
     private func applyAlpha(animated: Bool) {
-        animateAlpha(to: targetAlpha, duration: animated ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0)
+        let target = targetAlpha
+        if !animated, let active = activeFade, abs(active.target - target) < 1e-6 {
+            // Unrelated window setting changes must not snap an in-flight fade with the same target.
+            return
+        }
+        animateAlpha(to: target, duration: animated ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0)
     }
 
     private func animateAlpha(to target: CGFloat, duration: TimeInterval, completion: (() -> Void)? = nil) {
         fadeGeneration += 1
         let generation = fadeGeneration
         guard duration > 0, app.presentsWindows else {
+            activeFade = nil
             window.alphaValue = target
             companions.windowChanged()
             completion?()
             return
         }
+        let start = currentFadeAlpha()
+        if activeFade != nil {
+            // Reset model alpha to the current visual alpha before redirecting NSAnimationContext.
+            window.alphaValue = start
+        }
+        let fade = ActiveFade(start: start, target: target, startTime: fadeNow(), duration: duration)
+        activeFade = fade
         let window = self.window, companions = self.companions!
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
@@ -623,8 +659,16 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             companions.animateAlpha(to: target)
         }, completionHandler: { [weak self] in
             guard let self, generation == self.fadeGeneration else { return }
+            self.activeFade = nil
             completion?()
         })
+    }
+
+    /// Headless self-test helper to exercise active fade tracking and interruption without an AppKit window loop.
+    func seedActiveFadeForTesting(start: CGFloat, target: CGFloat, startTime: TimeInterval, duration: TimeInterval) {
+        fadeGeneration += 1
+        activeFade = ActiveFade(start: start, target: target, startTime: startTime, duration: duration)
+        window.alphaValue = target
     }
 
     /// Whether a click brings the skin in front of the windows at its level. AlwaysOnTop manual: "Normal. … will be
@@ -766,13 +810,15 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
     /// a monitor that comes back) and keep it on screen, without saving the adjusted position.
     func screensChanged() {
-        guard !isStopped, isStarted else { return }
-        if state.savePosition, (state.windowX != nil || (state.x != nil && state.y != nil)) {
-            placeWindow()
-        } else {
-            window.setFrame(constrained(window.frame), display: false)
+        guard !isStopped else { return }
+        if isStarted {
+            if state.savePosition, (state.windowX != nil || (state.x != nil && state.y != nil)) {
+                placeWindow()
+            } else {
+                window.setFrame(constrained(window.frame), display: false)
+            }
+            publishFacts()
         }
-        publishFacts()
         runtime.send(.displayMetricsChanged)
     }
 
@@ -911,6 +957,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             forward(bang, toConfig: config, hops: hops, whileClosing: whileClosing)
         case .companion(let companion):
             companions.apply(companion)
+        case .mouseCapture(let request):
+            if let request {
+                app.mouseCapture.update(for: self, request: request)
+            } else {
+                app.mouseCapture.clear(for: self)
+            }
         case .snapshotChanged(let changes):
             snapshotChanged(changes)
         }
@@ -1154,11 +1206,18 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// the frame, screen and display, and the window settings. Kept once the skin stopped. Main thread.
     var publishedFacts: SkinWindowFacts? { sentFacts }
 
+    private var isWindowOccluded: Bool {
+        visibilityForTesting.map { !$0 }
+            ?? (app.presentsWindows && window.isVisible ? !window.occlusionState.contains(.visible) : false)
+    }
+
     /// What the window is now, for the runtime.
     var facts: SkinWindowFacts {
         SkinWindowFacts(frame: window.frame, screen: window.screen.flatMap { NSScreen.screens.firstIndex(of: $0) },
                         display: window.screen.flatMap(DesktopInputs.displayID(of:)),
                         isVisible: visibilityForTesting ?? window.occlusionState.contains(.visible),
+                        isOccluded: isWindowOccluded,
+                        isScreenLocked: app.isSessionOrScreenLocked,
                         isOrderedIn: visibilityForTesting ?? window.isVisible,
                         scale: window.backingScaleFactor, colorSpace: window.colorSpace?.cgColorSpace,
                         appearance: view.effectiveAppearance.name.rawValue, takesPointer: takesPointer,
@@ -1248,9 +1307,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// The environment of the live window (main thread): the Studio's instance of the widget reads its desktop copy's.
     var environment: SkinEnvironment {
         let s = state
-        var environment = EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
-                                                   autoSelectScreen: s.autoSelectScreen, visible: !isHiddenByBang,
-                                                   zoomFactor: effectiveZoomFactor)
+        var environment = EnvironmentStore.shared.environment(
+            windowFrame: window.frame, zPosition: s.alwaysOnTop, autoSelectScreen: s.autoSelectScreen,
+            visible: !isHiddenByBang && !app.isSessionOrScreenLocked && !isWindowOccluded,
+            zoomFactor: effectiveZoomFactor)
         environment.defaultZoomFactor = Double(app.state.defaultZoomPercent) / 100
         environment.forceDefaultZoom = isZoomForced
         return environment

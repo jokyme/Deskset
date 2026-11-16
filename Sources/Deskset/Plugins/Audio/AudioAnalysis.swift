@@ -449,6 +449,13 @@ final class AudioAnalyzer {
 
     private let lock = NSLock()
     private var output = AudioAnalysisOutput()
+    private var lastPublishedActive = false
+    private var _activityChangedHandler: ((Bool) -> Void)?
+    /// Invoked outside the analyzer lock whenever the published audio activity state changes.
+    var activityChangedHandler: ((Bool) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _activityChangedHandler }
+        set { lock.lock(); _activityChangedHandler = newValue; lock.unlock() }
+    }
     /// Set by `requestBinValues()` or the first `fft(_:index:)` read (under `lock`).
     private var fftRequested = false
     /// When a value was last read, and a spectrum value (FFT or band) (`systemUptime`, under `lock`; 0: never). The
@@ -534,9 +541,15 @@ final class AudioAnalyzer {
         meanSquare = []
         peak = []
         spectrum = nil
+        var notify: ((Bool) -> Void)?
         lock.lock()
         output = AudioAnalysisOutput()
+        if lastPublishedActive {
+            lastPublishedActive = false
+            notify = _activityChangedHandler
+        }
         lock.unlock()
+        notify?(false)
     }
 
     private func configure(channels ch: Int, sampleRate sr: Double) {
@@ -553,28 +566,52 @@ final class AudioAnalyzer {
     }
 
     private func publish() {
+        var transition: (active: Bool, handler: (Bool) -> Void)?
         lock.lock()
-        defer { lock.unlock() }
-        guard output.channels == channels else { return }
-        for r in 0..<meanSquare.count {
-            output.meanSquare[r] = meanSquare[r]
-            output.peak[r] = peak[r]
-        }
-        if let spectrum {
-            for r in 0..<output.fft.count {
-                spectrum.fftValues[r].withUnsafeBufferPointer { src in
-                    output.fft[r].withUnsafeMutableBufferPointer { dst in
-                        dst.baseAddress?.update(from: src.baseAddress!, count: min(src.count, dst.count))
+        if output.channels == channels {
+            for r in 0..<meanSquare.count {
+                output.meanSquare[r] = meanSquare[r]
+                output.peak[r] = peak[r]
+            }
+            if let spectrum {
+                for r in 0..<output.fft.count {
+                    spectrum.fftValues[r].withUnsafeBufferPointer { src in
+                        output.fft[r].withUnsafeMutableBufferPointer { dst in
+                            dst.baseAddress?.update(from: src.baseAddress!, count: min(src.count, dst.count))
+                        }
                     }
-                }
-                spectrum.bandValues[r].withUnsafeBufferPointer { src in
-                    guard let from = src.baseAddress else { return }
-                    output.bands[r].withUnsafeMutableBufferPointer { dst in
-                        dst.baseAddress?.update(from: from, count: min(src.count, dst.count))
+                    spectrum.bandValues[r].withUnsafeBufferPointer { src in
+                        guard let from = src.baseAddress else { return }
+                        output.bands[r].withUnsafeMutableBufferPointer { dst in
+                            dst.baseAddress?.update(from: from, count: min(src.count, dst.count))
+                        }
                     }
                 }
             }
+            transition = transitionIfActivityChangedUnlocked()
         }
+        lock.unlock()
+        if let transition { transition.handler(transition.active) }
+    }
+
+    private func transitionIfActivityChangedUnlocked() -> (active: Bool, handler: (Bool) -> Void)? {
+        guard output.channels > 0,
+              let sumRow = AudioChannel.sum.row(channels: output.channels),
+              sumRow < output.meanSquare.count, sumRow < output.peak.count else {
+            if lastPublishedActive, let handler = _activityChangedHandler {
+                lastPublishedActive = false
+                return (false, handler)
+            }
+            lastPublishedActive = false
+            return nil
+        }
+        let rmsVal = min(max(output.meanSquare[sumRow], 0).squareRoot() * settings.rmsGain, 1)
+        let peakVal = min(max(output.peak[sumRow], 0) * settings.peakGain, 1)
+        let active = max(rmsVal, peakVal) > 1e-4
+        guard active != lastPublishedActive else { return nil }
+        lastPublishedActive = active
+        guard let handler = _activityChangedHandler else { return nil }
+        return (active, handler)
     }
 
     /// Publishes levels given as data (`ScriptedAudioLevels`) instead of analysed ones: `rms` and `peak` per channel
@@ -601,9 +638,12 @@ final class AudioAnalyzer {
         let output = AudioAnalysisOutput(channels: ch, sampleRate: sr, meanSquare: meanSquare, peak: peaks,
                                          fft: rows(fft, count: s.fftSize > 0 ? s.fftSize / 2 + 1 : 0),
                                          bands: rows(bands, count: s.fftSize > 0 ? s.bands : 0))
+        var transition: (active: Bool, handler: (Bool) -> Void)?
         lock.lock()
         self.output = output
+        transition = transitionIfActivityChangedUnlocked()
         lock.unlock()
+        if let transition { transition.handler(transition.active) }
     }
 
     // MARK: Reading (any thread)

@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "קובץ";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "שמור";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "סגור";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "גזור";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "העתק";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "הגדל/הקטן";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "עזרה";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "גרסה חדשה מוכנה להורדה עבור ה‑Mac הזה.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "גרסה";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "סגור לעת עתה. הבדיקה היומית הבאה עשויה להזכיר לך שוב.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "סקינים";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "פתח את תיקיית הסקינים";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "פתח את היומן";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "ניפוי באגים";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "בחר סקין טעון בחלון ”ניהול“.";
 
+/* Manage window: button. */
+"Open Log" = "פתח את היומן";
+
 /* Manage window: text. */
 "Save new layout" = "שמור פריסה חדשה";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "החלף";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "ביטול";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "כללי";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "בטל גרירה";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "אפס סטטיסטיקה";
+/* Settings window: VoiceOver description. */
+"Theme" = "ערכת נושא";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "זמין כש‑Deskset פועל מתוך תיקיית ”יישומים“.";
 
+/* Settings window: text. */
+"User interface" = "ממשק משתמש";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "שפה:";
 
+/* Settings window: label. */
+"Theme:" = "ערכת נושא:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "הפעלה:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "עדכונים:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "‏Deskset בודק פעם ביום ומוריד עדכונים בעצמו; אתה מחליט מתי להתקין אותם.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "זום ברירת מחדל:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "עדכונים:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "‏Deskset בודק פעם ביום ומוריד עדכונים בעצמו; אתה מחליט מתי להתקין אותם.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "תיקיית הסקין שנבחרה";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "שם";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "גופנים שמצורפים לסקינים האלה (לא מותקנים לכל המערכת): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "אזהרה";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "‏Deskset לא סיים להתכונן או לצאת בזמן.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "אוטומטי";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "בהיר";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "כהה";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "הצג ממשקים וירטואליים";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "אפס סטטיסטיקה";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "העתק הכול";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "טוען ממשקי רשת…";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "מרענן…";
+
+/* DebugInfoView: text. */
+"Display information" = "פרטי תצוגה";
+
+/* DebugInfoView: text. */
+"Network information" = "פרטי רשת";
+
+/* DebugInfoView: text. */
+"Property" = "מאפיין";
+
+/* DebugInfoView: text. */
+"Value" = "ערך";
+
+/* DebugInfoView: text. */
+"No displays available." = "אין תצוגות זמינות.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "אין ממשקי רשת להצגה.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "מדידות";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "משתנים";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "מונים";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "מעקב";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "רענן בעת שינוי קובץ";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "סקין";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "הוסף מעקב…";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "העתק שם";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "העתק טווח";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "העתק מספר";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "העתק מחרוזת";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "הוסף מעקב";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "ערוך מדידה";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "העתק ערך";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "ערוך משתנה";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "העתק סוג";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "העתק גבולות";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "ערוך מונה";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "ערוך מעקב";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "מחק מעקב";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "סנן…";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "סנן מדידות ומשתנים";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "סקין פעיל";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "קפוץ אל";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "מדידות, משתנים ומעקבים של הסקין";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "מספר";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "מחרוזת";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "נוסחה";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "בצע";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "סוג ביטוי:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "ביטוי:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "ביטוי למעקב";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "תוצאת מעקב";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "יומן";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "תוספים";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "תצוגה";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "רשת";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "ניפוי שגיאות ב-Deskset";
+
+/* DebugWindowController: text. */
+"Time" = "זמן";
+
+/* DebugWindowController: text. */
+"Type" = "סוג";
+
+/* DebugWindowController: text. */
+"Message" = "הודעה";
+
+/* DebugWindowController: text. */
+"Source" = "מקור";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "שגיאה";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "הודעה כללית";
+
+/* DebugWindowController: text. */
+"Log file" = "קובץ יומן";
+
+/* DebugWindowController: text. */
+"Start logging" = "התחל רישום ביומן";
+
+/* DebugWindowController: text. */
+"Stop logging" = "הפסק רישום ביומן";
+
+/* DebugWindowController: text. */
+"Delete log file" = "מחק קובץ יומן";
+
+/* DebugWindowController: text. */
+"Show log file" = "הצג קובץ יומן";
+
+/* DebugWindowController: button. */
+"Clear" = "נקה";
+
+/* DebugWindowController: text. */
+"Author" = "יוצר";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "כל התוספים הרשומים מובנים בתוך Deskset ומתעדכנים עם היישום. הגרסאות תואמות ל-Deskset; תוספים חיצוניים אינם נתמכים כרגע.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (מובנה)";

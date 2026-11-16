@@ -581,7 +581,8 @@ final class SkinInstallFlow {
             var text = "•  " + line.text
             if !line.configs.isEmpty {
                 let shown = line.configs.prefix(8).joined(separator: ", ")
-                text += " (\(shown)\(line.configs.count > 8 ? ", and \(line.configs.count - 8) more" : ""))"
+                let more = line.configs.count > 8 ? " " + L("(+%lld more)", line.configs.count - 8) : ""
+                text += " (\(shown)\(more))"
             }
             if let detail = line.detail { text += " — \(detail)" }
             stack.addArrangedSubview(label(text))

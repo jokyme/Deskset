@@ -156,6 +156,28 @@ enum TransparencyUISelfTests {
                 t.check(popup.bounds.width >= titleWidth + 24, "the longest choice and popup arrow fit")
             }
         }
+
+        t.suite("App: transparency UI: smooth fade interpolation and preservation across unrelated updates") {
+            guard let app = try AppSelfTest.makeApp(t),
+                  let skin = app.activate(config: "App\\Focus", file: "Compact.ini") else {
+                return t.check(false, "skin fixture loads")
+            }
+            var now = 10.0
+            skin.fadeNow = { now }
+            app.changeSettings(of: skin) { $0.alphaValue = 255; $0.fadeDuration = 1000; $0.onHover = 0 }
+            skin.seedActiveFadeForTesting(start: 0.0, target: 1.0, startTime: 10.0, duration: 1.0)
+            let genBefore = skin.fadeGeneration
+            app.changeSettings(of: skin) { $0.alwaysOnTop = 1 }
+            t.equal(skin.fadeGeneration, genBefore,
+                    "unrelated setting update preserves in-flight fade with matching target alpha")
+            t.check(skin.activeFade != nil)
+            now = 10.5
+            t.close(skin.currentFadeAlpha(), 0.5, accuracy: 0.01,
+                    "mid-flight fade interpolation returns intermediate visual alpha instead of target")
+            app.changeSettings(of: skin) { $0.alphaValue = 128 }
+            t.check(skin.activeFade == nil, "changing target alpha cancels the stale active fade")
+            t.close(skin.window.alphaValue, 128.0 / 255, accuracy: 0.01)
+        }
     }
 
     private static func menu(_ app: AppController, _ skin: SkinWindowController) -> NSMenu? {

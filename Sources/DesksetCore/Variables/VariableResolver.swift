@@ -124,7 +124,7 @@ public struct SectionNumberFormat: Equatable {
 /// | `[\x263A]`, `[\9731]` | character reference | no |
 /// | `$MouseX$`, `[$MouseX:%]` | event variable | `eventLookup` |
 /// | `#*Var*#`, `[#*Var*]` | escape → `#Var#`, `[#Var]` | no |
-/// | `[*Name*]`, `[&*Name*]` | escape → `[Name]`, `[&Name]` | yes |
+/// | `[*Name*]`, `[&*Name*]` | escape → `[Name]`, `[&Name]` | no |
 ///
 /// Order (manual: "Normal or built-in variables take priority over section variables"): first `#Var#` (so
 /// `[#Foo#:#Bar#]` builds a section variable, while `#[Foo][Bar]#` is — as the manual says — not valid and stays),
@@ -139,8 +139,8 @@ public struct SectionNumberFormat: Equatable {
 /// - Values of built-in variables, section variables, character references, event variables and escapes are
 ///   literal: never re-interpreted, so a measure whose text contains `#X#` or `[Y]` is shown as is, and
 ///   `[\x5B]` yields a literal `[`. Escaped forms are therefore not resolved in the same pass.
-/// - Escapes are unescaped only where their unescaped form would be resolved: `[*Name*]` / `[&*Name*]` only when
-///   `sectionLookup` is set, `#*Var*#` / `[#*Var*]` always. This call consumes escapes — resolve a raw option
+/// - Escapes are unescaped everywhere full variable resolution runs (both `DynamicVariables=0` and `DynamicVariables=1`,
+///   while `[Variables]` definitions keep escapes until use). This call consumes escapes — resolve a raw option
 ///   string exactly once (e.g. keep action strings raw until the bang executes), or an escaped reference would
 ///   be resolved by the second call. `#**Var**#` → `#*Var*#` gives two levels of protection.
 /// - Character references accept any Unicode scalar up to U+10FFFF (manual: x0–xFFFE / 0–65536 on Windows); a

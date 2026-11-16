@@ -202,10 +202,19 @@ enum WebParserProcessor {
             r.value = raw
         }
 
+        var fallbackText = input
+        if isEnableOnly {
+            if o.decodeCodePoints { fallbackText = WebParserText.decodeCodePoints(fallbackText) }
+            if o.decodeCharacterReference != 0 {
+                fallbackText = WebParserText.decodeCharacterReferences(fallbackText, mode: o.decodeCharacterReference)
+            }
+        }
+
         guard depth < maxDepth else { return r }
         for child in node.children {
+            let sourceText = (isEnableOnly && !child.options.hasJsonPointer) ? fallbackText : raw
             let url = child.options.url
-            let childInput = url.contains(parentMark) ? url.replacingOccurrences(of: parentMark, with: raw) : raw
+            let childInput = url.contains(parentMark) ? url.replacingOccurrences(of: parentMark, with: sourceText) : sourceText
             let childJson = child.options.hasJsonPointer ? selectedNode : nil
             r.children.append(processNode(child, input: childInput, jsonContext: childJson, isRoot: false, depth: depth + 1))
         }

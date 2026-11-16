@@ -68,7 +68,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局壁纸的平台差异与待验证项见 [Layouts](compat/layouts.md) |
-| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、`Update=… \| Invisible …`（5.0）、`OnDisplayMetricsChange`（5.0）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；缩放／选择与初始动态锚点时序尚待 Windows 桌面对照 |
+| 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、平滑淡入淡出、10–500% 缩放及菜单／Manage 控件、默认与强制缩放、Control-Option 多选与 DragGroup、选中皮肤菜单锁定、`Update=… \| Invisible …`（含遮挡检测）与 `OnVisibilityChangeAction`、`OnDisplayMetricsChangeAction`、`UITheme`（`0`/`1`/`2`）、设置分页重组、独立 5 页签 `Debug`（含 `Network` 页的重置统计）、所有位置类 bang | macOS 窗口层级和点坐标；普通拖动用 ⌘ 覆盖；已排除 Game mode、CLI `[!Launch]` 与崩溃转储；Windows 桌面对照仍待完成 |
 
 ---
 
@@ -137,9 +137,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | --- | --- | --- |
 | ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop（含 `!ActionTimer:Execute/Stop`）；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
-| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；每秒核对播放状态以恢复漏掉的通知，睡眠唤醒后重建监听；首次 tap 即监听权限变化；`Type=MacPermission` 表示缺少哪个权限 |
+| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；`OnAudioStartAction` / `OnAudioEndAction`；每秒核对播放状态以恢复漏掉的通知，睡眠唤醒后重建监听；首次 tap 即监听权限变化；`Type=MacPermission` 表示缺少哪个权限 |
 | CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
-| DragDrop（5.0 measure / 插件） | 完全一致 | 向皮肤或 `TargetMeter` 拖入文件 / 文件夹（`Type=FileCount\|FileList\|FilePath\|FileFolder\|FileName\|FileExt`、`SubFolders`、`Limit`、`Separator`、`Format`、`MatchPattern`、`OnEnterAction` / `OnLeaveAction` / `OnDropAction`） |
+| DragDrop（5.0 measure / 插件） | 模拟实现 | `Action=Path\|Move\|Copy\|Shortcut\|Delete`、`Path`、`Bounds`、父 measure 选项、多文件与拖动动作（`OnOverAction` 20 ms 计时器 / `[$File]`）；快捷方式为符号链接，Delete 移到 macOS 废纸篓 |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
 | FolderInfo | 模拟实现 | 后台扫描；使用 Mac 的隐藏 / 系统文件规则 |
 | InputText | 模拟实现 | 非激活面板中的原生文本框；在 Stay Topmost 皮肤上也能用 |
@@ -175,7 +175,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | GetActiveTitle | 部分支持 | 只有在授予辅助功能 / 屏幕录制权限时才读取窗口标题，否则返回 App 名称 |
 | IsFullScreen | 部分支持 | 全屏检测可用；进程名是 Mac 的 App 名称（`Safari`），不会是 `chrome.exe` |
 | MSI Afterburner（`MSIAfterburner`） | 模拟实现 | GPU 温度、使用率、频率和内存（Apple 芯片上为统一内存），风扇转速为最快风扇占其最高转速的百分比；Apple 芯片上 `Memory clock` 为 0；见 §9.3 |
-| Mouse | 模拟实现 | 在皮肤的任意位置响应鼠标（拖动滑块）；在皮肤上按下后一直跟随到松开，指针移出皮肤也一样；RequireDragging 的 Start / Stop；见 §9.8 |
+| Mouse | 模拟实现 | 在皮肤的任意位置响应鼠标（拖动滑块）；在皮肤上按下后一直跟随到松开，指针移出皮肤也一样；RequireDragging 的 Start / Stop 以及 `!Mouse:StartCapture` / `!Mouse:StopCapture` 屏幕捕获遮罩（`CaptureOverlayColor`、`CaptureOverlayCursorName`）；见 §9.8 |
 | Slider（Mouse 插件的第 2 版） | 模拟实现 | 左键、右键或中键的 ClickAction、DragAction、HoldAction、ReleaseAction 和 MoveAction，在皮肤上和屏幕上任何其他位置都响应（不需要权限）；见 §9.9 |
 | SysColor | 模拟实现 | Windows 的系统颜色映射到 macOS 的语义颜色（强调色、高亮、窗口、文字……） |
 | WebNowPlaying | 部分支持 | 显示 Music / Spotify；不支持浏览器扩展（网页播放器） |
@@ -420,7 +420,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   环境变量（先精确匹配，再不区分大小写），找不到时保持原样。`OS` 和 `PROCESSOR_ARCHITECTURE` 按 Windows 的写法回答是取舍判断：
     皮肤会把它们与 Windows 的值比较。
   - `[$Skin…]` / `[$Display…]`：皮肤坐标以点为单位，所以 `[$SkinX/Y/W/H]` 与 Windows 100 % 缩放时相同；物理像素值
-    （`[$SkinPhysicalX/Y/W/H]`、`[$DisplayPhysical…]`）乘以屏幕的 backing scale（Retina 为 2）和皮肤的缩放系数；
+    （`[$SkinPhysicalX/Y/W/H]`、`[$DisplayPhysical…]`）仅乘以屏幕的 backing scale（Retina 为 2），不随皮肤缩放系数放大；
     `[$SkinDpiFactor]` / `[$DisplayDpiFactor]` 在 Retina 屏幕上为 `2`。
 - **原因：** 手册未作规定时的取舍判断；macOS 能绘制所有 Unicode 平面；Mac 没有 Windows 的环境变量。
 - **对皮肤的影响：** 对有效的皮肤没有影响；依赖其他 Windows 专属环境变量的路径通常不存在。
@@ -596,7 +596,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Windows：** 字节 / 秒；`Interface` = Best（默认）、0 = 全部、N 或网卡名称。
 - **Mac：** Best = 当前活动接口（有线优先于 Wi-Fi）；0 = 除 VPN 隧道、AWDL、网桥等虚拟接口以外的所有活动接口（避免重复
   计数）；不存在的 Windows 网卡名（`Wi-Fi`、`Realtek PCIe GBE…`）或序号会回退到 Best（记录一次日志）。`Cumulative=1`
-  读取各接口共享、跨会话保存的累计值。Settings → General 的 Reset statistics 和 `!ResetStats` 清空累计值，不改变
+  读取各接口共享、跨会话保存的累计值。Debug → Network 的 Reset statistics 和 `!ResetStats` 清空累计值，不改变
   原始网速计数。使用累计测量后，本次会话每两分钟采集并保存，退出时也会保存。细节及待完成的 Windows 对照见
   [累计网络统计](compat/app.md#cumulative-network-statistics)。
 - **原因：** macOS 的接口名（`en0`）与 Windows 网卡名不同。
@@ -658,11 +658,11 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 #### Rainmeter 5.0 新增的 measure 选项（`DragDrop`、`NumberConversionFormat`）
 - **Windows：** Rainmeter 5.0 内置 `Measure=DragDrop`（原 Drag&Drop 插件；`Action=Path|Move|Copy|Shortcut|Delete`、`Path`、
-  `Silent`、`ReplaceIfExists`、`ProcessAllFiles` 与 `$FileNr$`、子 measure 的 `Parent` 和 `Bounds`、`OnDropAction` /
-  `OnEnterAction` / `OnLeaveAction`；`FancyRenderer` 已移除），以及 String、Registry、WebParser 的
+  `Silent`、`ReplaceIfExists`、`ProcessAllFiles` 与 `$FileNr$` / `[$File]`、子 measure 的 `Parent` 和 `Bounds`、`OnDropAction` /
+  `OnEnterAction` / `OnLeaveAction` / `OnOverAction`；`FancyRenderer` 已移除），以及 String、Registry、WebParser 的
   `NumberConversionFormat=Locale`（按 Windows 区域格式读取数字，例如把 `1.234,56` 读作 1234.56）。
 - **Mac：** 都支持（`Plugin=Drag&Drop` / `Plugin=DragDrop` 也可以），文件从访达拖到皮肤上即可。`Shortcut` 创建符号链接而不是
-  `.lnk`，`Delete` 把项目移到废纸篓；`FancyRenderer` 被忽略并记录一行日志。`NumberConversionFormat=Locale` 使用 macOS
+  `.lnk`，`Delete` 把项目移到废纸篓；`FancyRenderer` 被忽略并记录一行日志；`OnOverAction` 在区域内拖动期间按 20 ms 计时器执行。`NumberConversionFormat=Locale` 使用 macOS
   “语言与地区”中的数字格式。
 - **原因：** Mac 没有 `.lnk` 快捷方式和 Windows 的区域设置。
 - **对皮肤的影响：** 无，除了快捷方式是符号链接。
@@ -1008,7 +1008,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   边缘或 `!SetZoomFactor 系数|Default [配置|*]` 修改；全局默认值是 Rainmeter.ini `[Rainmeter]` 中的 `DefaultZoom` /
   `ForceDefaultZoom`（管理窗口 → 设置）。
 - **Mac：** `Default…` 选项相同，只是用 state.json 代替 Rainmeter.ini；位置接受 WindowX / WindowY 的各种写法（`%`、`R` / `B`、
-  公式、`@N`），锚点在尺寸变化时继续生效。缩放使用 10–500 的整数百分数。Manage 有 Zoom 输入框和步进器；设置 → General
+  公式、`@N`），锚点在尺寸变化时继续生效。缩放使用 10–500 的整数百分数。Manage 有 Zoom 输入框和步进器；设置 → Skins
   有 Default zoom 和 Force。皮肤菜单 Zoom 提供 Default 与 80–150% 的预设（间隔 10 个百分点），当前自定义值会
   按序插入并勾选，点击该项不执行操作。没有 `Zoom` 时继承全局默认值；显式 100% 仍是独立覆盖。Default 清除覆盖；Force
   禁用单皮肤缩放控件，但保留原覆盖值，关闭 Force 后恢复。官方 5.0 的 `!SetZoomFactor 系数|Default [配置|*]` 和
@@ -1032,7 +1032,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 全局 `DisableDragging`
 - **Windows：** `DisableDragging` 默认为 `0`；启用后阻止活动皮肤的鼠标拖动
   （<https://docs.rainmeter.net/manual/settings/rainmeter-section/#DisableDragging>）。
-- **Mac：** 设置 → General 提供 Disable dragging。该选项会保存，对已加载和之后加载的皮肤阻止普通鼠标拖动，
+- **Mac：** 设置 → Skins 提供 Disable dragging。该选项会保存，对已加载和之后加载的皮肤阻止普通鼠标拖动，
   不改变各皮肤的 Draggable 偏好，并结束已经进行的普通或选中皮肤拖动。关闭后需要重新按下才能开始拖动。点按动作和程序移动仍然可用；
   保留现有 Command 覆盖，以及选中皮肤的键盘移动和缩放规则。
 - **原因：** 全局鼠标设置与各皮肤保存的偏好分开。
@@ -1115,10 +1115,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **状态：** 部分支持。Windows 子菜单的精确标签／排序、菜单转换与舍入、SavePosition 关闭时的持久化细节、跨屏
   KeepOnScreen 时机及活动列表排序仍待对照；当前验证在 macOS 上完成。
 
-#### 显示器变化（`OnDisplayMetricsChange`）
-- **Windows：** `[Rainmeter] OnDisplayMetricsChange` 是一个动作；Rainmeter 5.0 起，任何显示器的布局、分辨率或缩放改变时都会执行。
+#### 显示器变化与可见性更新（`OnDisplayMetricsChangeAction`、`OnVisibilityChangeAction`）
+- **Windows：** `[Rainmeter] OnDisplayMetricsChangeAction`（兼容旧名 `OnDisplayMetricsChange`）在任何显示器的布局、分辨率或
+  缩放改变时执行；`Update=<visible> | Invisible <invisible>` 与 `OnVisibilityChangeAction` 控制皮肤可见／被遮挡时的更新。
 - **Mac：** 连接、断开或重新排列显示器，或者改变分辨率时，有保存位置的皮肤会按保存的位置重新放置（显示器回来时皮肤也会回到它
-  上面），然后执行 `OnDisplayMetricsChange`。
+  上面），然后执行 `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange`。窗口遮挡检测同时驱动 `Invisible` 更新速率和 `OnVisibilityChangeAction`。
 - **原因：** 遵循 5.0 手册并保留已保存的显示器位置。
 - **对皮肤的影响：** 未在该动作中刷新、也未开启 DynamicVariables、根据 `#SCREENAREAWIDTH#` 计算布局的皮肤，在刷新之前保持原来的
   布局（与 Windows 相同）。
@@ -1145,11 +1146,12 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   Windows 旧 helper 仍未映射。
 
 #### Rainmeter 5.0 中尚未实现的部分
-- **Windows：** `Rainmeter.exe [!Launch][!Bang]` 可以先启动再执行命令，另外还有崩溃转储。
-- **Mac：** 这些部分仍未实现。Debug、Safe Start、Restart/Focus、显式目标前置命令、复合皮肤组选择、七个 SendKey
-  媒体键名称与皮肤打包器（见 [§11.2](#皮肤打包器create-rmskin-package)）已实现，具体限制见对应条目。
-- **原因：** 剩余的进程启动和崩溃转储流程尚未完成。
-- **对皮肤的影响：** 在剩余命令可用之前，继续使用现有加载和刷新操作。
+- **Windows：** `Rainmeter.exe [!Launch][!Bang]` 可以先启动再执行命令，Manage 提供 **Game mode**，另外还有 `#SETTINGSPATH#Crashes\` 自动崩溃转储。
+- **Mac：** 这三项当前分支仍未实现。Debug、Safe Start、Restart/Focus、显式目标前置命令、复合皮肤组选择、七个 SendKey
+  媒体键名称、`UITheme`、设置分页重组、`OnVisibilityChangeAction`、`OnDisplayMetricsChangeAction`、`!Mouse:StartCapture` /
+  `:StopCapture`、AudioLevel `OnAudioStartAction` / `:OnAudioEndAction` 与皮肤打包器（见 [§11.2](#皮肤打包器create-rmskin-package)）已实现，具体限制见对应条目。
+- **原因：** 已从当前分支范围排除／进程启动和崩溃转储流程尚未完成。
+- **对皮肤的影响：** 使用常规的加载和刷新操作，替代命令行 `[!Launch]` 或 Game mode。
 - **状态：** 不支持
 
 #### 睡眠、显示器睡眠、其他用户会话
@@ -1279,14 +1281,14 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### About（Log、Skins、Plugins、Version）
 - **Windows：** About 的四个页面提供日志、活动皮肤的运行值、插件信息和版本/路径信息
   （<https://docs.rainmeter.net/manual/user-interface/about/>）。
-- **Mac：** 四页均可从 About、Manage 的 Open Log、皮肤的 Deskset 子菜单和 `!About`（包括命令行）打开。
+- **Mac：** Debug 使用独立的 5 页签原生窗口（`Log` 初始显示最近 50 条日志与 SF Symbols 状态图标；`Skins` 展示 Measures、Variables、Meters 与 Watch，并支持 `Edit measure` / `Edit meter` / `Edit variable` 与 `⌘R` / Ctrl-R / F5 刷新；`Plugins` 过滤已内置化的 5.0 measure；`Display`；`Network` 页包含 **Reset statistics**），与独立的 **About** 窗口分开，可从状态栏菜单、Manage、皮肤子菜单、`!About` 与 `!Debug` 打开。主菜单已移除独立 Open Log 项；设置调整为“用户界面（语言、Theme [`UITheme=0|1|2`]）”、“通用（开机启动、启动延迟 5 分钟并同步 `DisableAutoUpdate`/`DisableVersionCheck` 且跳过已取消版本的自动更新）”、“皮肤（Skins 文件夹、默认缩放、强制缩放、禁止拖动）”；选中皮肤期间锁定 `Draggable` / `Click Through` / `Keep on Screen` 菜单项；连续淡入淡出从当前透明度平滑衔接。
   Log 初始显示最近 20 条，新消息置顶；过滤只影响后续消息，Clear 只清面板，Command-C 复制所选消息正文。
   面板沿用现有日志的 2,000 条上限。Skins 显示实时 measure 范围、数值、字符串和用户变量，标出禁用/暂停状态；
   长值截断显示，复制保留完整内容。Plugins 列出已注册的内置实现，版本跟随 Deskset 并标注 `(bundled)`，作者显示 `jokyme`；
   页面说明这些实现随应用更新，目前不支持外部插件。Version 复制实际版本、构建号、二进制架构和路径；暂不提供构建日期。
 - **原因：** macOS 窗口和剪贴板惯例、现有日志上限与内置插件实现。
 - **对皮肤的影响：** 不提供 Windows DLL 元数据；未知 `!About` 页名回退到 Log，Measures 选择 Skins。
-- **状态：** 部分实现；已覆盖 macOS 本地测试，边界行为的 Windows 桌面对照仍待完成。本项不包含 Rainmeter 5.0 的独立 Debug 窗口。
+- **状态：** 部分实现；已覆盖 macOS 本地测试，独立 Debug 窗口、UITheme 及边界行为的 Windows 桌面对照仍待完成。详情见 [Debug and About](compat/app.md#debug-and-about)。
 
 #### 文件日志持久化
 - **Windows：** `Logging` 默认为 `0`，设置会自动保存。Start logging 开启文件输出；Stop logging 保留文件；
@@ -1523,7 +1525,7 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 - **状态：** 完全一致
 
 #### 脚本文件编码
-- **Windows：** 要使用 Unicode，`.lua` 文件必须是 UTF-16；“绝不要把 .lua 脚本文件编码为 UTF-8”。
+- **Windows：** 早期版本要求 Unicode 脚本使用 UTF-16；Rainmeter 5.0 新增了 UTF-8 BOM 支持，同时兼容 UTF-16 与 ANSI。
 - **Mac：** 按 `.ini` 文件的方式解码（带或不带 BOM 的 UTF-8、UTF-16、UTF-32，否则按 ANSI），并以 UTF-8 交给 Lua；以 `#`
   开头的第一行被忽略。
 - **原因：** 无论哪种方式 Lua 看到的都是 UTF-8；接受 UTF-8 属于宽松处理。
@@ -1612,8 +1614,8 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 #### Rainmeter 5.0 的 Unicode 字符串函数（`string.uc*`）
 - **Windows：** Rainmeter 5.0 为 Lua 新增按字符（码位）处理的 `string.ucfind`、`ucmatch`、`ucgmatch`、`ucgsub`、`uclen`、`ucsub`、
   `uclower`、`ucupper`、`ucreverse`、`ucbyte`、`ucchar`；带 UTF-8 BOM 的脚本也作为 Unicode 脚本读取。
-- **Mac：** 全部支持，既可写成 `string.ucfind(s, …)`，也可写成 `s:ucfind(…)`。
-- **原因：** 按 Rainmeter 5.0 手册。
+- **Mac：** 全部支持（`string.uc*` 强制按 UTF-8 区域设置语义处理），既可写成 `string.ucfind(s, …)`，也可写成 `s:ucfind(…)`。
+- **原因：** 按 Rainmeter 5.0 手册（`SetW`/`SetH` 也会立即同步更新尺寸）。
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
 
@@ -1899,7 +1901,7 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   对每个核心都是最快簇的频率，与 CoreTemp 的 `CpuSpeed` 相同）、内存（`Available Bytes`、`Committed Bytes`、
   `Commit Limit`……）、分页文件、网络接口（字节 / 秒）、逻辑磁盘 / 物理磁盘（可用空间、字节 / 秒）、系统（进程数、线程数、
   开机时长、负载）。Index、Name、Blacklist / Whitelist、Rollup、Percent、RawValue 和 PIDToName 按手册处理（名称还可以不区分
-  大小写、不带 `.exe` 匹配）。Thermal Zone Information（`\_TZ.CPU`，最热的 CPU 传感器，单位 K）和 GPU Engine（Alias=GPU：
+  大小写、不带 `.exe` 匹配）。即使设置了较大的 `UpdateDivider`，首次采样仍会先于跳过更新执行，以便首次加载尽快得出数值。Thermal Zone Information（`\_TZ.CPU`，最热的 CPU 传感器，单位 K）和 GPU Engine（Alias=GPU：
   一个名为 “GPU” 的实例，即整个 GPU 的使用率）读取硬件传感器（§9.3）；按进程的 GPU 内存和其他计数器为 0，并作为兼容性提示
   列出。
 - **原因：** macOS 没有性能监视器；这些是 Darwin 上的对应数据。
@@ -2058,6 +2060,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   之外”；没有这个选项时，要暂停或禁用这个 measure，它必须有 DynamicVariables=1 并且被更新。
 - **Mac：** RequireDragging=1 时，动作只在 Start 和 Stop 之间执行（measure 被禁用或暂停时命令也有效）；没有这个选项时，
   Start / Stop 被忽略，并记录一条警告。禁用或暂停会立即停止动作；启用不需要更新就生效（按文档更新一次也可以）。
+  `!Mouse:StartCapture` / `!Mouse:StopCapture`（及 `StartCapture` / `StopCapture`）使用 `CaptureOverlayColor` 与
+  `CaptureOverlayCursorName`（默认 `ARROW`）显示捕获遮罩，直到停止捕获为止跨屏接收指针事件。
 - **原因：** 取舍判断——公开的皮肤都从被拖动的 meter 启动这个 measure、在松开时停止；每个滑块各用一个 measure 的皮肤依赖
   只有被启动的那一个作出反应。
 - **对皮肤的影响：** 预计没有。
@@ -2142,6 +2146,13 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   0.1–0.3 %。
 - **原因：** macOS 上没有 WASAPI。
 - **对皮肤的影响：** 对皮肤作者没有影响。
+- **状态：** 模拟实现
+
+#### `AudioLevel`：`OnAudioStartAction` 与 `OnAudioEndAction`
+- **Windows：** Rainmeter 5.0 在父 `AudioLevel` measure 上新增 `OnAudioStartAction` 与 `OnAudioEndAction`。
+- **Mac：** 在父 measure 上原生实现：非静音音频活动开始时执行 `OnAudioStartAction`，回落到静音时执行 `OnAudioEndAction`。
+- **原因：** 与 Rainmeter 5.0 的音频状态动作语义对齐。
+- **对皮肤的影响：** 频谱皮肤可随音频播放或停止自动切换可见性与空闲动画。
 - **状态：** 模拟实现
 
 #### `Port=Output`（系统音频），macOS 14.2 及以上
@@ -2336,7 +2347,7 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 #### NowPlaying：歌词与封面
 - **Windows：** 歌词从歌词网站下载；Cover 是图片文件的路径。
 - **Mac：** 歌词取 Music.app 中曲目自带的歌词（不联网查找）。封面（Music 的插图或 Spotify 的封面网址）写入
-  `~/Library/Caches/Deskset/NowPlaying/`，每首曲目使用新的文件名；没有封面时为 “”，因此
+  `~/Library/Caches/Deskset/NowPlaying/`（支持 `.webp` / `.avif` 图像及 `.ogg` 内嵌封面解码），每首曲目使用新的文件名；没有封面时为 “”，因此
   `Substitute="":"#@#NoCover.png"` 可用。本地文件的封面取 Music 的插图。从 Apple Music 在线播放的曲目，Music 的插图要晚
   几秒才有、或者根本没有，刚切歌时还经常给出上一首的图，所以切歌后立即用苹果公开的 iTunes Search API 按「歌手 + 歌名」
   在线查询（先查用户所在地区的商店，查不到再查一个：中文歌名查台湾区，其他查美国区；拼音写法的歌手名、繁简体都能对上；
@@ -2354,7 +2365,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   Next、Previous、OpenPlayer、ClosePlayer、TogglePlayer、SetPosition、SetRating、SetShuffle、SetRepeat、SetVolume。
 - **Mac：** 一个共享的后台轮询器，每秒一次，只针对正在运行的播放器，而且只在有皮肤需要数据时运行（30 秒无人读取即暂停）；
   数值在加载后的下一次更新出现。TrackChangeAction 在真正换曲时执行（第一首不算，停止也不算）。PlayerPath 只有指向 Mac 的
-  `.app` 时才使用。所有命令都可用；Spotify：Stop = 暂停，没有评分；播放命令从不启动已关闭的播放器。
+  `.app` 时才使用。所有命令都可用；Spotify：Stop = 暂停，没有评分；播放命令从不启动已关闭的播放器。虽然 Rainmeter 5.0 移除了 Windows 内置
+  Spotify 插件的 `OpenPlayer` / `ClosePlayer` / `TogglePlayer`，Deskset 在 macOS 上故意保留了 Spotify 的 AppleScript / `NSWorkspace` 启动与关闭控制。
 - **原因：** Apple Event 很慢，绝不能阻塞皮肤。
 - **对皮肤的影响：** 数据最多延迟一秒（播放位置有插值）。
 - **状态：** 模拟实现
@@ -2572,7 +2584,8 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 ### 11.1 WebParser
 
 WebParser 遵循手册，包括 Rainmeter 5.0 的 `JsonPointer`（父子 measure 上的 RFC 6901 JSON Pointer 提取；`JsonPointer=1` 只解析
-JSON 不取值）、`!WebParser:Refetch` / `!WebParser:ClearResults` bang 以及 `CodePage=0` 时本地 `file://` 文件的编码检测；正则表达式是转换为 ICU 的 PCRE（见[动作、bang、Substitute 与正则表达式](#动作bangsubstitute-与正则表达式)）。
+JSON 不取值）、`!WebParser:Refetch` / `!WebParser:ClearResults` bang（并保留早期 5.0 写法 `!WebParser:UpdateData` /
+`!WebParser:ResetData` 作为向后兼容别名）以及 `CodePage=0` 时本地 `file://` 文件的编码检测；正则表达式是转换为 ICU 的 PCRE（见[动作、bang、Substitute 与正则表达式](#动作bangsubstitute-与正则表达式)）。
 以下说明来自 WebParser 实现及其审查时的记录，并已对照当前代码核实。
 
 #### 父子 measure 的数值（取舍判断）
@@ -2717,7 +2730,7 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 - **Mac：** 步骤、选项、检查和文件名都相同；按钮是 Manage 皮肤列表上方“新建皮肤”旁边的盒子图标（打开时带上所选皮肤的根配置），
   这样底部按钮栏不会变宽。打出的包可以用 Deskset 的安装器安装（自测覆盖）；尚未在 Windows 桌面上安装
   验证。为 Windows 做的处理：`RMSKIN.ini` 写成带 BOM 的 UTF-16 LE、CRLF 换行；文件名以 Unicode NFC 形式存储，并设置 ZIP 的
-  UTF-8 标志；压缩包中没有 `__MACOSX` 文件夹或其他 Mac 元数据。“隐藏”指以 `.` 开头的名称、Windows 资源管理器的
+  UTF-8 标志；压缩包中没有 `__MACOSX` 文件夹或其他 Mac 元数据。打包器窗口（默认 `680×400`，最小 `600×370`）显示 32 位／64 位插件的完整路径与悬停提示，并在当前选中路径打开文件面板。“隐藏”指以 `.` 开头的名称、Windows 资源管理器的
   `desktop.ini` / `Thumbs.db`，以及 Finder 中被隐藏的项目；符号链接不会打包，打包完成后会列出。最低 Rainmeter 版本默认 5.0，
   即 Deskset 实现的皮肤功能所对应的版本；不写最低 Windows 版本（Rainmeter 5.0 已移除该选项）。Windows 插件是 32 位还是 64 位，
   从 DLL 的 PE 头读取（也识别 `x86` / `x64` 文件夹）。名称、作者和版本为空时，会用文件夹名和第一个皮肤的 `[Metadata]`

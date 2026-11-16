@@ -76,12 +76,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) lazy var installer = SkinInstallFlow(app: self)
     /// Watches the mouse outside the skin windows while a skin asks for it (Plugin=Slider sees clicks anywhere).
     private(set) lazy var outsidePointer = OutsidePointerMonitor(app: self)
+    /// Full-desktop capture overlay for `!Mouse:StartCapture` / `!Mouse:StopCapture`.
+    private(set) lazy var mouseCapture = MouseCaptureController(app: self)
     /// Ctrl–Option selection and the selected skins' shared move / zoom gesture.
     private(set) lazy var skinSelection = SkinSelectionController(app: self)
     private(set) lazy var skinToolTips = SkinToolTipPresenter(app: self)
     private(set) lazy var clickThroughOverride = ClickThroughOverride(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var fileLoggingObserver: NSObjectProtocol?
+    private var uiThemeObserver: NSObjectProtocol?
     /// Only the primary desktop instance configures and stops the persistent statistics service.
     private var networkStatisticsOwner: SystemMonitor?
     private var startupCrashWatcher: StartupCrashWatcher?
@@ -123,6 +126,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let flow = AppUpdateFlow(presentsWindows: presentsWindows) { [weak self] prepared in
             self?.prepareUpdateInstallation(prepared)
         }
+        flow.onCancelVersion = { [weak self] release in
+            self?.updates.skipUpdate(release)
+        }
+        AppTheme.register(flow.window, app: self)
         updateFlowStorage = flow
         return flow
     }
@@ -139,6 +146,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var screensAsleep = false
     private var sessionInactive = false
     private var updatesPaused: Bool { systemAsleep || screensAsleep || sessionInactive }
+    var isSessionOrScreenLocked: Bool { screensAsleep || sessionInactive }
 
     /// The config the Manage window shows on a first launch (the first one the first-run layout loaded).
     private(set) var firstRunSelection = DefaultSkins.firstClock.config
@@ -164,10 +172,28 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.updateFlowStorage = updateFlow
         defersDesktopUpdates = presentsWindows
         super.init()
+        uiThemeObserver = observeState(.desksetUIThemeChanged) { app in
+            AppTheme.applyAll(for: app)
+        }
+        if let window = self.updateFlowStorage?.window {
+            AppTheme.register(window, app: self)
+        }
+        self.updateFlowStorage?.onCancelVersion = { [weak self] release in
+            self?.updates.skipUpdate(release)
+        }
     }
 
     deinit {
         if let fileLoggingObserver { NotificationCenter.default.removeObserver(fileLoggingObserver) }
+        if let uiThemeObserver { NotificationCenter.default.removeObserver(uiThemeObserver) }
+    }
+
+    private func observeState(_ name: Notification.Name,
+                              _ action: @escaping (AppController) -> Void) -> NSObjectProtocol {
+        NotificationCenter.default.addObserver(forName: name, object: state, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            action(self)
+        }
     }
 
     /// The engine thread, made the first time a skin needs it. Main thread.
@@ -200,11 +226,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applyFileLoggingPreference() {
         guard !isTerminating else { return }
         if fileLoggingObserver == nil {
-            fileLoggingObserver = NotificationCenter.default.addObserver(
-                forName: .desksetGlobalSettingsChanged, object: nil, queue: .main
-            ) { [weak self] notification in
-                guard let self, let changed = notification.object as? AppState, changed === self.state else { return }
-                self.applyFileLoggingPreference()
+            fileLoggingObserver = observeState(.desksetGlobalSettingsChanged) { app in
+                app.applyFileLoggingPreference()
             }
         }
         Log.fileLoggingEnabled = state.fileLoggingEnabled
@@ -619,7 +642,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NotificationCenter.default.removeObserver(fileLoggingObserver)
             self.fileLoggingObserver = nil
         }
+        if let uiThemeObserver {
+            NotificationCenter.default.removeObserver(uiThemeObserver)
+            self.uiThemeObserver = nil
+        }
         skinSelection.clear()
+        mouseCapture.cancel(notifySkin: false)
         isTerminating = true
         NewSkinWindowController.window(for: self)?.close()
         let deadline = Date().addingTimeInterval(budget)
@@ -934,6 +962,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyPause() {
         audioEngine.setSuspended(updatesPaused)
         for c in controllers.values {
+            c.publishFacts()
             if updatesPaused { c.pauseUpdates() } else { c.resumeUpdates(updateNow: true) }
         }
         for session in studioSessions.values { session.setUpdatesPaused(updatesPaused) }
@@ -1655,6 +1684,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func makeUpdateAlert(_ notice: AppUpdateController.Notice) -> AppMaintenancePanel {
         let presentation = updateNoticePresentation(notice)
         let alert = AppMaintenancePanel()
+        AppTheme.apply(state.uiTheme, to: alert.window)
         alert.window.title = L("Deskset Updates")
         alert.alertStyle = presentation.style
         alert.messageText = presentation.title
@@ -1758,6 +1788,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func buildMainMenu(_ menu: NSMenu) {
         discoverSkins()
         menu.removeAllItems()
+        AppTheme.apply(state.uiTheme, to: menu)
         menu.addItem(item(L("Manage Skins…"), #selector(manageAction), key: ","))
         menu.items.last?.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(.separator())
@@ -1785,7 +1816,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item(L("Refresh All"), #selector(refreshAllAction), key: "r"))
         menu.addItem(item(L("Install Skin…"), #selector(installSkinAction)))
         menu.addItem(item(L("Open Skins Folder"), #selector(openSkinsFolderAction)))
-        menu.addItem(item(L("Open Log"), #selector(openLogAction)))
         menu.addItem(item(L("Debug"), #selector(debugAction)))
         menu.addItem(.separator())
         let login = item(L("Launch at Login"), #selector(toggleLaunchAtLoginAction))
@@ -1948,6 +1978,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if discoverLibrary { discoverSkins() }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        AppTheme.apply(state.uiTheme, to: menu)
         let targets = skinMenuTargets(for: c.config)
         func allMatch<Value: Equatable>(_ key: KeyPath<SkinState, Value>, _ value: Value) -> Bool {
             !targets.isEmpty && targets.allSatisfy { $0.state[keyPath: key] == value }
@@ -2046,6 +2077,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.addItem(hoverItem)
         settings.addItem(.separator())
 
+        let anySelected = targets.contains(where: \.isSelected)
+        let selectionDisabledFlags: Set<String> = ["draggable", "clickthrough", "keeponscreen"]
         let flags: [(String, String, KeyPath<SkinState, Bool>)] = [
             (L("Draggable"), "draggable", \.draggable), (L("Click Through"), "clickthrough", \.clickThrough),
             (L("Keep on Screen"), "keeponscreen", \.keepOnScreen), (L("Snap to Edges"), "snapedges", \.snapEdges),
@@ -2055,6 +2088,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let i = item(title, #selector(toggleSettingAction(_:)))
             i.representedObject = [c.config, key]
             i.state = allMatch(path, true) ? .on : .off
+            if anySelected && selectionDisabledFlags.contains(key) {
+                i.isEnabled = false
+            }
             settings.addItem(i)
         }
         let favorite = item(L("Favorite"), #selector(toggleFavoriteAction(_:)))
@@ -2128,6 +2164,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func displayMonitorMenu(for controller: SkinWindowController, appliesToSelection: Bool = true) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        AppTheme.apply(state.uiTheme, to: menu)
         let targets = appliesToSelection ? skinMenuTargets(for: controller.config) : [controller]
         let canEdit = !targets.isEmpty && targets.allSatisfy { $0.isStarted && !$0.isStopped }
         let screens = EnvironmentStore.shared.currentScreens
@@ -2166,6 +2203,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func skinPositionMenu(for controller: SkinWindowController) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        AppTheme.apply(state.uiTheme, to: menu)
         let targets = skinMenuTargets(for: controller.config)
         let canEdit = !targets.isEmpty && targets.allSatisfy { $0.isStarted && !$0.isStopped }
         let display = NSMenuItem(title: L("Display monitor"), action: nil, keyEquivalent: "")
@@ -2240,6 +2278,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func skinZoomMenu(for controller: SkinWindowController) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        AppTheme.apply(state.uiTheme, to: menu)
         let targets = skinMenuTargets(for: controller.config)
         let allDefault = !targets.isEmpty && targets.allSatisfy { $0.zoomOverridePercent == nil }
         let values = targets.map { Int(($0.effectiveZoomFactor * 100).rounded()) }

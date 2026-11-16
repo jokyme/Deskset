@@ -14,7 +14,7 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
     }
 
     t.suite("EditorSchema: every meter type the engine draws has groups") {
-        t.equal(S.meterTypes.count, 10)
+        t.equal(S.meterTypes.count, 12)
         for type in S.meterTypes {
             let groups = S.meterGroups(type)
             t.check(groups.count >= 3, "\(type): groups")
@@ -27,6 +27,8 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.meterGroups("string").map(\.title), ["Shows", "Text", "Box Behind It", "When Clicked", "Layer"])
         t.equal(S.meterGroups("image").map(\.title), ["Picture", "Box Behind It", "When Clicked", "Layer"])
         t.equal(S.meterGroups("button").map(\.title), ["Button", "Box Behind It", "When Clicked", "Layer"])
+        t.equal(S.meterGroups("svg").map(\.title), ["SVG", "Box Behind It", "When Clicked", "Layer"])
+        t.equal(S.meterGroups("textedit").map(\.title), ["Text", "Box Behind It", "When Clicked", "Layer"])
         t.equal(S.meterGroups("bar").first?.properties.first?.key, "MeasureName", "what it shows first for data-driven meters")
         t.equal(S.meterGroups("shape").first?.properties.map(\.kind), [.shapes])
     }
@@ -164,7 +166,24 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.describeMeasure(type: "FreeDiskSpace").title, "Free disk space")
         t.equal(S.describeMeasure(type: "FreeDiskSpace", total: true).title, "Disk size")
         t.equal(S.describeMeasure(type: "FreeDiskSpace", invert: true).title, "Used disk space")
-        t.equal(S.measureGroups("Plugin", plugin: "PowerPlugin").first?.properties.first?.key, "PowerState")
+        t.equal(S.property("PowerState", in: S.measureGroups("Power"))?.key, "PowerState")
+        t.equal(S.measureGroups("Power").first?.properties.first?.key, "PowerState")
+        for promoted in ["DragDrop", "Power", "ActionTimer", "CoreTemp", "AdvancedCPU", "Ping", "RunCommand",
+                         "Quote", "FileView", "FolderInfo", "UsageMonitor", "PerfMon", "ResMon", "SpeedFan",
+                         "WindowMessage", "Mouse", "AudioLevel", "Audio", "iTunes", "InputText"] {
+            let m = S.measureType(type: promoted)
+            t.check(m != nil && m?.isPlugin == false && m?.bothForms == true,
+                    "\(promoted) is registered as a built-in 5.0 measure with legacy Plugin= fallback")
+        }
+        t.equal(S.property("LineJoin", in: S.meterGroups("Line"))?.defaultValue, "MiterOrBevel")
+        t.equal(S.property("JsonPointer", in: S.measureGroups("WebParser"))?.key, "JsonPointer")
+        t.equal(S.property("Header2", in: S.measureGroups("WebParser"))?.key, "Header")
+        t.equal(S.property("OnDropAction", in: S.measureGroups("DragDrop"))?.key, "OnDropAction")
+        t.equal(S.property("OnAudioStartAction", in: S.measureGroups("AudioLevel"))?.key, "OnAudioStartAction")
+        t.equal(S.property("CaptureOverlayColor", in: S.measureGroups("Mouse"))?.key, "CaptureOverlayColor")
+        t.equal(S.property("NumberConversionFormat", in: S.measureGroups("Time"))?.key, "NumberConversionFormat")
+        t.equal(S.numberedProperty("ActionList2", in: S.measureGroups("ActionTimer"))?.index, 2)
+        t.equal(S.numberedProperty("Command2", in: S.measureGroups("InputText"))?.index, 2)
         t.equal(S.measureGroups("powerplugin").first?.properties.first?.key, "PowerState", "effective type")
         t.equal(S.measureGroups("Plugin").map(\.title), ["Settings"], "a plugin measure without Plugin=")
         t.equal(S.measureGroups("WebParser").first?.essentialRows.map(\.key), ["URL", "RegExp", "StringIndex"])
@@ -222,6 +241,9 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.choice(for: " CENTERcenter ", in: S.alignments)?.value, "CenterCenter")
         t.equal(S.choice(for: "LeftMiddle", in: S.alignments), nil)
         t.equal(S.alignmentChoice(for: "Right Bottom").value, "RightBottom", "the engine ignores spaces")
+        t.equal(S.alignmentChoice(for: "JustifyBottom").value, "JustifyBottom")
+        t.equal(S.choice(for: "Justify", in: S.alignments)?.value, "Justify")
+        t.equal(S.issue(for: "Count", property: S.property("Index", in: S.measureGroups("UsageMonitor"))!), nil)
         t.equal(S.alignmentChoice(for: "center").value, "Center")
         t.equal(S.alignmentChoice(for: "Middle").value, "Left", "unknown: Left · Top")
         t.equal(S.choice(for: "1K", in: S.autoScale)?.value, "1k")

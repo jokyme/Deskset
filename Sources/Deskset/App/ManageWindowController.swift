@@ -153,6 +153,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         window.tabbingMode = .disallowed
         super.init(window: window)
         window.delegate = self
+        AppTheme.register(window, app: app)
         buildInterface()
         window.setFrameAutosaveName("DesksetManageWindow")
         if !window.setFrameUsingName("DesksetManageWindow") {

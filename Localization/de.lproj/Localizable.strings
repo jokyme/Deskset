@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Ablage";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Speichern";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Schließen";
 
@@ -46,7 +46,7 @@
 /* Main menu: menu item. */
 "Cut" = "Ausschneiden";
 
-/* Main menu: menu item. */
+/* Main menu: menu item; DebugInfoView: menu item; DebugWatchEditorController: button; DebugWindowController: text. */
 "Copy" = "Kopieren";
 
 /* Main menu: menu item. */
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Zoomen";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
 "Help" = "Hilfe";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -150,7 +150,7 @@
 /* Menu bar menu, skin menus and update alerts: alert or dialog message; App updates: status or description line. */
 "A newer version is ready to download for this Mac." = "Für diesen Mac steht eine neue Version zum Laden bereit.";
 
-/* Menu bar menu, skin menus and update alerts: label.
+/* Menu bar menu, skin menus and update alerts: label; DebugWindowController: text.
    Note: Label in a small card, followed by "old version → new version". */
 "Version" = "Version";
 
@@ -193,7 +193,7 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Vorerst schließen. Bei der nächsten täglichen Prüfung wirst du eventuell erneut erinnert.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skins";
 
@@ -212,10 +212,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
 "Open Skins Folder" = "Skin-Ordner öffnen";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
-"Open Log" = "Protokoll öffnen";
-
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Fehlersuche";
 
@@ -496,6 +493,9 @@
 /* Manage window: tooltip. */
 "Select a loaded skin in Manage." = "Wähle im Fenster „Verwalten“ einen geladenen Skin aus.";
 
+/* Manage window: button. */
+"Open Log" = "Protokoll öffnen";
+
 /* Manage window: text. */
 "Save new layout" = "Neues Layout speichern";
 
@@ -526,7 +526,7 @@
 /* Manage window: button; Skin Packager window: button. */
 "Replace" = "Ersetzen";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; UISnapshot: button. */
+/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Abbrechen";
 
 /* Manage window: alert title. */
@@ -738,7 +738,7 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status), text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Allgemein";
 
@@ -771,9 +771,8 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Bewegen deaktivieren";
 
-/* Settings window: button, VoiceOver description.
-   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
-"Reset statistics" = "Statistik zurücksetzen";
+/* Settings window: VoiceOver description. */
+"Theme" = "Erscheinungsbild";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
@@ -818,13 +817,26 @@
 /* Settings window: text. */
 "Available when Deskset runs from the Applications folder." = "Verfügbar, wenn Deskset aus dem Ordner „Programme“ gestartet wird.";
 
+/* Settings window: text. */
+"User interface" = "Benutzeroberfläche";
+
 /* Settings window: label.
    Note: Settings row with the language pop-up menu. */
 "Language:" = "Sprache:";
 
+/* Settings window: label. */
+"Theme:" = "Erscheinungsbild:";
+
 /* Settings window: label.
    Note: Settings row with the Launch Deskset at login checkbox. */
 "Startup:" = "Start:";
+
+/* Settings window: label.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Updates:";
+
+/* Settings window: note under a panel or list. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset sucht einmal täglich und lädt Updates selbst; wann sie installiert werden, entscheidest du.";
 
 /* Settings window: label.
    Note: Settings row with the path of the folder skins are installed in. */
@@ -833,13 +845,6 @@
 /* Settings window: label.
    Note: The zoom (size, as a percentage) skins get unless one has its own. */
 "Default zoom:" = "Standardzoom:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Updates:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset sucht einmal täglich und lädt Updates selbst; wann sie installiert werden, entscheidest du.";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -948,7 +953,7 @@
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Ausgewählter Skin-Ordner";
 
-/* New Skin window: column heading, VoiceOver description.
+/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
    Note: Column heading and field name: the name of a folder or skin file. */
 "Name" = "Name";
 
@@ -1162,7 +1167,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Schriften für diese Skins (werden nicht systemweit installiert): %@";
 
-/* Skin installer: VoiceOver description. */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
 "Warning" = "Warnung";
 
 // MARK: Skin Packager window
@@ -1704,3 +1709,215 @@
 
 /* Restarting Deskset: message (an error or a status). */
 "Deskset did not finish preparing or quitting in time." = "Deskset wurde nicht rechtzeitig vorbereitet oder beendet.";
+
+// MARK: AppTheme
+
+/* AppTheme: message (an error or a status). */
+"Auto" = "Automatisch";
+
+/* AppTheme: message (an error or a status). */
+"Light" = "Hell";
+
+/* AppTheme: message (an error or a status). */
+"Dark" = "Dunkel";
+
+// MARK: DebugInfoView
+
+/* DebugInfoView: checkbox. */
+"Show virtual interfaces" = "Virtuelle Schnittstellen anzeigen";
+
+/* DebugInfoView: button, VoiceOver description.
+   Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
+"Reset statistics" = "Statistik zurücksetzen";
+
+/* DebugInfoView: menu item; DebugWindowController: text. */
+"Copy all" = "Alle kopieren";
+
+/* DebugInfoView: text. */
+"Loading network interfaces…" = "Netzwerkschnittstellen werden geladen …";
+
+/* DebugInfoView: text. */
+"Refreshing…" = "Wird aktualisiert …";
+
+/* DebugInfoView: text. */
+"Display information" = "Bildschirminformationen";
+
+/* DebugInfoView: text. */
+"Network information" = "Netzwerkinformationen";
+
+/* DebugInfoView: text. */
+"Property" = "Eigenschaft";
+
+/* DebugInfoView: text. */
+"Value" = "Wert";
+
+/* DebugInfoView: text. */
+"No displays available." = "Keine Bildschirme verfügbar.";
+
+/* DebugInfoView: text. */
+"No network interfaces to display." = "Keine Netzwerkschnittstellen zum Anzeigen.";
+
+// MARK: DebugSkinInspectorView
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Measures" = "Measures";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Variables" = "Variablen";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Meters" = "Meters";
+
+/* DebugSkinInspectorView: message (an error or a status). */
+"Watch" = "Überwachung";
+
+/* DebugSkinInspectorView: checkbox. */
+"Refresh on file change" = "Bei Dateiänderung aktualisieren";
+
+/* DebugSkinInspectorView: button. */
+"Skin" = "Skin";
+
+/* DebugSkinInspectorView: button. */
+"Add watch…" = "Überwachung hinzufügen …";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy name" = "Name kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy range" = "Bereich kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy number" = "Zahl kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy string" = "Zeichenkette kopieren";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Add watch" = "Überwachung hinzufügen";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit measure" = "Measure bearbeiten";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy value" = "Wert kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit variable" = "Variable bearbeiten";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy type" = "Typ kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Copy bounds" = "Grenzen kopieren";
+
+/* DebugSkinInspectorView: menu item. */
+"Edit meter" = "Meter bearbeiten";
+
+/* DebugSkinInspectorView: menu item; DebugWatchEditorController: text. */
+"Edit watch" = "Überwachung bearbeiten";
+
+/* DebugSkinInspectorView: menu item. */
+"Delete watch" = "Überwachung löschen";
+
+/* DebugSkinInspectorView: placeholder in an empty field. */
+"Filter…" = "Filter …";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Filter measures and variables" = "Measures und Variablen filtern";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Active skin" = "Aktiver Skin";
+
+/* DebugSkinInspectorView: menu item. */
+"Jump to" = "Springe zu";
+
+/* DebugSkinInspectorView: VoiceOver description. */
+"Skin measures, variables and watches" = "Skin-Measures, Variablen und Überwachungen";
+
+/* DebugSkinInspectorView: text. */
+"Number" = "Zahl";
+
+/* DebugSkinInspectorView: text; DebugWatchEditorController: text. */
+"String" = "Zeichenkette";
+
+// MARK: DebugWatchEditorController
+
+/* DebugWatchEditorController: text. */
+"Formula" = "Formel";
+
+/* DebugWatchEditorController: button. */
+"Execute" = "Ausführen";
+
+/* DebugWatchEditorController: label. */
+"Expression type:" = "Ausdruckstyp:";
+
+/* DebugWatchEditorController: label. */
+"Expression:" = "Ausdruck:";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch expression" = "Überwachungsausdruck";
+
+/* DebugWatchEditorController: VoiceOver description. */
+"Watch result" = "Überwachungsergebnis";
+
+// MARK: DebugWindowController
+
+/* DebugWindowController: message (an error or a status). */
+"Log" = "Protokoll";
+
+/* DebugWindowController: message (an error or a status). */
+"Plugins" = "Plug-ins";
+
+/* DebugWindowController: message (an error or a status). */
+"Display" = "Anzeige";
+
+/* DebugWindowController: message (an error or a status). */
+"Network" = "Netzwerk";
+
+/* DebugWindowController: window title. */
+"Debug Deskset" = "Deskset debuggen";
+
+/* DebugWindowController: text. */
+"Time" = "Zeit";
+
+/* DebugWindowController: text. */
+"Type" = "Typ";
+
+/* DebugWindowController: text. */
+"Message" = "Nachricht";
+
+/* DebugWindowController: text. */
+"Source" = "Quelle";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Error" = "Fehler";
+
+/* DebugWindowController: text, message (an error or a status). */
+"Notice" = "Hinweis";
+
+/* DebugWindowController: text. */
+"Log file" = "Protokolldatei";
+
+/* DebugWindowController: text. */
+"Start logging" = "Protokollierung starten";
+
+/* DebugWindowController: text. */
+"Stop logging" = "Protokollierung beenden";
+
+/* DebugWindowController: text. */
+"Delete log file" = "Protokolldatei löschen";
+
+/* DebugWindowController: text. */
+"Show log file" = "Protokolldatei anzeigen";
+
+/* DebugWindowController: button. */
+"Clear" = "Löschen";
+
+/* DebugWindowController: text. */
+"Author" = "Autor";
+
+/* DebugWindowController: text. */
+"All listed plugins are built into Deskset and updated with the app. Versions match Deskset; external plugins are not currently supported." = "Alle aufgeführten Plug-ins sind in Deskset integriert und werden mit der App aktualisiert. Die Versionen entsprechen Deskset; externe Plug-ins werden derzeit nicht unterstützt.";
+
+/* DebugWindowController: text. */
+"%@ (bundled)" = "%@ (integriert)";

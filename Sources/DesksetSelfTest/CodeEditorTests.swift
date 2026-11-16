@@ -63,6 +63,8 @@ func runCodeEditorTests(_ t: TestRunner) {
         t.equal(highlight("Text=#1 and #Var#"), ["Text|key", "=|equals", "#|value", "1|number", " and |value", "#Var#|variable"],
                 "the second # can open the next reference")
         t.equal(highlight("SolidColor=[#Color[#Index]]"), ["SolidColor|key", "=|equals", "[#Color[#Index]]|variable"])
+        t.equal(highlight("Text=[%APPDATA] [%X]"), ["Text|key", "=|equals", "[%APPDATA]|variable", " |value", "[%X]|variable"])
+        t.equal(highlight("Text=[#Var[%PATH]]"), ["Text|key", "=|equals", "[#Var[%PATH]]|variable"])
         t.equal(highlight("Text=[#*Var*]"), ["Text|key", "=|equals", "[#*Var*]|variable"])
         t.equal(highlight("Text=[\\x263A] [\\9731]"),
                 ["Text|key", "=|equals", "[\\x263A]|variable", " |value", "[\\9731]|variable"])

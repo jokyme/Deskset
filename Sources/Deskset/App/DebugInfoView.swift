@@ -36,12 +36,14 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
     private let kind: Kind
     private let displayReader: () -> [DebugSystemInfo.Group]
     private let networkReader: (Bool) -> [DebugSystemInfo.Group]
+    private let onResetStatistics: (() -> Void)?
     private let refreshInterval: TimeInterval?
     private let table = DebugInfoTableView()
-    private let virtualCheck = NSButton(checkboxWithTitle: "Show virtual interfaces", target: nil, action: nil)
+    private let virtualCheck = NSButton(checkboxWithTitle: L("Show virtual interfaces"), target: nil, action: nil)
+    private let resetButton = NSButton(title: L("Reset statistics"), target: nil, action: nil)
     private let status = NSTextField(labelWithString: "")
-    private let copyItem = NSMenuItem(title: "Copy", action: #selector(copyMenuValue(_:)), keyEquivalent: "")
-    private let copyAllItem = NSMenuItem(title: "Copy all", action: #selector(copyMenuValue(_:)), keyEquivalent: "")
+    private let copyItem = NSMenuItem(title: L("Copy"), action: #selector(copyMenuValue(_:)), keyEquivalent: "")
+    private let copyAllItem = NSMenuItem(title: L("Copy all"), action: #selector(copyMenuValue(_:)), keyEquivalent: "")
     private var rows: [Row] = []
     private(set) var groups: [DebugSystemInfo.Group] = []
     private var isActive = false
@@ -55,10 +57,13 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
          displayReader: @escaping () -> [DebugSystemInfo.Group] = { DebugSystemInfo.displayGroups() },
          networkReader: @escaping (Bool) -> [DebugSystemInfo.Group] = {
              DebugSystemInfo.networkGroups(showVirtualInterfaces: $0)
-         }, refreshInterval: TimeInterval? = 2) {
+         },
+         onResetStatistics: (() -> Void)? = nil,
+         refreshInterval: TimeInterval? = 2) {
         self.kind = kind
         self.displayReader = displayReader
         self.networkReader = networkReader
+        self.onResetStatistics = onResetStatistics
         self.refreshInterval = refreshInterval
         super.init(frame: .zero)
         buildView()
@@ -117,7 +122,7 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
             let requestGeneration = generation
             let showVirtual = virtualCheck.state == .on
             let reader = networkReader
-            status.stringValue = groups.isEmpty ? "Loading network interfaces…" : "Refreshing…"
+            status.stringValue = groups.isEmpty ? L("Loading network interfaces…") : L("Refreshing…")
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let result = reader(showVirtual)
                 DispatchQueue.main.async { [weak self] in
@@ -143,9 +148,9 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
         table.usesAlternatingRowBackgroundColors = true
         table.allowsMultipleSelection = false
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        table.setAccessibilityLabel(kind == .display ? "Display information" : "Network information")
+        table.setAccessibilityLabel(kind == .display ? L("Display information") : L("Network information"))
         for (id, title, width, minimum): (String, String, CGFloat, CGFloat) in [
-            ("property", "Property", 180, 140), ("value", "Value", 420, 220)
+            ("property", L("Property"), 180, 140), ("value", L("Value"), 420, 220)
         ] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title
@@ -186,6 +191,17 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
             footer.addArrangedSubview(virtualCheck)
         }
         footer.addArrangedSubview(status)
+        if kind == .network, onResetStatistics != nil {
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+            footer.addArrangedSubview(spacer)
+            resetButton.target = self
+            resetButton.action = #selector(resetStatisticsClicked(_:))
+            resetButton.setAccessibilityLabel(L("Reset statistics"))
+            resetButton.setContentHuggingPriority(.required, for: .horizontal)
+            resetButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+            footer.addArrangedSubview(resetButton)
+        }
         footer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(footer)
         NSLayoutConstraint.activate([
@@ -205,9 +221,14 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
         refresh()
     }
 
+    @objc private func resetStatisticsClicked(_ sender: NSButton) {
+        onResetStatistics?()
+        refresh()
+    }
+
     private func apply(_ newGroups: [DebugSystemInfo.Group]) {
         status.stringValue = newGroups.isEmpty
-            ? (kind == .network ? "No network interfaces to display." : "No displays available.") : ""
+            ? (kind == .network ? L("No network interfaces to display.") : L("No displays available.")) : ""
         guard newGroups != groups else { return }
         let selected = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].identity : nil
         groups = newGroups
@@ -290,5 +311,6 @@ final class DebugInfoView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
     // Narrow accessors for lifecycle, selection and clipboard checks without showing a desktop window.
     var testTable: NSTableView { table }
     var testVirtualCheckbox: NSButton { virtualCheck }
+    var testResetStatisticsButton: NSButton { resetButton }
     var testStatusText: String { status.stringValue }
 }
