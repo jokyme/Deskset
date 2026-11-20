@@ -46,7 +46,15 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、天�
 
 ## 安装
 
-1. 直接下载最新版本（或在 [Releases](../../releases) 页面查看所有版本）：
+通过 [Homebrew](https://brew.sh) 安装：
+
+```bash
+brew install --cask jokyme/tap/deskset
+```
+
+也可以手动下载磁盘映像安装（在 [Releases](../../releases) 页面查看所有版本）：
+
+1. 下载适合你的 Mac 的最新版本：
    - [**Deskset-1.1.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.zip)）：Apple 芯片（M1 及以后）的 Mac；
    - [**Deskset-1.1.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg)（[`.zip`](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.zip)）：Intel 芯片的 Mac。
 2. 打开磁盘映像，把 **Deskset** 拖进「应用程序」，再从「应用程序」打开。也可以打开磁盘映像中的 Deskset，点击
@@ -108,8 +116,9 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 
 ## 卸载
 
-退出 Deskset（菜单栏 → **Quit Deskset**），把 `Deskset.app` 移到废纸篓。如果要连皮肤和设置一起删除，再删掉
-`~/Library/Application Support/Deskset`、`~/Library/Caches/Deskset`、`~/Library/Logs/Deskset`，并执行
+退出 Deskset（菜单栏 → **Quit Deskset**），把 `Deskset.app` 移到废纸篓（如果通过 Homebrew 安装，也可执行
+`brew uninstall --cask deskset`）。如果要连皮肤和设置一起删除，可执行 `brew uninstall --cask --zap deskset`，或手动删掉
+`~/Library/Application Support/Deskset`、`~/Library/Caches/Deskset`、`~/Library/Logs/Deskset` 并执行
 `defaults delete app.deskset.Deskset`。
 
 ## 从源码构建
