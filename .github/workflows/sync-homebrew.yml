@@ -1,0 +1,46 @@
+name: Sync Homebrew tap
+
+# Optional immediate trigger for jokyme/homebrew-tap's sync-release.yml workflow.
+# Set HOMEBREW_TAP_SYNC_TOKEN to a fine-grained token with Actions: write access only to
+# jokyme/homebrew-tap. Without it, jokyme/homebrew-tap still picks up new releases on its
+# scheduled workflow run.
+#
+# Actions > Sync Homebrew tap > Run workflow retries the notification without rebuilding.
+# Release events created by GITHUB_TOKEN do not trigger another workflow; publish the draft
+# manually, or explicitly run this workflow after an automated publication.
+
+on:
+  release:
+    types: [published, released]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sync-homebrew-tap
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Notify Homebrew tap
+    if: >-
+      github.repository == 'jokyme/Deskset' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.release.draft == false && github.event.release.prerelease == false))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch Homebrew tap release sync
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_SYNC_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::notice::HOMEBREW_TAP_SYNC_TOKEN is not set; jokyme/homebrew-tap will sync on its scheduled workflow, or set HOMEBREW_TAP_SYNC_TOKEN with Actions: write access to jokyme/homebrew-tap for immediate sync."
+            exit 0
+          fi
+
+          gh api --method POST \
+            repos/jokyme/homebrew-tap/actions/workflows/sync-release.yml/dispatches \
+            --field ref=main
+          echo "Homebrew tap release sync requested. Check jokyme/homebrew-tap's Actions run for the result."

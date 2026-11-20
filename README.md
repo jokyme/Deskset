@@ -55,7 +55,15 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 
 ## Install
 
-1. Download the latest release (or see all versions on the [Releases](../../releases) page):
+With [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask jokyme/tap/deskset
+```
+
+Or download the disk image manually (see all versions on the [Releases](../../releases) page):
+
+1. Download the latest release for your Mac:
    - [**Deskset-1.1.0-arm64.dmg**](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.zip)) for Macs with Apple silicon (M1 and later),
    - [**Deskset-1.1.0-x86_64.dmg**](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg) ([`.zip`](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.zip)) for Intel Macs.
 2. Open the disk image and drag **Deskset** to **Applications**, then open it from Applications. You can also open
@@ -130,9 +138,10 @@ when the data was updated.
 
 ## Uninstall
 
-Quit Deskset (menu bar → **Quit Deskset**) and move `Deskset.app` to the Trash. To remove your skins and settings as
-well, delete `~/Library/Application Support/Deskset`, `~/Library/Caches/Deskset` and `~/Library/Logs/Deskset`, and
-run `defaults delete app.deskset.Deskset`.
+Quit Deskset (menu bar → **Quit Deskset**) and move `Deskset.app` to the Trash (or run `brew uninstall --cask deskset`
+if installed with Homebrew). To remove your skins and settings as well, run `brew uninstall --cask --zap deskset`, or
+delete `~/Library/Application Support/Deskset`, `~/Library/Caches/Deskset` and `~/Library/Logs/Deskset` and run
+`defaults delete app.deskset.Deskset`.
 
 ## Build from source
 
