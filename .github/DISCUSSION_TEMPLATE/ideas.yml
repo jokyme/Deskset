@@ -1,0 +1,12 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a Rainmeter skin does not look or behave on Deskset as it does on Windows, please open a [Skin compatibility report](https://github.com/jokyme/Deskset/issues/new?template=skin-compatibility.yml) instead.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What would you like to improve or add, and what problem would it solve?
+    validations:
+      required: true

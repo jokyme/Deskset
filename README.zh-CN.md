@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg)
+[English](README.md) · [更新日志](CHANGELOG.zh-CN.md) · [讨论区](https://github.com/jokyme/Deskset/discussions) · [下载 (Apple 芯片)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg) · [下载 (Intel)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg)
 
 ![Deskset 自带示例皮肤的深色与浅色主题](docs/images/example-skins.jpg)
 
@@ -112,7 +112,7 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 
 - **皮肤显示 0 或没有数据：** 先看它的 Compatibility Notes。音频、正在播放、Wi-Fi 类皮肤需要权限；如果之前拒绝了，到「系统设置 → 隐私与安全性」里允许 Deskset。
 - **菜单栏图标不见了：** 从「应用程序」里再次打开 Deskset，会弹出 Manage Skins 窗口。
-- **其他问题：** 日志在 `~/Library/Logs/Deskset/Deskset.log`，提 issue 时请附上相关的几行。
+- **其他问题：** 使用问题可在 [讨论区](https://github.com/jokyme/Deskset/discussions/categories/help) 提问；反馈 bug 或兼容性问题时请提 issue，并附上 `~/Library/Logs/Deskset/Deskset.log` 中相关的几行。
 
 ## 卸载
 

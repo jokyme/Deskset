@@ -1,0 +1,12 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please attach skin files only if you created them or their license allows sharing them. For third-party skins, credit the author and link to where the skin is published.
+  - type: textarea
+    id: showcase
+    attributes:
+      label: Screenshot and details
+      description: Drag and drop a screenshot or recording, and share which widgets or skins you are using (or attach your own skin).
+    validations:
+      required: true
