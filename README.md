@@ -8,7 +8,7 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-lightgrey)
 ![Apple silicon and Intel](https://img.shields.io/badge/Mac-Apple%20silicon%20%7C%20Intel-lightgrey)
 
-[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg)
+[中文说明](README.zh-CN.md) · [Changelog](CHANGELOG.md) · [Discussions](https://github.com/jokyme/Deskset/discussions) · [Download (Apple silicon)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-arm64.dmg) · [Download (Intel)](https://github.com/jokyme/Deskset/releases/download/v1.1.0/Deskset-1.1.0-x86_64.dmg)
 
 ![Deskset's example skins in the dark and light themes](docs/images/example-skins.jpg)
 
@@ -134,7 +134,7 @@ when the data was updated.
 - **A skin shows zeros or no data:** open its Compatibility Notes. Audio, now-playing and Wi-Fi skins need a
   permission; if it was refused, allow Deskset in **System Settings → Privacy & Security**.
 - **The menu bar icon is gone:** open Deskset again from Applications to show the Manage Skins window.
-- **Anything else:** the log is at `~/Library/Logs/Deskset/Deskset.log`; please attach the relevant lines to an issue.
+- **Anything else:** ask in [Discussions](https://github.com/jokyme/Deskset/discussions/categories/help), or open an issue for bugs and compatibility problems with the relevant lines from `~/Library/Logs/Deskset/Deskset.log`.
 
 ## Uninstall
 

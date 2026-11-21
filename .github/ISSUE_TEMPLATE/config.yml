@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Help & Questions
+    url: https://github.com/jokyme/Deskset/discussions/categories/help
+    about: Ask questions about using Deskset, macOS permissions, Skin Studio, or writing skins.
+  - name: Ideas & Feedback
+    url: https://github.com/jokyme/Deskset/discussions/categories/ideas
+    about: Share suggestions and feedback on Deskset, Skin Studio, and bundled skins.
+  - name: Report a security vulnerability
+    url: https://github.com/jokyme/Deskset/security/advisories/new
+    about: Report security problems privately instead of opening a public issue.

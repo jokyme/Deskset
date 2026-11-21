@@ -1,0 +1,19 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before posting, check the skin's **Compatibility Notes** (right-click the skin → Compatibility Notes) and **System Settings → Privacy & Security** if an audio, now-playing, Wi-Fi, or weather skin shows no data.
+
+        If Deskset itself crashes or misbehaves, or a Rainmeter skin behaves differently from Windows, please open an [issue](https://github.com/jokyme/Deskset/issues/new/choose) instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Describe what you are trying to do and what happens instead. If this is about a published skin, link to its page rather than uploading third-party skin files.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Deskset and macOS version
+      placeholder: "Deskset 1.1.0 (arm64), macOS 26.5"
