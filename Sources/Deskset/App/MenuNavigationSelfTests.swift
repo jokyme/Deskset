@@ -64,10 +64,10 @@ enum MenuNavigationSelfTests {
             let menu = app.skinMenu(for: skin, includeCustomItems: true)
             guard let variants = menu.items.firstIndex(where: { $0.title == "Variants" }),
                   let rootIndex = menu.items.firstIndex(where: { $0.title == "Suite" && $0.submenu != nil }),
-                  let zoom = menu.items.firstIndex(where: { $0.title == "Zoom" }) else {
-                return t.check(false, "Variants, root and Zoom are present")
+                  let settings = menu.items.firstIndex(where: { $0.title == "Settings" }) else {
+                return t.check(false, "Variants, root and Settings are present")
             }
-            t.check(variants < rootIndex && rootIndex < zoom)
+            t.check(variants < rootIndex && rootIndex < settings)
             t.equal(root.items.map(\.title), ["Clock", "Nested", "Other", "Root.ini"])
             t.equal(root.item(withTitle: "Clock")?.submenu?.items.map(\.title), ["A.ini", "B.ini"])
             t.equal(root.item(withTitle: "Nested")?.submenu?.items.map(\.title), ["Deep"])

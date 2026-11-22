@@ -1116,7 +1116,7 @@ enum AppSelfTest {
                 t.check(titles.contains(expected), "skin menu has \(expected)")
             }
             let settings = menu.item(withTitle: "Settings")?.submenu
-            for expected in ["Position", "Transparency", "On Hover", "Draggable", "Click Through",
+            for expected in ["Position", "Zoom", "Transparency", "On Hover", "Draggable", "Click Through",
                              "Keep on Screen", "Snap to Edges", "Save Position", "Favorite"] {
                 t.check(settings?.item(withTitle: expected) != nil, "skin Settings has \(expected)")
             }
