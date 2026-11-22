@@ -1425,7 +1425,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions (`ContextTitleN` /
   `ContextActionN`, up to 25; a submenu when more than 3).
 - **Mac:** the full ConfigName opens that config folder. Select skin, custom actions (same rules; `!SkinCustomMenu`
-  shows only them), Variants, a submenu named after the current root config, Zoom, Settings (Position,
+  shows only them), Variants, a submenu named after the current root config, Settings (Position, Zoom,
   Transparency, On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, Favorite), "Compatibility Notes
   (n)" when there are any, Manage Skin…, Edit Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen
   in Settings ▸ Editor, Refresh Skin, Open Skin Folder, Unload Skin.

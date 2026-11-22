@@ -385,7 +385,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Skin context menu
 - Windows (Rainmeter): skin name, Variants, Settings (Position, Transparency, Hide on hover, Draggable, Click through,
   Keep on screen, Save position, Snap to edges…), Manage, Edit, Refresh, Unload, custom skin actions.
-- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Zoom, Settings (Position, Transparency,
+- Mac (Deskset): Select skin, the skin's name, its custom actions, Variants, Settings (Position, Zoom, Transparency,
   On Hover, Draggable, Click Through, Keep on Screen, Snap to Edges, Save Position, Favorite),
   "Compatibility Notes (n)" when the skin has any, Manage Skin…, Edit
   Skin… (the Skin Studio), "Edit in <app>" when a code editor app is chosen in Settings ▸ Editor, Refresh Skin, Open Skin

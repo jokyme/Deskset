@@ -2041,16 +2041,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let root = rootConfigMenu(for: c.config) { menu.addItem(root) }
 
-        let zoom = NSMenuItem(title: L("Zoom"), action: nil, keyEquivalent: "")
-        zoom.submenu = skinZoomMenu(for: c)
-        zoom.isEnabled = !state.forceDefaultZoom
-        menu.addItem(zoom)
-
         let settings = NSMenu()
         settings.autoenablesItems = false
         let positionItem = NSMenuItem(title: L("Position"), action: nil, keyEquivalent: "")
         positionItem.submenu = skinPositionMenu(for: c)
         settings.addItem(positionItem)
+
+        let zoom = NSMenuItem(title: L("Zoom"), action: nil, keyEquivalent: "")
+        zoom.submenu = skinZoomMenu(for: c)
+        zoom.isEnabled = !state.forceDefaultZoom
+        settings.addItem(zoom)
+        settings.addItem(.separator())
 
         let transparency = NSMenu()
         let commonAlpha = targets.first?.state.alphaValue

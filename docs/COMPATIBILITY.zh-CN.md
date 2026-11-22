@@ -1247,7 +1247,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### 皮肤上下文菜单与自定义动作
 - **Windows：** 皮肤名称、变体、设置（位置、透明度、悬停时隐藏、可拖动、点击穿透、保持在屏幕内、保存位置、吸附边缘……）、
   管理、编辑、刷新、卸载、自定义皮肤动作（`ContextTitleN` / `ContextActionN`，最多 25 个；超过 3 个时成为子菜单）。
-- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Zoom、Settings（位置、透明度、悬停、可拖动、点击穿透、
+- **Mac：** Select skin、皮肤名称、其自定义动作（规则相同；`!SkinCustomMenu` 只显示它们）、变体、Settings（位置、Zoom、透明度、悬停、可拖动、点击穿透、
   保持在屏幕内、吸附边缘、保存位置、Favorite）、有提示时的“兼容性提示（n）”、管理皮肤…、编辑皮肤…（Skin Studio）、在“设置 ▸ 编辑器”
   里选了代码编辑器 App 时的“用 <App> 编辑”、刷新皮肤、打开皮肤文件夹、卸载皮肤。FadeDuration 和 Load Order 在管理窗口中设置；StartHidden 和 AutoSelectScreen 只能通过 `Default…` 选项
   和 bang 设置。Zoom、位置、透明度、悬停和窗口设置复选框会作用于所选群组；值不一致时不勾选。刷新皮肤和卸载皮肤也作用于
