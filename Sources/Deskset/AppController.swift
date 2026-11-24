@@ -2261,6 +2261,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let targets = action.appliesToSelection ? skinMenuTargets(for: controller.config) : [controller]
         guard !targets.isEmpty, targets.allSatisfy({ $0.isStarted && !$0.isStopped }) else { return }
         for target in targets {
+            let hadSessionMove = sessionPositions[target.config.lowercased()] != nil
             let result = SkinPositionSettings.applying(action.change, to: target.state,
                 position: target.topLeftPosition, size: target.window.frame.size, screens: screens,
                 zoomFactor: target.windowZoomFactor)
@@ -2270,7 +2271,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 $0.autoSelectScreen = result.state.autoSelectScreen
             }
             if let destination = result.destination {
-                target.moveTo(x: destination.x, y: destination.y, preservingPositionExpressions: true)
+                if target.state.savePosition || hadSessionMove {
+                    target.moveTo(x: destination.x, y: destination.y, preservingPositionExpressions: true)
+                } else {
+                    target.placeWindow()
+                }
             }
         }
         skinSettingsChanged()
@@ -2363,6 +2368,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if before.loadOrder != after.loadOrder { publishDirectory() }
         if !before.keepOnScreen && after.keepOnScreen { c.windowMoved() }
         if !before.savePosition && after.savePosition { c.windowMoved() }
+        else if before.savePosition && !after.savePosition {
+            sessionPositions.removeValue(forKey: c.config.lowercased())
+        }
         skinSettingsChanged()
     }
 

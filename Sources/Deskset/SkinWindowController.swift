@@ -807,12 +807,16 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         publishFacts()
     }
 
-    /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
-    /// a monitor that comes back) and keep it on screen, without saving the adjusted position.
+    /// Displays were added, removed or rearranged: re-derive the position from the saved or session one (so a skin
+    /// returns to a monitor that comes back and re-evaluates relative coordinates even with SavePosition=0) and keep
+    /// it on screen, without saving the adjusted position.
     func screensChanged() {
         guard !isStopped else { return }
         if isStarted {
-            if state.savePosition, (state.windowX != nil || (state.x != nil && state.y != nil)) {
+            let hasPosition = state.windowX != nil || state.windowY != nil
+                || (state.x != nil && state.y != nil)
+                || app.sessionPositions[config.lowercased()] != nil
+            if hasPosition {
                 placeWindow()
             } else {
                 window.setFrame(constrained(window.frame), display: false)
@@ -835,10 +839,15 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     private func saveFrame(_ frame: CGRect, force: Bool = false, preservingPositionExpressions: Bool = false) {
         let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
-        app.sessionPositions[config.lowercased()] = (p.x, p.y)
+        let key = config.lowercased()
         // SavePosition: "changes to the window position will be saved". A new skin's first position is always
-        // stored so it does not cascade somewhere else next time.
-        guard state.savePosition || force else { return }
+        // stored so it does not cascade somewhere else next time. Only unsaved session-only moves stay in
+        // sessionPositions, so SavePosition=0 skins without a session move still resolve saved WindowX/WindowY.
+        if !state.savePosition && !force {
+            app.sessionPositions[key] = (p.x, p.y)
+            return
+        }
+        app.sessionPositions.removeValue(forKey: key)
         let position = WindowPosition.moved(x: p.x, y: p.y, windowX: state.windowX, windowY: state.windowY,
                                             anchorX: state.anchorX, anchorY: state.anchorY, skinSize: frame.size,
                                             screens: screens, autoSelectScreen: state.autoSelectScreen,
@@ -1021,7 +1030,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             windowZoomFactor = zoomFactor
             window.setFrame(frame, display: false)
             view.frame = NSRect(origin: .zero, size: size)
-            if isStarted {
+            if isStarted, app.sessionPositions[config.lowercased()] != nil {
                 let point = topLeftPosition
                 app.sessionPositions[config.lowercased()] = (point.x, point.y)
             }
