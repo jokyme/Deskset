@@ -138,5 +138,135 @@ enum LayoutPositionSelfTests {
                 }
             }
         }
+
+        t.suite("App: Layouts coordinates: display disconnect and reconnect preserve saved and session positions") {
+            defer {
+                WindowGeometry.screensOverrideForTesting = nil
+                EnvironmentStore.shared.publishScreens()
+            }
+            let dual = [AppSelfTest.screen, AppSelfTest.screen2]
+            let single = [AppSelfTest.screen]
+            let widerScreen2 = WindowGeometry.Screen(frame: CGRect(x: 1440, y: -540, width: 2560, height: 1440),
+                                                     visibleFrame: CGRect(x: 1440, y: -540, width: 2560, height: 1440))
+            func setScreens(_ list: [WindowGeometry.Screen], on app: AppController? = nil) {
+                WindowGeometry.screensOverrideForTesting = list
+                if let app { app.screensChanged() } else { EnvironmentStore.shared.publishScreens() }
+            }
+
+            for savePosition in [true, false] {
+                setScreens(dual)
+                guard let app = try AppSelfTest.makeApp(t) else { continue }
+                let directory = app.skinsDirectory.appendingPathComponent("MonitorReturn")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try """
+                [Rainmeter]
+                Update=-1
+                DynamicWindowSize=1
+                [Card]
+                Meter=Image
+                W=200
+                H=100
+                SolidColor=40,70,90,255
+                """.write(to: directory.appendingPathComponent("Card.ini"), atomically: true, encoding: .utf8)
+                app.rescanLibrary()
+                let ini = IniDocument.parse("""
+                [MonitorReturn]
+                Active=1
+                WindowX=200@2
+                WindowY=100@2
+                SavePosition=\(savePosition ? 1 : 0)
+                KeepOnScreen=1
+                """)
+                try app.layoutStore.save(LayoutDocument(ini: ini), named: "Dual")
+                var loaded = false
+                app.loadLayout(named: "Dual") { loaded = $0 }
+                t.check(AppSelfTest.spin { loaded })
+                guard let c = app.controller(for: "MonitorReturn") else { return t.check(false, "skin loaded") }
+                t.close(c.topLeftPosition.x, 1640, "placed on @2 initially (SavePosition=\(savePosition))")
+                t.close(c.topLeftPosition.y, 100)
+
+                // DynamicWindowSize resize without a drag must not fabricate a session move.
+                c.runtime.send(.execute("[!SetOption Card W 240][!UpdateMeter Card][!Redraw]", section: nil))
+                t.check(AppSelfTest.spin { c.window.frame.width == 240 })
+                t.check(app.sessionPositions[c.config.lowercased()] == nil)
+
+                // Disconnect @2 -> falls back to @1 without rewriting saved @2 coordinates.
+                setScreens(single, on: app)
+                t.close(c.topLeftPosition.x, 200, "falls back to primary monitor while @2 is disconnected")
+                t.close(c.topLeftPosition.y, 100)
+                t.equal(c.state.windowX, "200@2")
+                t.equal(c.state.windowY, "100@2")
+
+                // Reconnect @2 -> returns to @2 even when SavePosition=0.
+                setScreens(dual, on: app)
+                t.close(c.topLeftPosition.x, 1640, "returns to @2 on reconnect (SavePosition=\(savePosition))")
+                t.close(c.topLeftPosition.y, 100)
+            }
+
+            // Moving while SavePosition=1, then turning SavePosition off, keeps relative @2 resolution across changes.
+            setScreens(dual)
+            if let app = try AppSelfTest.makeApp(t) {
+                let directory = app.skinsDirectory.appendingPathComponent("LockedRelative")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try """
+                [Rainmeter]
+                Update=-1
+                [Card]
+                Meter=Image
+                W=200
+                H=100
+                SolidColor=40,70,90,255
+                """.write(to: directory.appendingPathComponent("Card.ini"), atomically: true, encoding: .utf8)
+                app.rescanLibrary()
+                let ini = IniDocument.parse("""
+                [LockedRelative]
+                Active=1
+                WindowX=50%
+                WindowY=100
+                AnchorX=50%
+                AnchorY=0
+                SavePosition=1
+                KeepOnScreen=1
+                """)
+                try app.layoutStore.save(LayoutDocument(ini: ini), named: "Rel")
+                var loaded = false
+                app.loadLayout(named: "Rel") { loaded = $0 }
+                t.check(AppSelfTest.spin { loaded })
+                if let c = app.controller(for: "LockedRelative") {
+                    c.moveTo(x: 620, y: 120)
+                    app.changeSettings(of: c) { $0.savePosition = false }
+                    t.check(app.sessionPositions[c.config.lowercased()] == nil,
+                            "disabling SavePosition clears any prior saved move")
+                    let item = app.displayMonitorMenu(for: c).items.first { $0.title.hasPrefix("@2:") }
+                    t.check(item != nil)
+                    if let item, let action = item.action { _ = NSApp.sendAction(action, to: item.target, from: item) }
+                    t.check(app.sessionPositions[c.config.lowercased()] == nil,
+                            "selecting @2 without an unsaved drag keeps expression resolution active")
+                    let expectedDual = WindowPosition.resolve(x: c.state.windowX ?? "0", y: c.state.windowY ?? "0",
+                        anchorX: "50%", anchorY: "0", skinSize: c.window.frame.size, screens: dual)
+                    t.close(c.topLeftPosition.x, expectedDual?.x ?? -1)
+                    setScreens(single, on: app)
+                    let expectedSingle = WindowPosition.resolve(x: c.state.windowX ?? "0", y: c.state.windowY ?? "0",
+                        anchorX: "50%", anchorY: "0", skinSize: c.window.frame.size, screens: single)
+                    t.close(c.topLeftPosition.x, expectedSingle?.x ?? -1)
+                    setScreens([AppSelfTest.screen, widerScreen2], on: app)
+                    let expectedWider = WindowPosition.resolve(x: c.state.windowX ?? "0", y: c.state.windowY ?? "0",
+                        anchorX: "50%", anchorY: "0", skinSize: c.window.frame.size,
+                        screens: [AppSelfTest.screen, widerScreen2])
+                    t.close(c.topLeftPosition.x, expectedWider?.x ?? -1,
+                            "percentage on @2 adapts to a wider external monitor with SavePosition=0")
+
+                    // A temporary session move onto @2 clamps onto @1 while unplugged and returns for the session.
+                    c.moveTo(x: 1800, y: 220)
+                    let savedX = c.state.windowX
+                    setScreens(single, on: app)
+                    t.close(c.topLeftPosition.x, 1240, "clamped onto @1 while @2 is unplugged")
+                    t.equal(c.state.windowX, savedX, "display clamping never commits an unsaved drag")
+                    setScreens(dual, on: app)
+                    t.close(c.topLeftPosition.x, 1800, "temporary session move returns to @2 when reconnected")
+                    t.close(c.topLeftPosition.y, 220)
+                }
+            }
+        }
     }
 }

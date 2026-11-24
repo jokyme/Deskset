@@ -352,7 +352,8 @@ enum WindowPosition {
         let ay = parse(anchorY ?? "0", endLetter: "B") ?? Coordinate(value: 0)
         let ph = WindowGeometry.primaryHeight(screens)
         if autoSelectScreen, let screen = WindowGeometry.screenIndex(
-            for: WindowGeometry.frame(topLeftX: x, y: y, size: skinSize, primaryHeight: ph), screens: screens) {
+            for: WindowGeometry.frame(topLeftX: x, y: y, size: skinSize, primaryHeight: ph), screens: screens),
+           screen < 32 {
             cx.screen = screen + 1
             cy.screen = screen + 1
         }

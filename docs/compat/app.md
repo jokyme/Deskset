@@ -271,9 +271,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Display changes
 - Windows (Rainmeter): not described in the manual beyond KeepOnScreen and the monitor variables.
 - Mac (Deskset): when displays are connected, disconnected or rearranged, skins with a saved position are placed from it
-  again (so a skin returns to a display that comes back); every skin is then kept on screen (KeepOnScreen) or, with
-  KeepOnScreen off, brought back when it is entirely off every display. Skins are not refreshed; the monitor variables
-  are dynamic and change for sections with DynamicVariables=1.
+  again (so a skin returns to a display that comes back, including when SavePosition is off and no session-only move was
+  made; an unsaved session move is kept in session coordinates without being written to disk); every skin is then kept
+  on screen (KeepOnScreen) or, with KeepOnScreen off, brought back when it is entirely off every display. Skins are not
+  refreshed; the monitor variables are dynamic and change for sections with DynamicVariables=1.
 - Why: judgment call.
 - Skin impact: a skin that computed its layout from `#SCREENAREAWIDTH#` without DynamicVariables keeps it until it is
   refreshed.

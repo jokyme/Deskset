@@ -1119,7 +1119,8 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** `[Rainmeter] OnDisplayMetricsChangeAction`（兼容旧名 `OnDisplayMetricsChange`）在任何显示器的布局、分辨率或
   缩放改变时执行；`Update=<visible> | Invisible <invisible>` 与 `OnVisibilityChangeAction` 控制皮肤可见／被遮挡时的更新。
 - **Mac：** 连接、断开或重新排列显示器，或者改变分辨率时，有保存位置的皮肤会按保存的位置重新放置（显示器回来时皮肤也会回到它
-  上面），然后执行 `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange`。窗口遮挡检测同时驱动 `Invisible` 更新速率和 `OnVisibilityChangeAction`。
+  上面；关闭 SavePosition 且本次运行未移动时同样按保存位置重算，已发生临时移动的则保留本次会话位置且不写盘），然后执行
+  `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange`。窗口遮挡检测同时驱动 `Invisible` 更新速率和 `OnVisibilityChangeAction`。
 - **原因：** 遵循 5.0 手册并保留已保存的显示器位置。
 - **对皮肤的影响：** 未在该动作中刷新、也未开启 DynamicVariables、根据 `#SCREENAREAWIDTH#` 计算布局的皮肤，在刷新之前保持原来的
   布局（与 Windows 相同）。

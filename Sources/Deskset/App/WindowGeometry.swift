@@ -16,8 +16,12 @@ enum WindowGeometry {
         var name: String = ""
     }
 
+    /// Self-tests: synthetic display configurations for deterministic multi-monitor and resolution transitions.
+    static var screensOverrideForTesting: [Screen]?
+
     static func currentScreens() -> [Screen] {
-        NSScreen.screens.map {
+        if let override = screensOverrideForTesting { return override }
+        return NSScreen.screens.map {
             Screen(frame: $0.frame, visibleFrame: $0.visibleFrame,
                    dpiFactor: Double($0.backingScaleFactor), name: $0.localizedName)
         }

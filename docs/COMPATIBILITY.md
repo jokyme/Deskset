@@ -1274,8 +1274,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   Rainmeter 5.0 it runs when any display's layout, resolution or scaling changes, and `Update=<visible> | Invisible <invisible>`
   with `OnVisibilityChangeAction` controls visibility/occlusion update transitions.
 - **Mac:** when displays are connected, disconnected, rearranged or change resolution, skins with a saved position are
-  placed from it again (a skin returns to a display that comes back), then `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange`
-  runs. Window occlusion detection drives `Invisible` update intervals and `OnVisibilityChangeAction`.
+  placed from it again (a skin returns to a display that comes back, including with SavePosition off unless moved in the
+  current session, in which case the unsaved session position is preserved without writing to disk), then
+  `OnDisplayMetricsChangeAction` / `OnDisplayMetricsChange` runs. Window occlusion detection drives `Invisible` update
+  intervals and `OnVisibilityChangeAction`.
 - **Why:** follows the 5.0 manual while preserving saved display placement.
 - **Skin impact:** skins that computed their layout from `#SCREENAREAWIDTH#` without DynamicVariables and do not refresh
   in that action keep their layout until refreshed (as on Windows).
