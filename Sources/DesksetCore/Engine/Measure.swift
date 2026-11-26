@@ -352,10 +352,47 @@ open class Measure: SkinSection {
         runActions()
     }
 
+    /// Where one pass over the measure's actions has got to: IfCondition (by option number), IfAbove, IfBelow,
+    /// IfEqual, IfMatch (by option number), OnChangeAction, OnUpdateAction.
+    private struct ActionCursor {
+        enum Stage: Int { case conditions, above, below, equal, matches, change, update, done }
+        var stage = Stage.conditions
+        var position = 0
+        let conditionIDs: [Int]
+        let matchIDs: [Int]
+    }
+
+    /// The measure's actions run in their order, and a later one starts only once an earlier one has finished, also
+    /// when that one waits for the app (a menu, the pasteboard, the desktop picture: `Skin.afterHostBang`). The pass
+    /// is one action sequence of its own: the measures and meters after it in an update go on meanwhile, and an
+    /// action that updated this measure (`!UpdateMeasure`) waits for the whole pass.
     private func runActions() {
+        let cursor = ActionCursor(conditionIDs: conditions.map(\.index), matchIDs: matches.map(\.index))
+        skin.withActionSequence { continueActions(cursor) }
+    }
+
+    private func continueActions(_ start: ActionCursor) {
+        var cursor = start
+        /// Runs `action`; true when it waits for the app, and the rest of the pass then runs after it.
+        func run(_ action: String) -> Bool {
+            skin.execute(action, from: self)
+            guard skin.isWaitingForHost else { return false }
+            let rest = cursor
+            if rest.stage != .done {
+                skin.afterHostBang { [weak self] _ in self?.continueActions(rest) }
+            }
+            return true
+        }
+
         // A callback can !SetOption and !UpdateMeasure this measure, replacing these arrays during this pass.
         // Keep the option identities, not their offsets; read their current state so nested updates are not lost.
-        for (offset, index) in conditions.map(\.index).enumerated() {
+        while cursor.stage == .conditions {
+            guard cursor.position < cursor.conditionIDs.count else {
+                cursor.stage = .above
+                break
+            }
+            let offset = cursor.position, index = cursor.conditionIDs[offset]
+            cursor.position += 1
             let position: Int? = conditions.indices.contains(offset) && conditions[offset].index == index
                 ? offset : conditions.firstIndex(where: { $0.index == index })
             guard let i = position else { continue }
@@ -371,7 +408,7 @@ open class Measure: SkinSection {
             if ifConditionMode || conditions[i].lastResult != result {
                 conditions[i].lastResult = result
                 let action = result ? conditions[i].trueAction : conditions[i].falseAction
-                if !action.isEmpty { skin.execute(action, from: self) }
+                if !action.isEmpty, run(action) { return }
             }
         }
 
@@ -392,11 +429,27 @@ open class Measure: SkinSection {
         // End each inout access before running its callback: a finite self-update must see the latched state,
         // not overlap the exclusive access to the same threshold in this invocation. Later checks use the current
         // value, including a nested update's result, rather than rolling its threshold state back with stale data.
-        if let action = check(&ifAbove, { value > $0 }) { skin.execute(action, from: self) }
-        if let action = check(&ifBelow, { value < $0 }) { skin.execute(action, from: self) }
-        if let action = check(&ifEqual, { roundedInt(value) == roundedInt($0) }) { skin.execute(action, from: self) }
+        if cursor.stage == .above {
+            cursor.stage = .below
+            if let action = check(&ifAbove, { value > $0 }), run(action) { return }
+        }
+        if cursor.stage == .below {
+            cursor.stage = .equal
+            if let action = check(&ifBelow, { value < $0 }), run(action) { return }
+        }
+        if cursor.stage == .equal {
+            cursor.stage = .matches
+            cursor.position = 0
+            if let action = check(&ifEqual, { roundedInt(value) == roundedInt($0) }), run(action) { return }
+        }
 
-        for (offset, index) in matches.map(\.index).enumerated() {
+        while cursor.stage == .matches {
+            guard cursor.position < cursor.matchIDs.count else {
+                cursor.stage = .change
+                break
+            }
+            let offset = cursor.position, index = cursor.matchIDs[offset]
+            cursor.position += 1
             let position: Int? = matches.indices.contains(offset) && matches[offset].index == index
                 ? offset : matches.firstIndex(where: { $0.index == index })
             guard let i = position else { continue }
@@ -410,25 +463,31 @@ open class Measure: SkinSection {
             if ifMatchMode || matches[i].lastResult != result {
                 matches[i].lastResult = result
                 let action = result ? matches[i].matchAction : matches[i].notMatchAction
-                if !action.isEmpty { skin.execute(action, from: self) }
+                if !action.isEmpty, run(action) { return }
             }
         }
 
-        if !onChangeAction.isEmpty {
-            let text = stringValue
-            let changed = lastValue.map { $0 != value || lastString != text } ?? false
-            // Latch before the callback. Its nested update may keep this value or establish a newer baseline;
-            // neither should replay this change when the outer callback returns.
-            lastValue = value
-            lastString = text
-            if changed { skin.execute(onChangeAction, from: self) }
-        } else {
-            // Not tracked while there is no action; a later !SetOption starts from a fresh "initial" value.
-            lastValue = nil
-            lastString = nil
+        if cursor.stage == .change {
+            cursor.stage = .update
+            if !onChangeAction.isEmpty {
+                let text = stringValue
+                let changed = lastValue.map { $0 != value || lastString != text } ?? false
+                // Latch before the callback. Its nested update may keep this value or establish a newer baseline;
+                // neither should replay this change when the outer callback returns.
+                lastValue = value
+                lastString = text
+                if changed, run(onChangeAction) { return }
+            } else {
+                // Not tracked while there is no action; a later !SetOption starts from a fresh "initial" value.
+                lastValue = nil
+                lastString = nil
+            }
         }
 
-        if !onUpdateAction.isEmpty { skin.execute(onUpdateAction, from: self) }
+        if cursor.stage == .update {
+            cursor.stage = .done
+            if !onUpdateAction.isEmpty, run(onUpdateAction) { return }
+        }
     }
 
     /// Rounded to the nearest integer (IfEqualValue: "The compared value is rounded to an integer").

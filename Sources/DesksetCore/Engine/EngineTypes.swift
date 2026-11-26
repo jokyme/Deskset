@@ -321,6 +321,17 @@ public struct SkinEnvironment: Equatable {
     }
 }
 
+/// Result of `SkinHost.skin(_:handle:completion:)`.
+public enum SkinHostBangOutcome {
+    /// The bang is not supported on macOS; the engine records a compatibility note.
+    case unsupported
+    /// Handled synchronously (or queued without suspending the rest of the current action).
+    case handled
+    /// Accepted asynchronously: the engine suspends the remaining bangs of the current action chain until the host
+    /// invokes `completion` on the skin's executor.
+    case suspended
+}
+
 /// Implemented by the app: drawing, window-level bangs, text/image metrics.
 public protocol SkinHost: AnyObject {
     /// Meters changed; redraw the window (and resize it to `skin.size`).
@@ -328,6 +339,9 @@ public protocol SkinHost: AnyObject {
     /// A bang the engine does not handle itself (window, config and app level bangs, or a bang whose Config
     /// argument names another skin). Return false when it is not supported.
     func skin(_ skin: Skin, handle bang: Bang) -> Bool
+    /// Handles a bang left to the host, optionally suspending the rest of the current action chain until `completion`
+    /// runs on the skin's executor. Defaults to `skin(_:handle:)`.
+    func skin(_ skin: Skin, handle bang: Bang, completion: @escaping () -> Void) -> SkinHostBangOutcome
     /// A bang the engine handles itself but whose trailing Config argument names another skin. `bang` no longer
     /// contains that argument; the host should call `perform(_:)` on the target skin.
     /// `config` is `*` for "all currently loaded skins" (manual: Bangs → Config parameter): the engine has already
@@ -442,6 +456,9 @@ extension SkinActionPolicy {
 }
 
 extension SkinHost {
+    public func skin(_ skin: Skin, handle bang: Bang, completion: @escaping () -> Void) -> SkinHostBangOutcome {
+        self.skin(skin, handle: bang) ? .handled : .unsupported
+    }
     public func skin(_ skin: Skin, confirmFileTrash paths: [String], answered: @escaping (Bool) -> Void) {
         answered(false)
     }

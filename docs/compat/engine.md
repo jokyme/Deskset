@@ -959,19 +959,25 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 ### App, menu and system bangs (`!SetWallpaper`, `!SetClip`, `!Play…`, `!SkinMenu`, `!Manage`, `!EditSkin`…)
 - Windows (Rainmeter): an action is a list of bangs (`[!Bang1][!Bang2]…`, /manual/bangs/), carried out in the order
   they are written, each before the next.
-- Mac (Deskset): the desktop skins run on a thread of their own (the engine thread, the default). The bangs only the
-  app can carry out — `!SetClip`, `!SetWallpaper`, `!Play`, `!PlayLoop`, `!PlayStop`, `!SkinMenu`, `!SkinCustomMenu`,
-  `!TrayMenu`, `!Manage`, `!About`, `!EditSkin` — are handed to the app's main thread, which carries them out once the
-  skin's thread has finished the action (and the work it had queued with it): the action's other bangs have run by
-  then. After `!SetWallpaper` the new desktop picture is published at once, for the next update of a Chameleon
-  measure. Loading, unloading and refreshing configs (`!ActivateConfig`, `!Refresh`…) always happened after the
-  action, in both modes. With `SkinThreading=main` (for debugging) the bangs above run in place.
-- Why: menus, the pasteboard, the wallpaper and sounds belong to the app's main thread, and a skin's thread never
-  waits for it (docs/skin-threading.md §5.2).
-- Skin impact: a bang written after one of these in the same action does not see its effect yet:
-  `[!SetWallpaper "#@#Next.jpg"][!UpdateMeasure MeasureChameleon]` recolours from the old wallpaper, and the bangs
-  after `[!SkinMenu]` run while the menu is open instead of after it closed. Workaround: put what depends on them
-  after a short `!Delay` (`[!SetWallpaper "#@#Next.jpg"][!Delay 100][!UpdateMeasure MeasureChameleon][!Redraw]`).
+- Mac (Deskset): the desktop skins run on a thread of their own (the engine thread, the default).
+  - `!SkinMenu`, `!SkinCustomMenu`, `!TrayMenu`, `!SetClip` and `!SetWallpaper` suspend the remaining bangs of the
+    current action without blocking the skin's thread: custom menu items are captured at that point on the target
+    skin's executor, and the rest of the action resumes once the menu has closed (after any chosen item's action has
+    been queued) or once the pasteboard or desktop picture has been updated on the main thread. Other skins and
+    periodic updates keep running while a menu is open. A measure's own actions (IfCondition…, IfMatch…,
+    OnChangeAction, OnUpdateAction) wait for one another in every mode: its OnUpdateAction runs after a menu opened by
+    its IfTrueAction has closed, while the measures and meters after it in the same update go on. Whether Rainmeter
+    runs those before or after the menu closes has not been compared on a Windows desktop.
+  - `!Play`, `!PlayLoop`, `!PlayStop`, `!Manage`, `!About`, `!Debug` and `!EditSkin` (and host bangs sent from
+    `OnCloseAction`) are carried out on the main thread after the current piece of skin work, without suspending the
+    action. Loading, unloading and refreshing configs (`!ActivateConfig`, `!Refresh`…) always happened after the
+    action, in every mode. With `SkinThreading=main` (for debugging) these bangs run in place.
+- Why: menus, windows, the pasteboard, the wallpaper and sounds belong to the app's main thread, and a skin's thread
+  never blocks waiting for it (docs/skin-threading.md §5.2).
+- Skin impact: `[!SetVariable …][!SkinCustomMenu][!SetVariable …]` and `[!SetWallpaper "#@#Next.jpg"][!UpdateMeasure
+  MeasureChameleon]` observe the expected order without a `!Delay` (Chameleon's colour palette sampling still finishes
+  asynchronously in the background, as it always does). Non-modal windows (`!Manage`, `!About`…) open right after the
+  action finishes.
 - Status: emulated
 
 ### Bangs between skins in the experimental worker pool

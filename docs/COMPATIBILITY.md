@@ -976,16 +976,22 @@ hover timer while dragging within the bounds alongside native drag updates.
 
 #### App, menu and system bangs (`!SetWallpaper`, `!SetClip`, `!Play…`, `!SkinMenu`, `!Manage`, `!EditSkin`…)
 - **Windows:** an action's bangs run in the order they are written, each before the next.
-- **Mac:** the desktop skins run on a thread of their own (the default). `!SetClip`, `!SetWallpaper`, `!Play`,
-  `!PlayLoop`, `!PlayStop`, `!SkinMenu`, `!SkinCustomMenu`, `!TrayMenu`, `!Manage`, `!About` and `!EditSkin` are
-  carried out by the app's main thread once the skin's thread has finished the action, after its other bangs. The new
-  desktop picture is published at once after `!SetWallpaper`. Config bangs (`!ActivateConfig`, `!Refresh`…) always
-  ran after the action. With `SkinThreading=main` they run in place.
-- **Why:** menus, the pasteboard, the wallpaper and sounds belong to the main thread, which a skin's thread never
-  waits for.
-- **Skin impact:** a later bang of the same action does not see their effect yet (`[!SetWallpaper …][!UpdateMeasure
-  MeasureChameleon]` recolours from the old wallpaper; bangs after `[!SkinMenu]` run while the menu is open). Put
-  what depends on them after a short `!Delay` (`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`).
+- **Mac:** the desktop skins run on a thread of their own (the default). `!SkinMenu`, `!SkinCustomMenu`, `!TrayMenu`,
+  `!SetClip` and `!SetWallpaper` suspend the remaining bangs of the current action without blocking the skin's thread:
+  menu items are captured at that point on the target skin's executor, and the rest of the action resumes once the menu
+  closes (after queueing any chosen item's action) or once the pasteboard or desktop picture has been updated on the
+  main thread. `!Play`, `!PlayLoop`, `!PlayStop`, `!Manage`, `!About`, `!Debug` and `!EditSkin` (and host bangs in
+  `OnCloseAction`) run on the main thread after the current piece of skin work. Config bangs (`!ActivateConfig`,
+  `!Refresh`…) always ran after the action. With `SkinThreading=main` they run in place.
+- **Why:** menus, windows, the pasteboard, the wallpaper and sounds belong to the main thread, which a skin's thread
+  never blocks waiting for.
+- **Skin impact:** sequences such as `[!SetVariable …][!SkinCustomMenu][!SetVariable …]` and
+  `[!SetWallpaper …][!UpdateMeasure MeasureChameleon]` keep their written order without needing `!Delay` (Chameleon's
+  palette sampling itself still completes asynchronously in the background).
+  A measure's own actions (IfCondition…, IfMatch…, OnChangeAction, OnUpdateAction) wait for one another in every
+  mode: its OnUpdateAction runs after a menu opened by its IfTrueAction has closed. The measures and meters after it in
+  the same update go on meanwhile, so a menu never holds up the skin's other work; whether Rainmeter runs them before
+  or after the menu closes has not been compared on a Windows desktop.
 - **Status:** emulated
 
 #### Bangs between skins in the experimental worker pool

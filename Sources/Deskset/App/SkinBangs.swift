@@ -59,6 +59,10 @@ enum HostBangs {
 extension SkinWindowController {
     /// Does what a config, menu or system bang the runtime handed over does (`HostBangs`), on the main thread.
     func applyHostBang(_ host: HostBang) {
+        var deferCompletion = false
+        defer {
+            if !deferCompletion { host.complete() }
+        }
         // A stopped window still does what its skin asked for until the skin has closed: OnCloseAction's bangs
         // (`whileClosing`: the skin cannot reload or unload itself any more, `others`), and, for a skin on another
         // thread, what its work queued before the close asked. With the main executor both happen before `stop` returns.
@@ -73,7 +77,10 @@ extension SkinWindowController {
         if bang.name != "activateconfig" && bang.name != "toggleconfig",
            let target = BangCatalog.definition(for: bang.name)?.configArgument(in: a), target != "*",
            app.isLoadPending(target) {
-            app.later { [weak self] _ in self?.applyHostBang(host) }
+            deferCompletion = true
+            app.later { [weak self] _ in
+                if let self { self.applyHostBang(host) } else { host.complete() }
+            }
             return
         }
         func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
@@ -151,11 +158,23 @@ extension SkinWindowController {
 
         // Menus and windows
         case "skinmenu":
-            if let t = targets(0).first { app.popUpMenu(app.skinMenu(for: t, includeCustomItems: true)) }
+            if let t = targets(0).first {
+                let prepared = host.preparedMenu?.runtimeID == ObjectIdentifier(t.runtime) ? host.preparedMenu : nil
+                let menu = app.skinMenu(for: t, includeCustomItems: true, prepared: prepared)
+                deferCompletion = true
+                app.popUpMenu(menu, completion: host.complete)
+            }
         case "skincustommenu":
-            if let t = targets(0).first, let menu = app.customSkinMenu(for: t) { app.popUpMenu(menu) }
+            if let t = targets(0).first {
+                let prepared = host.preparedMenu?.runtimeID == ObjectIdentifier(t.runtime) ? host.preparedMenu : nil
+                if let menu = app.customSkinMenu(for: t, preparedItems: prepared?.items) {
+                    deferCompletion = true
+                    app.popUpMenu(menu, completion: host.complete)
+                }
+            }
         case "traymenu":
-            app.showMainMenu()
+            deferCompletion = true
+            app.showMainMenu(completion: host.complete)
         case "manage":
             // !Manage [TabName] [Config] [File]
             let config = arg(1).isEmpty ? nil : SkinLibrary.normalizedConfigName(arg(1))
@@ -182,8 +201,8 @@ extension SkinWindowController {
 
         // Operating system
         case "setclip":
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(a.first ?? "", forType: .string)
+            setClipPasteboard.clearContents()
+            setClipPasteboard.setString(a.first ?? "", forType: .string)
         case "setwallpaper":
             // The path is absolute already (`HostBangs.preparedForMain`).
             setWallpaper(path: arg(0), position: arg(1))
@@ -209,6 +228,11 @@ extension SkinWindowController {
             Log.write("!SetWallpaper: file not found: \(path)", level: .warning, source: config)
             return
         }
+        if let hook = SkinWindowController.setWallpaperForTesting {
+            hook(path, position)
+            DesktopInputs.refreshDesktops()
+            return
+        }
         var options: [NSWorkspace.DesktopImageOptionKey: Any] = [:]
         switch position.lowercased() {
         case "center", "tile":
@@ -231,10 +255,7 @@ extension SkinWindowController {
             }
         }
         // Skins on other threads read the desktop pictures as published (Chameleon): the new one at once.
-        DesktopInputs.mainScreenDesktop.refresh()
-        DesktopInputs.displayDesktops.refresh()
-        DesktopInputs.allScreenDesktops.refresh()
-        DesktopInputs.desktopFillColor.refresh()
+        DesktopInputs.refreshDesktops()
     }
 }
 

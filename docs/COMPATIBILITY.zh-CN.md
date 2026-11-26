@@ -858,14 +858,18 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 #### 由 App 执行的菜单与系统 bang（`!SetWallpaper`、`!SetClip`、`!Play…`、`!SkinMenu`、`!Manage`、`!EditSkin`……）
 - **Windows：** 一个动作里的 bang 按书写顺序依次执行，前一个执行完才执行下一个。
-- **Mac：** 桌面上的皮肤运行在自己的线程上（默认如此）。`!SetClip`、`!SetWallpaper`、`!Play`、`!PlayLoop`、`!PlayStop`、
-  `!SkinMenu`、`!SkinCustomMenu`、`!TrayMenu`、`!Manage`、`!About` 和 `!EditSkin` 由 App 的主线程在皮肤线程执行完整个动作之后
-  执行，也就是在该动作的其他 bang 之后。`!SetWallpaper` 之后新的桌面图片会立即发布出去。配置类 bang（`!ActivateConfig`、
-  `!Refresh`……）一直都是在动作之后执行。设置 `SkinThreading=main` 时它们在原处执行。
-- **原因：** 菜单、剪贴板、桌面图片和声音归主线程管，而皮肤线程从不等待主线程。
-- **对皮肤的影响：** 同一动作里写在它们后面的 bang 还看不到它们的效果（`[!SetWallpaper …][!UpdateMeasure MeasureChameleon]`
-  取到的仍是旧壁纸的颜色；`[!SkinMenu]` 之后的 bang 会在菜单还开着时执行）。可以把依赖它们的部分放到一个短暂的 `!Delay`
-  之后（`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`）。
+- **Mac：** 桌面上的皮肤运行在自己的线程上（默认如此）。`!SkinMenu`、`!SkinCustomMenu`、`!TrayMenu`、`!SetClip` 和
+  `!SetWallpaper` 会挂起当前动作链中排在后面的 bang（不阻塞皮肤线程）：菜单项会在此时于目标皮肤线程上采集，后续 bang 会在菜单
+  关闭后（若点选了菜单项则先将其动作入队）或主线程更新完剪贴板、桌面图片后继续执行。`!Play`、`!PlayLoop`、`!PlayStop`、
+  `!Manage`、`!About`、`!Debug` 和 `!EditSkin`（以及 `OnCloseAction` 里的宿主 bang）由主线程在当前皮肤工作片结束后执行。
+  配置类 bang（`!ActivateConfig`、`!Refresh`……）一直都是在动作之后执行。设置 `SkinThreading=main` 时它们在原处执行。
+- **原因：** 菜单、窗口、剪贴板、桌面图片和声音归主线程管，而皮肤线程从不阻塞等待主线程。
+- **对皮肤的影响：** `[!SetVariable …][!SkinCustomMenu][!SetVariable …]` 与
+  `[!SetWallpaper …][!UpdateMeasure MeasureChameleon]` 都能按书写顺序生效，无需额外加 `!Delay`（Chameleon 的调色板取样本身
+  仍在后台异步完成）。
+  同一 measure 自身的动作（IfCondition…、IfMatch…、OnChangeAction、OnUpdateAction）在所有模式下都会依次等待：其
+  `IfTrueAction` 打开的菜单关闭后，`OnUpdateAction` 才会运行。同一次更新中排在它后面的 measure 和 meter 不会等待，菜单因此不会
+  卡住皮肤的其他工作；Rainmeter 是在菜单关闭前还是关闭后运行它们，尚未在 Windows 桌面上对照。
 - **状态：** 模拟实现
 
 #### 实验性线程池中的跨皮肤 bang

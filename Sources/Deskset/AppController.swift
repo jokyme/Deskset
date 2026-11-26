@@ -1769,15 +1769,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func showMainMenu() {
+    /// Self-tests: intercepts menus popped up by `!SkinMenu`, `!SkinCustomMenu` and `!TrayMenu` without blocking on
+    /// `NSMenu.popUp`. Main thread.
+    var popUpMenuForTesting: ((NSMenu) -> Void)?
+
+    func showMainMenu(completion: (() -> Void)? = nil) {
         let menu = NSMenu()
         buildMainMenu(menu)
-        popUpMenu(menu)
+        popUpMenu(menu, completion: completion)
     }
 
-    func popUpMenu(_ menu: NSMenu) {
-        guard presentsWindows else { return }
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    func popUpMenu(_ menu: NSMenu, completion: (() -> Void)? = nil) {
+        let session = PopUpMenuSession(completion)
+        AppController.attachMenuSession(session, to: menu)
+        if let hook = popUpMenuForTesting {
+            hook(menu)
+            session.finish()
+            return
+        }
+        guard presentsWindows else {
+            session.finish()
+            return
+        }
+        let selected = menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        if !selected || session.customActionSent {
+            session.finish()
+        } else {
+            session.popUpReturned = true
+            later { _ in session.finish() }
+        }
+    }
+
+    private static func attachMenuSession(_ session: PopUpMenuSession, to menu: NSMenu) {
+        for item in menu.items {
+            (item.representedObject as? CustomMenuAction)?.session = session
+            if let submenu = item.submenu {
+                attachMenuSession(session, to: submenu)
+            }
+        }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -1965,8 +1994,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Menu with only the skin's custom items (`!SkinCustomMenu`), nil when it has none.
-    func customSkinMenu(for c: SkinWindowController) -> NSMenu? {
-        let items = menuFacts(for: c).items
+    func customSkinMenu(for c: SkinWindowController, preparedItems: [ContextMenuItem]? = nil) -> NSMenu? {
+        let items = preparedItems ?? menuFacts(for: c).items
         guard !items.isEmpty else { return nil }
         let menu = NSMenu()
         addCustomItems(items, for: c, to: menu)
@@ -1974,7 +2003,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
-    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool, discoverLibrary: Bool = true) -> NSMenu {
+    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool, discoverLibrary: Bool = true,
+                  prepared: SkinPreparedMenu? = nil) -> NSMenu {
         if discoverLibrary { discoverSkins() }
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -1992,10 +2022,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(selected)
         menu.addItem(.separator())
         // The compatibility notes from the skin's snapshot; the custom items and the weather credit read when
-        // the menu opens (`menuFacts`).
+        // the menu opens (`menuFacts`), or from `prepared` when `!SkinMenu` already captured them on the executor.
         let snapshot = c.runtime.snapshot
         if includeCustomItems {
-            let facts = menuFacts(for: c)
+            let facts = prepared.map {
+                SkinMenuFacts(items: $0.items, name: $0.name, weather: $0.weather, isLive: true)
+            } ?? menuFacts(for: c)
             let custom = facts.items
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
             if custom.count > 3 {
@@ -2427,8 +2459,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// A chosen custom item: its action runs on the skin's executor, from `[Rainmeter]`.
     @objc func customContextAction(_ sender: NSMenuItem) {
-        guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
-              !entry.action.isEmpty else { return }
+        guard let entry = sender.representedObject as? CustomMenuAction else { return }
+        defer { entry.session?.noteCustomActionSent() }
+        guard let c = entry.controller, !c.isStopped, !entry.action.isEmpty else { return }
         c.runtime.send(.execute(entry.action, section: "Rainmeter"))
     }
 
@@ -2559,10 +2592,32 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 final class CustomMenuAction: NSObject {
     weak var controller: SkinWindowController?
     let action: String
+    var session: PopUpMenuSession?
 
     init(controller: SkinWindowController, action: String) {
         self.controller = controller
         self.action = action
+    }
+}
+
+final class PopUpMenuSession {
+    private var completion: (() -> Void)?
+    private(set) var customActionSent = false
+    var popUpReturned = false
+
+    init(_ completion: (() -> Void)?) {
+        self.completion = completion
+    }
+
+    func noteCustomActionSent() {
+        customActionSent = true
+        if popUpReturned { finish() }
+    }
+
+    func finish() {
+        let done = completion
+        completion = nil
+        done?()
     }
 }
 

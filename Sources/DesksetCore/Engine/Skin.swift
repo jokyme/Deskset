@@ -408,8 +408,6 @@ public final class Skin {
     private var environmentCache = SkinEnvironment()
     private var environmentValid = false
 
-    private var updateDepth = 0
-    private var actionDepth = 0
     /// Incremented by `close()`: pending `!Delay` continuations of an older generation are dropped.
     private var generation = 0
     private var closed = false
@@ -418,14 +416,101 @@ public final class Skin {
     private var lastVisibilityState: Bool?
     private var hadInvisiblePhase = false
     private var lastTickUptime: Double?
-    public var canRunVisibilityUpdate: Bool { updateDepth == 0 }
-    /// Work done since the outermost update or action started: bangs run plus meters / measures updated by bangs.
-    private var burstWork = 0
+    public var canRunVisibilityUpdate: Bool { actionContext.updateDepth == 0 }
     /// `!UpdateMeter` / `!UpdateMeterGroup` ran: meter frames are recomputed once, lazily (see `layoutIfPending`).
     private var layoutPending = false
     /// `!Delay` continuations waiting to run, by number; `close()` cancels them.
     private var pendingDelays: [Int: SkinScheduledWork] = [:]
     private var lastDelayID = 0
+
+    /// Every branch of a single update or action charges the same budget, including after an asynchronous bang.
+    private final class BurstBudget {
+        var used = 0
+    }
+
+    private struct ActionContext {
+        var depth = 0
+        var updateDepth = 0
+        var budget = BurstBudget()
+        var mouse: MouseContext?
+        var textEdit: TextEditInputContext?
+    }
+    private var actionContext = ActionContext()
+
+    private func beginBurstIfNeeded() {
+        guard !inActionSequence, actionContext.depth == 0, actionContext.updateDepth == 0 else { return }
+        if isKnownUniquelyReferenced(&actionContext.budget) {
+            actionContext.budget.used = 0
+        } else {
+            // A suspended sequence still owns the previous budget.
+            actionContext.budget = BurstBudget()
+        }
+    }
+
+    /// Allocated only when a sequence actually waits. Independent children of a bang (e.g. !UpdateMeasureGroup)
+    /// each finish their own actions; their caller resumes after the last child. Everything runs on the skin's executor.
+    private final class HostBangWait {
+        var outstanding = 0
+        var parent: HostBangWait?
+        var resume: ((Skin) -> HostBangWait?)?
+
+        func finishOne(on skin: Skin) {
+            outstanding -= 1
+            guard outstanding == 0, !skin.closed else { return }
+            let next = resume?(skin)
+            resume = nil
+            if let next {
+                next.parent = parent
+            } else {
+                parent?.finishOne(on: skin)
+            }
+        }
+    }
+
+    private var hostWait: HostBangWait?
+    private var inActionSequence = false
+    private var pendingHostSuspensions = 0
+    var isWaitingForHost: Bool { (hostWait?.outstanding ?? 0) > 0 }
+
+    private func addHostWait() -> HostBangWait {
+        let wait = hostWait ?? HostBangWait()
+        wait.outstanding += 1
+        hostWait = wait
+        return wait
+    }
+
+    private func collectHostWaits(_ body: () -> Void) -> HostBangWait? {
+        let outer = hostWait
+        let nested = inActionSequence
+        hostWait = nil
+        inActionSequence = true
+        defer {
+            inActionSequence = nested
+            hostWait = outer
+        }
+        body()
+        return isWaitingForHost ? hostWait : nil
+    }
+
+    /// A parsed action or a Lua bang queue. Only an enclosing action depends on this sequence; a later callback
+    /// in the same update starts a sequence of its own.
+    func withActionSequence(_ body: () -> Void) {
+        beginBurstIfNeeded()
+        if let child = collectHostWaits(body), inActionSequence {
+            child.parent = addHostWait()
+        }
+    }
+
+    /// The rest of this sequence runs with the same input, nesting and budget, even if other inputs arrive first.
+    func afterHostBang(_ body: @escaping (Skin) -> Void) {
+        let context = actionContext
+        hostWait?.resume = { skin in
+            let saved = skin.actionContext
+            skin.actionContext = context
+            defer { skin.actionContext = saved }
+            return skin.collectHostWaits { body(skin) }
+        }
+    }
 
     /// Maximum nesting of actions triggering actions (`!UpdateMeasure` → IfConditionMode action → …) and of
     /// `!Update` inside an update, so self-triggering skins cannot recurse forever.
@@ -957,15 +1042,15 @@ public final class Skin {
         beginWork()
         defer { endWork() }
         guard !closed else { return }
-        guard updateDepth < Skin.maxUpdateDepth else {
+        guard actionContext.updateDepth < Skin.maxUpdateDepth else {
             logOnce("!Update inside an update was ignored (would loop)", level: .warning)
             return
         }
-        if updateDepth == 0 && actionDepth == 0 { burstWork = 0 }
-        updateDepth += 1
+        beginBurstIfNeeded()
+        actionContext.updateDepth += 1
         defer {
-            updateDepth -= 1
-            if updateDepth == 0 && actionDepth == 0 { refreshOutsidePointerNeeds() }
+            actionContext.updateDepth -= 1
+            if actionContext.updateDepth == 0 && actionContext.depth == 0 { refreshOutsidePointerNeeds() }
         }
         environmentValid = false
         let envVisible = currentEnvironment().visible
@@ -1051,7 +1136,7 @@ public final class Skin {
 
     /// Re-reads (when needed) and updates one meter, then runs its OnUpdateAction.
     private func updateMeterNow(_ m: Meter) {
-        burstWork += 1
+        actionContext.budget.used += 1
         m.readOptionsIfNeeded()
         m.updateMeter()
         m.noteDrawChange()
@@ -1072,7 +1157,7 @@ public final class Skin {
 
     /// A measure updated by a bang (`!UpdateMeasure`, `!UpdateMeasureGroup`): options re-read when needed.
     private func updateMeasureNow(_ m: Measure) {
-        burstWork += 1
+        actionContext.budget.used += 1
         m.readOptionsIfNeeded()
         m.performUpdate()
     }
@@ -1349,6 +1434,7 @@ public final class Skin {
         for m in meters { (m as? PluginLifecycle)?.skinWillClose() }
         closed = true
         generation += 1
+        pendingHostSuspensions = 0
         // Cancelled rather than left to find the skin closed: they let go of what they hold at once.
         for work in pendingDelays.values { work.cancel() }
         pendingDelays = [:]
@@ -1721,7 +1807,7 @@ public final class Skin {
 
     /// Resolves variables in `text`; section variables too when `sectionVariables` is true.
     public func resolve(_ text: String, in section: SkinSection?, sectionVariables: Bool) -> String {
-        if !Skin.containsVariableSyntax(text, dollar: mouseContext != nil, percent: expandsLegacyEnvironment) {
+        if !Skin.containsVariableSyntax(text, dollar: actionContext.mouse != nil, percent: expandsLegacyEnvironment) {
             return text
         }
         return resolver(for: section, sectionVariables: sectionVariables).resolve(text)
@@ -1751,7 +1837,7 @@ public final class Skin {
             sectionLookup: sectionVariables ? { [unowned self] name, parameter in
                 self.sectionVariableValue(name, parameter)
             } : nil,
-            eventLookup: mouseContext.map { context in { name in Skin.mouseVariable(name, context) } },
+            eventLookup: actionContext.mouse.map { context in { name in Skin.mouseVariable(name, context) } },
             dollarLookup: { [unowned self] name in self.skinOrDisplayVariable(name) })
         resolver.legacyEnvironmentVariables = expandsLegacyEnvironment
         return resolver
@@ -1761,7 +1847,7 @@ public final class Skin {
     /// and `[$Input]` / `[$Input:MatchN]` while a `TextEditMeter` action is running.
     private func skinOrDisplayVariable(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
-        if let ctx = textEditInputContext {
+        if let ctx = actionContext.textEdit {
             let key = (trimmed.hasPrefix("$") ? String(trimmed.dropFirst()) : trimmed).lowercased()
             if key == "input" {
                 return ctx.input
@@ -1932,7 +2018,6 @@ public final class Skin {
         /// False for the actions of `Plugin=Mouse` measures, which replace only `$MouseX$` and `$MouseY$`.
         var percentForms = true
     }
-    private var mouseContext: MouseContext?
 
     /// `[$Input]` and `[$Input:MatchN]` while a `TextEditMeter` action (`OnFocusAction`, `OnSubmitAction`,
     /// `OnDismissAction`) runs.
@@ -1940,14 +2025,13 @@ public final class Skin {
         var input: String
         var matches: [String]
     }
-    private var textEditInputContext: TextEditInputContext?
 
     func executeWithTextEditInput(from meter: TextEditMeter, action: String) {
         let input = meter.actionInputValue
         let matches = meter.actionInputMatches(for: input)
-        let saved = textEditInputContext
-        textEditInputContext = TextEditInputContext(input: input, matches: matches)
-        defer { textEditInputContext = saved }
+        let saved = actionContext.textEdit
+        actionContext.textEdit = TextEditInputContext(input: input, matches: matches)
+        defer { actionContext.textEdit = saved }
         execute(action, from: meter)
     }
 
@@ -1966,10 +2050,10 @@ public final class Skin {
     }
 
     private func withMouse(x: Double, y: Double, in frame: SkinRect, _ body: () -> Void) {
-        let saved = mouseContext
-        mouseContext = MouseContext(x: x - frame.x, y: y - frame.y, width: frame.width, height: frame.height)
+        let saved = actionContext.mouse
+        actionContext.mouse = MouseContext(x: x - frame.x, y: y - frame.y, width: frame.width, height: frame.height)
         body()
-        mouseContext = saved
+        actionContext.mouse = saved
     }
 
     /// Runs an action of a measure that follows the mouse itself (`Plugin=Mouse`) for the pointer at skin point
@@ -1978,7 +2062,7 @@ public final class Skin {
     /// use).
     func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
                               relativeToSkin: Bool, screenPoint: (x: Double, y: Double)? = nil) {
-        if actionDepth == 0 && updateDepth == 0 { environmentValid = false }
+        if actionContext.depth == 0 && actionContext.updateDepth == 0 { environmentValid = false }
         var px = x, py = y
         if !relativeToSkin {
             let env = currentEnvironment()
@@ -1999,10 +2083,10 @@ public final class Skin {
                 py -= screen.area.y
             }
         }
-        let saved = mouseContext
-        mouseContext = MouseContext(x: px, y: py, width: 0, height: 0, percentForms: false)
+        let saved = actionContext.mouse
+        actionContext.mouse = MouseContext(x: px, y: py, width: 0, height: 0, percentForms: false)
         execute(action, from: section)
-        mouseContext = saved
+        actionContext.mouse = saved
     }
 
     /// Notifies the host of the active `!Mouse:StartCapture` measure on this skin (nil when none is active).
@@ -2295,28 +2379,35 @@ public final class Skin {
         assertOwned()
         beginWork()
         defer { endWork() }
-        if actionDepth == 0 && updateDepth == 0 { environmentValid = false }
+        if actionContext.depth == 0 && actionContext.updateDepth == 0 { environmentValid = false }
         let actions = ActionParser.parseDetailed(actionText)
         run(actions[...], from: section)
     }
 
     private func run(_ actions: ArraySlice<ParsedAction>, from section: SkinSection?) {
-        guard actionDepth < Skin.maxActionDepth else {
+        guard actionContext.depth < Skin.maxActionDepth else {
             logOnce("Actions nested too deeply (an action keeps triggering itself); stopped", level: .error)
             return
         }
-        if actionDepth == 0 && updateDepth == 0 { burstWork = 0 }
-        actionDepth += 1
-        defer {
-            actionDepth -= 1
-            if actionDepth == 0 && !closed { layoutIfPending() }
-            if actionDepth == 0 && updateDepth == 0 { refreshOutsidePointerNeeds() }
+        withActionSequence {
+            actionContext.depth += 1
+            runRemaining(actions, from: section)
+            actionContext.depth -= 1
+            finishActionLayout()
         }
+    }
+
+    private func finishActionLayout() {
+        if actionContext.depth == 0 && !closed { layoutIfPending() }
+        if actionContext.depth == 0 && actionContext.updateDepth == 0 { refreshOutsidePointerNeeds() }
+    }
+
+    private func runRemaining(_ actions: ArraySlice<ParsedAction>, from section: SkinSection?) {
         var index = actions.startIndex
         // A bang that unloads the skin (e.g. !Refresh through the host) ends the rest of the action.
         while index < actions.endIndex && !closed {
-            burstWork += 1
-            guard burstWork <= Skin.maxBurstWork else {
+            actionContext.budget.used += 1
+            guard actionContext.budget.used <= Skin.maxBurstWork else {
                 logOnce("Actions keep triggering each other (e.g. OnUpdateAction=[!UpdateMeter *] on several meters); "
                         + "the rest was skipped", level: .error)
                 return
@@ -2327,12 +2418,13 @@ public final class Skin {
                 position < parsed.quoting.count && parsed.quoting[position] == .magic
                     ? value : resolve(value, in: section, sectionVariables: true)
             }
+            // Even a filtered command reaches the wait below if its arguments ran inline Lua.
             switch parsed.action {
             case .bang(let bang):
                 let literal = Set(parsed.quoting.indices.filter { parsed.quoting[$0] == .magic })
                 let bang = Bang(name: bang.name, args: bang.args.enumerated().map { resolved($0.element, $0.offset) },
                                 literalArguments: literal)
-                if let actionPolicy, !actionPolicy.skin(self, allows: bang) { continue }
+                if let actionPolicy, !actionPolicy.skin(self, allows: bang) { break }
                 if bang.name == "delay" {
                     // "The lowest possible value is 16 milliseconds." Judgment: the rest of the action runs later
                     // on the skin's executor instead of blocking the skin; a refresh / unload (`close()`) cancels it.
@@ -2352,8 +2444,8 @@ public final class Skin {
                     lastDelayID &+= 1
                     let id = lastDelayID
                     // `$MouseX$` and `[$Input]` in the delayed part still refer to the event that started the action.
-                    let mouse = mouseContext
-                    let textEditInput = textEditInputContext
+                    let mouse = actionContext.mouse
+                    let textEditInput = actionContext.textEdit
                     // Weak: a delay of up to a day must not keep a skin alive that is dropped without being closed.
                     pendingDelays[id] = executor.async(after: delay) { [weak self] in
                         guard let self else { return }
@@ -2362,13 +2454,13 @@ public final class Skin {
                         self.pendingDelays[id] = nil
                         guard !self.closed, self.generation == scheduled else { return }
                         self.environmentValid = false
-                        let saved = self.mouseContext
-                        let savedTextEdit = self.textEditInputContext
-                        self.mouseContext = mouse
-                        self.textEditInputContext = textEditInput
+                        let saved = self.actionContext.mouse
+                        let savedTextEdit = self.actionContext.textEdit
+                        self.actionContext.mouse = mouse
+                        self.actionContext.textEdit = textEditInput
                         self.run(rest[...], from: section)
-                        self.mouseContext = saved
-                        self.textEditInputContext = savedTextEdit
+                        self.actionContext.mouse = saved
+                        self.actionContext.textEdit = savedTextEdit
                     }
                     return
                 }
@@ -2376,8 +2468,15 @@ public final class Skin {
             case .execute(let target, let arguments):
                 let target = resolved(target, 0)
                 let arguments = arguments.enumerated().map { resolved($0.element, $0.offset + 1) }
-                if let actionPolicy, !actionPolicy.skin(self, allowsExecuting: target, arguments: arguments) { continue }
+                if let actionPolicy, !actionPolicy.skin(self, allowsExecuting: target, arguments: arguments) { break }
                 host?.skin(self, execute: target, arguments: arguments)
+            }
+            if isWaitingForHost {
+                if index < actions.endIndex {
+                    let rest = actions[index...]
+                    afterHostBang { $0.runRemaining(rest, from: section) }
+                }
+                return
             }
         }
     }
@@ -2417,14 +2516,11 @@ public final class Skin {
         beginWork()
         defer { endWork() }
         if let actionPolicy, !actionPolicy.skin(self, allows: bang) { return }
-        if actionDepth == 0 && updateDepth == 0 {
-            // Called by the host (e.g. a bang forwarded from another skin): a burst of its own.
-            burstWork = 0
+        if actionContext.depth == 0 && actionContext.updateDepth == 0 {
             environmentValid = false
         }
-        perform(bang, from: section, literalArguments: bang.literalArguments)
-        if actionDepth == 0 && !closed { layoutIfPending() }
-        if actionDepth == 0 && updateDepth == 0 { refreshOutsidePointerNeeds() }
+        withActionSequence { perform(bang, from: section, literalArguments: bang.literalArguments) }
+        finishActionLayout()
     }
 
     /// `literalArguments`: indices of arguments written in `"""magic quotes"""`, which are "treated strictly
@@ -2960,17 +3056,61 @@ public final class Skin {
     }
 
     private func forwardToHost(_ bang: Bang) {
-        if host?.skin(self, handle: bang) == true {
-            environmentValid = false
-        } else {
-            // Once per bang name: an unsupported bang in OnUpdateAction would otherwise log on every update.
-            if BangCatalog.isKnown(bang.name) {
-                addIssue("Bang !\(bang.name) is not supported")
-                logOnce("Unsupported bang: !\(bang.name)", level: .warning)
-            } else {
-                // Not a Rainmeter bang (a typo): Rainmeter cannot run it either, so it is only logged.
-                logOnce("Unknown bang: !\(bang.name)", level: .warning)
+        guard let host else {
+            recordUnsupportedHostBang(bang.name)
+            return
+        }
+        if closed || pendingHostSuspensions >= Skin.maxPendingDelays {
+            if closed {
+                if host.skin(self, handle: bang) { environmentValid = false }
+                return
             }
+            logOnce("Too many pending host bang continuations; running remaining bangs without waiting", level: .warning)
+            if host.skin(self, handle: bang) {
+                environmentValid = false
+            } else {
+                recordUnsupportedHostBang(bang.name)
+            }
+            return
+        }
+        let scheduled = generation
+        var wait: HostBangWait?
+        var finished = false
+        let outcome = host.skin(self, handle: bang) { [weak self] in
+            guard !finished else { return }
+            finished = true
+            // An inline completion ran before the host returned its outcome; the caller just carries on.
+            guard let self, let wait, !self.closed, self.generation == scheduled else { return }
+            self.assertOwned()
+            self.pendingHostSuspensions -= 1
+            self.work {
+                self.environmentValid = false
+                wait.finishOne(on: self)
+                self.finishActionLayout()
+            }
+        }
+        switch outcome {
+        case .unsupported:
+            recordUnsupportedHostBang(bang.name)
+        case .handled:
+            environmentValid = false
+        case .suspended:
+            environmentValid = false
+            if !finished {
+                pendingHostSuspensions += 1
+                wait = addHostWait()
+            }
+        }
+    }
+
+    private func recordUnsupportedHostBang(_ name: String) {
+        // Once per bang name: an unsupported bang in OnUpdateAction would otherwise log on every update.
+        if BangCatalog.isKnown(name) {
+            addIssue("Bang !\(name) is not supported")
+            logOnce("Unsupported bang: !\(name)", level: .warning)
+        } else {
+            // Not a Rainmeter bang (a typo): Rainmeter cannot run it either, so it is only logged.
+            logOnce("Unknown bang: !\(name)", level: .warning)
         }
     }
 

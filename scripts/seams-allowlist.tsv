@@ -141,7 +141,6 @@ zone.implicitFormatter	Sources/Deskset/App/ManageWindowController.swift	*	Skin S
 event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.workspace	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs

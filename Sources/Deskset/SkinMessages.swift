@@ -62,6 +62,10 @@ enum SkinMessage {
     /// An action the widget runs on its own behalf, not as input another instance should follow (`Skin.execute`): the
     /// Studio's Interact running what its own instance held back.
     case run(String)
+    /// Reads this skin's menu facts in FIFO order for another skin's `!SkinMenu` / `!SkinCustomMenu`, then requests UI.
+    case prepareMenu(HostBang)
+    /// Resumes an action chain that suspended for an asynchronous host bang (`HostBangCompletion`).
+    case hostBangCompleted(id: Int)
 
     // MARK: The Studio
 
@@ -128,6 +132,44 @@ enum SkinMessage {
     case frameWanted
 }
 
+/// Menu items and attribution captured on the target skin's executor when `!SkinMenu` or `!SkinCustomMenu` ran, so
+/// later bangs or updates cannot overwrite what the menu shows.
+struct SkinPreparedMenu {
+    var runtimeID: ObjectIdentifier
+    var items: [ContextMenuItem]
+    var name: String?
+    var weather: (uses: Bool, updated: String?)
+}
+
+/// Delivers completion of an asynchronous `HostBang` back to the originating `SkinRuntime` at most once, including when
+/// a request is dropped before reaching a live window.
+final class HostBangCompletion {
+    private let lock = NSLock()
+    private weak var runtime: SkinRuntime?
+    private var id: Int?
+
+    init(runtime: SkinRuntime, id: Int) {
+        self.runtime = runtime
+        self.id = id
+    }
+
+    func complete() {
+        lock.lock()
+        guard let id = self.id else {
+            lock.unlock()
+            return
+        }
+        self.id = nil
+        let target = runtime
+        lock.unlock()
+        target?.send(.hostBangCompleted(id: id))
+    }
+
+    deinit {
+        complete()
+    }
+}
+
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
 struct HostBang {
     var bang: Bang
@@ -135,6 +177,14 @@ struct HostBang {
     var hops: Int
     /// Sent while the skin's OnCloseAction runs.
     var whileClosing: Bool
+    /// Menu facts captured on the target skin's executor for `!SkinMenu` / `!SkinCustomMenu`.
+    var preparedMenu: SkinPreparedMenu? = nil
+    /// Resumes the originating skin's suspended action once the main thread has finished carrying out the bang.
+    var completion: HostBangCompletion? = nil
+
+    func complete() {
+        completion?.complete()
+    }
 }
 
 /// What `SkinMessage.load` needs from the main thread: the config's window settings as the app has them, and what
@@ -269,6 +319,14 @@ enum SkinRequest {
         case .open(_, let whileClosing): return whileClosing
         case .mouseCapture: return false
         default: return false
+        }
+    }
+
+    /// Releases any suspended action waiting on a host bang when a request is dropped.
+    func cancelCompletion() {
+        switch self {
+        case .lifecycle(let host), .ui(let host), .system(let host): host.complete()
+        default: break
         }
     }
 }

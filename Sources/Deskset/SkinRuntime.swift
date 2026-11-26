@@ -48,6 +48,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     private var updatesPaused = false
     /// The hops of the message being handled (0 for the skin's own work): what its bangs for other skins count from.
     private var currentHops = 0
+    private var nextHostBangID = 0
+    private var hostBangCompletions: [Int: (hops: Int, resume: () -> Void)] = [:]
     /// `!SendKey` added the shared media-key Accessibility note to this skin. Only the executor changes it.
     private var notedSendKeyAccessibility = false
     /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
@@ -274,7 +276,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     private func noteAction(_ message: SkinMessage) {
         switch message {
-        case .bang, .execute, .run, .update, .redraw: directoryStore?.noteAction()
+        case .bang, .execute, .run, .prepareMenu, .hostBangCompleted, .update, .redraw: directoryStore?.noteAction()
         default: break
         }
     }
@@ -286,7 +288,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             // Complete requests through their normal closed-runtime paths after close has finished.
             for message in cancelledPasteMessages {
                 switch message {
-                case .textEditClipboard, .patch, .setZoom: _ = handle(message)
+                case .textEditClipboard, .patch, .setZoom, .prepareMenu: _ = handle(message)
                 default: break
                 }
             }
@@ -362,6 +364,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         }
         guard !isClosed else {
             if case .textEditClipboard(_, let reply) = message { reply(nil) }
+            if case .prepareMenu(let host) = message { host.complete() }
             return false
         }
         switch message {
@@ -432,6 +435,19 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.executeInput(action, from: section.flatMap { skin.section(named: $0) })
         case .run(let action):
             skin.execute(action, from: nil)
+        case .prepareMenu(var host):
+            guard permitsLayoutAction else {
+                host.complete()
+                return false
+            }
+            withHops(host.hops) {
+                host.preparedMenu = capturePreparedMenu(for: host.bang.name)
+                request(.ui(host))
+            }
+        case .hostBangCompleted(let id):
+            if let pending = hostBangCompletions.removeValue(forKey: id) {
+                withHops(pending.hops, pending.resume)
+            }
         case .inputTextAnswered(let id, let text):
             inputTextAnswers.removeValue(forKey: id)?(text)
         case .fileTrashAnswered(let id, let confirmed):
@@ -545,7 +561,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// Asks the main thread: at once when on it, else queued there in order.
     func request(_ request: SkinRequest) {
-        guard permitsAfterLayoutRetirement(request) else { return }
+        guard permitsAfterLayoutRetirement(request) else {
+            request.cancelCompletion()
+            return
+        }
         switch request {
         case .window, .lifecycle, .ui, .system, .open, .forward, .fadeWindow: directoryStore?.noteAction()
         default: break
@@ -558,8 +577,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         let load = SkinRuntime.configLoaded(by: request)
         if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if self.permitsAfterLayoutRetirement(request) { self.applyToWindow(request) }
+            guard let self else {
+                request.cancelCompletion()
+                return
+            }
+            if self.permitsAfterLayoutRetirement(request) {
+                self.applyToWindow(request)
+            } else {
+                request.cancelCompletion()
+            }
             if let load {
                 self.loadsInFlight.access {
                     let left = ($0[load] ?? 1) - 1
@@ -575,6 +601,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             window.apply(request, from: self)
         } else if case .companion(.confirmFileTrash(let id, _)) = request {
             send(.fileTrashAnswered(id: id, confirmed: false))
+        } else {
+            request.cancelCompletion()
         }
     }
 
@@ -608,8 +636,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Hands `message` (made with the hops it carries) to another skin's runtime. Pool mode always queues peer bangs,
     /// so their ordering does not depend on worker placement. Other modes deliver inline on the same executor. A
     /// chain of skins triggering each other stops at `maxHops`: the bang is dropped and logged, once per skin.
-    private func deliver(_ bang: String, to target: SkinRuntime, _ message: (_ hops: Int) -> SkinMessage) {
-        guard permitsLayoutAction, !target.isRetiredForLayout else { return }
+    @discardableResult
+    private func deliver(_ bang: String, to target: SkinRuntime, _ message: (_ hops: Int) -> SkinMessage) -> Bool {
+        guard permitsLayoutAction, !target.isRetiredForLayout else { return false }
         guard currentHops < SkinRuntime.maxHops else {
             droppedHops += 1
             if hopLimitLogs == 0 {
@@ -617,7 +646,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                 Log.write("!\(bang) to \"\(target.config)\" ignored: skins keep triggering each other", level: .warning,
                           source: config)
             }
-            return
+            return false
         }
         let value = message(currentHops + 1)
         if target !== self && (defersPeerBangs || target.defersPeerBangs) {
@@ -625,6 +654,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         } else {
             target.send(value)
         }
+        return true
     }
 
     /// Sends a bang the engine performed to the config `name` (not this one): straight to its runtime when it runs; to
@@ -896,6 +926,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         inputTextAnswers = [:]
         fileTrashAnswers = [:]
         windowFollowers = [:]
+        hostBangCompletions = [:]
         // What the skin that replaces it goes on from (its Calc Counter), whatever thread that one runs on.
         publishSnapshot()
         request(.closed(ticket))
@@ -1045,41 +1076,92 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// engine records a compatibility note). Window bangs change the window model and group bangs go to the group's
     /// skins from here; what the others do is done on the main thread (`SkinWindowController.apply`).
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
+        handleHostBang(skin, bang: bang, completion: nil) != .unsupported
+    }
+
+    func skin(_ skin: Skin, handle bang: Bang, completion: @escaping () -> Void) -> SkinHostBangOutcome {
+        handleHostBang(skin, bang: bang, completion: completion)
+    }
+
+    private func capturePreparedMenu(for bangName: String) -> SkinPreparedMenu {
+        let items = skin.contextMenuItems()
+        if bangName == "skinmenu" {
+            return SkinPreparedMenu(
+                runtimeID: ObjectIdentifier(self),
+                items: items,
+                name: ManageModel.metadataValue(skin.metadata, "Name"),
+                weather: MacWeatherMeasure.attributionInfo(for: skin)
+            )
+        }
+        return SkinPreparedMenu(runtimeID: ObjectIdentifier(self), items: items, name: nil, weather: (false, nil))
+    }
+
+    private func handleHostBang(_ skin: Skin, bang: Bang, completion: (() -> Void)?) -> SkinHostBangOutcome {
         HostCallAudit.note(self, "handle \(bang.name)")
-        guard !isClosed else { return true }
-        guard permitsLayoutAction else { return true }
+        guard !isClosed else { return .handled }
+        guard permitsLayoutAction else { return .handled }
         if bang.name == "setupdate" || bang.name == "forceenablevisiblemode" {
             startTimer()
-            return true
+            return .handled
         }
         if bang.name == "sendkey" {
             sendKey(bang)
-            return true
+            return .handled
         }
         if bang.name == "resetstats" {
             skin.sideEffects.perform(.hostBang("!ResetStats")) {
                 skin.system.resetNetworkStatistics()
             }
-            return true
+            return .handled
         }
-        guard let kind = HostBangs.kind(of: bang.name) else { return false }
+        guard let kind = HostBangs.kind(of: bang.name) else { return .unsupported }
         switch kind {
         case .window:
             windowBang(bang)
-            return true
+            return .handled
         case .group:
             groupBang(bang)
-            return true
+            return .handled
         case .lifecycle, .ui, .system:
             break
         }
-        let host = HostBang(bang: HostBangs.preparedForMain(bang, of: skin), hops: currentHops, whileClosing: isClosing)
+        let isSkinMenu = bang.name == "skinmenu" || bang.name == "skincustommenu"
+        let suspends = completion != nil && !isClosing
+            && (isSkinMenu || bang.name == "traymenu" || bang.name == "setclip" || bang.name == "setwallpaper")
+        func makeHostBang(hops: Int) -> HostBang {
+            var host = HostBang(bang: HostBangs.preparedForMain(bang, of: skin), hops: hops, whileClosing: isClosing)
+            if suspends, let completion {
+                nextHostBangID &+= 1
+                let id = nextHostBangID
+                hostBangCompletions[id] = (currentHops, completion)
+                host.completion = HostBangCompletion(runtime: self, id: id)
+            }
+            return host
+        }
+        var captureOwnMenu = false
+        if isSkinMenu, !isClosing {
+            let rawTarget = bang.args.first?.trimmingCharacters(in: .whitespaces) ?? ""
+            if rawTarget.isEmpty {
+                captureOwnMenu = true
+            } else if rawTarget != "*", SkinSection.parseGroupSelector(rawTarget) == nil {
+                let targetName = SkinLibrary.normalizedConfigName(rawTarget)
+                if targetName.caseInsensitiveCompare(config) == .orderedSame {
+                    captureOwnMenu = !isRetiredForLayout
+                } else if let directory = directoryStore?.directory, !isLoadPending(targetName, in: directory),
+                          let target = directory.runtime(for: targetName), !target.isRetiredForLayout {
+                    let delivered = deliver(bang.name, to: target) { .prepareMenu(makeHostBang(hops: $0)) }
+                    return delivered && suspends ? .suspended : .handled
+                }
+            }
+        }
+        var host = makeHostBang(hops: currentHops)
+        if captureOwnMenu { host.preparedMenu = capturePreparedMenu(for: bang.name) }
         switch kind {
         case .lifecycle: request(.lifecycle(host))
         case .ui: request(.ui(host))
         default: request(.system(host))
         }
-        return true
+        return suspends ? .suspended : .handled
     }
 
     /// Media-key commands run with the skin, so its side effects, permissions and issues stay on its executor.

@@ -278,6 +278,7 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     private weak var channel: SkinCompanionChannel?
     private var followID: Int?
     private var watchRequested = false
+    private var seenDesktopGeneration = -1
     private var closed = false
 
     override func readMeasureOptions() {
@@ -334,7 +335,10 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
             return 0
         }
         if samplesUnderSkin { watchWindowIfNeeded() }
-        refreshImage()
+        let generation = DesktopInputs.desktopChangeGeneration.current
+        let desktopChanged = isDesktop && generation != seenDesktopGeneration
+        if isDesktop { seenDesktopGeneration = generation }
+        refreshImage(force: desktopChanged)
         publishString(imagePath)
         return 0
     }
@@ -370,12 +374,7 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     /// per measure.
     private func refreshImage(force: Bool = false) {
         let now = ProcessInfo.processInfo.systemUptime
-        if pendingKey != nil {
-            if force { recheck = true }
-            return
-        }
         guard force || now - lastCheck >= 2 else { return }
-        lastCheck = now
         var request = Request()
         let source = ChameleonMeasure.desktopSource
         if isDesktop {
@@ -407,6 +406,11 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
             requestedPath = path
             imagePath = path
         }
+        if pendingKey != nil {
+            recheck = true
+            return
+        }
+        lastCheck = now
         let crop = self.crop
         let analyzed = paletteKey
         let desktop = isDesktop
@@ -731,6 +735,18 @@ enum DesktopInputs {
     /// Screens and desktop pictures that stand in for the Mac's: the render command's `--wallpaper` and
     /// `--background`, and the self-tests. nil: the Mac's own.
     static let fake = Guarded<[ScreenDesktop]?>(nil)
+
+    /// Bumped whenever the app sets or refreshes the Mac's desktop pictures, so `Chameleon` re-checks without waiting
+    /// for its two-second poll interval.
+    static let desktopChangeGeneration = Guarded(0)
+
+    static func refreshDesktops() {
+        mainScreenDesktop.refresh()
+        displayDesktops.refresh()
+        allScreenDesktops.refresh()
+        desktopFillColor.refresh()
+        desktopChangeGeneration.access { $0 &+= 1 }
+    }
 
     /// Every screen's desktop (any thread): the stand-ins when there are any.
     static func screenDesktops() -> [ScreenDesktop] {
