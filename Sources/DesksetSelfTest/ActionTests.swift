@@ -448,6 +448,429 @@ func runActionTests(_ t: TestRunner) {
         t.equal(BangCatalog.mouseActionNames.count, 21)
         t.check(BangCatalog.mouseActionNames.contains("MouseScrollRightAction"))
     }
+
+    t.suite("Actions: suspended host bang continuations") {
+        final class SuspendingHost: SkinHost {
+            let base = FakeHost()
+            var pending: [(bang: Bang, complete: () -> Void)] = []
+            var suspendNames: Set<String> = ["skincustommenu", "setclip"]
+
+            func skinNeedsDisplay(_ skin: Skin) { base.skinNeedsDisplay(skin) }
+            func skin(_ skin: Skin, handle bang: Bang) -> Bool { base.skin(skin, handle: bang) }
+            func skin(_ skin: Skin, handle bang: Bang, completion: @escaping () -> Void) -> SkinHostBangOutcome {
+                base.handled.append(bang)
+                guard bang.name != "unknownbang" else { return .unsupported }
+                if suspendNames.contains(bang.name) {
+                    pending.append((bang, completion))
+                    return .suspended
+                }
+                return .handled
+            }
+            func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
+                base.skin(skin, forward: bang, toConfig: config)
+            }
+            func skin(_ skin: Skin, execute target: String, arguments: [String]) {
+                base.skin(skin, execute: target, arguments: arguments)
+            }
+            func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {
+                base.skin(skin, log: message, level: level)
+            }
+            func textSize(_ text: String, style: TextStyle, wrapWidth: Double?,
+                          for skin: Skin) -> (width: Double, height: Double) {
+                base.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
+            }
+            func imageSize(atPath path: String) -> (width: Double, height: Double)? { base.imageSize(atPath: path) }
+            func environment(for skin: Skin) -> SkinEnvironment { base.environment(for: skin) }
+        }
+
+        func makeSuspendedSkin(_ ini: String, files: [String: String] = [:]) throws -> (Skin, SuspendingHost) {
+            let host = SuspendingHost()
+            let skins = t.temporaryDirectory("suspended-engine").appendingPathComponent("Skins")
+            let dir = skins.appendingPathComponent("Root/Sub")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: skins.appendingPathComponent("Root/@Resources"),
+                                                    withIntermediateDirectories: true)
+            try ini.write(to: dir.appendingPathComponent("Skin.ini"), atomically: true, encoding: .utf8)
+            for (path, text) in files {
+                let url = skins.appendingPathComponent(path)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            let skin = Skin(config: "Root\\Sub", fileURL: dir.appendingPathComponent("Skin.ini"), skinsDirectory: skins,
+                            system: FakeSystem(), host: host)
+            try skin.load()
+            return (skin, host)
+        }
+
+        // Direct chain, mouse variable preservation, and chained suspended host bangs.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                MenuKind=9
+                MenuCell=0
+                MouseSeen=none
+                [MeterTile]
+                Meter=String
+                Text=Tile
+                W=80
+                H=40
+                RightMouseUpAction=[!SetVariable MenuKind 1][!SetVariable MenuCell 4][!SkinCustomMenu][!SetClip "copied"][!SetVariable MouseSeen "$MouseX$,$MouseY$"][!SetVariable MenuKind 9][!SetVariable MenuCell 0]
+                """)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            t.equal(skin.mouseEvent(.rightUp, x: 25, y: 15), true)
+            t.equal(host.pending.map(\.bang.name), ["skincustommenu"], "first host bang suspended the rest")
+            t.equal(skin.variable("MenuKind"), "1", "MenuKind stays at the tile's value while suspended")
+            t.equal(skin.variable("MenuCell"), "4", "MenuCell stays at the tile's value while suspended")
+            t.equal(skin.variable("MouseSeen"), "none", "later bangs have not run yet")
+
+            guard !host.pending.isEmpty else { return }
+            let first = host.pending.removeFirst()
+            first.complete()
+            t.equal(host.pending.map(\.bang.name), ["setclip"], "second suspended bang in the chain paused again")
+            t.equal(skin.variable("MenuKind"), "1", "still waiting for second suspended bang")
+
+            guard !host.pending.isEmpty else { return }
+            let second = host.pending.removeFirst()
+            second.complete()
+            t.equal(host.pending.count, 0)
+            t.equal(skin.variable("MouseSeen"), "25,15", "$MouseX$,$MouseY$ preserved across continuations")
+            t.equal(skin.variable("MenuKind"), "9", "reset ran after host bangs completed")
+            t.equal(skin.variable("MenuCell"), "0")
+        }
+
+        // Nested execute (`!UpdateMeasure` -> `IfTrueAction`) unwinds outer action frames in order.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                Triggered=0
+                Trace=start
+                [MeasureTrigger]
+                Measure=Calc
+                Formula=#Triggered#
+                DynamicVariables=1
+                UpdateDivider=-1
+                IfConditionMode=1
+                IfCondition=MeasureTrigger = 1
+                IfTrueAction=[!SetVariable Trace "[#Trace]>inner1"][!SkinCustomMenu][!SetVariable Trace "[#Trace]>inner2"]
+                """)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            t.equal(host.pending.count, 0)
+            skin.execute("[!SetVariable Triggered 1][!SetVariable Trace begin][!UpdateMeasure MeasureTrigger]"
+                         + "[!SetVariable Trace \"[#Trace]>outer2\"]", from: nil)
+            t.equal(skin.variable("Trace"), "begin>inner1", "both inner and outer tails wait for the host bang")
+            t.equal(host.pending.count, 1)
+            guard !host.pending.isEmpty else { return }
+            host.pending.removeFirst().complete()
+            t.equal(skin.variable("Trace"), "begin>inner1>inner2>outer2", "inner tail finishes before outer tail")
+        }
+
+        // Lua `SKIN:Bang` queue suspends remaining queued bangs until the host bang finishes.
+        do {
+            let script = """
+                function Trigger()
+                    SKIN:Bang('!SetVariable', 'LuaStep', 'tile')
+                    SKIN:Bang('!SkinCustomMenu')
+                    SKIN:Bang('!SetVariable', 'LuaStep', 'card')
+                end
+                """
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                LuaStep=idle
+                [MeasureLua]
+                Measure=Script
+                ScriptFile=#@#Menu.lua
+                """, files: ["Root/@Resources/Menu.lua": script])
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            skin.execute(#"[!CommandMeasure MeasureLua "Trigger()"]"#, from: nil)
+            t.equal(skin.variable("LuaStep"), "tile", "queued SKIN:Bang after !SkinCustomMenu waits")
+            t.equal(host.pending.count, 1)
+            guard !host.pending.isEmpty else { return }
+            host.pending.removeFirst().complete()
+            t.equal(skin.variable("LuaStep"), "card", "remaining SKIN:Bang runs after completion")
+        }
+
+        // Independent update callbacks keep their place; an explicit !Update waits for both child actions.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                Ready=0
+                [First]
+                Measure=Calc
+                Formula=1
+                OnUpdateAction=[!SkinCustomMenu][!SetVariable FirstDone 1]
+                [Second]
+                Measure=Calc
+                Formula=2
+                OnUpdateAction=[!SetVariable Ready 1][!SetClip test][!SetVariable SecondDone 1]
+                [Consumer]
+                Measure=Calc
+                Formula=#Ready#
+                DynamicVariables=1
+                """)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.execute("[!Update][!SetVariable ParentDone 1]", from: nil)
+            t.equal(skin.measure(named: "Consumer")?.value, 1, "the next measure saw the producer in this update")
+            t.equal(host.pending.map(\.bang.name), ["skincustommenu", "setclip"], "both independent actions started")
+            if host.pending.count == 2 {
+                host.pending.removeLast().complete()
+                t.equal(skin.variable("SecondDone"), "1")
+                t.equal(skin.variable("FirstDone"), nil)
+                t.equal(skin.variable("ParentDone"), nil, "the caller still waits for the first child")
+                host.pending.removeFirst().complete()
+                t.equal(skin.variable("FirstDone"), "1")
+                t.equal(skin.variable("ParentDone"), "1")
+            }
+        }
+
+        // A finite chain of nested updates should stop at the same depth on both sides of a host callback.
+        do {
+            let count = Skin.maxActionDepth + 3
+            let measures = (1...count).map { index in
+                let next = index < count ? "[!UpdateMeasure Level\(index + 1)]" : ""
+                return """
+                    [Level\(index)]
+                    Measure=Calc
+                    Formula=1
+                    OnUpdateAction=[!SetVariable Level \(index)][!SkinCustomMenu]\(next)
+                    """
+            }.joined(separator: "\n")
+            func lastLevel(suspending: Bool) throws -> String? {
+                let (skin, host) = try makeSuspendedSkin("[Rainmeter]\nUpdate=-1\n" + measures)
+                defer { skin.close(); withExtendedLifetime(host) {} }
+                if !suspending { host.suspendNames = [] }
+                skin.execute("[!UpdateMeasure Level1]", from: nil)
+                for _ in 0..<count where !host.pending.isEmpty { host.pending.removeFirst().complete() }
+                t.check(host.base.logs.contains { $0.contains("nested too deeply") })
+                return skin.variable("Level")
+            }
+            let synchronous = try lastLevel(suspending: false)
+            let resumed = try lastLevel(suspending: true)
+            t.check(synchronous != nil)
+            t.equal(resumed, synchronous)
+        }
+
+        // An update resumed inside OnUpdateAction still counts toward the nested update limit.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Counter]
+                Measure=Calc
+                Formula=Counter
+                IfConditionMode=1
+                IfCondition=Counter < 5
+                IfTrueAction=[!SkinCustomMenu][!Update]
+                """)
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            for _ in 0..<5 where !host.pending.isEmpty { host.pending.removeFirst().complete() }
+            t.equal(skin.updateCount, Skin.maxUpdateDepth)
+            t.check(host.base.logs.contains { $0.contains("!Update inside an update") })
+        }
+
+        // Two pieces share one burst budget even when another input runs between them.
+        do {
+            let (skin, host) = try makeSuspendedSkin("[Rainmeter]\nUpdate=-1")
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            let half = String(repeating: "[!ShowBlur]", count: Skin.maxBurstWork / 2)
+            skin.execute(half + "[!SkinCustomMenu]" + half + "[!SetVariable OverBudget 1]", from: nil)
+            skin.execute("[!SetVariable OtherInput 1]", from: nil)
+            host.pending.first?.complete()
+            t.equal(skin.variable("OtherInput"), "1")
+            t.equal(skin.variable("OverBudget"), nil)
+            t.check(host.base.logs.contains { $0.contains("the rest was skipped") })
+        }
+
+        // A nested Lua call appends behind already queued bangs. A separate call while the menu is open
+        // can run on the same measure. Both suspensions in the click retain its coordinates.
+        do {
+            let script = """
+                function Click()
+                    SKIN:Bang('!SkinCustomMenu')
+                    SKIN:Bang('!CommandMeasure', 'Script', 'Append()')
+                    SKIN:Bang('!SetVariable', 'Order', 'outer')
+                end
+                function Append()
+                    SKIN:Bang('!SetVariable', 'Order', 'inner')
+                    SKIN:Bang('!SetClip', 'test')
+                    SKIN:Bang('!SetVariable', 'Point', '$MouseX$,$MouseY$')
+                end
+                """
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Script]
+                Measure=Script
+                ScriptFile=#@#Menu.lua
+                [Tile]
+                Meter=String
+                Text=Tile
+                W=80
+                H=40
+                RightMouseUpAction=[!CommandMeasure Script "Click()"]
+                """, files: ["Root/@Resources/Menu.lua": script])
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            t.check(skin.mouseEvent(.rightUp, x: 25, y: 15))
+            skin.execute(#"[!CommandMeasure Script "SKIN:Bang('!SetVariable', 'Separate', '1')"]"#, from: nil)
+            t.equal(skin.variable("Separate"), "1")
+            t.equal(skin.variable("Order"), nil)
+            t.equal(host.pending.map(\.bang.name), ["skincustommenu"])
+            if !host.pending.isEmpty { host.pending.removeFirst().complete() }
+            t.equal(host.pending.map(\.bang.name), ["setclip"])
+            if !host.pending.isEmpty { host.pending.removeFirst().complete() }
+            t.equal(skin.variable("Order"), "inner", "the nested write was enqueued last")
+            t.equal(skin.variable("Point"), "25,15")
+        }
+
+        // A deferred Lua bang still sees the submitted input and its match after the user edits the field.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Script]
+                Measure=Script
+                ScriptFile=#@#Input.lua
+                [Input]
+                Meter=TextEdit
+                W=160
+                H=24
+                InitialText=Alpha 123
+                InputRegExp=^([A-Za-z]+) ([0-9]+)$
+                OnSubmitAction=[!CommandMeasure Script "Submit()"]
+                """, files: ["Root/@Resources/Input.lua": """
+                    function Submit()
+                        SKIN:Bang('!SkinCustomMenu')
+                        SKIN:Bang('!SetVariable', 'Submitted', '[$Input] / [$Input:Match2]')
+                    end
+                    """])
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            skin.execute("[!TextEdit:Focus Input][!TextEdit:Submit Input]", from: nil)
+            t.equal(host.pending.count, 1)
+            skin.execute(#"[!TextEdit:SetText Input "Beta 456"]"#, from: nil)
+            host.pending.first?.complete()
+            t.equal(skin.variable("Submitted"), "Alpha 123 / 123")
+        }
+
+        // One measure's actions run in their order across a host wait, as with a host that finishes at once: its
+        // OnUpdateAction waits for an IfTrueAction's menu, while the measure after it in the update goes on, and an
+        // action that updated the measure waits for the whole pass.
+        do {
+            let ini = """
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                Trace=start
+                Armed=0
+                [Tile]
+                Measure=Calc
+                Formula=#Armed#
+                DynamicVariables=1
+                IfConditionMode=1
+                IfCondition=Tile = 1
+                IfTrueAction=[!SetVariable Trace "[#Trace]>menu"][!SkinCustomMenu][!SetVariable Trace "[#Trace]>reset"]
+                IfMatch=^1$
+                IfMatchAction=[!SetVariable Trace "[#Trace]>match"]
+                OnUpdateAction=[!SetVariable Trace "[#Trace]>update"]
+                [Next]
+                Measure=Calc
+                Formula=1
+                OnUpdateAction=[!SetVariable NextSaw "[#Trace]"]
+                """
+            func traces(suspending: Bool) throws -> [String?] {
+                let (skin, host) = try makeSuspendedSkin(ini)
+                defer { skin.close(); withExtendedLifetime(host) {} }
+                if !suspending { host.suspendNames = [] }
+                skin.update()
+                skin.execute("[!SetVariable Armed 1][!SetVariable Trace begin]", from: nil)
+                skin.update()
+                if suspending {
+                    t.equal(skin.variable("Trace"), "begin>menu", "the measure's later actions wait for the menu")
+                    t.equal(skin.variable("NextSaw"), "begin>menu", "the next measure did not wait")
+                    t.equal(host.pending.map(\.bang.name), ["skincustommenu"])
+                }
+                while !host.pending.isEmpty { host.pending.removeFirst().complete() }
+                let first = skin.variable("Trace")
+                skin.execute("[!SetVariable Trace again][!UpdateMeasure Tile][!SetVariable Trace \"[#Trace]>after\"]",
+                             from: nil)
+                if suspending {
+                    t.equal(skin.variable("Trace"), "again>menu", "the caller waits for the measure's whole pass")
+                }
+                while !host.pending.isEmpty { host.pending.removeFirst().complete() }
+                return [first, skin.variable("Trace")]
+            }
+            let synchronous = try traces(suspending: false)
+            t.equal(synchronous, ["begin>menu>reset>match>update", "again>menu>reset>update>after"])
+            t.equal(try traces(suspending: true), synchronous, "the same order as a host that finishes at once")
+        }
+
+        // Resolving a filtered command can still start a host request in inline Lua.
+        do {
+            final class FilteringPolicy: SkinActionPolicy {
+                func skin(_ skin: Skin, allows bang: Bang) -> Bool { bang.name != "hide" }
+                func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool { false }
+            }
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Script]
+                Measure=Script
+                ScriptFile=#@#Argument.lua
+                """, files: ["Root/@Resources/Argument.lua": """
+                    function Argument()
+                        SKIN:Bang('!SetClip', 'argument')
+                        SKIN:Bang('!SetVariable', 'Step', 'between')
+                        return 'unused'
+                    end
+                    """])
+            defer { skin.close(); withExtendedLifetime(host) {} }
+            skin.update()
+            skin.actionPolicy = FilteringPolicy()
+            for filtered in [#"[!Hide "[&Script:Argument()]"]"#, #"["unused" "[&Script:Argument()]"]"#] {
+                skin.execute("[!SetVariable Step before]" + filtered
+                             + #"[!SetClip "[#Step]"][!SetVariable Step done]"#, from: nil)
+                t.equal(skin.variable("Step"), "before")
+                t.equal(host.pending.map { $0.bang.args }, [["argument"]], "the next host request waits for the argument")
+                if !host.pending.isEmpty { host.pending.removeFirst().complete() }
+                t.equal(skin.variable("Step"), "between")
+                t.equal(host.pending.map { $0.bang.args }, [["between"]])
+                if !host.pending.isEmpty { host.pending.removeFirst().complete() }
+                t.equal(skin.variable("Step"), "done")
+            }
+            t.check(!host.base.handled.contains { $0.name == "hide" })
+            t.check(host.base.executed.isEmpty)
+        }
+
+        // Closing the skin cancels pending host continuations safely.
+        do {
+            let (skin, host) = try makeSuspendedSkin("""
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                State=open
+                """)
+            defer { withExtendedLifetime(host) {} }
+            skin.update()
+            skin.execute("[!SkinCustomMenu][!SetVariable State afterClose]", from: nil)
+            t.equal(host.pending.count, 1)
+            skin.close()
+            guard !host.pending.isEmpty else { return }
+            host.pending.removeFirst().complete()
+            t.equal(skin.variable("State"), "open", "closed skin ignores late continuation")
+        }
+    }
 }
 
 /// Deterministic PRNG for the fuzz tests.

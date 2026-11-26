@@ -100,6 +100,7 @@ enum AppSelfTest {
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
         CommandRoutingSelfTests.run(t)
+        HostBangContinuationSelfTests.run(t)
         NetworkStatisticsSelfTests.run(t)
         NetworkStatisticsRuntimeSelfTests.run(t)
         NetworkStatisticsUISelfTests.run(t)

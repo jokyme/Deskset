@@ -616,13 +616,17 @@ enum MacLookSelfTests {
             guard let defaults = UserDefaults(suiteName: suite) else { return t.check(false, "a defaults suite") }
             var heard = 0
             let observer = RegionalDefaultsObserver(defaults: defaults) { heard += 1 }
-            defaults.set("Fahrenheit", forKey: "AppleTemperatureUnit")
-            defaults.set(true, forKey: "AppleICUForce24HourTime")
+            // The suite falls back on the global domain, where this Mac's own settings are: a value it already reads
+            // there is no change, and nothing is heard. Each write below differs from what the suite reads now.
+            let temperature = defaults.string(forKey: "AppleTemperatureUnit") == "Fahrenheit" ? "Celsius" : "Fahrenheit"
+            defaults.set(temperature, forKey: "AppleTemperatureUnit")
+            defaults.set(!defaults.bool(forKey: "AppleICUForce24HourTime"), forKey: "AppleICUForce24HourTime")
             t.check(AppSelfTest.spin(timeout: 2) { heard >= 2 }, "each change is heard: \(heard)")
             // Written by another process, as System Settings writes them.
+            let weekday = (defaults.dictionary(forKey: "AppleFirstWeekday")?["gregorian"] as? Int) == 2 ? 3 : 2
             let writer = Process()
             writer.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-            writer.arguments = ["write", suite, "AppleFirstWeekday", "-dict", "gregorian", "-int", "2"]
+            writer.arguments = ["write", suite, "AppleFirstWeekday", "-dict", "gregorian", "-int", String(weekday)]
             try writer.run()
             writer.waitUntilExit()
             t.equal(writer.terminationStatus, 0)

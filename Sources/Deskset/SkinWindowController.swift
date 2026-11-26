@@ -935,7 +935,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             && !(runtime.acceptsLayoutCloseActions && request.isClosingAction) {
             switch request {
             case .closed, .failed: break
-            default: return
+            default:
+                request.cancelCompletion()
+                return
             }
         }
         switch request {
@@ -1255,6 +1257,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     /// Self-tests: what skins open goes here instead of to the workspace (nil: it opens). Main thread.
     static var opensForTesting: ((SkinExecutePlan) -> Void)?
+    /// Self-tests: intercepts `!SetWallpaper` without changing the Mac's desktop picture. Main thread.
+    static var setWallpaperForTesting: ((_ path: String, _ position: String) -> Void)?
+    /// The destination of `!SetClip`. A headless test window can use a private pasteboard.
+    lazy var setClipPasteboard = NSPasteboard.general
 
     /// `["target" arguments…]`: a web page, a file or an app opens.
     private func open(_ plan: SkinExecutePlan, whileClosing: Bool) {

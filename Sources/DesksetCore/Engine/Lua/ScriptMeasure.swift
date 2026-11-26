@@ -43,12 +43,29 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
     private(set) var scriptPath = ""
     /// Name used in chunk names and messages: the path relative to the Skins folder.
     private var scriptDisplayName = ""
-    private var pendingActions: [PendingAction] = []
-    /// Index of the next action to run in `pendingActions` (a queue drained from the front).
-    private var pendingHead = 0
-    /// UTF-8 bytes of the queued bang text (bounded by `LuaSupport.maxPendingBangBytes`).
-    private var pendingBytes = 0
-    private var droppedBangs = false
+    /// A queue can wait for a host bang while another invocation of this measure runs with its own queue.
+    private struct BangQueue {
+        var actions: [PendingAction] = []
+        var head = 0
+        var bytes = 0
+        var droppedBangs = false
+
+        var count: Int { actions.count - head }
+
+        mutating func popFirst() -> PendingAction? {
+            guard head < actions.count else { return nil }
+            let action = actions[head]
+            head += 1
+            if head == actions.count {
+                actions.removeAll()
+                head = 0
+                bytes = 0
+            }
+            return action
+        }
+    }
+
+    private var pending = BangQueue()
     private var callDepth = 0
     private var reloadPending = false
     /// Stopped after repeated limit hits (until the skin is refreshed).
@@ -361,50 +378,66 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
         case .bang(let bang): bytes = bang.args.reduce(bang.name.utf8.count) { $0 + $1.utf8.count }
         case .fadeWindow: bytes = 16
         }
-        guard pendingActions.count - pendingHead < LuaSupport.maxPendingBangs,
-              pendingBytes + bytes <= LuaSupport.maxPendingBangBytes else {
-            if !droppedBangs {
-                droppedBangs = true
+        guard pending.count < LuaSupport.maxPendingBangs,
+              pending.bytes + bytes <= LuaSupport.maxPendingBangBytes else {
+            if !pending.droppedBangs {
+                pending.droppedBangs = true
                 skin.log("[\(name)] Script: too many SKIN:Bang() calls (or too much text) in one call; the rest were "
                          + "dropped", level: .error)
             }
             return
         }
-        pendingBytes += bytes
-        pendingActions.append(action)
+        pending.bytes += bytes
+        pending.actions.append(action)
     }
 
     /// Executes the queued bangs in order (a bang may run Lua again, which queues and flushes more; a nested flush
     /// continues with the same queue, so the order stays first in, first out).
     private func flushPendingActions() {
-        while pendingHead < pendingActions.count {
-            let action = pendingActions[pendingHead]
-            pendingHead += 1
-            if pendingHead == pendingActions.count {
-                // Drained: the queue starts again from an empty array (bangs run below may queue more).
-                pendingActions.removeAll()
-                pendingHead = 0
-                pendingBytes = 0
-            }
-            switch action {
-            case .action(let text):
-                skin.execute(text, from: self)
-            case .bang(let bang):
-                if bang.args.contains(where: { $0.contains("\"\"\"") }) {
-                    // Not expressible in action syntax: performed directly, arguments resolved here.
-                    let args = bang.args.map { skin.resolve($0, in: self, sectionVariables: true) }
-                    skin.perform(Bang(name: bang.name, args: args), from: self)
-                } else {
-                    skin.execute(actionText(bang), from: self)
+        guard pending.count > 0 else { return }
+        skin.withActionSequence { drainPendingActions() }
+    }
+
+    private func drainPendingActions() {
+        while let action = pending.popFirst() {
+            executePendingAction(action)
+            if skin.isWaitingForHost {
+                if pending.count > 0 {
+                    let rest = pending
+                    pending = BangQueue()
+                    skin.afterHostBang { [weak self] _ in
+                        guard let self, self.phase == .running else { return }
+                        // Nested Lua calls must append behind the bangs already queued by this invocation.
+                        let saved = self.pending
+                        self.pending = rest
+                        defer { self.pending = saved }
+                        self.drainPendingActions()
+                    }
                 }
-            case .fadeWindow(let from, let to):
-                // The host animates the window; one that cannot gets the end value as !SetTransparency.
-                if skin.host?.skin(skin, fadeWindowFrom: from, to: to) != true {
-                    skin.perform(Bang(name: "settransparency", args: [String(to)]), from: self)
-                }
+                break
             }
         }
-        droppedBangs = false
+        pending.droppedBangs = false
+    }
+
+    private func executePendingAction(_ action: PendingAction) {
+        switch action {
+        case .action(let text):
+            skin.execute(text, from: self)
+        case .bang(let bang):
+            if bang.args.contains(where: { $0.contains("\"\"\"") }) {
+                // Not expressible in action syntax: performed directly, arguments resolved here.
+                let args = bang.args.map { skin.resolve($0, in: self, sectionVariables: true) }
+                skin.perform(Bang(name: bang.name, args: args), from: self)
+            } else {
+                skin.execute(actionText(bang), from: self)
+            }
+        case .fadeWindow(let from, let to):
+            // The host animates the window; one that cannot gets the end value as !SetTransparency.
+            if skin.host?.skin(skin, fadeWindowFrom: from, to: to) != true {
+                skin.perform(Bang(name: "settransparency", args: [String(to)]), from: self)
+            }
+        }
     }
 
     /// `[!Name "arg" …]` for a bang whose arguments were given separately. Each argument stays one argument and is
