@@ -2,6 +2,38 @@
 
 [English](CHANGELOG.md)
 
+## 1.1.1
+
+这一版修复了「文房 · 启动器」的磁贴菜单与默认快捷指令，使菜单与系统类 bang 在皮肤线程上保持书写顺序执行，并改进了关闭「保存位置」时的多显示器重定位行为。
+
+### 新增
+
+- **随附启动器快捷指令。** 「文房 › 启动器」现已内置经 Apple 签名的「锁定屏幕」与「勿扰模式」快捷指令，首次点击即可在 macOS「快捷指令」中一键导入，升级后也会自动为既有「文房」安装补齐。
+- **通过 Homebrew 安装。** 支持通过官方 Homebrew tap 安装与更新 Deskset（`brew install --cask jokyme/tap/deskset`）。
+
+### 变更与改进
+
+- **皮肤右键菜单布局。** 将 **Zoom** 移入 **Settings** 子菜单（紧接在 **Position** 下方），与 Rainmeter 5.0 一致。
+- **`!SetWallpaper` 响应速度。** `!SetWallpaper` 更新壁纸后立即标记桌面图片变更，`Chameleon` measure 在下一次更新即可重新取样，无需等待两秒轮询。
+
+### 修复
+
+- **菜单与系统类 bang 的执行顺序。** 在皮肤线程模式下，`!SkinMenu`、`!SkinCustomMenu`、`!TrayMenu`、`!SetClip` 与 `!SetWallpaper` 现会在原处采集菜单项并挂起当前动作链的后续 bang，待菜单关闭或剪贴板、壁纸更新完成后再按序继续执行，且不阻塞其他皮肤。右键点击「文房 › 启动器」磁贴现在会正常打开该磁贴的专属菜单（打开、在访达中显示、重命名、更换项目、移除项目），而不再误弹卡片菜单。
+- **`SavePosition=0` 时的显示器变更重定位。** 当关闭「保存位置」且本次运行尚未手动拖动皮肤时，连接、断开显示器或更改分辨率现会重新按已保存的 `WindowX` 与 `WindowY`（含 `@N` 显示器编号、百分比、边缘修饰与锚点）计算位置；已发生的临时拖动仍限制在活动显示器内且不写入磁盘。
+
+### 已知限制
+
+- 仅限 Windows 的插件 DLL 与 Windows 可执行程序仍无法在 macOS 上运行；`Manage → Game mode`、命令行 `[!Launch][!Bang]...` 参数及 `#SETTINGSPATH#Crashes\` 自动崩溃转储暂未实现。
+- 硬件传感器读数因 Mac 机型而异且为近似值，Windows 字体会替换为相近的 Mac 字体。
+- Skin Studio 与兼容性提示目前仍为英文；Debug 与打包器中的 38 种语言译文尚待母语者在 Weblate 上审校。
+- 打包器生成的 `.rmskin` 包及细节边缘情况尚待在 Windows 桌面上与 Rainmeter 进行实际对照。
+
+### 升级说明
+
+- 从 1.1.0 及更早版本升级会完整保留原有皮肤、布局与设置，并自动补齐「文房 · 启动器」随附的快捷指令。在更新提示中点击 **Update**，或在 Deskset 菜单中选择 **Check for Updates…**；若通过 Homebrew 安装可执行 `brew upgrade --cask deskset`，也可以直接下载对应你 Mac 架构的 `.dmg` 安装包。依然支持 macOS 13 及以上的 Apple 芯片和 Intel Mac。
+
+[查看此版本的全部改动](https://github.com/jokyme/Deskset/compare/v1.1.0...v1.1.1)
+
 ## 1.1.0
 
 这一版在引擎、measure、绘制、宿主界面、Debug 窗口、Skin Studio 以及兼容性文档上全面对齐 Rainmeter 5.0，同时保留了 macOS 特性与既有皮肤兼容性。

@@ -2,6 +2,38 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 1.1.1
+
+This release fixes tile menus and default shortcuts in the Stationery Launcher, keeps menu and system bangs in action order on skin threads, and improves multi-display positioning when Save Position is off.
+
+### Added
+
+- **Bundled Launcher shortcuts.** Stationery › Launcher now includes Apple-signed **Lock Screen** and **Do Not Disturb** shortcuts for one-click import in macOS Shortcuts on first use, updated automatically for existing Stationery installations.
+- **Install with Homebrew.** Deskset can now be installed and updated through the official Homebrew tap (`brew install --cask jokyme/tap/deskset`).
+
+### Changed and improved
+
+- **Skin context menu layout.** Moved **Zoom** into the **Settings** submenu right below **Position**, matching Rainmeter 5.0.
+- **`!SetWallpaper` responsiveness.** `!SetWallpaper` immediately marks the desktop picture as changed so `Chameleon` measures re-read the wallpaper on their next update without waiting for the two-second poll.
+
+### Fixed
+
+- **Menu and system bang ordering.** `!SkinMenu`, `!SkinCustomMenu`, `!TrayMenu`, `!SetClip`, and `!SetWallpaper` now capture menu items in place and suspend the remaining bangs of the current action on skin threads until the menu closes or the pasteboard or wallpaper finishes updating, without blocking other skins. Right-clicking a tile in Stationery › Launcher opens the tile's own menu (**Open**, **Show in Finder**, **Rename…**, **Change Item…**, **Remove Item**) instead of the card menu.
+- **Display changes with `SavePosition=0`.** Connecting, disconnecting, or resizing displays now re-evaluates saved `WindowX` and `WindowY` coordinates (including `@N` monitor selectors, percentages, edge modifiers, and anchors) when `Save Position` is off and no session drag has occurred, while keeping unsaved session moves clamped to active displays without writing them to disk.
+
+### Known limitations
+
+- Windows-only plugin DLLs and Windows programs launched by skins cannot run on macOS; `Manage → Game mode`, command-line `[!Launch][!Bang]...` arguments, and `#SETTINGSPATH#Crashes\` automatic crash dumps remain unimplemented.
+- Hardware sensor readings vary by Mac model and remain close approximations, and Windows fonts are replaced by similar Mac fonts.
+- Skin Studio and compatibility notes remain in English; Debug and Packager strings across all 38 languages have not yet been reviewed by native speakers on Weblate.
+- Packages created with Skin Packager and detailed Windows parity edge cases remain pending comparison on a Windows desktop.
+
+### Upgrading
+
+- Your skins, saved layouts, and settings are preserved when upgrading from 1.1.0 or earlier, and Stationery's bundled Launcher shortcuts are added automatically. Choose **Update** in the update notice or **Check for Updates…** in the Deskset menu, run `brew upgrade --cask deskset` if installed with Homebrew, or download the disk image for your Mac. Still supports macOS 13 and later on Apple silicon and Intel Macs.
+
+[Full changelog](https://github.com/jokyme/Deskset/compare/v1.1.0...v1.1.1)
+
 ## 1.1.0
 
 This release brings Deskset into alignment with Rainmeter 5.0 across the engine, measures, rendering, desktop host UI, Debug window, Skin Studio, and compatibility documentation, while preserving macOS enhancements and existing skin compatibility.
