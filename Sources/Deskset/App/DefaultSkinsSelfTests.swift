@@ -13,6 +13,7 @@ enum DefaultSkinsSelfTests {
         shippedStateTests(t)
         turntableTransportTests(t)
         turntableEmptyPlayerTests(t)
+        launcherBundledShortcutsTests(t)
     }
 
     /// A bundle's default skins in a temporary folder: `files` maps paths (`Root/Config/Skin.ini`, `FirstRun.ini`) to
@@ -448,6 +449,103 @@ enum DefaultSkinsSelfTests {
                 holdUpdates()
                 update()
                 checkEmpty("fresh activation after a track was shown")
+            }
+        }
+    }
+
+    static func launcherBundledShortcutsTests(_ t: AppTestRunner) {
+        t.suite("App: default skins: Launcher ships signed Lock Screen and Do Not Disturb shortcuts") {
+            guard let source = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let fm = FileManager.default
+            let app = try app(t, source: source, state: #"{"defaultSkinsInstalled": 7, "skins": {}}"#)
+            app.installDefaultSkinsIfNeeded()
+            app.ensureStationeryFile()
+            t.equal(app.state.data.defaultSkinsInstalled, DefaultSkins.version, "upgrades from v7 to current version")
+
+            let shortcutsDir = app.skinsDirectory.appendingPathComponent("Stationery/@Resources/Launcher/Shortcuts")
+            for name in ["Lock Screen", "Do Not Disturb"] {
+                let file = shortcutsDir.appendingPathComponent("\(name).shortcut")
+                let data = try? Data(contentsOf: file)
+                t.check((data?.count ?? 0) > 1000, "\(name).shortcut is installed and non-empty")
+                t.equal(data?.prefix(4), Data("AEA1".utf8), "\(name).shortcut is an Apple-signed AEA archive")
+            }
+
+            let savedSettings = EnvironmentStore.shared.settingsPath
+            EnvironmentStore.shared.settingsPath = app.settingsDirectory.path + "/"
+            defer { EnvironmentStore.shared.settingsPath = savedSettings }
+
+            guard let c = app.activate(config: "Stationery\\Launcher", file: "Medium.ini", exactFile: true) else {
+                return t.check(false, "the Launcher loads")
+            }
+            c.pauseUpdates()
+
+            let recording = RecordingSideEffects(skinsDirectory: app.skinsDirectory,
+                                                 settingsDirectory: app.settingsDirectory)
+            var nextOutput = "IMPORTING\n"
+            var launchedCommands: [String] = []
+            recording.onRecord = { effect in
+                if case let .launch(exe, args, _) = effect, exe == "/bin/sh", args.first == "-c",
+                   let cmd = args.dropFirst().first {
+                    launchedCommands.append(cmd)
+                }
+            }
+            recording.programOutput = { _ in Data(nextOutput.utf8) }
+            c.skin.sideEffects = recording
+
+            for (cell, name) in [(5, "Lock Screen"), (6, "Do Not Disturb")] {
+                let expectedPath = shortcutsDir.appendingPathComponent("\(name).shortcut").path
+                t.equal(c.skin.variable("Launch\(cell)"), "shortcut:\(name)")
+                t.equal(c.skin.variable("Launch\(cell)Kind"), "4")
+                t.equal(c.skin.variable("Launch\(cell)State"), "ShortcutNew")
+                t.equal(c.skin.variable("Launch\(cell)Missing"), "0")
+
+                // First click before adding to Shortcuts imports the bundled .shortcut file via com.apple.shortcuts.
+                launchedCommands.removeAll()
+                nextOutput = "IMPORTING\n"
+                c.skin.execute("[!SetVariable FiredCell \(cell)][!SetVariable FiredKind [#Launch\(cell)Kind]]"
+                    + "[!SetVariable FiredAct 1][!SetVariable Fired 1][!UpdateMeasure MeasureAct][!SetVariable Fired 0]",
+                    from: nil)
+                guard AppSelfTest.spin(timeout: 5, until: {
+                    (c.skin.measure(named: "MeasureLaunch\(cell)Run")?.value ?? 0) == 1
+                }) else {
+                    return t.check(false, "MeasureLaunch\(cell)Run completed import step")
+                }
+                t.equal(launchedCommands.count, 1, "click \(cell) ran MeasureLaunch\(cell)Run")
+                let runCmd = launchedCommands.first ?? ""
+                t.check(runCmd.contains("n='\(name)'"), "passes exact shortcut name \(name)")
+                t.check(runCmd.contains("/usr/bin/open -b com.apple.shortcuts \"$f\""), "opens via Shortcuts.app")
+                let resolvedFile = shortcutsDir.appendingPathComponent("\(name).shortcut").path
+                t.check(runCmd.contains("Launcher/Shortcuts/$n.shortcut") && fm.fileExists(atPath: expectedPath)
+                    && expectedPath == resolvedFile, "bundled shortcut file exists at resolved path")
+                t.equal(c.skin.variable("Launch\(cell)Missing"), "0", "\(name) stays non-missing while importing")
+                t.equal(c.skin.variable("Launch\(cell)State"), "ShortcutNew")
+
+                // Once added to Shortcuts, clicking runs the shortcut and transitions state to Shortcut.
+                launchedCommands.removeAll()
+                nextOutput = "DONE\n"
+                c.skin.execute("[!SetVariable FiredCell \(cell)][!SetVariable FiredKind [#Launch\(cell)Kind]]"
+                    + "[!SetVariable FiredAct 1][!SetVariable Fired 1][!UpdateMeasure MeasureAct][!SetVariable Fired 0]",
+                    from: nil)
+                guard AppSelfTest.spin(timeout: 5, until: {
+                    c.skin.variable("Launch\(cell)State") == "Shortcut"
+                }) else {
+                    return t.check(false, "\(name) transitioned to Shortcut state on DONE")
+                }
+                t.equal(c.skin.variable("Launch\(cell)Missing"), "0")
+
+                // "Edit in Shortcuts" (menu act 2 on kind 4 -> MeasureAct 24) also falls back to the bundled file.
+                launchedCommands.removeAll()
+                c.skin.execute("[!SetVariable FiredCell \(cell)][!SetVariable FiredKind 4]"
+                    + "[!SetVariable FiredAct 2][!SetVariable Fired 1][!UpdateMeasure MeasureAct][!SetVariable Fired 0]",
+                    from: nil)
+                guard AppSelfTest.spin(timeout: 5, until: { !launchedCommands.isEmpty }) else {
+                    return t.check(false, "MeasureLaunch\(cell)Edit ran")
+                }
+                t.check(launchedCommands.first?.contains("/usr/bin/open -b com.apple.shortcuts \"$f\"") == true,
+                        "Edit in Shortcuts falls back to opening bundled .shortcut in Shortcuts.app")
             }
         }
     }
