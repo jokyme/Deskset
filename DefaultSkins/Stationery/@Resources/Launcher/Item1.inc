@@ -155,7 +155,7 @@ UpdateDivider=-1
 ; must not stop a shortcut the user started
 Measure=Plugin
 Plugin=RunCommand
-Parameter=n='[MeasureLaunch1Shortcut]'; f="#@#Launcher/Shortcuts/$n.shortcut"; if /usr/bin/shortcuts list | /usr/bin/grep -Fxq -- "$n"; then /usr/bin/shortcuts run "$n" >/dev/null 2>&1 && echo DONE || echo FAILED; elif [ -f "$f" ]; then /usr/bin/open "$f"; echo IMPORTING; else echo MISSING; fi
+Parameter=n='[MeasureLaunch1Shortcut]'; f="#@#Launcher/Shortcuts/$n.shortcut"; if /usr/bin/shortcuts list | /usr/bin/grep -Fxq -- "$n"; then /usr/bin/shortcuts run "$n" >/dev/null 2>&1 && echo DONE || echo FAILED; elif [ -f "$f" ]; then /usr/bin/open -b com.apple.shortcuts "$f"; echo IMPORTING; else echo MISSING; fi
 DynamicVariables=1
 State=Show
 UpdateDivider=-1
@@ -165,15 +165,15 @@ IfMatchMode=1
 IfMatch=^DONE
 IfMatchAction=[!SetVariable Launch1State Shortcut][!SetVariable Launch1Missing 0][!UpdateMeasure MeasureLaunch1Tip][!UpdateMeterGroup Cell1][!Redraw]
 IfMatch2=^IMPORTING
-IfMatchAction2=[!SetVariable Launch1Missing 0][!UpdateMeterGroup Cell1][!Redraw]
+IfMatchAction2=[!SetVariable Launch1State ShortcutNew][!SetVariable Launch1Missing 0][!UpdateMeasure MeasureLaunch1Tip][!UpdateMeterGroup Cell1][!Redraw]
 IfMatch3=^MISSING
 IfMatchAction3=[!SetVariable Launch1State NoShortcut][!SetVariable Launch1Missing 1][!UpdateMeasure MeasureLaunch1Tip][!UpdateMeterGroup Cell1][!Redraw]
 
 [MeasureLaunch1Edit]
-; "Edit in Shortcuts" (the tile's menu)
+; "Edit in Shortcuts" (the tile's menu); offers to add a bundled shortcut that is not in Shortcuts yet
 Measure=Plugin
 Plugin=RunCommand
-Parameter=/usr/bin/shortcuts view '[MeasureLaunch1Shortcut]'
+Parameter=n='[MeasureLaunch1Shortcut]'; f="#@#Launcher/Shortcuts/$n.shortcut"; if /usr/bin/shortcuts list | /usr/bin/grep -Fxq -- "$n"; then /usr/bin/shortcuts view "$n"; elif [ -f "$f" ]; then /usr/bin/open -b com.apple.shortcuts "$f"; fi
 DynamicVariables=1
 State=Hide
 UpdateDivider=-1
