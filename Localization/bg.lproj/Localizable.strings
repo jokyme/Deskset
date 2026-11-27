@@ -228,7 +228,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Рестартирай Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "Няма инсталирани скинове";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -773,7 +773,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Изключи влаченето";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Тема";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1958,6 +1958,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Търсене на джаджи";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "Няма съвпадащи уиджети";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "Няма заредени скинове";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "Няма любими скинове";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Вграден";

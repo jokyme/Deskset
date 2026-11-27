@@ -227,7 +227,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Restart Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "No skins installed";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -772,7 +772,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Disable dragging";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Theme";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1957,6 +1957,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Search widgets";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "No matching widgets";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "No skins loaded";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "No favorite skins";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Built-in";

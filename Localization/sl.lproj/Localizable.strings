@@ -228,7 +228,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Znova zaženi Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "Ni nameščenih preoblek";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -773,7 +773,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Izklopi vlečenje";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Tema";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1958,6 +1958,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Išči gradnike";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "Ni ujemajočih se pripomočkov";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "Ni naloženih preoblek";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "Ni priljubljenih preoblek";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Vgrajeno";

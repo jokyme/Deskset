@@ -228,7 +228,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Επανεκκίνηση Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "Δεν υπάρχουν εγκατεστημένα skin";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -773,7 +773,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Απενεργοποίηση μεταφοράς";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Θέμα";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1958,6 +1958,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Αναζήτηση widget";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "Δεν βρέθηκαν αντίστοιχα widget";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "Δεν υπάρχουν φορτωμένα skin";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "Δεν υπάρχουν αγαπημένα skin";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Ενσωματωμένο";
