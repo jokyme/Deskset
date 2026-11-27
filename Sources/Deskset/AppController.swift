@@ -59,11 +59,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var sessionPositions: [String: (Double, Double)] = [:]
     private var statusItem: NSStatusItem?
     private let statusMenu = NSMenu()
+    private(set) lazy var menuBarPanel = MenuBarPanelController(app: self)
     private var pendingOpenURLs: [URL] = []
     private var launched = false
     private var cachedLibrary: [SkinConfig]?
     private var lastMissRescan: TimeInterval = -.infinity
-    private var manageWindow: ManageWindowController?
+    private(set) var manageWindow: ManageWindowController?
     /// The editing sessions of the widgets the Studio has edited, by lowercased config: a widget's undo stack belongs to
     /// the app, not to the Studio window, and lasts until the app quits.
     private(set) var studioSessions: [String: EditingSession] = [:]
@@ -650,6 +651,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mouseCapture.cancel(notifySkin: false)
         isTerminating = true
         NewSkinWindowController.window(for: self)?.close()
+        menuBarPanel.close()
         let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
             // Every step is written as it is made; anything still waiting is written now.
@@ -1491,12 +1493,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = manageWindow ?? ManageWindowController(app: self)
         manageWindow = controller
         controller.selectTab(tab)
-        if presentsWindows {
-            NSApp.activate(ignoringOtherApps: true)
-            controller.showWindow(nil)
-            controller.window?.makeKeyAndOrderFront(nil)
-        }
         if let config { controller.select(config: config, file: file) }
+        bringToFront(controller)
     }
 
     /// Opens the Studio on a loaded skin (moving it from another skin if it was open).
@@ -1758,14 +1756,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func handleStatusItemClick(type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags) {
-        if type == .rightMouseUp {
-            buildMainMenu(statusMenu)
-            guard presentsWindows, let button = statusItem?.button else { return }
-            statusMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
-        } else if modifiers.contains(.control) {
+        if modifiers.contains(.control) {
+            menuBarPanel.close()
             showDebug(tab: .log)
         } else {
-            showManageWindow(selecting: nil, file: nil)
+            menuBarPanel.toggle(relativeTo: statusItem?.button)
         }
     }
 
@@ -2504,7 +2499,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func manageSkinAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { showManageWindow(selecting: c.config, file: c.file) }
+        if let c = args(sender).first.flatMap(controller(for:)) {
+            showManageWindow(selecting: c.config, file: c.file)
+            manageWindow?.libraryModel.inspectorConfig = c.config
+        }
     }
 
     @objc func debugSkinAction(_ sender: NSMenuItem) {

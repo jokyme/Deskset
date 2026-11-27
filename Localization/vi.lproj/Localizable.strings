@@ -4,28 +4,28 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
 "About Deskset" = "Giới thiệu về Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Settings…" = "Cài đặt…";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Quản lý skin…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Install Skin…" = "Cài đặt skin…";
 
 /* Main menu: menu item. */
 "Hide Deskset" = "Ẩn Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Quit Deskset" = "Thoát Deskset";
 
 /* Main menu: menu title. */
 "File" = "Tệp";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Lưu";
 
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Thu phóng";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; SettingsWindowView: text; StudioMenus: text. */
 "Help" = "Trợ giúp";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -193,26 +193,26 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Đóng lúc này. Lần kiểm tra hằng ngày tiếp theo có thể nhắc lại bạn.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skin";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Bố cục";
 
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Skin đã tải";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Reloads every skin from its files and rescans the Skins folder. */
 "Refresh All" = "Làm mới tất cả";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Open Skins Folder" = "Mở thư mục skin";
 
-/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status); SettingsWindowView: text.
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Gỡ lỗi";
 
@@ -222,16 +222,16 @@
 /* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
 "Available when Deskset runs as an installed app." = "Khả dụng khi Deskset chạy dưới dạng ứng dụng đã cài đặt.";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Update to Deskset %@…" = "Cập nhật lên Deskset %@…";
 
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Khởi động lại Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
 "No skins installed" = "Chưa cài đặt skin nào";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "Favorites" = "Mục ưa thích";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -269,7 +269,7 @@
    Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
 "Click Through" = "Cho nhấp xuyên qua";
 
-/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
 "Draggable" = "Có thể kéo";
 
@@ -285,11 +285,11 @@
    Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
 "Save Position" = "Nhớ vị trí";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
 "Favorite" = "Ưa thích";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: text. */
 "Settings" = "Cài đặt";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Quản lý skin này…";
 
-/* Menu bar menu, skin menus and update alerts: text.
+/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Gỡ lỗi skin";
 
@@ -389,63 +389,63 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Giữ phím Control để thay đổi mức thu phóng mỗi lần 10 điểm phần trăm.";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save as empty layout" = "Lưu thành bố cục trống";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Loại trừ các skin chưa tải";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Include current wallpaper" = "Bao gồm hình nền hiện tại";
 
-/* Manage window: button, text.
+/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Tải";
 
-/* Manage window: button; New Skin window: button, text. */
+/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Delete" = "Xóa";
 
-/* Manage window: button, menu item; New Skin window: button.
+/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Sửa";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
 "Create new skin" = "Tạo skin mới";
 
-/* Manage window: VoiceOver description, tooltip.
+/* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
    Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
 "Create .rmskin Package…" = "Tạo gói .rmskin…";
 
 /* Manage window: label. */
 "Select a skin to see its details." = "Chọn một skin để xem chi tiết.";
 
-/* Manage window: button.
+/* Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: reloads the skin from its files. */
 "Refresh" = "Làm mới";
 
 /* Manage window: button. */
 "Open Folder" = "Mở thư mục";
 
-/* Manage window: label, text. */
+/* Manage window: label, text; WidgetLibraryView: text. */
 "Load the skin to change its settings." = "Hãy tải skin để thay đổi cài đặt của skin.";
 
-/* Manage window: checkbox.
+/* Manage window: checkbox; WidgetLibraryView: text.
    Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
 "Click through" = "Cho nhấp xuyên qua";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Keep on screen" = "Giữ trong màn hình";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Snap to edges" = "Hút vào cạnh";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save position" = "Nhớ vị trí";
 
 /* Manage window: checkbox. */
 "Launch at login" = "Mở khi đăng nhập";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The skin window's X and Y position on the screen. */
 "Coordinates:" = "Tọa độ:";
 
@@ -453,36 +453,35 @@
    Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
 "Load order:" = "Thứ tự tải:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: What a skin does while the pointer is over it. */
 "On hover:" = "Khi di con trỏ qua:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Position:" = "Vị trí:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Transparency:" = "Độ trong suốt:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Thu phóng:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Author:" = "Tác giả:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: The skin's own description, from its [Metadata] section. */
 "Information:" = "Mô tả:";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Giấy phép:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Version:" = "Phiên bản:";
 
-/* Manage window: window title.
-   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
-"Manage Skins" = "Quản lý skin";
+/* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
+"Widget Library" = "Thư viện tiện ích";
 
 /* Manage window: VoiceOver description. */
 "Installed skins" = "Skin đã cài đặt";
@@ -496,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Mở nhật ký";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save new layout" = "Lưu bố cục mới";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
 "Name:" = "Tên:";
 
-/* Manage window: VoiceOver description. */
+/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
 "Layout name" = "Tên bố cục";
 
-/* Manage window: VoiceOver description, text. */
+/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Saved layouts" = "Bố cục đã lưu";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "No saved layouts." = "Chưa có bố cục nào được lưu.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Không thể đọc các bố cục đã lưu: %@";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not save layout" = "Không thể lưu bố cục";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Replace layout “%@”?" = "Thay thế bố cục “%@”?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Đã có bố cục trùng tên. Bạn có muốn thay thế các cài đặt đã lưu của bố cục đó không?";
 
-/* Manage window: button; Skin Packager window: button. */
+/* Manage window: button; Settings window: button; Skin Packager window: button. */
 "Replace" = "Thay thế";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Hủy";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not delete layout" = "Không thể xóa bố cục";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Delete layout “%@”?" = "Xóa bố cục “%@”?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Bố cục đã lưu sẽ được chuyển vào Thùng rác. Các tệp skin của bạn vẫn được giữ.";
 
 /* Manage window: tooltip. */
@@ -566,7 +565,7 @@
 /* Manage window: tooltip. */
 "What the skin does while the pointer is over it." = "Skin sẽ làm gì khi con trỏ nằm trên skin.";
 
-/* Manage window: label.
+/* Manage window: label; WidgetLibraryView: text.
    Note: Unit after a duration (milliseconds). */
 "ms" = "ms";
 
@@ -574,21 +573,21 @@
    Note: How long a skin takes to fade in or out, in milliseconds. */
 "Fade duration:" = "Thời gian chuyển mờ:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Section of the Manage window listing what in the skin works differently on a Mac. */
 "Compatibility" = "Khả năng tương thích";
 
 /* Manage window: text. */
 "Start Deskset when you log in." = "Khởi động Deskset khi bạn đăng nhập.";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Button: removes the skin from the desktop (the files stay). */
 "Unload" = "Đóng";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no [Metadata] section." = "Skin này không có mục [Metadata].";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no metadata values." = "Skin này không có siêu dữ liệu.";
 
 /* Manage window: text. */
@@ -603,7 +602,7 @@
 /* Manage window: note under a panel or list. */
 "Select a skin file to check it." = "Chọn một tệp skin để kiểm tra.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No compatibility problems found." = "Không tìm thấy vấn đề tương thích nào.";
 
 /* Manage window: note under a panel or list. */
@@ -613,7 +612,7 @@
    Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
 "Folder" = "Thư mục";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is on the desktop and running. */
 "Loaded" = "Đã tải";
 
@@ -636,14 +635,14 @@
    Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
 "%@, has loaded skins" = "%@, có skin đã tải";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is running but has hidden itself. */
 "Loaded, hidden" = "Đã tải, đang ẩn";
 
-/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+/* Manage window: menu item; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Show in Finder" = "Hiển thị trong Finder";
 
-/* Manage window: text, VoiceOver description. */
+/* Manage window: text, VoiceOver description; WidgetLibraryView: text. */
 "Add metadata" = "Thêm siêu dữ liệu";
 
 /* Manage window: text.
@@ -738,113 +737,66 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status), text.
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Cài đặt chung";
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Trình sửa";
 
-/* Settings window: checkbox.
+/* Settings window: message (an error or a status). */
+"Debug & Log" = "Gỡ lỗi & Nhật ký";
+
+/* Settings window: checkbox; SettingsWindowView: status or description line.
    Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
 "Refresh the skin when the file is saved elsewhere" = "Làm mới skin khi tệp được lưu ở ứng dụng khác";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Launch Deskset at login" = "Mở Deskset khi đăng nhập";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Tự động kiểm tra bản cập nhật";
 
-/* Settings window: button; App updates: text. */
+/* Settings window: button; App updates: text; SettingsWindowView: text. */
 "Check for Updates…" = "Kiểm tra bản cập nhật…";
 
-/* Settings window: button.
+/* Settings window: button; SettingsWindowView: text.
    Note: Button in Settings, shown when a new version is available: opens the update. */
 "Update…" = "Cập nhật…";
 
-/* Settings window: checkbox.
+/* Settings window: checkbox; SettingsWindowView: text.
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Áp dụng cho mọi skin";
 
-/* Settings window: checkbox, VoiceOver description.
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Tắt kéo";
 
-/* Settings window: VoiceOver description. */
+/* Settings window: VoiceOver description; SettingsWindowView: text. */
 "Theme" = "Giao diện";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
 "Edit code with" = "Ứng dụng dùng để sửa mã";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the font size field for the built-in code editor. */
 "Code font size" = "Cỡ chữ của mã";
 
-/* Settings window: text.
+/* Settings window: text; SettingsWindowView: text.
    Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
 "Default zoom" = "Thu phóng mặc định";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Apply the default zoom to every skin." = "Áp dụng thu phóng mặc định cho mọi skin.";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Buộc dùng thu phóng mặc định";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Prevent dragging skins with the mouse." = "Không cho kéo skin bằng chuột.";
-
-/* Settings window: label.
-   Note: Unit after a font size (points). */
-"pt" = "pt";
-
-/* Settings window: label.
-   Note: Which app opens a skin's .ini file for editing. */
-"Edit code with:" = "Sửa mã bằng:";
-
-/* Settings window: label. */
-"Code font size:" = "Cỡ chữ của mã:";
-
-/* Settings window: label.
-   Note: Setting: reload a skin automatically when its file changes. */
-"Live reload:" = "Tự động tải lại:";
-
-/* Settings window: text. */
-"Deskset opens with your skins when you log in." = "Deskset sẽ mở cùng các skin của bạn khi bạn đăng nhập.";
-
-/* Settings window: text. */
-"Available when Deskset runs from the Applications folder." = "Khả dụng khi Deskset chạy từ thư mục Ứng dụng.";
-
-/* Settings window: text. */
-"User interface" = "Giao diện người dùng";
-
-/* Settings window: label.
-   Note: Settings row with the language pop-up menu. */
-"Language:" = "Ngôn ngữ:";
-
-/* Settings window: label. */
-"Theme:" = "Chủ đề:";
-
-/* Settings window: label.
-   Note: Settings row with the Launch Deskset at login checkbox. */
-"Startup:" = "Khởi động:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Cập nhật:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kiểm tra mỗi ngày một lần và tự tải bản cập nhật về; bạn quyết định khi nào cài đặt.";
-
-/* Settings window: label.
-   Note: Settings row with the path of the folder skins are installed in. */
-"Skins folder:" = "Thư mục skin:";
-
-/* Settings window: label.
-   Note: The zoom (size, as a percentage) skins get unless one has its own. */
-"Default zoom:" = "Thu phóng mặc định:";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -917,14 +869,14 @@
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ - %@";
 
-/* About window: button.
+/* About window: button; SettingsWindowView: text.
    Note: Button: copies the version line for bug reports. */
 "Copy to Clipboard" = "Sao chép vào bảng nhớ tạm";
 
-/* About window: text. */
+/* About window: text; SettingsWindowView: text. */
 "Desktop widgets for your Mac, compatible with Rainmeter skins." = "Tiện ích màn hình nền cho máy Mac của bạn, tương thích với skin Rainmeter.";
 
-/* About window: text.
+/* About window: text; SettingsWindowView: text.
    Note: A legal line; translate faithfully. */
 "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter là nhãn hiệu của các chủ sở hữu tương ứng; Deskset không liên kết với Rainmeter.";
 
@@ -1033,7 +985,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "Của %@";
 
-/* Skin installer: text.
+/* Skin installer: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Phiên bản %@";
 
@@ -1167,7 +1119,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Phông chữ đi kèm các skin này (không cài đặt cho toàn hệ thống): %@";
 
-/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Warning" = "Cảnh báo";
 
 // MARK: Skin Packager window
@@ -1659,7 +1611,7 @@
 /* Installing Deskset in Applications: button; Install and update panels: text. */
 "Show Installer in Finder" = "Hiển thị trình cài đặt trong Finder";
 
-/* Installing Deskset in Applications: text.
+/* Installing Deskset in Applications: text; WidgetLibraryView: message (an error or a status).
    Note: Badge after Deskset has been installed. */
 "Installed" = "Đã cài đặt";
 
@@ -1712,13 +1664,13 @@
 
 // MARK: AppTheme
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Auto" = "Tự động";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Light" = "Sáng";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Dark" = "Tối";
 
 // MARK: DebugInfoView
@@ -1730,7 +1682,7 @@
    Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
 "Reset statistics" = "Đặt lại số liệu thống kê";
 
-/* DebugInfoView: menu item; DebugWindowController: text. */
+/* DebugInfoView: menu item; DebugWindowController: text; SettingsWindowView: text. */
 "Copy all" = "Sao chép tất cả";
 
 /* DebugInfoView: text. */
@@ -1862,7 +1814,7 @@
 
 // MARK: DebugWindowController
 
-/* DebugWindowController: message (an error or a status). */
+/* DebugWindowController: message (an error or a status); SettingsWindowView: text. */
 "Log" = "Nhật ký";
 
 /* DebugWindowController: message (an error or a status). */
@@ -1874,7 +1826,7 @@
 /* DebugWindowController: message (an error or a status). */
 "Network" = "Mạng";
 
-/* DebugWindowController: window title. */
+/* DebugWindowController: window title; SettingsWindowView: text. */
 "Debug Deskset" = "Gỡ lỗi Deskset";
 
 /* DebugWindowController: text. */
@@ -1889,13 +1841,13 @@
 /* DebugWindowController: text. */
 "Source" = "Nguồn";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Error" = "Lỗi";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Notice" = "Thông báo";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Log file" = "Tệp nhật ký";
 
 /* DebugWindowController: text. */
@@ -1907,7 +1859,7 @@
 /* DebugWindowController: text. */
 "Delete log file" = "Xóa tệp nhật ký";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Show log file" = "Hiển thị tệp nhật ký";
 
 /* DebugWindowController: button. */
@@ -1921,3 +1873,100 @@
 
 /* DebugWindowController: text. */
 "%@ (bundled)" = "%@ (tích hợp sẵn)";
+
+// MARK: SettingsWindowView
+
+/* SettingsWindowView: text. */
+"Appearance" = "Giao diện";
+
+/* SettingsWindowView: text. */
+"Interactive Desktop" = "Màn hình nền tương tác";
+
+/* SettingsWindowView: text. */
+"Drag widgets freely on the desktop and right-click any widget for quick actions." = "Kéo tiện ích tự do trên màn hình nền và nhấp chuột phải để mở thao tác nhanh.";
+
+/* SettingsWindowView: text. */
+"Locked Positions" = "Khóa vị trí";
+
+/* SettingsWindowView: text. */
+"Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Ngăn vô tình kéo bằng chuột trong khi vẫn giữ các nút và thao tác hoạt động.";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset sẽ mở cùng các skin của bạn khi bạn đăng nhập.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Khả dụng khi Deskset chạy từ thư mục Ứng dụng.";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kiểm tra mỗi ngày một lần và tự tải bản cập nhật về; bạn quyết định khi nào cài đặt.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Cập nhật:";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Tự động theo Chế độ Sáng và Tối của macOS.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Giữ cửa sổ và menu Deskset ở một giao diện cố định.";
+
+/* SettingsWindowView: text. */
+"Language" = "Ngôn ngữ";
+
+/* SettingsWindowView: text. */
+"Skins folder" = "Thư mục giao diện";
+
+/* SettingsWindowView: text.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* SettingsWindowView: text.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Tự động tải lại:";
+
+/* SettingsWindowView: status or description line. */
+"Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Kiểm tra số đo trực tiếp, biến, trình cắm tích hợp, màn hình và thống kê mạng.";
+
+/* SettingsWindowView: text. */
+"Open Inspector…" = "Mở Trình kiểm tra…";
+
+/* SettingsWindowView: text. */
+"No log entries." = "Không có mục nhật ký nào.";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Thư mục cài đặt";
+
+/* SettingsWindowView: text. */
+"Open" = "Mở";
+
+// MARK: WidgetLibraryView
+
+/* WidgetLibraryView: text. */
+"Library" = "Thư viện";
+
+/* WidgetLibraryView: text. */
+"Folders" = "Thư mục";
+
+/* WidgetLibraryView: text. */
+"All" = "Tất cả";
+
+/* WidgetLibraryView: message (an error or a status). */
+"Save and restore desktop skin arrangements" = "Lưu và khôi phục bố cục giao diện trên màn hình nền";
+
+/* WidgetLibraryView: message (an error or a status). */
+"%lld widgets available · Click Add to Desktop or adjust settings" = "Có %lld tiện ích · Nhấp Thêm vào màn hình nền hoặc điều chỉnh cài đặt";
+
+/* WidgetLibraryView: text. */
+"Search widgets" = "Tìm tiện ích";
+
+/* WidgetLibraryView: text. */
+"Built-in" = "Tích hợp";
+
+/* WidgetLibraryView: text. */
+"Add to Desktop" = "Thêm vào màn hình nền";
+
+/* WidgetLibraryView: text. */
+"Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install." = "Nhấp Thêm vào màn hình nền để tải tiện ích, hoặc thả tệp .rmskin, .zip hay thư mục giao diện vào đây để cài đặt.";
+
+/* WidgetLibraryView: text. */
+"Metadata" = "Siêu dữ liệu";

@@ -177,9 +177,14 @@ extension SkinWindowController {
             app.showMainMenu(completion: host.complete)
         case "manage":
             // !Manage [TabName] [Config] [File]
+            let tabName = arg(0)
             let config = arg(1).isEmpty ? nil : SkinLibrary.normalizedConfigName(arg(1))
-            app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2),
-                                 tab: arg(0).caseInsensitiveCompare("Layouts") == .orderedSame ? .layouts : .skins)
+            if tabName.caseInsensitiveCompare("Settings") == .orderedSame && config == nil {
+                SettingsWindowController.show(app: app, pane: .general)
+            } else {
+                app.showManageWindow(selecting: config, file: arg(2).isEmpty ? nil : arg(2),
+                                     tab: tabName.caseInsensitiveCompare("Layouts") == .orderedSame ? .layouts : .skins)
+            }
         case "about":
             app.showAbout(tab: arg(0).isEmpty ? .version : AboutWindowController.Tab.parse(arg(0)))
         case "debug":

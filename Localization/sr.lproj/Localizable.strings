@@ -4,28 +4,28 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
 "About Deskset" = "О апликацији Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Settings…" = "Подешавања…";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Управљај скиновима…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Install Skin…" = "Инсталирај скин…";
 
 /* Main menu: menu item. */
 "Hide Deskset" = "Сакриј Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Quit Deskset" = "Изађи из апликације Deskset";
 
 /* Main menu: menu title. */
 "File" = "Датотека";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Сачувај";
 
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Зумирај";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; SettingsWindowView: text; StudioMenus: text. */
 "Help" = "Помоћ";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -193,26 +193,26 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Затвори за сада. Следећа дневна провера може поново да вас подсети.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Скинови";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Распореди";
 
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Учитани скинови";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Reloads every skin from its files and rescans the Skins folder. */
 "Refresh All" = "Освежи све";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Open Skins Folder" = "Отвори фасциклу са скиновима";
 
-/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status); SettingsWindowView: text.
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Отклањање грешака";
 
@@ -222,16 +222,16 @@
 /* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
 "Available when Deskset runs as an installed app." = "Доступно када Deskset ради као инсталирана апликација.";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Update to Deskset %@…" = "Ажурирај на Deskset %@…";
 
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Поново покрени Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
 "No skins installed" = "Нема инсталираних скинова";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "Favorites" = "Омиљено";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -269,7 +269,7 @@
    Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
 "Click Through" = "Пропуштај кликове";
 
-/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
 "Draggable" = "Може да се превлачи";
 
@@ -285,11 +285,11 @@
    Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
 "Save Position" = "Памти положај";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
 "Favorite" = "Омиљени";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: text. */
 "Settings" = "Подешавања";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Управљај овим скином…";
 
-/* Menu bar menu, skin menus and update alerts: text.
+/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Отклони грешке у скину";
 
@@ -389,63 +389,63 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Држите тастер Control да бисте мењали увећање у корацима од 10 процентних поена.";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save as empty layout" = "Сачувај као празан распоред";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Изостави неучитане скинове";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Include current wallpaper" = "Укључи тренутну позадину";
 
-/* Manage window: button, text.
+/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Учитај";
 
-/* Manage window: button; New Skin window: button, text. */
+/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Delete" = "Избриши";
 
-/* Manage window: button, menu item; New Skin window: button.
+/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Уреди";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
 "Create new skin" = "Направи нови скин";
 
-/* Manage window: VoiceOver description, tooltip.
+/* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
    Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
 "Create .rmskin Package…" = "Направи .rmskin пакет…";
 
 /* Manage window: label. */
 "Select a skin to see its details." = "Изаберите скин да бисте видели његове детаље.";
 
-/* Manage window: button.
+/* Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: reloads the skin from its files. */
 "Refresh" = "Освежи";
 
 /* Manage window: button. */
 "Open Folder" = "Отвори фасциклу";
 
-/* Manage window: label, text. */
+/* Manage window: label, text; WidgetLibraryView: text. */
 "Load the skin to change its settings." = "Учитајте скин да бисте променили његова подешавања.";
 
-/* Manage window: checkbox.
+/* Manage window: checkbox; WidgetLibraryView: text.
    Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
 "Click through" = "Пропуштај кликове";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Keep on screen" = "Држи на екрану";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Snap to edges" = "Приањај уз ивице";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save position" = "Памти положај";
 
 /* Manage window: checkbox. */
 "Launch at login" = "Отвори при пријављивању";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The skin window's X and Y position on the screen. */
 "Coordinates:" = "Координате:";
 
@@ -453,36 +453,35 @@
    Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
 "Load order:" = "Редослед учитавања:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: What a skin does while the pointer is over it. */
 "On hover:" = "Када је показивач изнад:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Position:" = "Положај:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Transparency:" = "Провидност:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Увећање:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Author:" = "Аутор:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: The skin's own description, from its [Metadata] section. */
 "Information:" = "Опис:";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Лиценца:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Version:" = "Верзија:";
 
-/* Manage window: window title.
-   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
-"Manage Skins" = "Управљање скиновима";
+/* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
+"Widget Library" = "Библиотека виџета";
 
 /* Manage window: VoiceOver description. */
 "Installed skins" = "Инсталирани скинови";
@@ -496,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Отвори дневник";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save new layout" = "Сачувај нови распоред";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
 "Name:" = "Назив:";
 
-/* Manage window: VoiceOver description. */
+/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
 "Layout name" = "Назив распореда";
 
-/* Manage window: VoiceOver description, text. */
+/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Saved layouts" = "Сачувани распореди";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "No saved layouts." = "Нема сачуваних распореда.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Читање сачуваних распореда није успело: %@";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not save layout" = "Чување распореда није успело";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Replace layout “%@”?" = "Желите ли да замените распоред „%@“?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Распоред са овим називом већ постоји. Желите ли да замените његова сачувана подешавања?";
 
-/* Manage window: button; Skin Packager window: button. */
+/* Manage window: button; Settings window: button; Skin Packager window: button. */
 "Replace" = "Замени";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Откажи";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not delete layout" = "Брисање распореда није успело";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Delete layout “%@”?" = "Желите ли да избришете распоред „%@“?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Сачувани распоред ће бити премештен у смеће. Датотеке скинова остају сачуване.";
 
 /* Manage window: tooltip. */
@@ -566,7 +565,7 @@
 /* Manage window: tooltip. */
 "What the skin does while the pointer is over it." = "Шта скин ради док је показивач изнад њега.";
 
-/* Manage window: label.
+/* Manage window: label; WidgetLibraryView: text.
    Note: Unit after a duration (milliseconds). */
 "ms" = "мс";
 
@@ -574,21 +573,21 @@
    Note: How long a skin takes to fade in or out, in milliseconds. */
 "Fade duration:" = "Трајање прелаза:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Section of the Manage window listing what in the skin works differently on a Mac. */
 "Compatibility" = "Компатибилност";
 
 /* Manage window: text. */
 "Start Deskset when you log in." = "Покрећи Deskset при пријављивању.";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Button: removes the skin from the desktop (the files stay). */
 "Unload" = "Затвори";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no [Metadata] section." = "Овај скин нема одељак [Metadata].";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no metadata values." = "Овај скин нема метаподатке.";
 
 /* Manage window: text. */
@@ -603,7 +602,7 @@
 /* Manage window: note under a panel or list. */
 "Select a skin file to check it." = "Изаберите датотеку скина да бисте је проверили.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No compatibility problems found." = "Нису пронађени проблеми са компатибилношћу.";
 
 /* Manage window: note under a panel or list. */
@@ -613,7 +612,7 @@
    Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
 "Folder" = "Фасцикла";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is on the desktop and running. */
 "Loaded" = "Учитан";
 
@@ -636,14 +635,14 @@
    Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
 "%@, has loaded skins" = "%@, садржи учитане скинове";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is running but has hidden itself. */
 "Loaded, hidden" = "Учитан, скривен";
 
-/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+/* Manage window: menu item; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Show in Finder" = "Прикажи у Finder-у";
 
-/* Manage window: text, VoiceOver description. */
+/* Manage window: text, VoiceOver description; WidgetLibraryView: text. */
 "Add metadata" = "Додај метаподатке";
 
 /* Manage window: text.
@@ -738,113 +737,66 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status), text.
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Опште";
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Уређивач";
 
-/* Settings window: checkbox.
+/* Settings window: message (an error or a status). */
+"Debug & Log" = "Отклањање грешака и дневник";
+
+/* Settings window: checkbox; SettingsWindowView: status or description line.
    Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
 "Refresh the skin when the file is saved elsewhere" = "Освежи скин када се датотека сачува у другој апликацији";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Launch Deskset at login" = "Отвори Deskset при пријављивању";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Аутоматски проверавај ажурирања";
 
-/* Settings window: button; App updates: text. */
+/* Settings window: button; App updates: text; SettingsWindowView: text. */
 "Check for Updates…" = "Провери ажурирања…";
 
-/* Settings window: button.
+/* Settings window: button; SettingsWindowView: text.
    Note: Button in Settings, shown when a new version is available: opens the update. */
 "Update…" = "Ажурирај…";
 
-/* Settings window: checkbox.
+/* Settings window: checkbox; SettingsWindowView: text.
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Примени на све скинове";
 
-/* Settings window: checkbox, VoiceOver description.
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Искључи превлачење";
 
-/* Settings window: VoiceOver description. */
+/* Settings window: VoiceOver description; SettingsWindowView: text. */
 "Theme" = "Тема";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
 "Edit code with" = "Апликација за уређивање кода";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the font size field for the built-in code editor. */
 "Code font size" = "Величина фонта кода";
 
-/* Settings window: text.
+/* Settings window: text; SettingsWindowView: text.
    Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
 "Default zoom" = "Подразумевано увећање";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Apply the default zoom to every skin." = "Примени подразумевано увећање на сваки скин.";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Наметни подразумевано увећање";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Prevent dragging skins with the mouse." = "Спречи превлачење скинова мишем.";
-
-/* Settings window: label.
-   Note: Unit after a font size (points). */
-"pt" = "пт";
-
-/* Settings window: label.
-   Note: Which app opens a skin's .ini file for editing. */
-"Edit code with:" = "Уређуј код у:";
-
-/* Settings window: label. */
-"Code font size:" = "Величина фонта кода:";
-
-/* Settings window: label.
-   Note: Setting: reload a skin automatically when its file changes. */
-"Live reload:" = "Аутоматско освежавање:";
-
-/* Settings window: text. */
-"Deskset opens with your skins when you log in." = "Deskset се при пријављивању отвара са вашим скиновима.";
-
-/* Settings window: text. */
-"Available when Deskset runs from the Applications folder." = "Доступно када се Deskset покреће из фасцикле Апликације.";
-
-/* Settings window: text. */
-"User interface" = "Корисничко сучеље";
-
-/* Settings window: label.
-   Note: Settings row with the language pop-up menu. */
-"Language:" = "Језик:";
-
-/* Settings window: label. */
-"Theme:" = "Тема:";
-
-/* Settings window: label.
-   Note: Settings row with the Launch Deskset at login checkbox. */
-"Startup:" = "Покретање:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Ажурирања:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверава једном дневно и сам преузима ажурирања; ви бирате када ћете их инсталирати.";
-
-/* Settings window: label.
-   Note: Settings row with the path of the folder skins are installed in. */
-"Skins folder:" = "Фасцикла са скиновима:";
-
-/* Settings window: label.
-   Note: The zoom (size, as a percentage) skins get unless one has its own. */
-"Default zoom:" = "Подразумевано увећање:";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -917,14 +869,14 @@
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
 
-/* About window: button.
+/* About window: button; SettingsWindowView: text.
    Note: Button: copies the version line for bug reports. */
 "Copy to Clipboard" = "Копирај у оставу";
 
-/* About window: text. */
+/* About window: text; SettingsWindowView: text. */
 "Desktop widgets for your Mac, compatible with Rainmeter skins." = "Виџети за радну површину вашег Mac рачунара, компатибилни са скиновима за Rainmeter.";
 
-/* About window: text.
+/* About window: text; SettingsWindowView: text.
    Note: A legal line; translate faithfully. */
 "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter је заштитни знак одговарајућих власника; Deskset није повезан са њим.";
 
@@ -1033,7 +985,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "Аутор: %@";
 
-/* Skin installer: text.
+/* Skin installer: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Верзија %@";
 
@@ -1167,7 +1119,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Фонтови приложени уз ове скинове (не инсталирају се за цео систем): %@";
 
-/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Warning" = "Упозорење";
 
 // MARK: Skin Packager window
@@ -1659,7 +1611,7 @@
 /* Installing Deskset in Applications: button; Install and update panels: text. */
 "Show Installer in Finder" = "Прикажи инсталациони програм у Finder-у";
 
-/* Installing Deskset in Applications: text.
+/* Installing Deskset in Applications: text; WidgetLibraryView: message (an error or a status).
    Note: Badge after Deskset has been installed. */
 "Installed" = "Инсталирано";
 
@@ -1712,13 +1664,13 @@
 
 // MARK: AppTheme
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Auto" = "Аутоматски";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Light" = "Светла";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Dark" = "Тамна";
 
 // MARK: DebugInfoView
@@ -1730,7 +1682,7 @@
    Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
 "Reset statistics" = "Ресетуј статистику";
 
-/* DebugInfoView: menu item; DebugWindowController: text. */
+/* DebugInfoView: menu item; DebugWindowController: text; SettingsWindowView: text. */
 "Copy all" = "Копирај све";
 
 /* DebugInfoView: text. */
@@ -1862,7 +1814,7 @@
 
 // MARK: DebugWindowController
 
-/* DebugWindowController: message (an error or a status). */
+/* DebugWindowController: message (an error or a status); SettingsWindowView: text. */
 "Log" = "Дневник";
 
 /* DebugWindowController: message (an error or a status). */
@@ -1874,7 +1826,7 @@
 /* DebugWindowController: message (an error or a status). */
 "Network" = "Мрежа";
 
-/* DebugWindowController: window title. */
+/* DebugWindowController: window title; SettingsWindowView: text. */
 "Debug Deskset" = "Отклањање грешака у Deskset-у";
 
 /* DebugWindowController: text. */
@@ -1889,13 +1841,13 @@
 /* DebugWindowController: text. */
 "Source" = "Извор";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Error" = "Грешка";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Notice" = "Обавештење";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Log file" = "Датотека дневника";
 
 /* DebugWindowController: text. */
@@ -1907,7 +1859,7 @@
 /* DebugWindowController: text. */
 "Delete log file" = "Обриши датотеку дневника";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Show log file" = "Прикажи датотеку дневника";
 
 /* DebugWindowController: button. */
@@ -1921,3 +1873,100 @@
 
 /* DebugWindowController: text. */
 "%@ (bundled)" = "%@ (уграђени)";
+
+// MARK: SettingsWindowView
+
+/* SettingsWindowView: text. */
+"Appearance" = "Изглед";
+
+/* SettingsWindowView: text. */
+"Interactive Desktop" = "Интерактивна радна површина";
+
+/* SettingsWindowView: text. */
+"Drag widgets freely on the desktop and right-click any widget for quick actions." = "Слободно превлачите виџете по радној површини и кликните десним тастером за брзе радње.";
+
+/* SettingsWindowView: text. */
+"Locked Positions" = "Закључани положаји";
+
+/* SettingsWindowView: text. */
+"Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Спречава случајно превлачење мишем док дугмад и радње остају активни.";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset се при пријављивању отвара са вашим скиновима.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Доступно када се Deskset покреће из фасцикле Апликације.";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверава једном дневно и сам преузима ажурирања; ви бирате када ћете их инсталирати.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Ажурирања:";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Аутоматски прати светли и тамни режим macOS-а.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Задржава сталан изглед прозора и менија апликације Deskset.";
+
+/* SettingsWindowView: text. */
+"Language" = "Језик";
+
+/* SettingsWindowView: text. */
+"Skins folder" = "Фасцикла маски";
+
+/* SettingsWindowView: text.
+   Note: Unit after a font size (points). */
+"pt" = "пт";
+
+/* SettingsWindowView: text.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Аутоматско освежавање:";
+
+/* SettingsWindowView: status or description line. */
+"Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Прегледајте мерења уживо, променљиве, уграђене додатке, екране и мрежну статистику.";
+
+/* SettingsWindowView: text. */
+"Open Inspector…" = "Отвори инспектор…";
+
+/* SettingsWindowView: text. */
+"No log entries." = "Нема ставки у дневнику.";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Фасцикла подешавања";
+
+/* SettingsWindowView: text. */
+"Open" = "Отвори";
+
+// MARK: WidgetLibraryView
+
+/* WidgetLibraryView: text. */
+"Library" = "Библиотека";
+
+/* WidgetLibraryView: text. */
+"Folders" = "Фасцикле";
+
+/* WidgetLibraryView: text. */
+"All" = "Све";
+
+/* WidgetLibraryView: message (an error or a status). */
+"Save and restore desktop skin arrangements" = "Сачувајте и вратите распореде маски на радној површини";
+
+/* WidgetLibraryView: message (an error or a status). */
+"%lld widgets available · Click Add to Desktop or adjust settings" = "Доступних виџета: %lld · Кликните на Додај на радну површину или прилагодите подешавања";
+
+/* WidgetLibraryView: text. */
+"Search widgets" = "Претражи виџете";
+
+/* WidgetLibraryView: text. */
+"Built-in" = "Уграђено";
+
+/* WidgetLibraryView: text. */
+"Add to Desktop" = "Додај на радну површину";
+
+/* WidgetLibraryView: text. */
+"Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install." = "Кликните на Додај на радну површину да учитате виџет или превуците овде .rmskin, .zip или фасциклу маске за инсталацију.";
+
+/* WidgetLibraryView: text. */
+"Metadata" = "Метаподаци";

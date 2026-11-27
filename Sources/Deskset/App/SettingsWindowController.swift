@@ -1,19 +1,21 @@
 import AppKit
+import DesksetCore
+import SwiftUI
 
-/// Settings (App menu "Settings…" ⌘,, and the status menu): a preferences-style toolbar of panes, General | Editor
-/// (docs/editor-design.md §6). As the HIG asks for settings windows: the title names the pane, the window reopens on
-/// the last pane used, minimize and zoom are dimmed, and every change applies at once (no OK button).
-///
-/// Everything is stored in `AppState` (state.json); the Editor pane edits `EditorPreferences`, which
-/// `CodeEditorRouter` follows.
-final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+/// Deskset Settings window, redesigned to match Deskset Pro (Image 6):
+/// full-height left sidebar (`General / Appearance`, `Editor`, `Layouts`, `Debug & Log`, `About Deskset`)
+/// and grouped card pages. Everything persists in `AppState` (`state.json`).
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     enum Pane: String, CaseIterable {
-        case general, editor
+        case general, editor, layouts, debug, about
 
         var title: String {
             switch self {
             case .general: return L("General")
             case .editor: return L("Editor")
+            case .layouts: return L("Layouts")
+            case .debug: return L("Debug & Log")
+            case .about: return L("About Deskset")
             }
         }
 
@@ -21,6 +23,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             switch self {
             case .general: return "gearshape"
             case .editor: return "chevron.left.forwardslash.chevron.right"
+            case .layouts: return "rectangle.3.group"
+            case .debug: return "ladybug"
+            case .about: return "square.grid.2x2"
             }
         }
 
@@ -28,23 +33,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     unowned let app: AppController
+    let settingsModel = DesksetSettingsViewModel()
+    private var hostingView: NSHostingView<DesksetSettingsRootView>?
     private(set) var pane = Pane.general
-    private var paneViews: [Pane: NSView] = [:]
     private var observer: NSObjectProtocol?
     private var updateObserver: NSObjectProtocol?
     private var zoomObserver: NSObjectProtocol?
     private var globalSettingsObserver: NSObjectProtocol?
 
-    // Editor pane.
+    // Backing controls preserved for existing programmatic hooks and self-tests.
     let editorPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let helperLabel = NSTextField(wrappingLabelWithString: "")
     let fontField = NSTextField()
     let fontStepper = NSStepper()
     let liveReloadBox = NSButton(checkboxWithTitle: L("Refresh the skin when the file is saved elsewhere"),
                                  target: nil, action: nil)
-    // General pane.
     let languagePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
-    /// Where the language choice is kept (the self-tests use a temporary defaults suite).
     var languagePreference = LanguagePreference.standard
     let uiThemePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let loginBox = NSButton(checkboxWithTitle: L("Launch Deskset at login"), target: nil, action: nil)
@@ -64,18 +68,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private var choices: [Int: EditorPreferences.CodeEditor] = [:]
     private var otherIndex = -1
 
-    /// The window (one per app run).
     private static var current: SettingsWindowController?
 
-    /// The Settings window when it is open (shown or in the Dock).
     static var openWindow: NSWindow? {
         guard let window = current?.window, window.isVisible || window.isMiniaturized else { return nil }
         return window
     }
 
-    static let contentWidth: CGFloat = 580
+    static func window(for app: AppController) -> SettingsWindowController? {
+        guard let c = current, c.app === app else { return nil }
+        return c
+    }
 
-    /// Shows Settings, on `pane` when given (else the last pane used).
+    static let contentWidth: CGFloat = 920
+    static let defaultSize = NSSize(width: 920, height: 640)
+    static let minimumSize = NSSize(width: 800, height: 540)
+
     @discardableResult
     static func show(app: AppController, pane: Pane? = nil) -> SettingsWindowController {
         let reused = current.flatMap { $0.app === app ? $0 : nil }
@@ -83,47 +91,68 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         current = controller
         if let pane { controller.select(pane) }
         if reused != nil {
-            // Editors may have been installed or removed, Launch at Login changed in System Settings.
             controller.refreshEditorPopUp()
             controller.updateControls()
         }
-        if app.presentsWindows {
-            AppActivation.track(controller.window)
-            NSApp.activate(ignoringOtherApps: true)
-            if controller.window?.isVisible != true { controller.window?.center() }
-            controller.showWindow(nil)
-            controller.window?.makeKeyAndOrderFront(nil)
+        if app.presentsWindows, controller.window?.isVisible != true {
+            controller.window?.center()
         }
+        app.bringToFront(controller)
         return controller
     }
 
     init(app: AppController) {
         self.app = app
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 300),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
-        window.toolbarStyle = .preference
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        DeskProWindowStyle.apply(to: window)
+        window.minSize = Self.minimumSize
+        window.backgroundColor = .windowBackgroundColor
         super.init(window: window)
         window.delegate = self
         AppTheme.register(window, app: app)
-        let toolbar = NSToolbar(identifier: "DesksetSettings")
-        toolbar.delegate = self
-        toolbar.allowsUserCustomization = false
-        toolbar.displayMode = .iconAndLabel
-        window.toolbar = toolbar
+
         configureControls()
         refreshEditorPopUp()
         updateControls()
+
+        let rootView = DesksetSettingsRootView(model: settingsModel, controller: self, app: app)
+        let host = NSHostingView(rootView: rootView)
+        host.frame = NSRect(origin: .zero, size: Self.defaultSize)
+        host.autoresizingMask = [.width, .height]
+        window.contentView = host
+        hostingView = host
+
         select(app.state.data.settingsPane.flatMap(Pane.init(rawValue:)) ?? .general)
-        observer = NotificationCenter.default.addObserver(forName: .desksetEditorPreferencesChanged, object: app.state,
-                                                          queue: .main) { [weak self] _ in self?.preferencesChanged() }
-        updateObserver = NotificationCenter.default.addObserver(forName: .desksetUpdatesChanged, object: app.updates,
-                                                                 queue: .main) { [weak self] _ in self?.updateControls() }
-        zoomObserver = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged, object: app,
-                                                               queue: .main) { [weak self] _ in self?.updateZoomControls() }
-        globalSettingsObserver = NotificationCenter.default.addObserver(forName: .desksetGlobalSettingsChanged,
-            object: app.state, queue: .main) { [weak self] _ in self?.updateControls() }
+
+        observer = NotificationCenter.default.addObserver(
+            forName: .desksetEditorPreferencesChanged,
+            object: app.state,
+            queue: .main
+        ) { [weak self] _ in self?.preferencesChanged() }
+        updateObserver = NotificationCenter.default.addObserver(
+            forName: .desksetUpdatesChanged,
+            object: app.updates,
+            queue: .main
+        ) { [weak self] _ in self?.updateControls() }
+        zoomObserver = NotificationCenter.default.addObserver(
+            forName: .desksetSkinsChanged,
+            object: app,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateZoomControls()
+            self?.refreshLayoutsData()
+            self?.refreshDebugData()
+        }
+        globalSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .desksetGlobalSettingsChanged,
+            object: app.state,
+            queue: .main
+        ) { [weak self] _ in self?.updateControls() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -135,58 +164,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         if let globalSettingsObserver { NotificationCenter.default.removeObserver(globalSettingsObserver) }
     }
 
-    // MARK: Toolbar
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Pane.allCases.map(\.identifier) }
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Pane.allCases.map(\.identifier) }
-    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Pane.allCases.map(\.identifier) }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard let pane = Pane.allCases.first(where: { $0.identifier == id }) else { return nil }
-        let item = NSToolbarItem(itemIdentifier: id)
-        item.label = pane.title
-        item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
-        item.target = self
-        item.action = #selector(paneClicked(_:))
-        return item
-    }
-
-    @objc private func paneClicked(_ sender: NSToolbarItem) {
-        if let pane = Pane.allCases.first(where: { $0.identifier == sender.itemIdentifier }) { select(pane) }
-    }
-
-    /// Shows a pane: the window keeps its top edge and takes the pane's height.
     func select(_ pane: Pane) {
-        guard let window else { return }
         self.pane = pane
-        window.toolbar?.selectedItemIdentifier = pane.identifier
-        window.title = pane.title
-        let view = paneView(pane)
-        if window.contentView !== view {
-            window.contentView = view
+        settingsModel.pane = pane
+        if pane != .general {
+            settingsModel.generalSubSection = nil
         }
-        view.layoutSubtreeIfNeeded()
-        let size = NSSize(width: Self.contentWidth, height: ceil(view.fittingSize.height))
-        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
-        if window.frame != frame { window.setFrame(frame, display: true, animate: window.isVisible) }
+        window?.title = pane.title
         app.state.setSettingsPane(pane.rawValue)
+        if pane == .layouts {
+            refreshLayoutsData()
+        } else if pane == .debug {
+            refreshDebugData()
+        }
     }
-
-    private func paneView(_ pane: Pane) -> NSView {
-        if let view = paneViews[pane] { return view }
-        let view = pane == .editor ? makeEditorPane() : makeGeneralPane()
-        paneViews[pane] = view
-        return view
-    }
-
-    // MARK: Building
 
     private func configureControls() {
         languagePopUp.target = self
         languagePopUp.action = #selector(languageChosen)
         refreshLanguagePopUp()
+
         for theme in AppUITheme.allCases {
             uiThemePopUp.addItem(withTitle: theme.title)
             uiThemePopUp.lastItem?.tag = theme.rawValue
@@ -194,14 +191,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         uiThemePopUp.target = self
         uiThemePopUp.action = #selector(uiThemeChosen)
         uiThemePopUp.setAccessibilityLabel(L("Theme"))
+
         editorPopUp.target = self
         editorPopUp.action = #selector(editorChosen)
         editorPopUp.setAccessibilityLabel(L("Edit code with"))
+
         helperLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         helperLabel.textColor = .secondaryLabelColor
         helperLabel.preferredMaxLayoutWidth = 340
+
         liveReloadBox.target = self
         liveReloadBox.action = #selector(liveReloadToggled)
+
         let formatter = NumberFormatter()
         formatter.numberStyle = .none
         formatter.minimum = NSNumber(value: EditorPreferences.fontSizes.lowerBound)
@@ -211,131 +212,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         fontField.alignment = .right
         fontField.target = self
         fontField.action = #selector(fontFieldChanged)
-        fontField.widthAnchor.constraint(equalToConstant: 44).isActive = true
         fontField.setAccessibilityLabel(L("Code font size"))
+
         fontStepper.minValue = EditorPreferences.fontSizes.lowerBound
         fontStepper.maxValue = EditorPreferences.fontSizes.upperBound
         fontStepper.increment = 1
         fontStepper.valueWraps = false
         fontStepper.target = self
         fontStepper.action = #selector(fontStepperChanged)
-        SkinZoomStepper.configure(field: defaultZoomField, stepper: defaultZoomStepper, target: self,
-                                  fieldAction: #selector(defaultZoomFieldChanged),
-                                  stepperAction: #selector(defaultZoomStepperChanged), label: L("Default zoom"))
+
+        SkinZoomStepper.configure(
+            field: defaultZoomField,
+            stepper: defaultZoomStepper,
+            target: self,
+            fieldAction: #selector(defaultZoomFieldChanged),
+            stepperAction: #selector(defaultZoomStepperChanged),
+            label: L("Default zoom")
+        )
         forceZoomBox.target = self
         forceZoomBox.action = #selector(forceZoomChanged)
         forceZoomBox.toolTip = L("Apply the default zoom to every skin.")
         forceZoomBox.setAccessibilityLabel(L("Force default zoom"))
+
         disableDraggingBox.target = self
         disableDraggingBox.action = #selector(disableDraggingToggled)
         disableDraggingBox.toolTip = L("Prevent dragging skins with the mouse.")
         disableDraggingBox.setAccessibilityLabel(L("Disable dragging"))
+
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
+
         automaticUpdatesBox.target = self
         automaticUpdatesBox.action = #selector(automaticUpdatesToggled)
+
         checkUpdatesButton.target = app
         checkUpdatesButton.action = #selector(AppController.checkForUpdatesAction)
         viewUpdateButton.target = app
         viewUpdateButton.action = #selector(AppController.showAvailableUpdateAction)
         updateStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         updateStatusLabel.textColor = .secondaryLabelColor
-        updateStatusLabel.preferredMaxLayoutWidth = 340
-        updateStatusLabel.widthAnchor.constraint(equalToConstant: 340).isActive = true
     }
 
-    private func label(_ text: String) -> NSTextField {
-        let l = NSTextField(labelWithString: text)
-        l.alignment = .right
-        return l
-    }
+    // MARK: - Editor List
 
-    private func note(_ text: String) -> NSTextField {
-        let l = NSTextField(wrappingLabelWithString: text)
-        l.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        l.textColor = .secondaryLabelColor
-        l.preferredMaxLayoutWidth = 340
-        return l
-    }
-
-    /// A pane: a label | control grid (labels right-aligned, as in System Settings' classic panes), centred.
-    private func makePane(rows: [[NSView]], spacingAfter: [Int: CGFloat] = [:]) -> NSView {
-        let grid = NSGridView(views: rows)
-        grid.rowSpacing = 10
-        grid.columnSpacing = 8
-        grid.column(at: 0).xPlacement = .trailing
-        grid.column(at: 1).xPlacement = .leading
-        grid.rowAlignment = .firstBaseline
-        for (row, spacing) in spacingAfter { grid.row(at: row).bottomPadding = spacing }
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        let view = NSView()
-        view.addSubview(grid)
-        NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalToConstant: Self.contentWidth),
-            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
-            grid.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
-            grid.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            grid.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
-        ])
-        return view
-    }
-
-    private func makeEditorPane() -> NSView {
-        let font = NSStackView(views: [fontField, fontStepper, NSTextField(labelWithString: L("pt"))])
-        font.spacing = 4
-        let empty = { NSGridCell.emptyContentView }
-        return makePane(rows: [
-            [label(L("Edit code with:")), editorPopUp],
-            [empty(), helperLabel],
-            [label(L("Code font size:")), font],
-            [label(L("Live reload:")), liveReloadBox],
-        ], spacingAfter: [1: 8])
-    }
-
-    private func sectionTitle(_ text: String) -> NSTextField {
-        let l = NSTextField(labelWithString: text)
-        l.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-        return l
-    }
-
-    private func makeGeneralPane() -> NSView {
-        let path = NSTextField(labelWithString: (app.skinsDirectory.path as NSString).abbreviatingWithTildeInPath)
-        path.lineBreakMode = .byTruncatingMiddle
-        path.textColor = .secondaryLabelColor
-        path.widthAnchor.constraint(lessThanOrEqualToConstant: 300).isActive = true
-        let reveal = NSButton(title: L("Show in Finder"), target: app, action: #selector(AppController.openSkinsFolderAction))
-        reveal.controlSize = .small
-        let folder = NSStackView(views: [path, reveal])
-        folder.spacing = 8
-        let loginNote = note(LaunchAtLogin.isAvailable ? L("Deskset opens with your skins when you log in.")
-                                                       : L("Available when Deskset runs from the Applications folder."))
-        let updateButtons = NSStackView(views: [checkUpdatesButton, viewUpdateButton])
-        updateButtons.spacing = 8
-        let zoom = NSStackView(views: [defaultZoomField, defaultZoomStepper, NSTextField(labelWithString: "%")])
-        zoom.spacing = 4
-        return makePane(rows: [
-            [NSGridCell.emptyContentView, sectionTitle(L("User interface"))],
-            [label(L("Language:")), languagePopUp],
-            [label(L("Theme:")), uiThemePopUp],
-            [NSGridCell.emptyContentView, sectionTitle(L("General"))],
-            [label(L("Startup:")), loginBox],
-            [NSGridCell.emptyContentView, loginNote],
-            [label(L("Updates:")), automaticUpdatesBox],
-            [NSGridCell.emptyContentView, note(L("Deskset checks once a day and downloads updates itself; you choose when to install them."))],
-            [NSGridCell.emptyContentView, updateButtons],
-            [NSGridCell.emptyContentView, updateStatusLabel],
-            [NSGridCell.emptyContentView, sectionTitle(L("Skins"))],
-            [label(L("Skins folder:")), folder],
-            [label(L("Default zoom:")), zoom],
-            [NSGridCell.emptyContentView, forceZoomBox],
-            [NSGridCell.emptyContentView, disableDraggingBox],
-        ], spacingAfter: [2: 10, 5: 8, 9: 10, 11: 8, 13: 8])
-    }
-
-    // MARK: Editor list
-
-    /// Rebuilds "Edit code with:": Deskset (built-in) ─ installed editors with icons ─ "System default (<App>)",
-    /// "Other…". A chosen app that has been uninstalled stays listed, marked "(missing)".
     func refreshEditorPopUp() {
         let preferences = app.state.editor
         let locator = CodeEditorRouter.locator
@@ -367,11 +286,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         _ = add(L("Other…"), nil, nil)
         editorPopUp.menu = menu
         editorPopUp.selectItem(at: selectedIndex(for: preferences.codeEditor) ?? 0)
+        syncEditorModel()
     }
 
     static var builtInTitle: String { L("Deskset (built-in, side by side)") }
 
-    /// The pop-up item of a choice.
     private func selectedIndex(for choice: EditorPreferences.CodeEditor) -> Int? {
         switch choice {
         case .builtIn, .systemDefault:
@@ -386,19 +305,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
-    // MARK: Values
+    // MARK: - Syncing State & ViewModel
 
-    /// Puts the stored preferences into the controls.
     func updateControls() {
         let e = app.state.editor
         if let index = selectedIndex(for: e.codeEditor), index != editorPopUp.indexOfSelectedItem {
             editorPopUp.selectItem(at: index)
         }
-        helperLabel.stringValue = Self.helperText(for: e.codeEditor, locator: CodeEditorRouter.locator,
-                                                  systemDefault: systemDefault)
+        helperLabel.stringValue = Self.helperText(
+            for: e.codeEditor,
+            locator: CodeEditorRouter.locator,
+            systemDefault: systemDefault
+        )
         fontField.integerValue = Int(e.codeFontSize)
         fontStepper.doubleValue = e.codeFontSize
         liveReloadBox.state = e.liveReload ? .on : .off
+
         uiThemePopUp.selectItem(withTag: app.state.uiTheme.rawValue)
         disableDraggingBox.state = app.state.disableDragging ? .on : .off
         loginBox.state = LaunchAtLogin.isEnabled ? .on : .off
@@ -408,23 +330,86 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         checkUpdatesButton.isEnabled = !app.updates.isChecking
         viewUpdateButton.isHidden = app.updates.availableRelease == nil
         updateStatusLabel.stringValue = app.updates.statusText
+
         updateZoomControls()
-        if pane == .general, paneViews[.general] != nil { select(.general) }
+        syncViewModel()
     }
 
     private func updateZoomControls() {
         defaultZoomField.integerValue = app.state.defaultZoomPercent
         defaultZoomStepper.integerValue = app.state.defaultZoomPercent
         forceZoomBox.state = app.state.forceDefaultZoom ? .on : .off
+        settingsModel.defaultZoomPercent = app.state.defaultZoomPercent
+        settingsModel.forceDefaultZoom = app.state.forceDefaultZoom
+    }
+
+    private func syncEditorModel() {
+        settingsModel.editorItems = editorPopUp.itemArray.enumerated().map { idx, item in
+            let smallIcon: NSImage? = item.image.map { img in
+                let copy = (img.copy() as? NSImage) ?? img
+                copy.size = NSSize(width: 16, height: 16)
+                return copy
+            }
+            return DesksetSettingsViewModel.EditorItem(
+                id: idx,
+                title: item.title,
+                icon: smallIcon,
+                isSeparator: item.isSeparatorItem
+            )
+        }
+        settingsModel.selectedEditorIndex = max(0, editorPopUp.indexOfSelectedItem)
+    }
+
+    private func syncLanguageModel() {
+        settingsModel.languageItems = languagePopUp.itemArray.enumerated().map { idx, item in
+            DesksetSettingsViewModel.LanguageItem(
+                id: idx,
+                title: item.title,
+                isSeparator: item.isSeparatorItem
+            )
+        }
+        settingsModel.selectedLanguageIndex = max(0, languagePopUp.indexOfSelectedItem)
+    }
+
+    private func syncViewModel() {
+        syncEditorModel()
+        syncLanguageModel()
+        settingsModel.editorHelperText = helperLabel.stringValue
+        settingsModel.codeFontSize = Int(app.state.editor.codeFontSize)
+        settingsModel.liveReload = app.state.editor.liveReload
+        settingsModel.uiTheme = app.state.uiTheme
+        settingsModel.launchAtLogin = LaunchAtLogin.isEnabled
+        settingsModel.launchAtLoginAvailable = LaunchAtLogin.isAvailable
+        settingsModel.automaticallyChecksUpdates = app.updates.automaticallyChecks
+        settingsModel.isCheckingUpdates = app.updates.isChecking
+        settingsModel.checkUpdatesTitle = app.updates.menuTitle
+        settingsModel.availableUpdateVersion = app.updates.availableRelease?.version.description
+        settingsModel.updateStatusText = app.updates.statusText
+        settingsModel.defaultZoomPercent = app.state.defaultZoomPercent
+        settingsModel.forceDefaultZoom = app.state.forceDefaultZoom
+        settingsModel.disableDragging = app.state.disableDragging
+        settingsModel.skinsFolderDisplayPath = (app.skinsDirectory.path as NSString).abbreviatingWithTildeInPath
+        settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
+        refreshLayoutsData()
+        refreshDebugData()
+    }
+
+    func refreshLayoutsData() {
+        settingsModel.layoutNames = (try? app.layoutStore.list()) ?? []
+        settingsModel.isLoadingLayout = app.isLoadingLayout
+    }
+
+    func refreshDebugData() {
+        settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
+        settingsModel.recentLogs = Array(Log.recent.reversed())
+        settingsModel.activeSkins = app.controllersByName.filter { !$0.isStopped }.map { ($0.config, $0.file) }
     }
 
     private func preferencesChanged() {
-        // A choice the list does not show (picked with Other…, or changed elsewhere) needs a new list.
         if selectedIndex(for: app.state.editor.codeEditor) == nil { refreshEditorPopUp() }
         updateControls()
     }
 
-    /// What "Edit code with" will do, under the pop-up.
     static func helperText(for choice: EditorPreferences.CodeEditor, locator: ApplicationLocating,
                            systemDefault: CodeEditorApp?) -> String {
         switch choice {
@@ -449,7 +434,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
             + (editor.family.confirmsURLOpens ? " " + L("The first time, %@ may ask to allow this.", editor.name) : "")
     }
 
-    // MARK: Actions
+    // MARK: - Actions (AppKit & SwiftUI Bridge)
+
+    func chooseEditorIndexFromUI(_ index: Int) {
+        editorPopUp.selectItem(at: index)
+        editorChosen()
+    }
 
     @objc func editorChosen() {
         let index = editorPopUp.indexOfSelectedItem
@@ -459,7 +449,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         updateControls()
     }
 
-    /// "Other…": any application; it is remembered in the list.
     private func chooseOtherApp() {
         guard app.presentsWindows, let window else { return updateControls() }
         let panel = NSOpenPanel()
@@ -476,7 +465,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
-    /// Makes an app picked with "Other…" the code editor (Deskset itself means the built-in editor).
     func useOtherApp(_ url: URL) {
         let id = CodeEditorRouter.locator.bundleIdentifier(ofApplicationAt: url) ?? ""
         let picked = CodeEditorApp(url: url, bundleID: id.isEmpty ? nil : id, name: "", family: .plain)
@@ -492,10 +480,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         updateControls()
     }
 
-    // MARK: Language
+    // MARK: - Language
 
-    /// "System default (<the language that follows the Mac>)", then every language in its own name. The represented
-    /// object is the language code; the default item has none.
     func refreshLanguagePopUp() {
         let menu = NSMenu()
         let system = LanguagePreference.systemLanguage(preferences: LanguagePreference.macLanguages)
@@ -511,23 +497,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         let chosen = languagePreference.chosen
         let index = menu.items.firstIndex { ($0.representedObject as? String).map { Self.sameLanguage($0, chosen) } ?? false }
         languagePopUp.selectItem(at: chosen == nil ? 0 : index ?? 0)
+        syncLanguageModel()
     }
 
-    /// Language codes as macOS writes them may differ in case or separator (`pt_BR`, `zh-hans`).
     private static func sameLanguage(_ a: String, _ b: String?) -> Bool {
         guard let b else { return false }
         let normal = { (s: String) in s.replacingOccurrences(of: "_", with: "-").lowercased() }
         return normal(a) == normal(b)
     }
 
+    func chooseLanguageIndexFromUI(_ index: Int) {
+        languagePopUp.selectItem(at: index)
+        languageChosen()
+    }
+
     @objc func languageChosen() {
         let language = languagePopUp.selectedItem?.representedObject as? String
         let before = languagePreference.chosen
+        syncLanguageModel()
         guard language != before, !(language.map { Self.sameLanguage($0, before) } ?? false) else { return }
         languagePreference.choose(language)
         Log.write("App language set to \(language ?? "the Mac's"); used after a restart")
         guard app.presentsWindows, let window else { return }
-        // The new language shows only after a restart: macOS picks the app's language when it starts.
         let alert = NSAlert()
         alert.icon = AppIcon.image(size: 64)
         alert.messageText = L("Restart Deskset now?")
@@ -539,8 +530,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
     }
 
+    func setLiveReloadFromUI(_ value: Bool) {
+        liveReloadBox.state = value ? .on : .off
+        liveReloadToggled()
+    }
+
     @objc private func liveReloadToggled() {
         app.state.updateEditor { $0.liveReload = liveReloadBox.state == .on }
+        updateControls()
+    }
+
+    func commitFontSizeTextFromUI(_ text: String) {
+        guard let v = Double(text.trimmingCharacters(in: .whitespaces)) else {
+            updateControls()
+            return
+        }
+        fontField.doubleValue = v
+        fontFieldChanged()
+    }
+
+    func stepFontSizeFromUI(_ value: Int) {
+        fontStepper.doubleValue = Double(value)
+        fontStepperChanged()
     }
 
     @objc private func fontFieldChanged() {
@@ -551,6 +562,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     @objc private func fontStepperChanged() {
         app.state.updateEditor { $0.codeFontSize = fontStepper.doubleValue }
         updateControls()
+    }
+
+    func commitDefaultZoomTextFromUI(_ text: String) {
+        defaultZoomField.stringValue = text
+        defaultZoomFieldChanged()
+    }
+
+    func stepDefaultZoomFromUI(_ value: Int) {
+        defaultZoomStepper.integerValue = value
+        defaultZoomStepperChanged()
     }
 
     @objc private func defaultZoomFieldChanged() {
@@ -565,17 +586,38 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         app.setDefaultZoom(percent: defaultZoomStepper.integerValue, force: nil)
     }
 
+    func setForceZoomFromUI(_ value: Bool) {
+        forceZoomBox.state = value ? .on : .off
+        forceZoomChanged()
+    }
+
     @objc private func forceZoomChanged() {
         app.setDefaultZoom(percent: nil, force: forceZoomBox.state == .on)
     }
 
+    func setDisableDraggingFromUI(_ value: Bool) {
+        disableDraggingBox.state = value ? .on : .off
+        disableDraggingToggled()
+    }
+
     @objc private func disableDraggingToggled() {
         app.state.setDisableDragging(disableDraggingBox.state == .on)
+        updateControls()
+    }
+
+    func chooseThemeFromUI(_ theme: AppUITheme) {
+        uiThemePopUp.selectItem(withTag: theme.rawValue)
+        uiThemeChosen()
     }
 
     @objc func uiThemeChosen() {
         guard let theme = AppUITheme(rawValue: uiThemePopUp.selectedTag()) else { return }
         app.state.setUITheme(theme)
+        updateControls()
+    }
+
+    func toggleLoginFromUI() {
+        loginToggled()
     }
 
     @objc private func loginToggled() {
@@ -583,75 +625,111 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         updateControls()
     }
 
-    @objc private func automaticUpdatesToggled() {
-        app.updates.setAutomaticallyChecks(automaticUpdatesBox.state == .on)
+    func setAutomaticUpdatesFromUI(_ value: Bool) {
+        automaticUpdatesBox.state = value ? .on : .off
+        automaticUpdatesToggled()
     }
 
-    // MARK: Snapshot (UISnapshot, self-tests)
+    @objc private func automaticUpdatesToggled() {
+        app.updates.setAutomaticallyChecks(automaticUpdatesBox.state == .on)
+        updateControls()
+    }
 
-    /// Renders the current pane off-screen, under a stand-in for the preferences toolbar.
+    // MARK: - Layouts Actions in Settings
+
+    func saveLayoutFromUI() {
+        let name = settingsModel.layoutDraftName
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.caseInsensitiveCompare("@Backup") != .orderedSame else { return }
+        let options = LayoutSaveOptions(
+            empty: settingsModel.saveEmptyLayout,
+            excludeUnloaded: settingsModel.excludeUnloaded,
+            includeWallpaper: settingsModel.includeWallpaper
+        )
+        let performSave = { [weak self] in
+            guard let self else { return }
+            do {
+                try self.app.saveLayout(named: name, options: options)
+                self.refreshLayoutsData()
+            } catch {
+                self.app.alert(L("Could not save layout"), error.localizedDescription)
+            }
+        }
+        guard app.layoutStore.contains(named: name), app.presentsWindows, let window else {
+            performSave()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L("Replace layout “%@”?", name)
+        alert.informativeText = L("A layout with this name already exists. Replace its saved settings?")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L("Replace"))
+        alert.addButton(withTitle: L("Cancel"))
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { performSave() }
+        }
+    }
+
+    func loadLayoutFromUI(named name: String) {
+        settingsModel.isLoadingLayout = true
+        app.loadLayout(named: name) { [weak self] _ in
+            self?.refreshLayoutsData()
+        }
+    }
+
+    func deleteLayoutFromUI(named name: String) {
+        let performDelete = { [weak self] in
+            guard let self else { return }
+            do {
+                try self.app.deleteLayout(named: name)
+                self.refreshLayoutsData()
+            } catch {
+                self.app.alert(L("Could not delete layout"), error.localizedDescription)
+            }
+        }
+        guard app.presentsWindows, let window else {
+            performDelete()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L("Delete layout “%@”?", name)
+        alert.informativeText = L("This moves the saved layout to the Trash. Your skin files are kept.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L("Delete"))
+        alert.addButton(withTitle: L("Cancel"))
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { performDelete() }
+        }
+    }
+
+    // MARK: - Snapshot (UISnapshot & Self-Tests)
+
     func snapshot() -> NSBitmapImageRep? {
         guard let view = window?.contentView else { return nil }
+        updateControls()
         view.layoutSubtreeIfNeeded()
-        let bar: CGFloat = 64
-        let size = NSSize(width: view.bounds.width, height: view.bounds.height + bar)
-        let scale: CGFloat = 2
-        guard size.width > 0, size.height > bar,
-              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
-                                         pixelsHigh: Int(size.height * scale), bitsPerSample: 8, samplesPerPixel: 4,
-                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: rep),
-              let content = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        rep.size = size
-        view.cacheDisplay(in: view.bounds, to: content)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        context.cgContext.scaleBy(x: scale, y: scale)
-        view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            NSColor.windowBackgroundColor.setFill()
-            NSRect(origin: .zero, size: size).fill()
-            NSColor.separatorColor.setFill()
-            NSRect(x: 0, y: size.height - bar, width: size.width, height: 1).fill()
-            // Pane buttons: icon over label, the selected one tinted.
-            let panes = Pane.allCases
-            let itemWidth: CGFloat = 72
-            var x = (size.width - itemWidth * CGFloat(panes.count)) / 2
-            for p in panes {
-                let selected = p == pane
-                let rect = NSRect(x: x + 6, y: size.height - bar + 6, width: itemWidth - 12, height: bar - 12)
-                if selected {
-                    NSColor.quaternaryLabelColor.setFill()
-                    NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
-                }
-                let tint: NSColor = selected ? .controlAccentColor : .secondaryLabelColor
-                if let symbol = NSImage(systemSymbolName: p.symbol, accessibilityDescription: nil)?
-                    .withSymbolConfiguration(.init(pointSize: 17, weight: .regular)) {
-                    let tinted = NSImage(size: symbol.size, flipped: false) { r in
-                        symbol.draw(in: r)
-                        tint.set()
-                        r.fill(using: .sourceAtop)
-                        return true
-                    }
-                    tinted.draw(in: NSRect(x: rect.midX - symbol.size.width / 2, y: rect.maxY - 8 - symbol.size.height,
-                                           width: symbol.size.width, height: symbol.size.height))
-                }
-                let text = NSAttributedString(string: p.title, attributes: [
-                    .font: NSFont.systemFont(ofSize: 11), .foregroundColor: selected ? NSColor.controlAccentColor : NSColor.labelColor])
-                text.draw(at: NSPoint(x: rect.midX - text.size().width / 2, y: rect.minY + 4))
-                x += itemWidth
-            }
-            content.draw(in: NSRect(origin: .zero, size: view.bounds.size), from: .zero, operation: .sourceOver,
-                         fraction: 1, respectFlipped: true, hints: nil)
-        }
-        NSGraphicsContext.restoreGraphicsState()
+        hostingView?.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(bounds.width * 2),
+                  pixelsHigh: Int(bounds.height * 2),
+                  bitsPerSample: 8,
+                  samplesPerPixel: 4,
+                  hasAlpha: true,
+                  isPlanar: false,
+                  colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0,
+                  bitsPerPixel: 0
+              ) else { return nil }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
         return rep
     }
 
-    /// Pop-up titles (self-tests).
     var testEditorTitles: [String] { editorPopUp.itemArray.map { $0.isSeparatorItem ? "-" : $0.title } }
 
-    /// Picks a pop-up item by title as a click would (self-tests).
     func testChoose(_ title: String) {
         guard let index = editorPopUp.itemArray.firstIndex(where: { $0.title == title }) else { return }
         editorPopUp.selectItem(at: index)

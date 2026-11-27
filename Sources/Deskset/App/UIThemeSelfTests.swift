@@ -33,8 +33,10 @@ enum UIThemeSelfTests {
                 let manage = ManageWindowController(app: app)
                 let about = AboutWindowController(app: app)
                 let packager = SkinPackagerWindowController(app: app)
+                let menuBarPanelWindow = app.menuBarPanel.windowForTesting
                 _ = app.skinToolTips.ensurePanelForTesting()
                 defer {
+                    app.menuBarPanel.close()
                     settings.close()
                     debug.close()
                     manage.close()
@@ -42,7 +44,7 @@ enum UIThemeSelfTests {
                     packager.close()
                 }
                 settings.select(.general)
-                checkGeneralLayout(t, settings: settings)
+                checkGeneralLayout(t, settings: settings, manage: manage, app: app)
 
                 t.equal(app.state.uiTheme, .auto)
                 t.equal(settings.uiThemePopUp.indexOfSelectedItem, 0)
@@ -53,12 +55,14 @@ enum UIThemeSelfTests {
                     t.check(NSApp.sendAction(action, to: target, from: settings.uiThemePopUp))
                 }
                 t.equal(app.state.uiTheme, .dark)
+                t.equal(settings.settingsModel.uiTheme, .dark)
                 t.equal(app.state.data.rainmeterOptions["UITheme"], "2")
                 t.equal(settings.window?.appearance?.name, .darkAqua)
                 t.equal(debug.window?.appearance?.name, .darkAqua)
                 t.equal(manage.window?.appearance?.name, .darkAqua)
                 t.equal(about.window?.appearance?.name, .darkAqua)
                 t.equal(packager.window?.appearance?.name, .darkAqua)
+                t.equal(menuBarPanelWindow?.appearance?.name, .darkAqua)
                 t.equal(app.updateFlow.window?.appearance?.name, .darkAqua)
                 t.equal(app.skinToolTips.panelForTheme?.appearance?.name, .darkAqua)
 
@@ -75,8 +79,10 @@ enum UIThemeSelfTests {
 
                 app.state.setUITheme(.light)
                 t.equal(settings.uiThemePopUp.indexOfSelectedItem, 1)
+                t.equal(settings.settingsModel.uiTheme, .light)
                 t.equal(settings.window?.appearance?.name, .aqua)
                 t.equal(debug.window?.appearance?.name, .aqua)
+                t.equal(menuBarPanelWindow?.appearance?.name, .aqua)
                 t.equal(app.skinToolTips.panelForTheme?.appearance?.name, .aqua)
 
                 // Ordinary layout replacement preserves UITheme; empty INI leaves settings untouched.
@@ -88,42 +94,46 @@ enum UIThemeSelfTests {
 
                 app.state.setUITheme(.auto)
                 t.equal(settings.uiThemePopUp.indexOfSelectedItem, 0)
+                t.equal(settings.settingsModel.uiTheme, .auto)
                 t.equal(settings.window?.appearance, nil)
                 t.equal(debug.window?.appearance, nil)
+                t.equal(menuBarPanelWindow?.appearance, nil)
                 t.equal(app.skinToolTips.panelForTheme?.appearance, nil)
             }
         }
     }
 
-    private static func checkGeneralLayout(_ t: AppTestRunner, settings: SettingsWindowController) {
+    private static func checkGeneralLayout(_ t: AppTestRunner,
+                                           settings: SettingsWindowController,
+                                           manage: ManageWindowController,
+                                           app: AppController) {
         guard let window = settings.window, let content = window.contentView else {
             return t.check(false, "General pane content exists")
         }
-        var labels: [String] = []
-        func collect(_ view: NSView) {
-            if let field = view as? NSTextField, !field.isEditable, !field.isHidden {
-                labels.append(field.stringValue)
-            }
-            for child in view.subviews { collect(child) }
-        }
-        collect(content)
-        t.check(labels.contains(L("User interface")) && labels.contains(L("General")) && labels.contains(L("Skins")),
-                "General displays User interface, General and Skins headings: \(labels)")
+        t.equal(window.minSize, SettingsWindowController.minimumSize)
+        t.equal(settings.settingsModel.pane, .general)
+        t.equal(SettingsWindowController.Pane.allCases.map(\.rawValue),
+                ["general", "editor", "layouts", "debug", "about"])
+        t.check(manage.libraryModel.cards.contains { $0.config.name == "ThemeFixture" },
+                "Widget Library card grid includes the installed fixture")
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: appearance)
+            manage.window?.appearance = NSAppearance(named: appearance)
+            app.menuBarPanel.windowForTesting?.appearance = NSAppearance(named: appearance)
             content.layoutSubtreeIfNeeded()
             t.close(content.bounds.width, SettingsWindowController.contentWidth)
-            t.check(content.bounds.height >= ceil(content.fittingSize.height),
-                    "\(appearance.rawValue): reorganized General pane fits its height")
-            let controls: [NSView] = [settings.uiThemePopUp, settings.defaultZoomField, settings.defaultZoomStepper,
-                                     settings.forceZoomBox, settings.disableDraggingBox,
-                                     settings.automaticUpdatesBox, settings.checkUpdatesButton]
-            for control in controls {
-                let rect = control.convert(control.bounds, to: content)
-                t.check(rect.width > 0 && rect.height > 0 && content.bounds.contains(rect),
-                        "\(appearance.rawValue): General control stays inside bounds")
-            }
+            t.check(content.bounds.height >= SettingsWindowController.minimumSize.height,
+                    "\(appearance.rawValue): Settings split sidebar window meets minimum height")
+            t.equal(settings.settingsModel.defaultZoomPercent, app.state.defaultZoomPercent)
+            t.equal(settings.settingsModel.forceDefaultZoom, app.state.forceDefaultZoom)
+            t.equal(settings.settingsModel.disableDragging, app.state.disableDragging)
+            t.equal(settings.settingsModel.automaticallyChecksUpdates, app.updates.automaticallyChecks)
             t.check(settings.snapshot() != nil, "\(appearance.rawValue): General snapshot succeeds")
+            t.check(manage.snapshot() != nil, "\(appearance.rawValue): Widget Library snapshot succeeds")
+            t.check(app.menuBarPanel.snapshot() != nil, "\(appearance.rawValue): MenuBarPanel snapshot succeeds")
         }
+        window.appearance = nil
+        manage.window?.appearance = nil
+        app.menuBarPanel.windowForTesting?.appearance = nil
     }
 }

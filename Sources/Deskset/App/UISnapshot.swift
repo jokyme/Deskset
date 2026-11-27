@@ -36,7 +36,7 @@ enum UISnapshot {
         case "icon":
             data = AppIcon.pngData(pixels: 1024)
         case "menubar":
-            data = png(of: menuBarPreview())
+            data = menuBarPanelPreview() ?? png(of: menuBarPreview())
         case "install":
             data = installPreview().flatMap(png)
         case "install-zip":
@@ -390,6 +390,25 @@ enum UISnapshot {
             .font: NSFont.systemFont(ofSize: 22, weight: .semibold), .foregroundColor: NSColor.white])
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .bmp, properties: [:])
+    }
+
+    private static func menuBarPanelPreview() -> Data? {
+        let root = temporaryDirectory("menubar")
+        let app = AppController(
+            state: AppState(fileURL: root.appendingPathComponent("state.json")),
+            skinsDirectory: root.appendingPathComponent("Skins"),
+            layoutsDirectory: root.appendingPathComponent("Layouts"),
+            backupsDirectory: root.appendingPathComponent("Backups"),
+            presentsWindows: false
+        )
+        if NSApp.appearance?.name == .darkAqua {
+            app.state.setUITheme(.dark)
+        } else {
+            app.state.setUITheme(.light)
+        }
+        let data = app.menuBarPanel.snapshot()?.representation(using: .png, properties: [:])
+        withExtendedLifetime(app) {}
+        return data
     }
 
     private static func menuBarPreview() -> NSView {

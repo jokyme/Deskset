@@ -4,28 +4,28 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
 "About Deskset" = "Deskset Hakkında";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Settings…" = "Ayarlar…";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Skinleri Yönet…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Install Skin…" = "Skin Yükle…";
 
 /* Main menu: menu item. */
 "Hide Deskset" = "Deskset'i Gizle";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Quit Deskset" = "Deskset'ten Çık";
 
 /* Main menu: menu title. */
 "File" = "Dosya";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Kaydet";
 
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Yakınlaştır";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; SettingsWindowView: text; StudioMenus: text. */
 "Help" = "Yardım";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -193,26 +193,26 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Şimdilik kapat. Sonraki günlük denetimde yeniden hatırlatılabilirsiniz.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skinler";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Yerleşimler";
 
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Yüklenmiş Skinler";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Reloads every skin from its files and rescans the Skins folder. */
 "Refresh All" = "Tümünü Yenile";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Open Skins Folder" = "Skin Klasörünü Aç";
 
-/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status); SettingsWindowView: text.
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Hata Ayıklama";
 
@@ -222,16 +222,16 @@
 /* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
 "Available when Deskset runs as an installed app." = "Deskset yüklü bir uygulama olarak çalışırken kullanılabilir.";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Update to Deskset %@…" = "Deskset %@ Sürümüne Güncelle…";
 
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Deskset'i Yeniden Başlat";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
 "No skins installed" = "Yüklü skin yok";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "Favorites" = "Favoriler";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -269,7 +269,7 @@
    Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
 "Click Through" = "Tıklamaları Geçir";
 
-/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
 "Draggable" = "Sürüklenebilir";
 
@@ -285,11 +285,11 @@
    Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
 "Save Position" = "Konumu Hatırla";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
 "Favorite" = "Favori";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: text. */
 "Settings" = "Ayarlar";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Bu Skini Yönet…";
 
-/* Menu bar menu, skin menus and update alerts: text.
+/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Skinde Hata Ayıkla";
 
@@ -389,63 +389,63 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Yakınlaştırmayı 10 yüzde puanlık adımlarla değiştirmek için Control tuşunu basılı tutun.";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save as empty layout" = "Boş yerleşim olarak kaydet";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Yüklenmemiş skinleri hariç tut";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Include current wallpaper" = "Geçerli duvar kâğıdını dahil et";
 
-/* Manage window: button, text.
+/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Yükle";
 
-/* Manage window: button; New Skin window: button, text. */
+/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Delete" = "Sil";
 
-/* Manage window: button, menu item; New Skin window: button.
+/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Düzenle";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
 "Create new skin" = "Yeni skin oluştur";
 
-/* Manage window: VoiceOver description, tooltip.
+/* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
    Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
 "Create .rmskin Package…" = ".rmskin Paketi Oluştur…";
 
 /* Manage window: label. */
 "Select a skin to see its details." = "Ayrıntılarını görmek için bir skin seçin.";
 
-/* Manage window: button.
+/* Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: reloads the skin from its files. */
 "Refresh" = "Yenile";
 
 /* Manage window: button. */
 "Open Folder" = "Klasörü Aç";
 
-/* Manage window: label, text. */
+/* Manage window: label, text; WidgetLibraryView: text. */
 "Load the skin to change its settings." = "Ayarlarını değiştirmek için skini yükleyin.";
 
-/* Manage window: checkbox.
+/* Manage window: checkbox; WidgetLibraryView: text.
    Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
 "Click through" = "Tıklamaları geçir";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Keep on screen" = "Ekranda tut";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Snap to edges" = "Kenarlara yasla";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save position" = "Konumu hatırla";
 
 /* Manage window: checkbox. */
 "Launch at login" = "Girişte aç";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The skin window's X and Y position on the screen. */
 "Coordinates:" = "Koordinatlar:";
 
@@ -453,36 +453,35 @@
    Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
 "Load order:" = "Yükleme sırası:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: What a skin does while the pointer is over it. */
 "On hover:" = "İmleç üzerindeyken:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Position:" = "Konum:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Transparency:" = "Saydamlık:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Yakınlaştırma:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Author:" = "Yazar:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: The skin's own description, from its [Metadata] section. */
 "Information:" = "Açıklama:";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Lisans:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Version:" = "Sürüm:";
 
-/* Manage window: window title.
-   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
-"Manage Skins" = "Skinleri Yönet";
+/* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
+"Widget Library" = "Araç Takımı Arşivi";
 
 /* Manage window: VoiceOver description. */
 "Installed skins" = "Yüklü skinler";
@@ -496,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Günlüğü Aç";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save new layout" = "Yeni yerleşimi kaydet";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
 "Name:" = "Ad:";
 
-/* Manage window: VoiceOver description. */
+/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
 "Layout name" = "Yerleşim adı";
 
-/* Manage window: VoiceOver description, text. */
+/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Saved layouts" = "Kaydedilmiş yerleşimler";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "No saved layouts." = "Kaydedilmiş yerleşim yok.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Kaydedilmiş yerleşimler okunamadı: %@";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not save layout" = "Yerleşim kaydedilemedi";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Replace layout “%@”?" = "“%@” yerleşimi değiştirilsin mi?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Bu adda bir yerleşim zaten var. Kaydedilmiş ayarları değiştirilsin mi?";
 
-/* Manage window: button; Skin Packager window: button. */
+/* Manage window: button; Settings window: button; Skin Packager window: button. */
 "Replace" = "Değiştir";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "İptal";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not delete layout" = "Yerleşim silinemedi";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Delete layout “%@”?" = "“%@” yerleşimi silinsin mi?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Kaydedilmiş yerleşim Çöp Sepeti'ne taşınır. Skin dosyalarınız korunur.";
 
 /* Manage window: tooltip. */
@@ -566,7 +565,7 @@
 /* Manage window: tooltip. */
 "What the skin does while the pointer is over it." = "İmleç üzerindeyken skinin ne yapacağı.";
 
-/* Manage window: label.
+/* Manage window: label; WidgetLibraryView: text.
    Note: Unit after a duration (milliseconds). */
 "ms" = "ms";
 
@@ -574,21 +573,21 @@
    Note: How long a skin takes to fade in or out, in milliseconds. */
 "Fade duration:" = "Geçiş süresi:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Section of the Manage window listing what in the skin works differently on a Mac. */
 "Compatibility" = "Uyumluluk";
 
 /* Manage window: text. */
 "Start Deskset when you log in." = "Giriş yaptığınızda Deskset'i başlat.";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Button: removes the skin from the desktop (the files stay). */
 "Unload" = "Kapat";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no [Metadata] section." = "Bu skinde [Metadata] bölümü yok.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no metadata values." = "Bu skinin meta verisi yok.";
 
 /* Manage window: text. */
@@ -603,7 +602,7 @@
 /* Manage window: note under a panel or list. */
 "Select a skin file to check it." = "Denetlemek için bir skin dosyası seçin.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No compatibility problems found." = "Uyumluluk sorunu bulunamadı.";
 
 /* Manage window: note under a panel or list. */
@@ -613,7 +612,7 @@
    Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
 "Folder" = "Klasör";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is on the desktop and running. */
 "Loaded" = "Yüklendi";
 
@@ -636,14 +635,14 @@
    Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
 "%@, has loaded skins" = "%@, yüklenmiş skinler içeriyor";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is running but has hidden itself. */
 "Loaded, hidden" = "Yüklendi, gizli";
 
-/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+/* Manage window: menu item; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Show in Finder" = "Finder'da Göster";
 
-/* Manage window: text, VoiceOver description. */
+/* Manage window: text, VoiceOver description; WidgetLibraryView: text. */
 "Add metadata" = "Meta veri ekle";
 
 /* Manage window: text.
@@ -738,113 +737,66 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status), text.
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Genel";
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Düzenleyici";
 
-/* Settings window: checkbox.
+/* Settings window: message (an error or a status). */
+"Debug & Log" = "Hata Ayıklama ve Günlük";
+
+/* Settings window: checkbox; SettingsWindowView: status or description line.
    Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
 "Refresh the skin when the file is saved elsewhere" = "Dosya başka bir uygulamada kaydedildiğinde skini yenile";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Launch Deskset at login" = "Deskset'i girişte aç";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Güncellemeleri otomatik olarak denetle";
 
-/* Settings window: button; App updates: text. */
+/* Settings window: button; App updates: text; SettingsWindowView: text. */
 "Check for Updates…" = "Güncellemeleri Denetle…";
 
-/* Settings window: button.
+/* Settings window: button; SettingsWindowView: text.
    Note: Button in Settings, shown when a new version is available: opens the update. */
 "Update…" = "Güncelle…";
 
-/* Settings window: checkbox.
+/* Settings window: checkbox; SettingsWindowView: text.
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Tüm skinlere uygula";
 
-/* Settings window: checkbox, VoiceOver description.
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Sürüklemeyi kapat";
 
-/* Settings window: VoiceOver description. */
+/* Settings window: VoiceOver description; SettingsWindowView: text. */
 "Theme" = "Tema";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
 "Edit code with" = "Kodu düzenlemek için kullanılan uygulama";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the font size field for the built-in code editor. */
 "Code font size" = "Kod yazı tipi boyutu";
 
-/* Settings window: text.
+/* Settings window: text; SettingsWindowView: text.
    Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
 "Default zoom" = "Varsayılan yakınlaştırma";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Apply the default zoom to every skin." = "Varsayılan yakınlaştırmayı her skine uygula.";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Varsayılan yakınlaştırmayı zorla";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Prevent dragging skins with the mouse." = "Skinlerin fareyle sürüklenmesini engelle.";
-
-/* Settings window: label.
-   Note: Unit after a font size (points). */
-"pt" = "pt";
-
-/* Settings window: label.
-   Note: Which app opens a skin's .ini file for editing. */
-"Edit code with:" = "Kodu şununla düzenle:";
-
-/* Settings window: label. */
-"Code font size:" = "Kod yazı tipi boyutu:";
-
-/* Settings window: label.
-   Note: Setting: reload a skin automatically when its file changes. */
-"Live reload:" = "Otomatik yenileme:";
-
-/* Settings window: text. */
-"Deskset opens with your skins when you log in." = "Giriş yaptığınızda Deskset skinlerinizle birlikte açılır.";
-
-/* Settings window: text. */
-"Available when Deskset runs from the Applications folder." = "Deskset Uygulamalar klasöründen çalıştırıldığında kullanılabilir.";
-
-/* Settings window: text. */
-"User interface" = "Kullanıcı arayüzü";
-
-/* Settings window: label.
-   Note: Settings row with the language pop-up menu. */
-"Language:" = "Dil:";
-
-/* Settings window: label. */
-"Theme:" = "Tema:";
-
-/* Settings window: label.
-   Note: Settings row with the Launch Deskset at login checkbox. */
-"Startup:" = "Başlangıç:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Güncellemeler:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset günde bir kez denetler ve güncellemeleri kendisi indirir; ne zaman yükleneceğine siz karar verirsiniz.";
-
-/* Settings window: label.
-   Note: Settings row with the path of the folder skins are installed in. */
-"Skins folder:" = "Skin klasörü:";
-
-/* Settings window: label.
-   Note: The zoom (size, as a percentage) skins get unless one has its own. */
-"Default zoom:" = "Varsayılan yakınlaştırma:";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -917,14 +869,14 @@
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
 
-/* About window: button.
+/* About window: button; SettingsWindowView: text.
    Note: Button: copies the version line for bug reports. */
 "Copy to Clipboard" = "Panoya Kopyala";
 
-/* About window: text. */
+/* About window: text; SettingsWindowView: text. */
 "Desktop widgets for your Mac, compatible with Rainmeter skins." = "Mac'iniz için masaüstü widget'ları; Rainmeter skinleriyle uyumlu.";
 
-/* About window: text.
+/* About window: text; SettingsWindowView: text.
    Note: A legal line; translate faithfully. */
 "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter, ilgili sahiplerinin ticari markasıdır; Deskset'in Rainmeter ile bir bağlantısı yoktur.";
 
@@ -1033,7 +985,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "Yazar: %@";
 
-/* Skin installer: text.
+/* Skin installer: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Sürüm %@";
 
@@ -1167,7 +1119,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Bu skinlerle gelen yazı tipleri (sistem geneline yüklenmez): %@";
 
-/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Warning" = "Uyarı";
 
 // MARK: Skin Packager window
@@ -1659,7 +1611,7 @@
 /* Installing Deskset in Applications: button; Install and update panels: text. */
 "Show Installer in Finder" = "Yükleyiciyi Finder'da Göster";
 
-/* Installing Deskset in Applications: text.
+/* Installing Deskset in Applications: text; WidgetLibraryView: message (an error or a status).
    Note: Badge after Deskset has been installed. */
 "Installed" = "Yüklendi";
 
@@ -1712,13 +1664,13 @@
 
 // MARK: AppTheme
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Auto" = "Otomatik";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Light" = "Açık";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Dark" = "Koyu";
 
 // MARK: DebugInfoView
@@ -1730,7 +1682,7 @@
    Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
 "Reset statistics" = "İstatistikleri sıfırla";
 
-/* DebugInfoView: menu item; DebugWindowController: text. */
+/* DebugInfoView: menu item; DebugWindowController: text; SettingsWindowView: text. */
 "Copy all" = "Tümünü kopyala";
 
 /* DebugInfoView: text. */
@@ -1862,7 +1814,7 @@
 
 // MARK: DebugWindowController
 
-/* DebugWindowController: message (an error or a status). */
+/* DebugWindowController: message (an error or a status); SettingsWindowView: text. */
 "Log" = "Günlük";
 
 /* DebugWindowController: message (an error or a status). */
@@ -1874,7 +1826,7 @@
 /* DebugWindowController: message (an error or a status). */
 "Network" = "Ağ";
 
-/* DebugWindowController: window title. */
+/* DebugWindowController: window title; SettingsWindowView: text. */
 "Debug Deskset" = "Deskset Hata Ayıklama";
 
 /* DebugWindowController: text. */
@@ -1889,13 +1841,13 @@
 /* DebugWindowController: text. */
 "Source" = "Kaynak";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Error" = "Hata";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Notice" = "Bilgi";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Log file" = "Günlük dosyası";
 
 /* DebugWindowController: text. */
@@ -1907,7 +1859,7 @@
 /* DebugWindowController: text. */
 "Delete log file" = "Günlük dosyasını sil";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Show log file" = "Günlük dosyasını göster";
 
 /* DebugWindowController: button. */
@@ -1921,3 +1873,100 @@
 
 /* DebugWindowController: text. */
 "%@ (bundled)" = "%@ (yerleşik)";
+
+// MARK: SettingsWindowView
+
+/* SettingsWindowView: text. */
+"Appearance" = "Görünüm";
+
+/* SettingsWindowView: text. */
+"Interactive Desktop" = "Etkileşimli Masaüstü";
+
+/* SettingsWindowView: text. */
+"Drag widgets freely on the desktop and right-click any widget for quick actions." = "Araç takımlarını masaüstünde serbestçe sürükleyin ve hızlı işlemler için sağ tıklayın.";
+
+/* SettingsWindowView: text. */
+"Locked Positions" = "Kilitli Konumlar";
+
+/* SettingsWindowView: text. */
+"Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Düğmeleri ve eylemleri etkin tutarken fareyle yanlışlıkla sürüklemeyi önler.";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Giriş yaptığınızda Deskset skinlerinizle birlikte açılır.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Deskset Uygulamalar klasöründen çalıştırıldığında kullanılabilir.";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset günde bir kez denetler ve güncellemeleri kendisi indirir; ne zaman yükleneceğine siz karar verirsiniz.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Güncellemeler:";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "macOS Açık ve Koyu Modunu otomatik olarak izler.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Deskset pencerelerini ve menülerini sabit bir görünümde tutar.";
+
+/* SettingsWindowView: text. */
+"Language" = "Dil";
+
+/* SettingsWindowView: text. */
+"Skins folder" = "Kabuk klasörü";
+
+/* SettingsWindowView: text.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* SettingsWindowView: text.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Otomatik yenileme:";
+
+/* SettingsWindowView: status or description line. */
+"Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Canlı kabuk ölçümlerini, değişkenleri, yerleşik eklentileri, ekranları ve ağ istatistiklerini inceleyin.";
+
+/* SettingsWindowView: text. */
+"Open Inspector…" = "Denetçiyi Aç…";
+
+/* SettingsWindowView: text. */
+"No log entries." = "Günlük kaydı yok.";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Ayarlar klasörü";
+
+/* SettingsWindowView: text. */
+"Open" = "Aç";
+
+// MARK: WidgetLibraryView
+
+/* WidgetLibraryView: text. */
+"Library" = "Arşiv";
+
+/* WidgetLibraryView: text. */
+"Folders" = "Klasörler";
+
+/* WidgetLibraryView: text. */
+"All" = "Tümü";
+
+/* WidgetLibraryView: message (an error or a status). */
+"Save and restore desktop skin arrangements" = "Masaüstü kabuk düzenlerini kaydedin ve geri yükleyin";
+
+/* WidgetLibraryView: message (an error or a status). */
+"%lld widgets available · Click Add to Desktop or adjust settings" = "%lld araç takımı kullanılabilir · Masaüstüne Ekle’yi tıklayın veya ayarları düzenleyin";
+
+/* WidgetLibraryView: text. */
+"Search widgets" = "Araç takımlarında ara";
+
+/* WidgetLibraryView: text. */
+"Built-in" = "Yerleşik";
+
+/* WidgetLibraryView: text. */
+"Add to Desktop" = "Masaüstüne Ekle";
+
+/* WidgetLibraryView: text. */
+"Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install." = "Bir araç takımını yüklemek için Masaüstüne Ekle’yi tıklayın veya kurmak için buraya bir .rmskin, .zip ya da kabuk klasörü bırakın.";
+
+/* WidgetLibraryView: text. */
+"Metadata" = "Üst Veri";

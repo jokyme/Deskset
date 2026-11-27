@@ -4,9 +4,83 @@ import DesksetCore
 enum DebugSelfTests {
     static func run(_ t: AppTestRunner) {
         entryPoints(t)
+        uiBangRoutingTests(t)
         logTests(t)
         pluginAndWindowTests(t)
         logFileTests(t)
+    }
+
+    private static func uiBangRoutingTests(_ t: AppTestRunner) {
+        t.suite("App: UI bangs: !Manage, !Debug, !About, !SkinMenu and !TrayMenu route to updated UI") {
+            guard let app = try AppSelfTest.makeApp(t),
+                  let focus = app.activate(config: "App\\Focus", file: "Focus.ini"),
+                  let controls = app.activate(config: "App\\Controls", file: "Controls.ini") else { return }
+            defer {
+                SettingsWindowController.window(for: app)?.close()
+                DebugWindowController.window(for: app)?.close()
+                AboutWindowController.window(for: app)?.close()
+                app.manageWindow?.close()
+            }
+
+            CodeEditorRoutingSelfTests.withFakes(.init(), .init()) {
+                // 1. !Manage Settings opens the redesigned Settings window on General.
+                focus.skin.execute("[!Manage Settings]", from: nil)
+                t.check(AppSelfTest.spin { SettingsWindowController.window(for: app)?.pane == .general },
+                        "!Manage Settings opens Settings on General")
+
+                // 2. !Manage Layouts switches Widget Library to Layouts and clears any open skin inspector sheet.
+                app.showManageWindow(selecting: focus.config, file: focus.file)
+                app.manageWindow?.libraryModel.inspectorConfig = focus.config
+                focus.skin.execute("[!Manage Layouts]", from: nil)
+                t.check(AppSelfTest.spin {
+                    app.manageWindow?.tab == .layouts
+                        && app.manageWindow?.libraryModel.section == .layouts
+                        && app.manageWindow?.libraryModel.inspectorConfig == nil
+                }, "!Manage Layouts selects the Widget Library Layouts section and dismisses stale sheet")
+
+                // 3. !Manage Skins "Config" "Variant.ini" clears incompatible filters and reveals the target card.
+                app.manageWindow?.libraryModel.section = .favorites
+                app.manageWindow?.libraryModel.selectedFolder = "Deskset"
+                app.manageWindow?.libraryModel.searchQuery = "nonexistent"
+                focus.skin.execute(#"[!Manage Skins "App\Focus" "Compact.ini"]"#, from: nil)
+                t.check(AppSelfTest.spin {
+                    app.manageWindow?.tab == .skins
+                        && app.manageWindow?.libraryModel.section == .installed
+                        && app.manageWindow?.libraryModel.selectedFolder == nil
+                        && app.manageWindow?.libraryModel.searchQuery.isEmpty == true
+                        && app.manageWindow?.selection?.config == "App\\Focus"
+                        && app.manageWindow?.selection?.file == "Compact.ini"
+                        && app.manageWindow?.libraryModel.chosenVariants["app\\focus"] == "Compact.ini"
+                        && app.manageWindow?.libraryModel.scrollToCardID == "app\\focus"
+                }, "!Manage Skins selects variant, resets filters and scrolls to card")
+
+                // 4. !Debug [Tab] [Config] routes to all 5 tabs and selects an explicit config.
+                focus.skin.execute(#"[!Debug Skin "App\Controls"]"#, from: nil)
+                t.check(AppSelfTest.spin {
+                    DebugWindowController.window(for: app)?.selectedTab == .skins
+                        && DebugWindowController.window(for: app)?.skinInspector.selectedSkinConfig == controls.config
+                }, "!Debug Skin with explicit config selects that config")
+                focus.skin.execute("[!Debug Log]", from: nil)
+                t.check(AppSelfTest.spin { DebugWindowController.window(for: app)?.selectedTab == .log })
+
+                // 5. !About opens About Deskset.
+                focus.skin.execute("[!About]", from: nil)
+                t.check(AppSelfTest.spin { AboutWindowController.window(for: app)?.selectedTab == .version })
+
+                // 6. !TrayMenu and !SkinMenu pop up menus with updated actions.
+                var poppedMenus: [NSMenu] = []
+                app.popUpMenuForTesting = { poppedMenus.append($0) }
+                defer { app.popUpMenuForTesting = nil }
+                focus.skin.execute("[!TrayMenu]", from: nil)
+                t.check(AppSelfTest.spin { poppedMenus.count == 1 })
+                t.check(poppedMenus.first?.item(withTitle: L("Settings…")) != nil)
+                t.check(poppedMenus.first?.item(withTitle: L("Debug")) != nil)
+                focus.skin.execute("[!SkinMenu]", from: nil)
+                t.check(AppSelfTest.spin { poppedMenus.count == 2 })
+                t.check(poppedMenus.last?.item(withTitle: L("Manage Skin…")) != nil)
+                t.check(poppedMenus.last?.item(withTitle: L("Debug Skin")) != nil)
+            }
+        }
     }
 
     private static func entryPoints(_ t: AppTestRunner) {

@@ -4,28 +4,28 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
 "About Deskset" = "O aplikácii Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Settings…" = "Nastavenia…";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Spravovať skiny…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Install Skin…" = "Inštalovať skin…";
 
 /* Main menu: menu item. */
 "Hide Deskset" = "Skryť Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Quit Deskset" = "Ukončiť Deskset";
 
 /* Main menu: menu title. */
 "File" = "Súbor";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Uložiť";
 
@@ -93,7 +93,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Zväčšiť/zmenšiť";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; SettingsWindowView: text; StudioMenus: text. */
 "Help" = "Pomoc";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -193,26 +193,26 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Zatiaľ zavrieť. Pri ďalšej dennej kontrole vám to môže byť znova pripomenuté.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skiny";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Rozloženia";
 
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Načítané skiny";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Reloads every skin from its files and rescans the Skins folder. */
 "Refresh All" = "Obnoviť všetko";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Open Skins Folder" = "Otvoriť priečinok skinov";
 
-/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status); SettingsWindowView: text.
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Ladenie";
 
@@ -222,16 +222,16 @@
 /* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
 "Available when Deskset runs as an installed app." = "Dostupné, keď Deskset beží ako nainštalovaná aplikácia.";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Update to Deskset %@…" = "Aktualizovať na Deskset %@…";
 
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Reštartovať Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
 "No skins installed" = "Nie sú nainštalované žiadne skiny";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "Favorites" = "Obľúbené";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -269,7 +269,7 @@
    Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
 "Click Through" = "Prepúšťať kliknutia";
 
-/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
 "Draggable" = "Dá sa presúvať";
 
@@ -285,11 +285,11 @@
    Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
 "Save Position" = "Pamätať si polohu";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
 "Favorite" = "Obľúbený";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: text. */
 "Settings" = "Nastavenia";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Spravovať tento skin…";
 
-/* Menu bar menu, skin menus and update alerts: text.
+/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Ladiť skin";
 
@@ -389,63 +389,63 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Podržaním klávesu Control meníte zväčšenie po 10 percentuálnych bodoch.";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save as empty layout" = "Uložiť ako prázdne rozloženie";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Vynechať nenačítané skiny";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Include current wallpaper" = "Zahrnúť aktuálnu tapetu";
 
-/* Manage window: button, text.
+/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Načítať";
 
-/* Manage window: button; New Skin window: button, text. */
+/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Delete" = "Vymazať";
 
-/* Manage window: button, menu item; New Skin window: button.
+/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Upraviť";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
 "Create new skin" = "Vytvoriť nový skin";
 
-/* Manage window: VoiceOver description, tooltip.
+/* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
    Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
 "Create .rmskin Package…" = "Vytvoriť balík .rmskin…";
 
 /* Manage window: label. */
 "Select a skin to see its details." = "Označte skin, aby sa zobrazili jeho podrobnosti.";
 
-/* Manage window: button.
+/* Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: reloads the skin from its files. */
 "Refresh" = "Obnoviť";
 
 /* Manage window: button. */
 "Open Folder" = "Otvoriť priečinok";
 
-/* Manage window: label, text. */
+/* Manage window: label, text; WidgetLibraryView: text. */
 "Load the skin to change its settings." = "Ak chcete zmeniť nastavenia skinu, načítajte ho.";
 
-/* Manage window: checkbox.
+/* Manage window: checkbox; WidgetLibraryView: text.
    Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
 "Click through" = "Prepúšťať kliknutia";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Keep on screen" = "Držať na obrazovke";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Snap to edges" = "Prichytávať k okrajom";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save position" = "Pamätať si polohu";
 
 /* Manage window: checkbox. */
 "Launch at login" = "Otvoriť po prihlásení";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The skin window's X and Y position on the screen. */
 "Coordinates:" = "Súradnice:";
 
@@ -453,36 +453,35 @@
    Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
 "Load order:" = "Poradie načítania:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: What a skin does while the pointer is over it. */
 "On hover:" = "Pri prechode ukazovateľom:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Position:" = "Poloha:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Transparency:" = "Priehľadnosť:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Zväčšenie:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Author:" = "Autor:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: The skin's own description, from its [Metadata] section. */
 "Information:" = "Popis:";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Licencia:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Version:" = "Verzia:";
 
-/* Manage window: window title.
-   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
-"Manage Skins" = "Správa skinov";
+/* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
+"Widget Library" = "Knižnica widgetov";
 
 /* Manage window: VoiceOver description. */
 "Installed skins" = "Nainštalované skiny";
@@ -496,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Otvoriť protokol";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save new layout" = "Uložiť nové rozloženie";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
 "Name:" = "Názov:";
 
-/* Manage window: VoiceOver description. */
+/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
 "Layout name" = "Názov rozloženia";
 
-/* Manage window: VoiceOver description, text. */
+/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Saved layouts" = "Uložené rozloženia";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "No saved layouts." = "Žiadne uložené rozloženia.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Uložené rozloženia sa nedajú prečítať: %@";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not save layout" = "Rozloženie sa nedá uložiť";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Replace layout “%@”?" = "Nahradiť rozloženie „%@“?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Rozloženie s týmto názvom už existuje. Chcete nahradiť jeho uložené nastavenia?";
 
-/* Manage window: button; Skin Packager window: button. */
+/* Manage window: button; Settings window: button; Skin Packager window: button. */
 "Replace" = "Nahradiť";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Zrušiť";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not delete layout" = "Rozloženie sa nedá vymazať";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Delete layout “%@”?" = "Vymazať rozloženie „%@“?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Uložené rozloženie sa presunie do koša. Súbory skinov zostanú zachované.";
 
 /* Manage window: tooltip. */
@@ -566,7 +565,7 @@
 /* Manage window: tooltip. */
 "What the skin does while the pointer is over it." = "Čo skin robí, keď je nad ním ukazovateľ.";
 
-/* Manage window: label.
+/* Manage window: label; WidgetLibraryView: text.
    Note: Unit after a duration (milliseconds). */
 "ms" = "ms";
 
@@ -574,21 +573,21 @@
    Note: How long a skin takes to fade in or out, in milliseconds. */
 "Fade duration:" = "Dĺžka prelínania:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Section of the Manage window listing what in the skin works differently on a Mac. */
 "Compatibility" = "Kompatibilita";
 
 /* Manage window: text. */
 "Start Deskset when you log in." = "Spúšťať Deskset po prihlásení.";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Button: removes the skin from the desktop (the files stay). */
 "Unload" = "Zavrieť";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no [Metadata] section." = "Tento skin nemá sekciu [Metadata].";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no metadata values." = "Tento skin nemá žiadne metadáta.";
 
 /* Manage window: text. */
@@ -603,7 +602,7 @@
 /* Manage window: note under a panel or list. */
 "Select a skin file to check it." = "Označte súbor skinu, ktorý chcete skontrolovať.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No compatibility problems found." = "Nenašli sa žiadne problémy s kompatibilitou.";
 
 /* Manage window: note under a panel or list. */
@@ -613,7 +612,7 @@
    Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
 "Folder" = "Priečinok";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is on the desktop and running. */
 "Loaded" = "Načítaný";
 
@@ -636,14 +635,14 @@
    Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
 "%@, has loaded skins" = "%@, obsahuje načítané skiny";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is running but has hidden itself. */
 "Loaded, hidden" = "Načítaný, skrytý";
 
-/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+/* Manage window: menu item; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Show in Finder" = "Zobraziť vo Finderi";
 
-/* Manage window: text, VoiceOver description. */
+/* Manage window: text, VoiceOver description; WidgetLibraryView: text. */
 "Add metadata" = "Pridať metadáta";
 
 /* Manage window: text.
@@ -738,113 +737,66 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status), text.
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Všeobecné";
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Editor";
 
-/* Settings window: checkbox.
+/* Settings window: message (an error or a status). */
+"Debug & Log" = "Ladenie a záznam";
+
+/* Settings window: checkbox; SettingsWindowView: status or description line.
    Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
 "Refresh the skin when the file is saved elsewhere" = "Obnoviť skin, keď sa súbor uloží v inej aplikácii";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Launch Deskset at login" = "Otvárať Deskset po prihlásení";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Automaticky vyhľadávať aktualizácie";
 
-/* Settings window: button; App updates: text. */
+/* Settings window: button; App updates: text; SettingsWindowView: text. */
 "Check for Updates…" = "Vyhľadať aktualizácie…";
 
-/* Settings window: button.
+/* Settings window: button; SettingsWindowView: text.
    Note: Button in Settings, shown when a new version is available: opens the update. */
 "Update…" = "Aktualizovať…";
 
-/* Settings window: checkbox.
+/* Settings window: checkbox; SettingsWindowView: text.
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Použiť pre všetky skiny";
 
-/* Settings window: checkbox, VoiceOver description.
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Vypnúť presúvanie";
 
-/* Settings window: VoiceOver description. */
+/* Settings window: VoiceOver description; SettingsWindowView: text. */
 "Theme" = "Vzhľad";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
 "Edit code with" = "Aplikácia na úpravu kódu";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the font size field for the built-in code editor. */
 "Code font size" = "Veľkosť písma kódu";
 
-/* Settings window: text.
+/* Settings window: text; SettingsWindowView: text.
    Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
 "Default zoom" = "Predvolené zväčšenie";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Apply the default zoom to every skin." = "Použiť predvolené zväčšenie pre každý skin.";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Vynútiť predvolené zväčšenie";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Prevent dragging skins with the mouse." = "Zabrániť presúvaniu skinov myšou.";
-
-/* Settings window: label.
-   Note: Unit after a font size (points). */
-"pt" = "pt";
-
-/* Settings window: label.
-   Note: Which app opens a skin's .ini file for editing. */
-"Edit code with:" = "Upravovať kód v:";
-
-/* Settings window: label. */
-"Code font size:" = "Veľkosť písma kódu:";
-
-/* Settings window: label.
-   Note: Setting: reload a skin automatically when its file changes. */
-"Live reload:" = "Automatické obnovenie:";
-
-/* Settings window: text. */
-"Deskset opens with your skins when you log in." = "Deskset sa po prihlásení otvorí s vašimi skinmi.";
-
-/* Settings window: text. */
-"Available when Deskset runs from the Applications folder." = "Dostupné, keď Deskset beží z priečinka Aplikácie.";
-
-/* Settings window: text. */
-"User interface" = "Používateľské rozhranie";
-
-/* Settings window: label.
-   Note: Settings row with the language pop-up menu. */
-"Language:" = "Jazyk:";
-
-/* Settings window: label. */
-"Theme:" = "Vzhľad:";
-
-/* Settings window: label.
-   Note: Settings row with the Launch Deskset at login checkbox. */
-"Startup:" = "Spúšťanie:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Aktualizácie:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset raz denne kontroluje a sám sťahuje aktualizácie; o tom, kedy ich nainštalovať, rozhodujete vy.";
-
-/* Settings window: label.
-   Note: Settings row with the path of the folder skins are installed in. */
-"Skins folder:" = "Priečinok skinov:";
-
-/* Settings window: label.
-   Note: The zoom (size, as a percentage) skins get unless one has its own. */
-"Default zoom:" = "Predvolené zväčšenie:";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -917,14 +869,14 @@
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
 
-/* About window: button.
+/* About window: button; SettingsWindowView: text.
    Note: Button: copies the version line for bug reports. */
 "Copy to Clipboard" = "Kopírovať do schránky";
 
-/* About window: text. */
+/* About window: text; SettingsWindowView: text. */
 "Desktop widgets for your Mac, compatible with Rainmeter skins." = "Widgety na plochu vášho Macu, kompatibilné so skinmi pre Rainmeter.";
 
-/* About window: text.
+/* About window: text; SettingsWindowView: text.
    Note: A legal line; translate faithfully. */
 "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter je ochranná známka príslušných vlastníkov; Deskset s ním nie je nijako spojený.";
 
@@ -1033,7 +985,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "Autor: %@";
 
-/* Skin installer: text.
+/* Skin installer: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Verzia %@";
 
@@ -1167,7 +1119,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Písma priložené k týmto skinom (neinštalujú sa do celého systému): %@";
 
-/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Warning" = "Upozornenie";
 
 // MARK: Skin Packager window
@@ -1659,7 +1611,7 @@
 /* Installing Deskset in Applications: button; Install and update panels: text. */
 "Show Installer in Finder" = "Zobraziť inštalátor vo Finderi";
 
-/* Installing Deskset in Applications: text.
+/* Installing Deskset in Applications: text; WidgetLibraryView: message (an error or a status).
    Note: Badge after Deskset has been installed. */
 "Installed" = "Nainštalované";
 
@@ -1712,13 +1664,13 @@
 
 // MARK: AppTheme
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Auto" = "Automaticky";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Light" = "Svetlý";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Dark" = "Tmavý";
 
 // MARK: DebugInfoView
@@ -1730,7 +1682,7 @@
    Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
 "Reset statistics" = "Vynulovať štatistiky";
 
-/* DebugInfoView: menu item; DebugWindowController: text. */
+/* DebugInfoView: menu item; DebugWindowController: text; SettingsWindowView: text. */
 "Copy all" = "Kopírovať všetko";
 
 /* DebugInfoView: text. */
@@ -1862,7 +1814,7 @@
 
 // MARK: DebugWindowController
 
-/* DebugWindowController: message (an error or a status). */
+/* DebugWindowController: message (an error or a status); SettingsWindowView: text. */
 "Log" = "Záznam";
 
 /* DebugWindowController: message (an error or a status). */
@@ -1874,7 +1826,7 @@
 /* DebugWindowController: message (an error or a status). */
 "Network" = "Sieť";
 
-/* DebugWindowController: window title. */
+/* DebugWindowController: window title; SettingsWindowView: text. */
 "Debug Deskset" = "Ladenie Desksetu";
 
 /* DebugWindowController: text. */
@@ -1889,13 +1841,13 @@
 /* DebugWindowController: text. */
 "Source" = "Zdroj";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Error" = "Chyba";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Notice" = "Oznámenie";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Log file" = "Súbor záznamu";
 
 /* DebugWindowController: text. */
@@ -1907,7 +1859,7 @@
 /* DebugWindowController: text. */
 "Delete log file" = "Odstrániť súbor záznamu";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Show log file" = "Zobraziť súbor záznamu";
 
 /* DebugWindowController: button. */
@@ -1921,3 +1873,100 @@
 
 /* DebugWindowController: text. */
 "%@ (bundled)" = "%@ (integrovaný)";
+
+// MARK: SettingsWindowView
+
+/* SettingsWindowView: text. */
+"Appearance" = "Vzhľad";
+
+/* SettingsWindowView: text. */
+"Interactive Desktop" = "Interaktívna plocha";
+
+/* SettingsWindowView: text. */
+"Drag widgets freely on the desktop and right-click any widget for quick actions." = "Voľne presúvajte widgety na ploche a pravým kliknutím otvorte rýchle akcie.";
+
+/* SettingsWindowView: text. */
+"Locked Positions" = "Uzamknuté pozície";
+
+/* SettingsWindowView: text. */
+"Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Zabráni nechcenému ťahaniu myšou pri zachovaní funkčnosti tlačidiel a akcií.";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset sa po prihlásení otvorí s vašimi skinmi.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Dostupné, keď Deskset beží z priečinka Aplikácie.";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset raz denne kontroluje a sám sťahuje aktualizácie; o tom, kedy ich nainštalovať, rozhodujete vy.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Aktualizácie:";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Automaticky sleduje svetlý a tmavý režim macOS.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Ponechá okná a menu Desksetu v pevnom vzhľade.";
+
+/* SettingsWindowView: text. */
+"Language" = "Jazyk";
+
+/* SettingsWindowView: text. */
+"Skins folder" = "Priečinok vzhľadov";
+
+/* SettingsWindowView: text.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* SettingsWindowView: text.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Automatické obnovenie:";
+
+/* SettingsWindowView: status or description line. */
+"Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Skontrolujte živé merania, premenné, vstavané pluginy, displeje a sieťové štatistiky.";
+
+/* SettingsWindowView: text. */
+"Open Inspector…" = "Otvoriť inšpektor…";
+
+/* SettingsWindowView: text. */
+"No log entries." = "Žiadne záznamy.";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Priečinok nastavení";
+
+/* SettingsWindowView: text. */
+"Open" = "Otvoriť";
+
+// MARK: WidgetLibraryView
+
+/* WidgetLibraryView: text. */
+"Library" = "Knižnica";
+
+/* WidgetLibraryView: text. */
+"Folders" = "Priečinky";
+
+/* WidgetLibraryView: text. */
+"All" = "Všetky";
+
+/* WidgetLibraryView: message (an error or a status). */
+"Save and restore desktop skin arrangements" = "Uložiť a obnoviť rozloženia vzhľadov na ploche";
+
+/* WidgetLibraryView: message (an error or a status). */
+"%lld widgets available · Click Add to Desktop or adjust settings" = "Dostupné widgety: %lld · Kliknite na Pridať na plochu alebo upravte nastavenia";
+
+/* WidgetLibraryView: text. */
+"Search widgets" = "Hľadať widgety";
+
+/* WidgetLibraryView: text. */
+"Built-in" = "Vstavaný";
+
+/* WidgetLibraryView: text. */
+"Add to Desktop" = "Pridať na plochu";
+
+/* WidgetLibraryView: text. */
+"Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install." = "Kliknutím na Pridať na plochu načítajte widget, alebo sem presuňte súbor .rmskin, .zip či priečinok vzhľadu na inštaláciu.";
+
+/* WidgetLibraryView: text. */
+"Metadata" = "Metadáta";

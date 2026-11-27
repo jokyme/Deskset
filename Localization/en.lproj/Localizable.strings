@@ -3,28 +3,28 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
 "About Deskset" = "About Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Settings…" = "Settings…";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Manage Skins…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Install Skin…" = "Install Skin…";
 
 /* Main menu: menu item. */
 "Hide Deskset" = "Hide Deskset";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Quit Deskset" = "Quit Deskset";
 
 /* Main menu: menu title. */
 "File" = "File";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button.
+/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Save";
 
@@ -92,7 +92,7 @@
    Note: The Window menu command that zooms the front window (Apple's standard term), not the skin zoom. */
 "Zoom" = "Zoom";
 
-/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; StudioMenus: text. */
+/* Main menu: menu title; Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: button; SettingsWindowView: text; StudioMenus: text. */
 "Help" = "Help";
 
 // MARK: Menu bar menu, skin menus and update alerts
@@ -192,26 +192,26 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Close for now. The next daily check can remind you again.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: text; DebugWindowController: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skins";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Layouts";
 
-/* Menu bar menu, skin menus and update alerts: menu item.
+/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Loaded Skins";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Reloads every skin from its files and rescans the Skins folder. */
 "Refresh All" = "Refresh All";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
 "Open Skins Folder" = "Open Skins Folder";
 
-/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; DebugWindowController: text, message (an error or a status); SettingsWindowView: text.
    Note: Opens the Debug window (skin variables and measures, system information). Use the usual term for developer diagnostics. */
 "Debug" = "Debug";
 
@@ -221,16 +221,16 @@
 /* Menu bar menu, skin menus and update alerts: tooltip; Manage window: text. */
 "Available when Deskset runs as an installed app." = "Available when Deskset runs as an installed app.";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
 "Update to Deskset %@…" = "Update to Deskset %@…";
 
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Restart Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
 "No skins installed" = "No skins installed";
 
-/* Menu bar menu, skin menus and update alerts: menu item. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "Favorites" = "Favorites";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -268,7 +268,7 @@
    Note: Menu toggle (checkmark): clicks go through the skin to whatever is below it. */
 "Click Through" = "Click Through";
 
-/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: text; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin can be moved with the mouse. */
 "Draggable" = "Draggable";
 
@@ -284,11 +284,11 @@
    Note: Menu toggle (checkmark): the skin's position is remembered after it is moved. */
 "Save Position" = "Save Position";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: checkbox; WidgetLibraryView: text.
    Note: Menu toggle (checkmark): the skin is listed in the Favorites menu. */
 "Favorite" = "Favorite";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: text. */
 "Settings" = "Settings";
 
 /* Menu bar menu, skin menus and update alerts: menu item.
@@ -298,7 +298,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Manage Skin…";
 
-/* Menu bar menu, skin menus and update alerts: text.
+/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Debug Skin";
 
@@ -388,63 +388,63 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Hold Control to change zoom by 10 percentage points.";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save as empty layout" = "Save as empty layout";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Exclude unloaded skins";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
 "Include current wallpaper" = "Include current wallpaper";
 
-/* Manage window: button, text.
+/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Load";
 
-/* Manage window: button; New Skin window: button, text. */
+/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Delete" = "Delete";
 
-/* Manage window: button, menu item; New Skin window: button.
+/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Edit";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
 "Create new skin" = "Create new skin";
 
-/* Manage window: VoiceOver description, tooltip.
+/* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
    Note: Opens the Skin Packager, which makes a .rmskin skin package. Keep ".rmskin". */
 "Create .rmskin Package…" = "Create .rmskin Package…";
 
 /* Manage window: label. */
 "Select a skin to see its details." = "Select a skin to see its details.";
 
-/* Manage window: button.
+/* Manage window: button; SettingsWindowView: text; WidgetLibraryView: text.
    Note: Button: reloads the skin from its files. */
 "Refresh" = "Refresh";
 
 /* Manage window: button. */
 "Open Folder" = "Open Folder";
 
-/* Manage window: label, text. */
+/* Manage window: label, text; WidgetLibraryView: text. */
 "Load the skin to change its settings." = "Load the skin to change its settings.";
 
-/* Manage window: checkbox.
+/* Manage window: checkbox; WidgetLibraryView: text.
    Note: Checkbox in the Manage window: clicks go through the skin to whatever is below it. */
 "Click through" = "Click through";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Keep on screen" = "Keep on screen";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Snap to edges" = "Snap to edges";
 
-/* Manage window: checkbox. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save position" = "Save position";
 
 /* Manage window: checkbox. */
 "Launch at login" = "Launch at login";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The skin window's X and Y position on the screen. */
 "Coordinates:" = "Coordinates:";
 
@@ -452,36 +452,35 @@
    Note: Rainmeter's LoadOrder: which of the skins at the same position is drawn on top (higher numbers on top). */
 "Load order:" = "Load order:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: What a skin does while the pointer is over it. */
 "On hover:" = "On hover:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Position:" = "Position:";
 
-/* Manage window: text, label. */
+/* Manage window: text, label; WidgetLibraryView: text. */
 "Transparency:" = "Transparency:";
 
-/* Manage window: text, label.
+/* Manage window: text, label; WidgetLibraryView: text.
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Zoom:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Author:" = "Author:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: The skin's own description, from its [Metadata] section. */
 "Information:" = "Information:";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "License:" = "License:";
 
-/* Manage window: text; Skin Packager window: label. */
+/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
 "Version:" = "Version:";
 
-/* Manage window: window title.
-   Note: The title of the Manage window, where skins are loaded, unloaded and set up. */
-"Manage Skins" = "Manage Skins";
+/* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
+"Widget Library" = "Widget Library";
 
 /* Manage window: VoiceOver description. */
 "Installed skins" = "Installed skins";
@@ -495,46 +494,46 @@
 /* Manage window: button. */
 "Open Log" = "Open Log";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Save new layout" = "Save new layout";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label. */
+/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
 "Name:" = "Name:";
 
-/* Manage window: VoiceOver description. */
+/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
 "Layout name" = "Layout name";
 
-/* Manage window: VoiceOver description, text. */
+/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Saved layouts" = "Saved layouts";
 
-/* Manage window: text. */
+/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "No saved layouts." = "No saved layouts.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Could not read saved layouts: %@";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not save layout" = "Could not save layout";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Replace layout “%@”?" = "Replace layout “%@”?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "A layout with this name already exists. Replace its saved settings?";
 
-/* Manage window: button; Skin Packager window: button. */
+/* Manage window: button; Settings window: button; Skin Packager window: button. */
 "Replace" = "Replace";
 
-/* Manage window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Cancel";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Could not delete layout" = "Could not delete layout";
 
-/* Manage window: alert title. */
+/* Manage window: alert title; Settings window: alert title. */
 "Delete layout “%@”?" = "Delete layout “%@”?";
 
-/* Manage window: alert or dialog message. */
+/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "This moves the saved layout to the Trash. Your skin files are kept.";
 
 /* Manage window: tooltip. */
@@ -565,7 +564,7 @@
 /* Manage window: tooltip. */
 "What the skin does while the pointer is over it." = "What the skin does while the pointer is over it.";
 
-/* Manage window: label.
+/* Manage window: label; WidgetLibraryView: text.
    Note: Unit after a duration (milliseconds). */
 "ms" = "ms";
 
@@ -573,21 +572,21 @@
    Note: How long a skin takes to fade in or out, in milliseconds. */
 "Fade duration:" = "Fade duration:";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Section of the Manage window listing what in the skin works differently on a Mac. */
 "Compatibility" = "Compatibility";
 
 /* Manage window: text. */
 "Start Deskset when you log in." = "Start Deskset when you log in.";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Button: removes the skin from the desktop (the files stay). */
 "Unload" = "Unload";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no [Metadata] section." = "This skin has no [Metadata] section.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "This skin has no metadata values." = "This skin has no metadata values.";
 
 /* Manage window: text. */
@@ -602,7 +601,7 @@
 /* Manage window: note under a panel or list. */
 "Select a skin file to check it." = "Select a skin file to check it.";
 
-/* Manage window: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No compatibility problems found." = "No compatibility problems found.";
 
 /* Manage window: note under a panel or list. */
@@ -612,7 +611,7 @@
    Note: Shown instead of a status when a folder, not a skin file, is selected. (Info.plist: the document type name of a folder.) */
 "Folder" = "Folder";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is on the desktop and running. */
 "Loaded" = "Loaded";
 
@@ -635,14 +634,14 @@
    Note: VoiceOver: %@ is a folder name; some skins in it are loaded. */
 "%@, has loaded skins" = "%@, has loaded skins";
 
-/* Manage window: text.
+/* Manage window: text; WidgetLibraryView: text.
    Note: Status: the skin is running but has hidden itself. */
 "Loaded, hidden" = "Loaded, hidden";
 
-/* Manage window: menu item; Settings window: button; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text. */
+/* Manage window: menu item; Skin Packager window: button; Installing Deskset in Applications: button; Install and update panels: text; SettingsWindowView: text; WidgetLibraryView: text. */
 "Show in Finder" = "Show in Finder";
 
-/* Manage window: text, VoiceOver description. */
+/* Manage window: text, VoiceOver description; WidgetLibraryView: text. */
 "Add metadata" = "Add metadata";
 
 /* Manage window: text.
@@ -737,113 +736,66 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status), text.
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "General";
 
-/* Settings window: message (an error or a status).
+/* Settings window: message (an error or a status); SettingsWindowView: text.
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Editor";
 
-/* Settings window: checkbox.
+/* Settings window: message (an error or a status). */
+"Debug & Log" = "Debug & Log";
+
+/* Settings window: checkbox; SettingsWindowView: status or description line.
    Note: Checkbox next to "Live reload:": when another app saves a skin's file, the skin reloads. */
 "Refresh the skin when the file is saved elsewhere" = "Refresh the skin when the file is saved elsewhere";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Launch Deskset at login" = "Launch Deskset at login";
 
-/* Settings window: checkbox. */
+/* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Automatically check for updates";
 
-/* Settings window: button; App updates: text. */
+/* Settings window: button; App updates: text; SettingsWindowView: text. */
 "Check for Updates…" = "Check for Updates…";
 
-/* Settings window: button.
+/* Settings window: button; SettingsWindowView: text.
    Note: Button in Settings, shown when a new version is available: opens the update. */
 "Update…" = "Update…";
 
-/* Settings window: checkbox.
+/* Settings window: checkbox; SettingsWindowView: text.
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Apply to all skins";
 
-/* Settings window: checkbox, VoiceOver description.
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Disable dragging";
 
-/* Settings window: VoiceOver description. */
+/* Settings window: VoiceOver description; SettingsWindowView: text. */
 "Theme" = "Theme";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the "Edit code with:" pop-up menu. */
 "Edit code with" = "Edit code with";
 
-/* Settings window: VoiceOver description.
+/* Settings window: VoiceOver description; SettingsWindowView: text.
    Note: VoiceOver name of the font size field for the built-in code editor. */
 "Code font size" = "Code font size";
 
-/* Settings window: text.
+/* Settings window: text; SettingsWindowView: text.
    Note: VoiceOver name of the field for the zoom new skins get, as a percentage. */
 "Default zoom" = "Default zoom";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Apply the default zoom to every skin." = "Apply the default zoom to every skin.";
 
 /* Settings window: VoiceOver description.
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Force default zoom";
 
-/* Settings window: tooltip. */
+/* Settings window: tooltip; SettingsWindowView: status or description line. */
 "Prevent dragging skins with the mouse." = "Prevent dragging skins with the mouse.";
-
-/* Settings window: label.
-   Note: Unit after a font size (points). */
-"pt" = "pt";
-
-/* Settings window: label.
-   Note: Which app opens a skin's .ini file for editing. */
-"Edit code with:" = "Edit code with:";
-
-/* Settings window: label. */
-"Code font size:" = "Code font size:";
-
-/* Settings window: label.
-   Note: Setting: reload a skin automatically when its file changes. */
-"Live reload:" = "Live reload:";
-
-/* Settings window: text. */
-"Deskset opens with your skins when you log in." = "Deskset opens with your skins when you log in.";
-
-/* Settings window: text. */
-"Available when Deskset runs from the Applications folder." = "Available when Deskset runs from the Applications folder.";
-
-/* Settings window: text. */
-"User interface" = "User interface";
-
-/* Settings window: label.
-   Note: Settings row with the language pop-up menu. */
-"Language:" = "Language:";
-
-/* Settings window: label. */
-"Theme:" = "Theme:";
-
-/* Settings window: label.
-   Note: Settings row with the Launch Deskset at login checkbox. */
-"Startup:" = "Startup:";
-
-/* Settings window: label.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Updates:";
-
-/* Settings window: note under a panel or list. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset checks once a day and downloads updates itself; you choose when to install them.";
-
-/* Settings window: label.
-   Note: Settings row with the path of the folder skins are installed in. */
-"Skins folder:" = "Skins folder:";
-
-/* Settings window: label.
-   Note: The zoom (size, as a percentage) skins get unless one has its own. */
-"Default zoom:" = "Default zoom:";
 
 /* Settings window: text.
    Note: %@ is the name of an editor app that is no longer installed. */
@@ -916,14 +868,14 @@
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ - %@";
 
-/* About window: button.
+/* About window: button; SettingsWindowView: text.
    Note: Button: copies the version line for bug reports. */
 "Copy to Clipboard" = "Copy to Clipboard";
 
-/* About window: text. */
+/* About window: text; SettingsWindowView: text. */
 "Desktop widgets for your Mac, compatible with Rainmeter skins." = "Desktop widgets for your Mac, compatible with Rainmeter skins.";
 
-/* About window: text.
+/* About window: text; SettingsWindowView: text.
    Note: A legal line; translate faithfully. */
 "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.";
 
@@ -1032,7 +984,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "By %@";
 
-/* Skin installer: text.
+/* Skin installer: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Version %@";
 
@@ -1166,7 +1118,7 @@
    Note: %@ is a list of font names. The fonts are used only by these skins. */
 "Fonts included for these skins (not installed system-wide): %@" = "Fonts included for these skins (not installed system-wide): %@";
 
-/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status). */
+/* Skin installer: VoiceOver description; DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Warning" = "Warning";
 
 // MARK: Skin Packager window
@@ -1658,7 +1610,7 @@
 /* Installing Deskset in Applications: button; Install and update panels: text. */
 "Show Installer in Finder" = "Show Installer in Finder";
 
-/* Installing Deskset in Applications: text.
+/* Installing Deskset in Applications: text; WidgetLibraryView: message (an error or a status).
    Note: Badge after Deskset has been installed. */
 "Installed" = "Installed";
 
@@ -1711,13 +1663,13 @@
 
 // MARK: AppTheme
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Auto" = "Auto";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Light" = "Light";
 
-/* AppTheme: message (an error or a status). */
+/* AppTheme: message (an error or a status); SettingsWindowView: text. */
 "Dark" = "Dark";
 
 // MARK: DebugInfoView
@@ -1729,7 +1681,7 @@
    Note: Button: sets the network statistics (total bytes sent and received, which network skins show) back to zero. */
 "Reset statistics" = "Reset statistics";
 
-/* DebugInfoView: menu item; DebugWindowController: text. */
+/* DebugInfoView: menu item; DebugWindowController: text; SettingsWindowView: text. */
 "Copy all" = "Copy all";
 
 /* DebugInfoView: text. */
@@ -1861,7 +1813,7 @@
 
 // MARK: DebugWindowController
 
-/* DebugWindowController: message (an error or a status). */
+/* DebugWindowController: message (an error or a status); SettingsWindowView: text. */
 "Log" = "Log";
 
 /* DebugWindowController: message (an error or a status). */
@@ -1873,7 +1825,7 @@
 /* DebugWindowController: message (an error or a status). */
 "Network" = "Network";
 
-/* DebugWindowController: window title. */
+/* DebugWindowController: window title; SettingsWindowView: text. */
 "Debug Deskset" = "Debug Deskset";
 
 /* DebugWindowController: text. */
@@ -1888,13 +1840,13 @@
 /* DebugWindowController: text. */
 "Source" = "Source";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Error" = "Error";
 
-/* DebugWindowController: text, message (an error or a status). */
+/* DebugWindowController: text, message (an error or a status); SettingsWindowView: text. */
 "Notice" = "Notice";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Log file" = "Log file";
 
 /* DebugWindowController: text. */
@@ -1906,7 +1858,7 @@
 /* DebugWindowController: text. */
 "Delete log file" = "Delete log file";
 
-/* DebugWindowController: text. */
+/* DebugWindowController: text; SettingsWindowView: text. */
 "Show log file" = "Show log file";
 
 /* DebugWindowController: button. */
@@ -1920,3 +1872,100 @@
 
 /* DebugWindowController: text. */
 "%@ (bundled)" = "%@ (bundled)";
+
+// MARK: SettingsWindowView
+
+/* SettingsWindowView: text. */
+"Appearance" = "Appearance";
+
+/* SettingsWindowView: text. */
+"Interactive Desktop" = "Interactive Desktop";
+
+/* SettingsWindowView: text. */
+"Drag widgets freely on the desktop and right-click any widget for quick actions." = "Drag widgets freely on the desktop and right-click any widget for quick actions.";
+
+/* SettingsWindowView: text. */
+"Locked Positions" = "Locked Positions";
+
+/* SettingsWindowView: text. */
+"Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Prevent accidental mouse dragging while keeping buttons and actions interactive.";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset opens with your skins when you log in.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Available when Deskset runs from the Applications folder.";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset checks once a day and downloads updates itself; you choose when to install them.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Updates:";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Follows macOS Light and Dark Mode automatically.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Keeps Deskset windows and menus in a fixed appearance.";
+
+/* SettingsWindowView: text. */
+"Language" = "Language";
+
+/* SettingsWindowView: text. */
+"Skins folder" = "Skins folder";
+
+/* SettingsWindowView: text.
+   Note: Unit after a font size (points). */
+"pt" = "pt";
+
+/* SettingsWindowView: text.
+   Note: Setting: reload a skin automatically when its file changes. */
+"Live reload:" = "Live reload:";
+
+/* SettingsWindowView: status or description line. */
+"Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Inspect live skin measures, variables, built-in plugins, displays and network statistics.";
+
+/* SettingsWindowView: text. */
+"Open Inspector…" = "Open Inspector…";
+
+/* SettingsWindowView: text. */
+"No log entries." = "No log entries.";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Settings folder";
+
+/* SettingsWindowView: text. */
+"Open" = "Open";
+
+// MARK: WidgetLibraryView
+
+/* WidgetLibraryView: text. */
+"Library" = "Library";
+
+/* WidgetLibraryView: text. */
+"Folders" = "Folders";
+
+/* WidgetLibraryView: text. */
+"All" = "All";
+
+/* WidgetLibraryView: message (an error or a status). */
+"Save and restore desktop skin arrangements" = "Save and restore desktop skin arrangements";
+
+/* WidgetLibraryView: message (an error or a status). */
+"%lld widgets available · Click Add to Desktop or adjust settings" = "%lld widgets available · Click Add to Desktop or adjust settings";
+
+/* WidgetLibraryView: text. */
+"Search widgets" = "Search widgets";
+
+/* WidgetLibraryView: text. */
+"Built-in" = "Built-in";
+
+/* WidgetLibraryView: text. */
+"Add to Desktop" = "Add to Desktop";
+
+/* WidgetLibraryView: text. */
+"Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install." = "Click Add to Desktop to load a widget, or drop a .rmskin, .zip or skin folder here to install.";
+
+/* WidgetLibraryView: text. */
+"Metadata" = "Metadata";

@@ -34,6 +34,10 @@ AppController.swift	Unknown ￼ value "￼" (main, engine or pool): desktop skin
 AppController.swift	engine thread	log line
 App/ManageWindowController.swift	restored to its minimum size; left as it is.	log line
 App/ManageWindowController.swift	Name	[Metadata] key
+App/ManageWindowController.swift	Information	[Metadata] key
+App/ManageWindowController.swift	Author	[Metadata] key
+App/ManageWindowController.swift	Version	[Metadata] key
+App/WidgetLibraryView.swift	Name	[Metadata] key
 App/SkinInstallFlow.swift	The package includes Windows plugins	prefix of DesksetCore's English warning, matched to replace it
 App/SkinPackagerWindowController.swift	Skin\\Folder\\Variables.inc | …	example path in the Variables files field (INI path syntax)
 App/SkinPackagerWindowController.swift	Metadata	INI section name read from the skin
