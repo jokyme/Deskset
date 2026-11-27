@@ -116,6 +116,24 @@ enum UIThemeSelfTests {
                 ["general", "editor", "layouts", "debug", "about"])
         t.check(manage.libraryModel.cards.contains { $0.config.name == "ThemeFixture" },
                 "Widget Library card grid includes the installed fixture")
+        let idleFolder = app.skinsDirectory.appendingPathComponent("UnloadedSuite")
+        try? FileManager.default.createDirectory(at: idleFolder, withIntermediateDirectories: true)
+        try? "[Rainmeter]\nUpdate=-1\n[M]\nMeter=String\nText=Idle\n"
+            .write(to: idleFolder.appendingPathComponent("Idle.ini"), atomically: true, encoding: .utf8)
+        app.rescanLibrary()
+        manage.reload()
+        manage.libraryModel.switchSection(.installed)
+        manage.libraryModel.selectedFolder = "UnloadedSuite"
+        t.equal(manage.libraryModel.filteredCards.map(\.config.name), ["UnloadedSuite"])
+        manage.libraryModel.switchSection(.active)
+        t.equal(manage.libraryModel.selectedFolder, nil,
+                "switching to Loaded Skins clears a previous folder filter so loaded widgets stay visible")
+        t.equal(manage.libraryModel.filteredCards.count, manage.libraryModel.activeCount)
+        t.check(!manage.libraryModel.visibleRootFolders.contains { $0.name == "UnloadedSuite" },
+                "Loaded Skins hides folders that have zero loaded skins")
+        try? FileManager.default.removeItem(at: idleFolder)
+        app.rescanLibrary()
+        manage.reload()
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: appearance)
             manage.window?.appearance = NSAppearance(named: appearance)

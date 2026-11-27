@@ -54,6 +54,7 @@ final class WidgetLibraryViewModel: ObservableObject {
         let author: String
         let version: String
         let isFavorite: Bool
+        let hasAnyFavorite: Bool
         let isBuiltInSuite: Bool
     }
 
@@ -83,6 +84,67 @@ final class WidgetLibraryViewModel: ObservableObject {
     @Published var revision: Int = 0
 
     let thumbnails = SkinThumbnailCache()
+
+    /// Switches top-level library section and clears any folder filter from the previous section so
+    /// switching e.g. from `Installed · SomeFolder` to `Loaded Skins` never hides loaded widgets in other folders.
+    func switchSection(_ newSection: WidgetLibrarySection) {
+        section = newSection
+        selectedFolder = nil
+    }
+
+    func matchesSection(_ card: CardItem, section: WidgetLibrarySection? = nil) -> Bool {
+        switch section ?? self.section {
+        case .installed:
+            return true
+        case .active:
+            return card.activeFile != nil
+        case .favorites:
+            return card.hasAnyFavorite
+        case .layouts:
+            return false
+        }
+    }
+
+    func folderCount(_ folder: String?) -> Int {
+        let base = cards.filter { matchesSection($0) }
+        guard let folder else { return base.count }
+        return base.filter { $0.rootFolder.caseInsensitiveCompare(folder) == .orderedSame }.count
+    }
+
+    var visibleRootFolders: [(name: String, count: Int)] {
+        switch section {
+        case .installed:
+            return rootFolders.map { ($0.name, folderCount($0.name)) }
+        case .active, .favorites:
+            return rootFolders.compactMap { entry in
+                let count = folderCount(entry.name)
+                return count > 0 ? (entry.name, count) : nil
+            }
+        case .layouts:
+            return []
+        }
+    }
+
+    var filteredCards: [CardItem] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cards.filter { card in
+            guard matchesSection(card) else { return false }
+            if let folder = selectedFolder,
+               card.rootFolder.caseInsensitiveCompare(folder) != .orderedSame {
+                return false
+            }
+            guard !query.isEmpty else { return true }
+            let fields = [
+                card.displayTitle,
+                card.subtitle,
+                card.author,
+                card.config.name,
+                card.chosenFile,
+                card.rootFolder,
+            ]
+            return fields.contains { $0.localizedCaseInsensitiveContains(query) }
+        }
+    }
 }
 
 /// Windowed Widget Library view aligned with Deskset Pro (Image 4):
@@ -108,46 +170,11 @@ struct WidgetLibraryRootView: View {
     private var trimmedQuery: String { model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var filteredCards: [WidgetLibraryViewModel.CardItem] {
-        model.cards.filter { card in
-            switch model.section {
-            case .installed:
-                break
-            case .active:
-                guard card.activeFile != nil else { return false }
-            case .favorites:
-                let hasAnyFav = card.config.files.contains { app.isFavorite(config: card.config.name, file: $0) }
-                guard hasAnyFav else { return false }
-            case .layouts:
-                return false
-            }
-            if let folder = model.selectedFolder,
-               card.rootFolder.caseInsensitiveCompare(folder) != .orderedSame {
-                return false
-            }
-            guard !trimmedQuery.isEmpty else { return true }
-            let fields = [
-                card.displayTitle,
-                card.subtitle,
-                card.author,
-                card.config.name,
-                card.chosenFile,
-                card.rootFolder,
-            ]
-            return fields.contains { $0.localizedCaseInsensitiveContains(trimmedQuery) }
-        }
+        model.filteredCards
     }
 
     private func folderCount(_ folder: String?) -> Int {
-        let base = model.cards.filter { card in
-            switch model.section {
-            case .installed: return true
-            case .active: return card.activeFile != nil
-            case .favorites: return card.config.files.contains { app.isFavorite(config: card.config.name, file: $0) }
-            case .layouts: return false
-            }
-        }
-        guard let folder else { return base.count }
-        return base.filter { $0.rootFolder.caseInsensitiveCompare(folder) == .orderedSame }.count
+        model.folderCount(folder)
     }
 
     private func sectionCount(_ section: WidgetLibrarySection) -> Int {
@@ -225,7 +252,8 @@ struct WidgetLibraryRootView: View {
                                         if model.section == .layouts {
                                             controller?.selectTab(.skins)
                                         }
-                                        model.section = sec
+                                        model.switchSection(sec)
+                                        controller?.reload()
                                     }
                                 }
                             }
@@ -248,13 +276,13 @@ struct WidgetLibraryRootView: View {
                                 }
                             }
 
-                            ForEach(model.rootFolders, id: \.name) { folder in
+                            ForEach(model.visibleRootFolders, id: \.name) { folder in
                                 sidebarFolderRow(
                                     title: folder.name,
                                     symbol: folder.name.caseInsensitiveCompare("Stationery") == .orderedSame
                                         ? "sparkles"
                                         : "folder",
-                                    count: folderCount(folder.name),
+                                    count: folder.count,
                                     selected: model.selectedFolder?.caseInsensitiveCompare(folder.name) == .orderedSame
                                 ) {
                                     withAnimation(.easeOut(duration: 0.14)) {
@@ -513,11 +541,27 @@ struct WidgetLibraryRootView: View {
             ScrollView {
                 let items = filteredCards
                 if items.isEmpty {
+                    let emptySymbol: String = {
+                        if !trimmedQuery.isEmpty { return "magnifyingglass" }
+                        switch model.section {
+                        case .active: return "checkmark.circle"
+                        case .favorites: return "star"
+                        case .installed, .layouts: return "square.grid.2x2"
+                        }
+                    }()
+                    let emptyText: String = {
+                        if !trimmedQuery.isEmpty { return L("No matching widgets") }
+                        switch model.section {
+                        case .active: return L("No skins loaded")
+                        case .favorites: return L("No favorite skins")
+                        case .installed, .layouts: return L("No skins installed")
+                        }
+                    }()
                     VStack(spacing: 10) {
-                        Image(systemName: "square.grid.2x2")
+                        Image(systemName: emptySymbol)
                             .font(.system(size: 32))
                             .foregroundColor(.secondary.opacity(0.45))
-                        Text(L("No skins installed"))
+                        Text(emptyText)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.secondary)
                     }

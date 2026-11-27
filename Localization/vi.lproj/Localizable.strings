@@ -228,7 +228,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Khởi động lại Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "Chưa cài đặt skin nào";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -773,7 +773,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Tắt kéo";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Giao diện";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1958,6 +1958,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Tìm tiện ích";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "Không có tiện ích phù hợp";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "Chưa tải giao diện nào";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "Chưa có giao diện yêu thích";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Tích hợp";

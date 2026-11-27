@@ -1342,14 +1342,22 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
             let running = app.controller(for: cfg.name)
             if running != nil { actCount += 1 }
-            for f in cfg.files where app.isFavorite(config: cfg.name, file: f) {
-                favCount += 1
-            }
+            let firstFavoriteFile = cfg.files.first { app.isFavorite(config: cfg.name, file: $0) }
+            if firstFavoriteFile != nil { favCount += 1 }
 
             let storedChoice = libraryModel.chosenVariants[key].flatMap { candidate in
                 cfg.files.first { $0.caseInsensitiveCompare(candidate) == .orderedSame }
             }
-            let chosen = storedChoice ?? running?.file ?? cfg.files.first ?? ""
+            let baseChoice = storedChoice ?? running?.file ?? firstFavoriteFile ?? cfg.files.first ?? ""
+            let chosen: String
+            if libraryModel.section == .favorites,
+               let firstFavoriteFile,
+               !baseChoice.isEmpty,
+               !app.isFavorite(config: cfg.name, file: baseChoice) {
+                chosen = firstFavoriteFile
+            } else {
+                chosen = baseChoice
+            }
             libraryModel.chosenVariants[key] = chosen
 
             let metadata: [String: String] = {
@@ -1381,6 +1389,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                 author: author,
                 version: version,
                 isFavorite: !chosen.isEmpty && app.isFavorite(config: cfg.name, file: chosen),
+                hasAnyFavorite: firstFavoriteFile != nil,
                 isBuiltInSuite: root.caseInsensitiveCompare("Stationery") == .orderedSame
             ))
         }
@@ -1392,6 +1401,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         libraryModel.installedCount = builtCards.count
         libraryModel.activeCount = actCount
         libraryModel.favoritesCount = favCount
+        if let folder = libraryModel.selectedFolder,
+           libraryModel.section != .layouts,
+           libraryModel.folderCount(folder) == 0 {
+            libraryModel.selectedFolder = nil
+        }
         libraryModel.selectedConfigKey = selection?.config.lowercased()
         syncLibraryLayoutsModel()
         libraryModel.revision &+= 1

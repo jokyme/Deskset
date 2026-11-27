@@ -228,7 +228,7 @@
 /* Menu bar menu, skin menus and update alerts: menu item. */
 "Restart Deskset" = "Repornește Deskset";
 
-/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: text. */
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
 "No skins installed" = "Niciun skin instalat";
 
 /* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status). */
@@ -773,7 +773,7 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Dezactivează tragerea";
 
-/* Settings window: VoiceOver description; SettingsWindowView: text. */
+/* Settings window: VoiceOver description. */
 "Theme" = "Temă";
 
 /* Settings window: VoiceOver description; SettingsWindowView: text.
@@ -1958,6 +1958,15 @@
 
 /* WidgetLibraryView: text. */
 "Search widgets" = "Caută widgeturi";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No matching widgets" = "Niciun widget potrivit";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No skins loaded" = "Niciun skin încărcat";
+
+/* WidgetLibraryView: message (an error or a status). */
+"No favorite skins" = "Niciun skin favorit";
 
 /* WidgetLibraryView: text. */
 "Built-in" = "Integrat";
