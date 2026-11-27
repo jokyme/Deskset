@@ -267,21 +267,26 @@ enum AppUpdateControllerSelfTests {
             app.updates.setAutomaticallyChecks(false)
             t.equal(settings.automaticUpdatesBox.state, .off)
             t.check(settings.snapshot() != nil)
-            let initialHeight = settings.window?.frame.height ?? 0
+            let initialSize = settings.window?.frame.size ?? .zero
             app.updates.checkManually()
             t.check(!settings.checkUpdatesButton.isEnabled)
+            t.check(settings.settingsModel.isCheckingUpdates)
             fetcher.completions[0](.success(release("0.3.0")))
             t.check(settings.checkUpdatesButton.isEnabled)
             t.check(!settings.viewUpdateButton.isHidden)
+            t.equal(settings.settingsModel.availableUpdateVersion, "0.3.0")
             t.check(settings.updateStatusLabel.stringValue.contains("0.3.0"))
+            t.equal(settings.settingsModel.updateStatusText, settings.updateStatusLabel.stringValue)
             app.buildMainMenu(menu)
             t.check(menu.items.contains { $0.title == "Update to Deskset 0.3.0…" })
             app.updates.checkManually()
             fetcher.completions[1](.failure(AppUpdateError.invalidResponse))
-            t.check((settings.window?.frame.height ?? 0) > initialHeight, "multiline errors grow the General pane")
-            if let view = settings.window?.contentView {
-                t.check(view.bounds.height >= ceil(view.fittingSize.height), "status text is not clipped")
-            }
+            t.equal(settings.window?.frame.size, initialSize,
+                    "scrollable card layout keeps the Settings window frame stable on multiline errors")
+            t.check(!settings.settingsModel.updateStatusText.isEmpty
+                    && settings.settingsModel.updateStatusText == settings.updateStatusLabel.stringValue,
+                    "multiline update status is propagated to the General card model")
+            t.check(settings.snapshot() != nil, "General pane renders multiline error status")
             t.check(app.showUpdateNotice(.available(release("0.3.0")), automatic: false))
             t.check(app.lastAlert?.text.contains("0.3.0") == true)
             t.check(app.showUpdateNotice(.failed("Offline"), automatic: false))

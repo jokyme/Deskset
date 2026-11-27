@@ -130,6 +130,8 @@ timer.Timer	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timin
 timer.executorTimer	Sources/Deskset/App/EditingSession.swift	1	the update timer, on the executor
 timer.runLoopAdd	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timing and debounces
 
+background.mainHop	Sources/Deskset/App/DeskProStyleComponents.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
 zone.localizedText	Sources/Deskset/App/ManageModel.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.mainHop	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -137,9 +139,20 @@ event.notification	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studi
 timer.Timer	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.runLoopAdd	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+zone.localizedText	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.terminate	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.eventMonitor	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.pasteboard	Sources/Deskset/App/SettingsWindowView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+random.UUID	Sources/Deskset/App/SettingsWindowView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+zone.localizedText	Sources/Deskset/App/WidgetLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs

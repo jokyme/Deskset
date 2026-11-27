@@ -180,19 +180,7 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         return container
     }
 
-    func versionReportText() -> String {
-        let details = currentVersionDetails()
-        return [
-            details.headline,
-            "Path: \(details.programPath)",
-            "IniFile: \(details.iniFile)",
-            "SkinPath: \(details.skinPath)",
-            "SettingsPath: \(details.settingsPath)",
-            "LogFile: \(details.logFile)",
-        ].joined(separator: "\n")
-    }
-
-    func currentVersionDetails() -> (
+    static func versionDetails(for app: AppController) -> (
         headline: String,
         programPath: String,
         iniFile: String,
@@ -209,6 +197,33 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
         let skinPath = Self.trailingSlashPath(app.skinsDirectory)
         let logFile = Log.fileURL.path
         return (headline, programPath, iniFile, skinPath, settingsPath, logFile)
+    }
+
+    static func formatVersionReport(for app: AppController) -> String {
+        let details = versionDetails(for: app)
+        return [
+            details.headline,
+            "Path: \(details.programPath)",
+            "IniFile: \(details.iniFile)",
+            "SkinPath: \(details.skinPath)",
+            "SettingsPath: \(details.settingsPath)",
+            "LogFile: \(details.logFile)",
+        ].joined(separator: "\n")
+    }
+
+    func versionReportText() -> String {
+        Self.formatVersionReport(for: app)
+    }
+
+    func currentVersionDetails() -> (
+        headline: String,
+        programPath: String,
+        iniFile: String,
+        skinPath: String,
+        settingsPath: String,
+        logFile: String
+    ) {
+        Self.versionDetails(for: app)
     }
 
     private static func trailingSlashPath(_ url: URL) -> String {

@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import SwiftUI
 
 /// The integer zoom controls shared by Manage and General settings.
 final class SkinZoomStepper: NSStepper {
@@ -47,6 +48,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     enum Tab: String { case skins, layouts }
 
     private unowned let app: AppController
+    let libraryModel = WidgetLibraryViewModel()
+    private var hostingView: NSHostingView<WidgetLibraryRootView>?
     private var roots: [ManageModel.Node] = []
     private var libraryNames: [String] = []
     /// Selected config and .ini (nil file: a folder that is not a config).
@@ -144,19 +147,18 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     init(app: AppController) {
         self.app = app
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 660),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 680),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = L("Manage Skins")
+        DeskProWindowStyle.apply(to: window)
+        window.title = L("Widget Library")
         window.minSize = NSSize(width: 780, height: 520)
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
         super.init(window: window)
         window.delegate = self
         AppTheme.register(window, app: app)
         buildInterface()
-        window.setFrameAutosaveName("DesksetManageWindow")
-        if !window.setFrameUsingName("DesksetManageWindow") {
+        window.setFrameAutosaveName("DesksetWidgetLibraryWindow")
+        if !window.setFrameUsingName("DesksetWidgetLibraryWindow") {
             window.center()
             placedByDefault = true
         }
@@ -460,6 +462,21 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             bar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
+
+        // Hide the legacy AppKit outline/form behind the full-size Deskset Pro style Widget Library view
+        // while keeping the backing controls constructed for programmatic state & test hooks.
+        tabs.isHidden = true
+        let libraryView = WidgetLibraryRootView(model: libraryModel, controller: self, app: app)
+        let host = NSHostingView(rootView: libraryView)
+        host.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(host)
+        NSLayoutConstraint.activate([
+            host.topAnchor.constraint(equalTo: root.topAnchor),
+            host.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            host.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+        hostingView = host
     }
 
     /// Rainmeter's Layouts tab: saving options on the left and saved layouts on the right.
@@ -549,8 +566,17 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     func selectTab(_ tab: Tab) {
         let alreadySelected = self.tab == tab
         tabs.selectTabViewItem(withIdentifier: tab.rawValue)
-        if tab == .layouts { reloadLayouts() }
-        if interfaceReady && tab == .skins && alreadySelected { app.discoverSkins() }
+        if tab == .layouts {
+            libraryModel.inspectorConfig = nil
+            libraryModel.section = .layouts
+            reloadLayouts()
+        } else {
+            if libraryModel.section == .layouts {
+                libraryModel.section = .installed
+            }
+            if interfaceReady && alreadySelected { app.discoverSkins() }
+        }
+        syncLibraryModel()
     }
 
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
@@ -597,6 +623,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         for button in [loadLayoutButton, deleteLayoutButton, editLayoutButton] {
             button.isEnabled = available && selectedLayout != nil
         }
+        syncLibraryLayoutsModel()
     }
 
     func controlTextDidChange(_ notification: Notification) {
@@ -934,6 +961,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
                                columnIndexes: IndexSet(integer: 0))
         }
         updateDetail()
+        syncLibraryModel()
     }
 
     private func allNodes(_ node: ManageModel.Node) -> [ManageModel.Node] {
@@ -971,7 +999,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
     }
 
-    /// Selects a config (and file) in the outline.
+    /// Selects a config (and file) in the outline and reveals its card in the Widget Library.
     func select(config: String, file: String?) {
         selectTab(.skins)
         let name = SkinLibrary.normalizedConfigName(config)
@@ -980,7 +1008,26 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         if selection == nil || selection?.config.caseInsensitiveCompare(name) != .orderedSame {
             selection = (name, file)
         }
+        if let selectedFile = selection?.file {
+            libraryModel.chosenVariants[name.lowercased()] = selectedFile
+        }
+        libraryModel.section = .installed
+        let rootFolder = name.split(separator: "\\").first.map(String.init) ?? name
+        if let currentFolder = libraryModel.selectedFolder,
+           currentFolder.caseInsensitiveCompare(rootFolder) != .orderedSame {
+            libraryModel.selectedFolder = nil
+        }
+        if !libraryModel.searchQuery.isEmpty {
+            libraryModel.searchQuery = ""
+        }
+        if let openInspector = libraryModel.inspectorConfig,
+           openInspector.caseInsensitiveCompare(name) != .orderedSame {
+            libraryModel.inspectorConfig = nil
+        }
+        libraryModel.scrollToCardID = name.lowercased()
+        libraryModel.scrollRevision &+= 1
         updateDetail()
+        syncLibraryModel()
     }
 
     private func selectNode(config: String, file: String?) {
@@ -1260,6 +1307,94 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         if movedHere && !hidden { movedWhileHidden = nil }
         coordinatesHint.stringValue = ManageModel.Hidden.coordinatesHint(moved: movedHere && hidden)
         coordinatesHintRow?.isHidden = !(file != nil && hidden)
+        syncLibraryModel()
+    }
+
+    private func syncLibraryLayoutsModel() {
+        libraryModel.layoutNames = layoutNames
+        libraryModel.selectedLayoutName = selectedLayout
+        libraryModel.layoutDraftName = layoutNameField.stringValue
+        libraryModel.saveEmptyLayout = emptyLayoutBox.state == .on
+        libraryModel.excludeUnloaded = excludeUnloadedBox.state == .on
+        libraryModel.includeWallpaper = includeWallpaperBox.state == .on
+        libraryModel.isLoadingLayout = app.isLoadingLayout
+        libraryModel.layoutsErrorText = layoutNames.isEmpty && layoutsStatus.stringValue != L("No saved layouts.")
+            ? layoutsStatus.stringValue
+            : ""
+    }
+
+    private func syncLibraryModel() {
+        let library = app.library
+        var folderCounts: [String: (name: String, count: Int)] = [:]
+        var favCount = 0
+        var actCount = 0
+        var builtCards: [WidgetLibraryViewModel.CardItem] = []
+
+        for cfg in library {
+            let key = cfg.name.lowercased()
+            let root = cfg.rootName
+            let rootLower = root.lowercased()
+            if let existing = folderCounts[rootLower] {
+                folderCounts[rootLower] = (existing.name, existing.count + 1)
+            } else {
+                folderCounts[rootLower] = (root, 1)
+            }
+
+            let running = app.controller(for: cfg.name)
+            if running != nil { actCount += 1 }
+            for f in cfg.files where app.isFavorite(config: cfg.name, file: f) {
+                favCount += 1
+            }
+
+            let storedChoice = libraryModel.chosenVariants[key].flatMap { candidate in
+                cfg.files.first { $0.caseInsensitiveCompare(candidate) == .orderedSame }
+            }
+            let chosen = storedChoice ?? running?.file ?? cfg.files.first ?? ""
+            libraryModel.chosenVariants[key] = chosen
+
+            let metadata: [String: String] = {
+                if let running, running.file.caseInsensitiveCompare(chosen) == .orderedSame {
+                    return running.runtime.snapshot.metadata
+                }
+                guard !chosen.isEmpty else { return [:] }
+                return ManageModel.readMetadata(cfg.directory.appendingPathComponent(chosen))
+            }()
+
+            let leafName = cfg.name.split(separator: "\\").last.map(String.init) ?? cfg.name
+            let title = ManageModel.metadataValue(metadata, "Name") ?? leafName
+            let info = ManageModel.metadataValue(metadata, "Information").map(ManageModel.informationText)
+            let subtitle = (info?.isEmpty == false ? info! : "\(cfg.name)\\\(chosen)")
+                .replacingOccurrences(of: "\n", with: " ")
+            let author = ManageModel.metadataValue(metadata, "Author") ?? ""
+            let version = ManageModel.metadataValue(metadata, "Version") ?? ""
+
+            builtCards.append(WidgetLibraryViewModel.CardItem(
+                id: key,
+                config: cfg,
+                rootFolder: root,
+                chosenFile: chosen,
+                activeFile: running?.file,
+                isHiddenByBang: running.map { !$0.isStopped && $0.isHiddenByBang } ?? false,
+                startHidden: running?.state.startHidden ?? false,
+                displayTitle: title,
+                subtitle: subtitle,
+                author: author,
+                version: version,
+                isFavorite: !chosen.isEmpty && app.isFavorite(config: cfg.name, file: chosen),
+                isBuiltInSuite: root.caseInsensitiveCompare("Stationery") == .orderedSame
+            ))
+        }
+
+        libraryModel.cards = builtCards
+        libraryModel.rootFolders = folderCounts.values.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        libraryModel.installedCount = builtCards.count
+        libraryModel.activeCount = actCount
+        libraryModel.favoritesCount = favCount
+        libraryModel.selectedConfigKey = selection?.config.lowercased()
+        syncLibraryLayoutsModel()
+        libraryModel.revision &+= 1
     }
 
     /// A folder that is not a config (e.g. a root folder that only holds sub-configs).
@@ -1626,6 +1761,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         SkinPackagerWindowController.show(app: app, rootConfig: root)
     }
 
+    @objc func performCreateNewSkin() {
+        createNewSkin()
+    }
+
     @objc private func createNewSkin() {
         NewSkinWindowController.show(app: app)
     }
@@ -1638,84 +1777,33 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     // MARK: Snapshot support
 
     /// Renders the window's content off-screen (for `--snapshot-ui` and self-tests).
-    /// macOS 26 draws native tab segments and table selection in compositor layers, which AppKit's off-screen
-    /// drawing does not capture. As in Settings' toolbar snapshot, those two decorations use a stand-in here.
-    /// The visible window keeps its native controls; this bitmap is a layout preview, not a screen capture.
     func snapshot() -> NSBitmapImageRep? {
         guard let view = window?.contentView else { return nil }
+        syncLibraryModel()
+        let isDark = view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        if libraryModel.section != .layouts {
+            let visibleConfigs = libraryModel.cards.prefix(6).map { ($0.config.name, $0.chosenFile) }
+            libraryModel.thumbnails.prewarm(configs: visibleConfigs, isDark: isDark, app: app, limit: 6)
+        }
         view.layoutSubtreeIfNeeded()
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds),
-              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-        let segments = tabs.subviews.compactMap { $0 as? NSSegmentedControl }.first
-        let segmentsWereHidden = segments?.isHidden ?? false
-        segments?.isHidden = true
-        defer { segments?.isHidden = segmentsWereHidden }
-        // The window background is drawn by the window frame, not the content view: paint it first.
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            NSColor.windowBackgroundColor.setFill()
-            NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh).fill()
-        }
-        NSGraphicsContext.restoreGraphicsState()
-        view.displayIgnoringOpacity(view.bounds, in: context)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            if let segments { drawSnapshotTabs(segments, in: view) }
-            if tab == .layouts { drawSnapshotLayoutSelection(in: view) }
-        }
-        NSGraphicsContext.restoreGraphicsState()
+        hostingView?.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(bounds.width * 2),
+                  pixelsHigh: Int(bounds.height * 2),
+                  bitsPerSample: 8,
+                  samplesPerPixel: 4,
+                  hasAlpha: true,
+                  isPlanar: false,
+                  colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0,
+                  bitsPerPixel: 0
+              ) else { return nil }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
         return rep
-    }
-
-    private func drawSnapshotTabs(_ segments: NSSegmentedControl, in view: NSView) {
-        let rect = segments.convert(segments.bounds, to: view)
-        let font = segments.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        let labels = tabs.tabViewItems.map(\.label)
-        let widths = labels.map { ($0 as NSString).size(withAttributes: [.font: font]).width + 24 }
-        let total = widths.reduce(0, +)
-        guard total > 0 else { return }
-        // An opaque control background also covers the compositor's cached placeholder below the stand-in.
-        NSColor.controlBackgroundColor.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
-        var x = rect.minX
-        for (index, label) in labels.enumerated() {
-            let width = rect.width * widths[index] / total
-            let segment = NSRect(x: x, y: rect.minY, width: width, height: rect.height)
-            let selected = tabs.tabViewItems[index] === tabs.selectedTabViewItem
-            if selected {
-                NSColor.controlAccentColor.setFill()
-                NSBezierPath(roundedRect: segment, xRadius: 6, yRadius: 6).fill()
-            }
-            let attributes: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph,
-                .foregroundColor: selected ? NSColor.white : NSColor.labelColor]
-            let height = (label as NSString).size(withAttributes: attributes).height
-            (label as NSString).draw(in: NSRect(x: x, y: segment.midY - height / 2, width: width, height: height),
-                                     withAttributes: attributes)
-            x += width
-        }
-    }
-
-    private func drawSnapshotLayoutSelection(in view: NSView) {
-        let row = layoutsTable.selectedRow
-        guard layoutNames.indices.contains(row),
-              let cell = layoutsTable.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
-              let label = cell.textField else { return }
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        let visible = layoutsTable.convert(layoutsTable.visibleRect, to: view)
-        NSBezierPath(rect: visible).addClip()
-        let rowRect = layoutsTable.convert(layoutsTable.rect(ofRow: row), to: view).insetBy(dx: 2, dy: 1)
-        NSColor.unemphasizedSelectedContentBackgroundColor.setFill()
-        NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5).fill()
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byTruncatingTail
-        let attributes: [NSAttributedString.Key: Any] = [.font: label.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
-            .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph]
-        (label.stringValue as NSString).draw(in: label.convert(label.bounds, to: view), withAttributes: attributes)
     }
 
     /// Loads or unloads a skin as a double-click in the outline does (self-tests).

@@ -666,13 +666,23 @@ enum CodeEditorRoutingSelfTests {
             withFakes(locator, RecordingOpener()) {
                 let settings = SettingsWindowController(app: app)
                 t.equal(settings.pane, .general, "first time: General")
+                t.equal(settings.settingsModel.pane, .general)
                 t.equal(settings.window?.title, "General")
-                t.check(settings.window?.styleMask.contains(.miniaturizable) == false, "minimize dimmed")
-                t.check(settings.window?.styleMask.contains(.resizable) == false, "zoom dimmed")
-                t.equal(settings.window?.toolbarStyle, .preference)
+                t.check(settings.window?.styleMask.contains(.miniaturizable) == true, "sidebar window allows minimize")
+                t.check(settings.window?.styleMask.contains(.resizable) == true, "sidebar window allows resize")
+                t.check(settings.window?.styleMask.contains(.fullSizeContentView) == true,
+                        "sidebar spans full window height")
+                t.equal(settings.window?.titlebarAppearsTransparent, true)
+                t.equal(settings.window?.toolbar, nil, "sidebar replaces the classic preference toolbar")
+                for extraPane in [SettingsWindowController.Pane.layouts, .debug, .about] {
+                    settings.select(extraPane)
+                    t.equal(settings.pane, extraPane)
+                    t.equal(settings.settingsModel.pane, extraPane)
+                    t.equal(settings.window?.title, extraPane.title)
+                }
                 settings.select(.editor)
                 t.equal(settings.window?.title, "Editor", "the title names the pane")
-                t.equal(settings.window?.toolbar?.selectedItemIdentifier, SettingsWindowController.Pane.editor.identifier)
+                t.equal(settings.settingsModel.pane, .editor)
                 t.equal(app.state.data.settingsPane, "editor")
                 t.equal(SettingsWindowController(app: app).pane, .editor, "reopens on the last pane")
 

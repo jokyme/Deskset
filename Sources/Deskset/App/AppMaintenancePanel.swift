@@ -769,80 +769,21 @@ final class MaintenanceIconView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.saveGState()
         // Offset by (6, 4) so the 64x64 icon tile sits at (24, 38) in the parent view.
-        ctx.translateBy(x: 6, y: 4)
-
-        let tileRect = CGRect(x: 0, y: 0, width: 64, height: 64)
-        let tilePath = CGPath(roundedRect: tileRect, cornerWidth: 14.5, cornerHeight: 14.5, transform: nil)
-
-        // Drop shadow
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 5,
-                      color: MaintenancePalette.rgba(10, 37, 64, 0.22).cgColor)
-        ctx.addPath(tilePath)
-        ctx.setFillColor(MaintenancePalette.rgba(53, 76, 153).cgColor)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        // Gradient background (#354C99 -> #2668A7 -> #3A9BB2)
-        ctx.saveGState()
-        ctx.addPath(tilePath)
-        ctx.clip()
-        let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        let colors = [
-            MaintenancePalette.rgba(53, 76, 153).cgColor,
-            MaintenancePalette.rgba(38, 104, 167).cgColor,
-            MaintenancePalette.rgba(58, 155, 178).cgColor,
-        ] as CFArray
-        if let gradient = CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.55, 1]) {
-            ctx.drawLinearGradient(gradient, start: CGPoint(x: 32, y: 0), end: CGPoint(x: 32, y: 64), options: [])
-        }
-
-        // Cloud path from 01-update-offer.svg
-        let cloud = CGMutablePath()
-        cloud.move(to: CGPoint(x: 21, y: 31.5))
-        cloud.addLine(to: CGPoint(x: 43.5, y: 31.5))
-        cloud.addCurve(to: CGPoint(x: 50.8, y: 24.3),
-                       control1: CGPoint(x: 47.6, y: 31.5), control2: CGPoint(x: 50.8, y: 28.3))
-        cloud.addCurve(to: CGPoint(x: 44.4, y: 17.2),
-                       control1: CGPoint(x: 50.8, y: 20.6), control2: CGPoint(x: 48.0, y: 17.6))
-        cloud.addCurve(to: CGPoint(x: 32.0, y: 8.2),
-                       control1: CGPoint(x: 42.8, y: 11.9), control2: CGPoint(x: 37.9, y: 8.2))
-        cloud.addCurve(to: CGPoint(x: 19.3, y: 18.2),
-                       control1: CGPoint(x: 25.7, y: 8.2), control2: CGPoint(x: 20.5, y: 12.4))
-        cloud.addCurve(to: CGPoint(x: 13.4, y: 25.4),
-                       control1: CGPoint(x: 15.9, y: 18.9), control2: CGPoint(x: 13.4, y: 21.8))
-        cloud.addCurve(to: CGPoint(x: 21.0, y: 31.5),
-                       control1: CGPoint(x: 13.4, y: 28.9), control2: CGPoint(x: 16.8, y: 31.5))
-        cloud.closeSubpath()
-        ctx.addPath(cloud)
-        ctx.setFillColor(MaintenancePalette.rgba(245, 250, 255).cgColor)
-        ctx.fillPath()
-
-        // Three rain bars
-        let bars: [(x: CGFloat, h: CGFloat, color: NSColor)] = [
-            (21.0, 12.0, MaintenancePalette.rgba(140, 214, 234)),
-            (29.4, 18.0, MaintenancePalette.rgba(169, 229, 245)),
-            (37.8, 9.5, MaintenancePalette.rgba(140, 214, 234)),
-        ]
-        for bar in bars {
-            let barPath = CGPath(roundedRect: CGRect(x: bar.x, y: 36, width: 5.2, height: bar.h),
-                                 cornerWidth: 2.6, cornerHeight: 2.6, transform: nil)
-            ctx.addPath(barPath)
-            ctx.setFillColor(bar.color.cgColor)
-            ctx.fillPath()
-        }
-        ctx.restoreGState()
-
-        // Subtle inner rim
-        let rimPath = CGPath(roundedRect: tileRect.insetBy(dx: 0.5, dy: 0.5),
-                             cornerWidth: 14, cornerHeight: 14, transform: nil)
-        ctx.addPath(rimPath)
-        ctx.setStrokeColor(NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.22).cgColor)
-        ctx.setLineWidth(1)
-        ctx.strokePath()
+        let canvasSide: CGFloat = 64.0 * 1024.0 / 824.0
+        let bleed: CGFloat = canvasSide * 100.0 / 1024.0
+        let iconImage = AppIcon.image(size: 160)
+        iconImage.draw(
+            in: NSRect(x: 6 - bleed, y: 4 - bleed, width: canvasSide, height: canvasSide),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1.0,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
 
         // Corner warning dot (05-update-failed.svg)
         if showsWarningBadge {
+            ctx.translateBy(x: 6, y: 4)
             let p = MaintenancePalette.current(for: effectiveAppearance)
             let badgeRect = CGRect(x: 44, y: 44, width: 20, height: 20)
             ctx.setFillColor(MaintenancePalette.rgba(217, 56, 41).cgColor)

@@ -66,11 +66,13 @@ let covered: [String] = [
     "App/DebugSkinInspectorView.swift",
     "App/DebugWatchEditorController.swift",
     "App/DebugWindowController.swift",
+    "App/DeskProStyleComponents.swift",
     "App/FileTrashConfirmation.swift",
     "App/LaunchAtLogin.swift",
     "App/LayoutController.swift",
     "App/LayoutWallpaper.swift",
     "App/MainMenu.swift",
+    "App/MenuBarPanelController.swift",
     "App/MetadataEditing.swift",
     "App/ManageModel.swift",
     "App/ManageWindowController.swift",
@@ -78,7 +80,9 @@ let covered: [String] = [
     "App/NewSkinWindowController.swift",
     "App/SafeStartController.swift",
     "App/SettingsWindowController.swift",
+    "App/SettingsWindowView.swift",
     "App/SkinInstallFlow.swift", "App/SkinPackagerWindowController.swift",
+    "App/WidgetLibraryView.swift",
     "App/WindowGeometry.swift",
 ]
 
