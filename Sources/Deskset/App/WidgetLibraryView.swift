@@ -90,6 +90,10 @@ final class WidgetLibraryViewModel: ObservableObject {
     func switchSection(_ newSection: WidgetLibrarySection) {
         section = newSection
         selectedFolder = nil
+        scrollToCardID = nil
+        if newSection == .favorites {
+            chosenVariants.removeAll()
+        }
     }
 
     func matchesSection(_ card: CardItem, section: WidgetLibrarySection? = nil) -> Bool {
@@ -519,20 +523,7 @@ struct WidgetLibraryRootView: View {
     }
 
     private func toolbarIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.82))
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+        ToolbarIconButton(symbol: symbol, help: help, action: action)
     }
 
     // MARK: - Cards Grid
@@ -669,11 +660,11 @@ struct WidgetLibraryRootView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
-                    controller?.select(config: card.config.name, file: card.chosenFile)
+                    controller?.selectInLibrary(config: card.config.name, file: card.chosenFile)
                     controller?.testToggleLoad(config: card.config.name, file: card.chosenFile)
                 }
                 .onTapGesture(count: 1) {
-                    controller?.select(config: card.config.name, file: card.chosenFile)
+                    controller?.selectInLibrary(config: card.config.name, file: card.chosenFile)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -707,14 +698,12 @@ struct WidgetLibraryRootView: View {
 
                 Spacer(minLength: 4)
 
-                if isExactLoaded {
-                    cardIconButton(
-                        symbol: card.isFavorite ? "star.fill" : "star",
-                        tint: card.isFavorite ? DeskProPalette.favoriteAmber : .secondary,
-                        help: L("Favorite")
-                    ) {
-                        app.setFavorite(!card.isFavorite, config: card.config.name, file: card.chosenFile)
-                    }
+                cardIconButton(
+                    symbol: card.isFavorite ? "star.fill" : "star",
+                    tint: card.isFavorite ? DeskProPalette.favoriteAmber : .secondary,
+                    help: L("Favorite")
+                ) {
+                    app.setLibraryFavorite(!card.isFavorite, config: card.config.name, file: card.chosenFile)
                 }
 
                 cardIconButton(
@@ -731,13 +720,13 @@ struct WidgetLibraryRootView: View {
                     tint: .secondary,
                     help: L("Settings")
                 ) {
-                    controller?.select(config: card.config.name, file: card.chosenFile)
+                    controller?.selectInLibrary(config: card.config.name, file: card.chosenFile)
                     model.inspectorConfig = card.config.name
                 }
 
                 if isExactLoaded && card.isHiddenByBang {
                     Button {
-                        controller?.select(config: card.config.name, file: card.chosenFile)
+                        controller?.selectInLibrary(config: card.config.name, file: card.chosenFile)
                         controller?.testShowButton.performClick(nil)
                     } label: {
                         Text(ManageModel.Hidden.showTitle)
@@ -815,7 +804,7 @@ struct WidgetLibraryRootView: View {
                 }
             }
             Button(L("Settings")) {
-                controller?.select(config: card.config.name, file: card.chosenFile)
+                controller?.selectInLibrary(config: card.config.name, file: card.chosenFile)
                 model.inspectorConfig = card.config.name
             }
             Button(L("Edit")) {
@@ -853,7 +842,7 @@ struct WidgetLibraryRootView: View {
                     Button {
                         withAnimation(.easeOut(duration: 0.14)) {
                             model.chosenVariants[card.id] = file
-                            controller?.select(config: card.config.name, file: file)
+                            controller?.selectInLibrary(config: card.config.name, file: file)
                         }
                     } label: {
                         Group {
@@ -893,7 +882,7 @@ struct WidgetLibraryRootView: View {
                 ForEach(files, id: \.self) { file in
                     Button {
                         model.chosenVariants[card.id] = file
-                        controller?.select(config: card.config.name, file: file)
+                        controller?.selectInLibrary(config: card.config.name, file: file)
                     } label: {
                         if file.caseInsensitiveCompare(card.chosenFile) == .orderedSame {
                             Label(file, systemImage: "checkmark")
@@ -925,20 +914,7 @@ struct WidgetLibraryRootView: View {
     }
 
     private func cardIconButton(symbol: String, tint: Color, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundColor(tint)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+        CardIconButton(symbol: symbol, tint: tint, help: help, action: action)
     }
 
     private func tagPill(_ text: String, tint: Color) -> some View {
@@ -1078,6 +1054,73 @@ struct WidgetLibraryRootView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 9)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+/// Header toolbar icon button that highlights on hover and immediately presents its tooltip with zero delay.
+private struct ToolbarIconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    @State private var hovered = false
+
+    var body: some View {
+        Button {
+            DeskProInstantToolTip.shared.hide()
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.primary.opacity(hovered ? 0.96 : 0.82))
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primary.opacity(hovered ? 0.11 : 0.06))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(
+            DeskProInstantToolTipAnchor(text: help) { isHovering in
+                hovered = isHovering
+            }
+        )
+        .accessibilityLabel(help)
+    }
+}
+
+/// Card quick-action icon button (`Favorite`, `Edit`, `Settings`) that highlights on hover and presents its tooltip immediately.
+private struct CardIconButton: View {
+    let symbol: String
+    let tint: Color
+    let help: String
+    let action: () -> Void
+
+    @State private var hovered = false
+
+    var body: some View {
+        Button {
+            DeskProInstantToolTip.shared.hide()
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(hovered && tint == .secondary ? .primary.opacity(0.88) : tint)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primary.opacity(hovered ? 0.11 : 0.06))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(
+            DeskProInstantToolTipAnchor(text: help) { isHovering in
+                hovered = isHovering
+            }
+        )
+        .accessibilityLabel(help)
     }
 }
 
@@ -1230,7 +1273,7 @@ private struct SkinInspectorSheetView: View {
                                 divider: false
                             ) {
                                 Button(ManageModel.Hidden.showTitle) {
-                                    controller.select(config: configName, file: chosenFile)
+                                    controller.selectInLibrary(config: configName, file: chosenFile)
                                     controller.testShowButton.performClick(nil)
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -1485,7 +1528,7 @@ private struct SkinInspectorSheetView: View {
     private func commitCoordinates() {
         guard let x = Int(xText.trimmingCharacters(in: .whitespaces)),
               let y = Int(yText.trimmingCharacters(in: .whitespaces)) else { return }
-        controller.select(config: configName, file: chosenFile)
+        controller.selectInLibrary(config: configName, file: chosenFile)
         controller.testTypeCoordinates(x: x, y: y)
     }
 }

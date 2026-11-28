@@ -175,6 +175,18 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         reload()
         NotificationCenter.default.addObserver(self, selector: #selector(skinsChanged), name: .desksetSkinsChanged,
                                                object: app)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scrollViewDidScroll(_:)),
+            name: NSScrollView.willStartLiveScrollNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scrollViewDidScroll(_:)),
+            name: NSScrollView.didLiveScrollNotification,
+            object: nil
+        )
         interfaceReady = true
     }
 
@@ -250,6 +262,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// content constraints resize the window, that resize happens inside the layout pass, and setting the frame back
     /// there starts the pass again until AppKit raises an exception and the app aborts.
     func windowDidResize(_ notification: Notification) {
+        DeskProInstantToolTip.shared.hide()
         guard !minimumSizeCheckPending else { return }
         minimumSizeCheckPending = true
         DispatchQueue.main.async { [weak self] in
@@ -270,12 +283,23 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     /// Watches for skins hiding and showing themselves only while some of the window can be seen.
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        watchHiddenSkins(window?.occlusionState.contains(.visible) == true)
+        let visible = window?.occlusionState.contains(.visible) == true
+        if !visible {
+            DeskProInstantToolTip.shared.hide()
+        }
+        watchHiddenSkins(visible)
     }
 
     func windowWillClose(_ notification: Notification) {
+        DeskProInstantToolTip.shared.hide()
         watchHiddenSkins(false)
         libraryModel.thumbnails.cancelSettling()
+    }
+
+    @objc private func scrollViewDidScroll(_ notification: Notification) {
+        if let scrollView = notification.object as? NSScrollView, scrollView.window === window {
+            DeskProInstantToolTip.shared.hide()
+        }
     }
 
     private func watchHiddenSkins(_ on: Bool) {
@@ -1043,6 +1067,26 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         syncLibraryModel()
     }
 
+    /// Updates the selected config/variant from an in-place interaction on a Widget Library card without scrolling
+    /// the card grid or resetting the active section, folder filter or search query.
+    func selectInLibrary(config: String, file: String?) {
+        let name = SkinLibrary.normalizedConfigName(config)
+        let running = app.controller(for: name)
+        selectNode(config: name, file: file ?? running?.file ?? app.config(named: name)?.files.first)
+        if selection == nil || selection?.config.caseInsensitiveCompare(name) != .orderedSame {
+            selection = (name, file)
+        }
+        if let selectedFile = file ?? selection?.file {
+            libraryModel.chosenVariants[name.lowercased()] = selectedFile
+        }
+        if let openInspector = libraryModel.inspectorConfig,
+           openInspector.caseInsensitiveCompare(name) != .orderedSame {
+            libraryModel.inspectorConfig = nil
+        }
+        updateDetail()
+        syncLibraryModel()
+    }
+
     private func selectNode(config: String, file: String?) {
         let nodes: [ManageModel.Node] = roots.flatMap(allNodes)
         func same(_ a: String?, _ b: String) -> Bool { a?.caseInsensitiveCompare(b) == .orderedSame }
@@ -1361,15 +1405,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             let storedChoice = libraryModel.chosenVariants[key].flatMap { candidate in
                 cfg.files.first { $0.caseInsensitiveCompare(candidate) == .orderedSame }
             }
-            let baseChoice = storedChoice ?? running?.file ?? firstFavoriteFile ?? cfg.files.first ?? ""
             let chosen: String
-            if libraryModel.section == .favorites,
-               let firstFavoriteFile,
-               !baseChoice.isEmpty,
-               !app.isFavorite(config: cfg.name, file: baseChoice) {
+            if let storedChoice {
+                chosen = storedChoice
+            } else if libraryModel.section == .favorites, let firstFavoriteFile {
                 chosen = firstFavoriteFile
             } else {
-                chosen = baseChoice
+                chosen = running?.file ?? firstFavoriteFile ?? cfg.files.first ?? ""
             }
             libraryModel.chosenVariants[key] = chosen
 

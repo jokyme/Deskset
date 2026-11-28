@@ -54,6 +54,7 @@ enum AppTheme {
             apply(theme, to: entry.window)
         }
         apply(theme, to: app.skinToolTips.panelForTheme)
+        apply(theme, to: DeskProInstantToolTip.shared.panelForTheme)
     }
 
     static func apply(_ theme: AppUITheme, to window: NSWindow?) {

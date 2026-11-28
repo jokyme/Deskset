@@ -66,6 +66,307 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: DragView, context: Context) {}
 }
 
+/// Shared zero-delay floating tooltip presenter for icon buttons so hovering shows a crisp borderless pill immediately
+/// without waiting for AppKit's ~1.5s `NSToolTipManager` delay or suffering from WindowServer's rectangular rim border.
+final class DeskProInstantToolTip {
+    static let shared = DeskProInstantToolTip()
+    private static let shadowInset: CGFloat = 14
+
+    private var panel: NSPanel?
+    private var containerView: ContainerView?
+    private weak var activeOwner: NSView?
+    private(set) var activeText: String?
+    private(set) var activeFrame: NSRect?
+
+    var panelForTheme: NSPanel? { panel }
+
+    private init() {}
+
+    @discardableResult
+    func ensurePanelForTesting() -> NSPanel {
+        dispatchPrecondition(condition: .onQueue(.main))
+        return ensurePanel().panel
+    }
+
+    /// Renders the current tooltip pill at 2x for visual verification and self-tests.
+    func snapshotForTesting(text: String, isDark: Bool) -> NSBitmapImageRep? {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let (_, container) = ensurePanel()
+        let appearance = NSAppearance(named: isDark ? .darkAqua : .aqua) ?? NSApp.effectiveAppearance
+        let pillSize = container.configure(text: text, appearance: appearance)
+        let pad = Self.shadowInset
+        let total = NSSize(width: pillSize.width + pad * 2, height: pillSize.height + pad * 2)
+        container.layoutSubtreeIfNeeded()
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(total.width * 2),
+            pixelsHigh: Int(total.height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = total
+        container.cacheDisplay(in: NSRect(origin: .zero, size: total), to: rep)
+        return rep
+    }
+
+    func show(text: String, for anchor: NSView) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let hostWindow = anchor.window,
+              hostWindow.attachedSheet == nil else {
+            hide()
+            return
+        }
+
+        let (panel, container) = ensurePanel()
+        panel.appearance = hostWindow.appearance
+        let pillSize = container.configure(text: trimmed, appearance: hostWindow.effectiveAppearance)
+
+        let rectInWindow = anchor.convert(anchor.bounds, to: nil)
+        let anchorOnScreen = hostWindow.convertToScreen(rectInWindow)
+        let screen = hostWindow.screen ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: -100_000, y: -100_000, width: 200_000, height: 200_000)
+
+        let gap: CGFloat = 6
+        var pillX = (anchorOnScreen.midX - pillSize.width / 2).rounded()
+        var pillY = (anchorOnScreen.maxY + gap).rounded()
+        if pillY + pillSize.height > visible.maxY - 6 {
+            pillY = (anchorOnScreen.minY - gap - pillSize.height).rounded()
+        }
+        pillX = min(max(pillX, visible.minX + 8), max(visible.minX + 8, visible.maxX - pillSize.width - 8))
+        pillY = min(max(pillY, visible.minY + 6), max(visible.minY + 6, visible.maxY - pillSize.height - 6))
+
+        let pillFrame = NSRect(origin: NSPoint(x: pillX, y: pillY), size: pillSize)
+        let pad = Self.shadowInset
+        let panelFrame = pillFrame.insetBy(dx: -pad, dy: -pad)
+
+        activeOwner = anchor
+        activeText = trimmed
+        activeFrame = pillFrame
+
+        panel.setFrame(panelFrame, display: true)
+        if hostWindow.isVisible {
+            panel.level = NSWindow.Level(rawValue: max(NSWindow.Level.popUpMenu.rawValue, hostWindow.level.rawValue + 1))
+            panel.orderFrontRegardless()
+        }
+    }
+
+    func updateIfShowing(text: String, for anchor: NSView) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard activeOwner === anchor else { return }
+        show(text: text, for: anchor)
+    }
+
+    func hide(for anchor: NSView? = nil) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        if let anchor, activeOwner !== anchor { return }
+        activeOwner = nil
+        activeText = nil
+        activeFrame = nil
+        panel?.orderOut(nil)
+    }
+
+    private func ensurePanel() -> (panel: NSPanel, container: ContainerView) {
+        if let panel, let containerView {
+            return (panel, containerView)
+        }
+        let created = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        created.isOpaque = false
+        created.backgroundColor = .clear
+        // Disable WindowServer's automatic window rim shadow, which draws an uneven dark rectangular outline on tiny panels.
+        created.hasShadow = false
+        created.ignoresMouseEvents = true
+        created.isReleasedWhenClosed = false
+        created.hidesOnDeactivate = false
+        created.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
+
+        let container = ContainerView(frame: .zero)
+        created.contentView = container
+        self.panel = created
+        self.containerView = container
+        return (created, container)
+    }
+
+    private final class ContainerView: NSView {
+        private let shadowView = NSView(frame: .zero)
+        private let surfaceView = NSView(frame: .zero)
+        private let label = NSTextField(labelWithString: "")
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.backgroundColor = .clear
+            layer?.masksToBounds = false
+
+            shadowView.wantsLayer = true
+            shadowView.layer?.backgroundColor = .clear
+            shadowView.layer?.masksToBounds = false
+            shadowView.layer?.shadowColor = NSColor.black.cgColor
+            shadowView.layer?.shadowRadius = 7
+            shadowView.layer?.shadowOffset = CGSize(width: 0, height: -2.5)
+            addSubview(shadowView)
+
+            surfaceView.wantsLayer = true
+            surfaceView.appearance = NSAppearance(named: .darkAqua)
+            surfaceView.layer?.cornerRadius = 7
+            surfaceView.layer?.cornerCurve = .continuous
+            surfaceView.layer?.masksToBounds = true
+            shadowView.addSubview(surfaceView)
+
+            label.font = .systemFont(ofSize: 11.5, weight: .medium)
+            label.textColor = NSColor(white: 0.98, alpha: 1.0)
+            label.drawsBackground = false
+            label.isBezeled = false
+            label.isEditable = false
+            label.lineBreakMode = .byClipping
+            label.maximumNumberOfLines = 1
+            surfaceView.addSubview(label)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        func configure(text: String, appearance: NSAppearance) -> NSSize {
+            label.stringValue = text
+            let font = label.font ?? .systemFont(ofSize: 11.5, weight: .medium)
+            let measured = NSAttributedString(string: text, attributes: [.font: font]).boundingRect(
+                with: NSSize(width: 600, height: 100),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            )
+            let padX: CGFloat = 9.5
+            let padY: CGFloat = 5
+            let textW = ceil(measured.width)
+            let textH = ceil(measured.height)
+            let pillSize = NSSize(width: textW + padX * 2, height: textH + padY * 2)
+            let inset = DeskProInstantToolTip.shadowInset
+
+            frame = NSRect(x: 0, y: 0, width: pillSize.width + inset * 2, height: pillSize.height + inset * 2)
+            shadowView.frame = NSRect(x: inset, y: inset, width: pillSize.width, height: pillSize.height)
+            surfaceView.frame = NSRect(origin: .zero, size: pillSize)
+            label.frame = NSRect(
+                x: padX,
+                y: ((pillSize.height - textH) / 2).rounded(.down),
+                width: textW,
+                height: textH
+            )
+
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            shadowView.layer?.shadowOpacity = isDark ? 0.42 : 0.16
+            shadowView.layer?.shadowPath = CGPath(
+                roundedRect: CGRect(origin: .zero, size: pillSize),
+                cornerWidth: 7,
+                cornerHeight: 7,
+                transform: nil
+            )
+            if isDark {
+                surfaceView.layer?.backgroundColor = NSColor(srgbRed: 0.20, green: 0.208, blue: 0.235, alpha: 0.96).cgColor
+                surfaceView.layer?.borderWidth = 0.5
+                surfaceView.layer?.borderColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+            } else {
+                surfaceView.layer?.backgroundColor = NSColor(srgbRed: 0.135, green: 0.14, blue: 0.16, alpha: 0.93).cgColor
+                surfaceView.layer?.borderWidth = 0
+                surfaceView.layer?.borderColor = nil
+            }
+            return pillSize
+        }
+    }
+}
+
+/// Invisible tracking overlay that displays `DeskProInstantToolTip` immediately on pointer entry while letting clicks pass through.
+struct DeskProInstantToolTipAnchor: NSViewRepresentable {
+    let text: String
+    var onHoverChange: ((Bool) -> Void)? = nil
+
+    final class AnchorView: NSView {
+        var text: String = "" {
+            didSet {
+                guard text != oldValue else { return }
+                DeskProInstantToolTip.shared.updateIfShowing(text: text, for: self)
+            }
+        }
+        var onHoverChange: ((Bool) -> Void)?
+        private(set) var isHovered = false
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            let area = NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func mouseEntered(with event: NSEvent) {
+            setHovered(true)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            setHovered(false)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil {
+                setHovered(false)
+            }
+        }
+
+        override func viewDidHide() {
+            super.viewDidHide()
+            setHovered(false)
+        }
+
+        func simulateHoverForTesting(_ hovering: Bool) {
+            setHovered(hovering)
+        }
+
+        private func setHovered(_ hovering: Bool) {
+            if hovering {
+                isHovered = true
+                DeskProInstantToolTip.shared.show(text: text, for: self)
+                onHoverChange?(true)
+            } else {
+                let wasHovered = isHovered
+                isHovered = false
+                DeskProInstantToolTip.shared.hide(for: self)
+                if wasHovered {
+                    onHoverChange?(false)
+                }
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> AnchorView {
+        let view = AnchorView(frame: .zero)
+        view.text = text
+        view.onHoverChange = onHoverChange
+        return view
+    }
+
+    func updateNSView(_ nsView: AnchorView, context: Context) {
+        nsView.text = text
+        nsView.onHoverChange = onHoverChange
+    }
+}
+
 /// Configures an `NSWindow` with Deskset Pro's full-size content view and transparent title bar while keeping standard traffic lights.
 enum DeskProWindowStyle {
     static func apply(to window: NSWindow) {

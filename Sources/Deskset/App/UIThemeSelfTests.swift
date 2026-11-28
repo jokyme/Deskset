@@ -35,7 +35,9 @@ enum UIThemeSelfTests {
                 let packager = SkinPackagerWindowController(app: app)
                 let menuBarPanelWindow = app.menuBarPanel.windowForTesting
                 _ = app.skinToolTips.ensurePanelForTesting()
+                _ = DeskProInstantToolTip.shared.ensurePanelForTesting()
                 defer {
+                    DeskProInstantToolTip.shared.hide()
                     app.menuBarPanel.close()
                     settings.close()
                     debug.close()
@@ -65,6 +67,7 @@ enum UIThemeSelfTests {
                 t.equal(menuBarPanelWindow?.appearance?.name, .darkAqua)
                 t.equal(app.updateFlow.window?.appearance?.name, .darkAqua)
                 t.equal(app.skinToolTips.panelForTheme?.appearance?.name, .darkAqua)
+                t.equal(DeskProInstantToolTip.shared.panelForTheme?.appearance?.name, .darkAqua)
 
                 let mainMenu = NSMenu()
                 app.buildMainMenu(mainMenu)
@@ -84,6 +87,7 @@ enum UIThemeSelfTests {
                 t.equal(debug.window?.appearance?.name, .aqua)
                 t.equal(menuBarPanelWindow?.appearance?.name, .aqua)
                 t.equal(app.skinToolTips.panelForTheme?.appearance?.name, .aqua)
+                t.equal(DeskProInstantToolTip.shared.panelForTheme?.appearance?.name, .aqua)
 
                 // Ordinary layout replacement preserves UITheme; empty INI leaves settings untouched.
                 let previous = LayoutState(skins: [:], order: [], rainmeterOptions: app.state.data.rainmeterOptions)
@@ -99,6 +103,7 @@ enum UIThemeSelfTests {
                 t.equal(debug.window?.appearance, nil)
                 t.equal(menuBarPanelWindow?.appearance, nil)
                 t.equal(app.skinToolTips.panelForTheme?.appearance, nil)
+                t.equal(DeskProInstantToolTip.shared.panelForTheme?.appearance, nil)
             }
         }
     }
@@ -135,9 +140,28 @@ enum UIThemeSelfTests {
         t.equal(manage.libraryModel.filteredCards.count, manage.libraryModel.activeCount)
         t.check(!manage.libraryModel.visibleRootFolders.contains { $0.name == "UnloadedSuite" },
                 "Loaded Skins hides folders that have zero loaded skins")
+        app.setLibraryFavorite(true, config: "UnloadedSuite", file: "Idle.ini")
+        t.check(app.isFavorite(config: "UnloadedSuite", file: "Idle.ini"),
+                "Widget Library star button can favorite an unloaded skin directly")
+        manage.libraryModel.switchSection(.favorites)
+        manage.libraryModel.searchQuery = "Idle"
+        let scrollRevBefore = manage.libraryModel.scrollRevision
+        manage.selectInLibrary(config: "UnloadedSuite", file: "Idle.ini")
+        t.equal(manage.libraryModel.scrollRevision, scrollRevBefore,
+                "in-card variant/card selection never scrolls the Widget Library scrollbar")
+        t.equal(manage.libraryModel.section, .favorites,
+                "in-card selection preserves the current sidebar section")
+        t.equal(manage.libraryModel.searchQuery, "Idle",
+                "in-card selection preserves the current search query")
+        app.setLibraryFavorite(false, config: "UnloadedSuite", file: "Idle.ini")
+        t.check(!app.isFavorite(config: "UnloadedSuite", file: "Idle.ini"),
+                "Widget Library star button can unfavorite an unloaded skin directly")
+        manage.libraryModel.searchQuery = ""
+        manage.libraryModel.switchSection(.installed)
         try? FileManager.default.removeItem(at: idleFolder)
         app.rescanLibrary()
         manage.reload()
+        checkToolbarInstantToolTips(t, manage: manage)
         checkAsyncThumbnailSettling(t, app: app)
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: appearance)
@@ -158,6 +182,64 @@ enum UIThemeSelfTests {
         window.appearance = nil
         manage.window?.appearance = nil
         app.menuBarPanel.windowForTesting?.appearance = nil
+    }
+
+    private static func checkToolbarInstantToolTips(_ t: AppTestRunner, manage: ManageWindowController) {
+        guard let root = manage.window?.contentView else {
+            return t.check(false, "Manage window content exists for toolbar tooltip check")
+        }
+        root.layoutSubtreeIfNeeded()
+        func collectAnchors(in view: NSView) -> [DeskProInstantToolTipAnchor.AnchorView] {
+            var found: [DeskProInstantToolTipAnchor.AnchorView] = []
+            if let anchor = view as? DeskProInstantToolTipAnchor.AnchorView {
+                found.append(anchor)
+            }
+            for sub in view.subviews {
+                found.append(contentsOf: collectAnchors(in: sub))
+            }
+            return found
+        }
+        let allAnchors = collectAnchors(in: root)
+        let expectedToolbar = [
+            L("Create new skin"),
+            L("Create .rmskin Package…"),
+            L("Refresh All"),
+            L("Open Skins Folder"),
+        ]
+        let toolbarSet = Set(expectedToolbar)
+        let toolbarAnchors = allAnchors
+            .filter { toolbarSet.contains($0.text) }
+            .sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+        t.equal(toolbarAnchors.map(\.text), expectedToolbar,
+                "Widget Library top toolbar buttons register all 4 instant tooltips")
+        let cardTexts = Set(allAnchors.map(\.text))
+        t.check(cardTexts.contains(L("Edit")) && cardTexts.contains(L("Settings")) && cardTexts.contains(L("Favorite")),
+                "Widget Library card quick-action buttons (Favorite, Edit, Settings) also register instant tooltips")
+        t.equal(DeskProInstantToolTip.shared.panelForTheme?.hasShadow, false,
+                "instant tooltip panel disables WindowServer's rectangular rim shadow")
+        t.check(DeskProInstantToolTip.shared.snapshotForTesting(text: L("Edit"), isDark: false) != nil,
+                "instant tooltip renders cleanly in light mode")
+        t.check(DeskProInstantToolTip.shared.snapshotForTesting(text: L("Edit"), isDark: true) != nil,
+                "instant tooltip renders cleanly in dark mode")
+        for anchor in allAnchors.prefix(8) {
+            anchor.simulateHoverForTesting(true)
+            t.equal(DeskProInstantToolTip.shared.activeText, anchor.text,
+                    "hovering icon button shows its tooltip immediately without delay")
+            if let tipFrame = DeskProInstantToolTip.shared.activeFrame,
+               let hostWindow = anchor.window {
+                let anchorScreen = hostWindow.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+                t.check(tipFrame.width > 20, "instant tooltip frame has non-empty measured bounds")
+                t.check(tipFrame.minY >= anchorScreen.maxY.rounded(),
+                        "instant tooltip appears above the hovered icon button")
+            } else {
+                t.check(false, "instant tooltip frame exists")
+            }
+            t.check(anchor.hitTest(NSPoint(x: 5, y: 5)) == nil,
+                    "instant tooltip anchor passes clicks straight through to the button")
+            anchor.simulateHoverForTesting(false)
+            t.equal(DeskProInstantToolTip.shared.activeText, nil,
+                    "leaving icon button hides its tooltip immediately")
+        }
     }
 
     /// Verifies that `SkinThumbnailCache` settles two-stage `FileView` listing + `Type=Icon` thumbnails (as used by
