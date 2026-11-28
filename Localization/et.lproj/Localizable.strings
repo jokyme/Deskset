@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fail";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Salvesta";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Sulge";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Sulge praegu. Järgmine igapäevane kontroll võib teile uuesti meelde tuletada.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Kestad";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Paigutused";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Laaditud kestad";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Halda seda kesta…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Silu kesta";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Hoidke all klahvi Control, et muuta suumi 10 protsendipunkti kaupa.";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "Salvesta tühja paigutusena";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Jäta laadimata kestad välja";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "Kaasa praegune taustapilt";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Laadi";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "Kustuta";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Muuda";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "Loo uus kest";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Suum:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "Autor:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Litsents:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "Versioon:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Ava logi";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "Salvesta uus paigutus";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "Nimi:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "Paigutuse nimi";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "Salvestatud paigutused";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "Salvestatud paigutusi pole.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Salvestatud paigutuste lugemine ebaõnnestus: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "Paigutuse salvestamine ebaõnnestus";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "Kas asendada paigutus „%@“?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Selle nimega paigutus on juba olemas. Kas asendada selle salvestatud seaded?";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "Asenda";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Tühista";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "Paigutuse kustutamine ebaõnnestus";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "Kas kustutada paigutus „%@“?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Salvestatud paigutus teisaldatakse prügikasti. Teie kestade failid säilivad.";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Üldine";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "Töölaud ja kestad";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Redaktor";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Rakenda kõigile kestadele";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Keela lohistamine";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Sunni vaikesuum";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "Ära luba kestasid hiirega lohistada.";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "Süsteemi vaikimisi (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "Muu…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "Kesta loomine ebaõnnestus";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "Lisa kaust";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "Lisa kest";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "Uus kest";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "Mall";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "Loo";
+
+/* New Skin window: text. */
+"Rename" = "Nimeta ümber";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Kesta loomine ebaõnnestus";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Lisa kaust";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Lisa kest";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Valitud kesta kaust";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "Nimi";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "Uue kesta kaustad ja failid";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "Mall uutele kestadele";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "Malli nimi";
-
-/* New Skin window: text. */
-"Save new template" = "Salvesta uue mallina";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "Salvestatud mallid";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "Toimingut ei saanud lõpule viia";
-
-/* New Skin window: text. */
-"Create" = "Loo";
-
-/* New Skin window: text. */
-"Rename" = "Nimeta ümber";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "Muuda kesta";
+
+/* New Skin window: text. */
+"New skin folders and files" = "Uue kesta kaustad ja failid";
+
+/* New Skin window: text. */
+"No root folder yet." = "Juurkausta pole veel loodud.";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Loo kausta Kestad juurkaust, et lisada alamkaustu ja kestafaile.";
+
+/* New Skin window: text. */
+"Save new template" = "Salvesta uue mallina";
+
+/* New Skin window: text. */
+"Saved templates" = "Salvestatud mallid";
+
+/* New Skin window: text. */
+"No saved templates." = "Salvestatud malle pole.";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Nimi";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "Vigane nimi: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "Rakenda kaasasolev paigutus: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "Täpsemad";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "Valikud";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "Eemalda";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "Ühenda kestad";
-
-/* Skin Packager window: button. */
-"Back" = "Tagasi";
-
-/* Skin Packager window: button. */
-"Next" = "Edasi";
-
-/* Skin Packager window: button. */
-"Create Package" = "Loo pakett";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "Loo .rmskin-pakett";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "Lisa kest…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "Lisa paigutus";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "Lisa pistikprogramm…";
-
-/* Skin Packager window: label. */
-"Skin:" = "Kest:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "Paigutused:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "Pistikprogrammid:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "Teave ja sisu";
 
-/* Skin Packager window: button. */
-"Choose…" = "Vali…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "Valikud";
 
-/* Skin Packager window: text. */
-"Do nothing" = "Ära tee midagi";
-
-/* Skin Packager window: text. */
-"Load layout" = "Laadi paigutus";
-
-/* Skin Packager window: text. */
-"Load skin" = "Laadi kest";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "Salvesta pakett kausta:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "Pärast paigaldamist:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "Rainmeteri vähim versioon:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "Päisepilt:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "Muutujafailid:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "Laadi varasemad seaded";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Kirje kustutamiseks hoidke all klahvi Shift.";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Loo .rmskin-pakett";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "Kesta pole valitud";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Puudub";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (32-bitine versioon puudub)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Paketti ei saa veel luua";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "Valige kesta juurkaust (root config).";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "Paketti ei saa veel luua";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "Lingid jäeti paketist välja: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "„Muutujafaile“ ja „Ühenda kestad“ ei saa koos kasutada.";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@“ pole versiooninumber, nagu 5.0 või 5.0.0.4657.";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "„%@“ ei ole versiooninumber nagu 1.0 või 1.1.1.";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "Valige, kuhu pakett salvestada.";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Laadi varasemad seaded";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Kirje kustutamiseks hoidke all klahvi Shift.";
+
+/* Skin Packager window: text. */
+"Package Info" = "Paketi teave";
+
+/* Skin Packager window: text. */
+"Package Contents" = "Paketi sisu";
+
+/* Skin Packager window: text. */
+"Skin:" = "Kest:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "Lisa kest…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "Paigutused:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "Lisa paigutus";
+
+/* Skin Packager window: text. */
+"Remove" = "Eemalda";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Pistikprogrammid:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Lisa pistikprogramm…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "Salvesta pakett kausta:";
+
+/* Skin Packager window: text. */
+"Choose…" = "Vali…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Pärast paigaldamist:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Ära tee midagi";
+
+/* Skin Packager window: text. */
+"Load skin" = "Laadi kest";
+
+/* Skin Packager window: text. */
+"Load layout" = "Laadi paigutus";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "Deskseti miinimumversioon:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Päisepilt:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Muutujafailid:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Ühenda kestad";
+
+/* Skin Packager window: text. */
+"Back" = "Tagasi";
+
+/* Skin Packager window: text. */
+"Create Package" = "Loo pakett";
+
+/* Skin Packager window: text. */
+"Next" = "Edasi";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "Käivitamine ja keel";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Sisselogimisel avaneb Deskset koos teie kestadega.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Saadaval, kui Deskset käivitatakse kaustast Rakendused.";
+
+/* SettingsWindowView: text. */
+"Language" = "Keel";
+
+/* SettingsWindowView: text. */
 "Appearance" = "Välimus";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Järgib automaatselt macOS-i heledat ja tumedat režiimi.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Hoiab Deskseti aknad ja menüüd kindlas välimuses.";
+
+/* SettingsWindowView: text. */
+"Software Update" = "Tarkvarauuendus";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kontrollib kord päevas ja laadib uuendused ise alla; millal need paigaldada, otsustate teie.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Uuendused:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "Töölaua interaktsioon";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "Interaktiivne töölaud";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Takistab juhuslikku hiirega lohistamist, hoides nupud ja toimingud aktiivsena.";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "Sisselogimisel avaneb Deskset koos teie kestadega.";
+"Global Zoom" = "Üldine suurendus";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Saadaval, kui Deskset käivitatakse kaustast Rakendused.";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset kontrollib kord päevas ja laadib uuendused ise alla; millal need paigaldada, otsustate teie.";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Uuendused:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "Järgib automaatselt macOS-i heledat ja tumedat režiimi.";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Hoiab Deskseti aknad ja menüüd kindlas välimuses.";
-
-/* SettingsWindowView: text. */
-"Language" = "Keel";
+"Directories" = "Kataloogid";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "Rüüde kaust";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Seadete kaust";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Automaatne uuesti laadimine:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "Diagnostika";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Kontrollige reaalajas mõõdikuid, muutujaid, sisseehitatud pluginaid, ekraane ja võrgustatistikat.";
@@ -1934,7 +1972,7 @@
 "No log entries." = "Logikirjed puuduvad.";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "Seadete kaust";
+"Documentation" = "Dokumentatsioon";
 
 /* SettingsWindowView: text. */
 "Open" = "Ava";

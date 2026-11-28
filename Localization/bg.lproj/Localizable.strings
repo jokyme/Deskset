@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Файл";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Запази";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Затвори";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Затвори засега. При следващата ежедневна проверка може да получите напомняне отново.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Скинове";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Подредби";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Заредени скинове";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Управление на този скин…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Отстрани грешки в скина";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Задръжте клавиша Control, за да променяте мащаба през 10 процентни пункта.";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "Запази като празна подредба";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Изключи незаредените скинове";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "Включи текущия тапет";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Зареди";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "Изтрий";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Редактирай";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "Създай нов скин";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Мащаб:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "Автор:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Лиценз:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "Версия:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Отвори журнала";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "Запази нова подредба";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "Име:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "Име на подредбата";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "Запазени подредби";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "Няма запазени подредби.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Запазените подредби не могат да бъдат прочетени: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "Подредбата не може да бъде запазена";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "Да се замени ли подредбата „%@“?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Вече съществува подредба с това име. Да се заменят ли запазените ѝ настройки?";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "Замени";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Отказ";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "Подредбата не може да бъде изтрита";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "Да се изтрие ли подредбата „%@“?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Запазената подредба ще бъде преместена в Кошчето. Файловете на скиновете се запазват.";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Общи";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "Работен плот и скинове";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Редактор";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Прилагай за всички скинове";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Изключи влаченето";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Налагай стандартния мащаб";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "Не позволявай скиновете да се влачат с мишката.";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "Стандартното за системата (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "Друго…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "Скинът не може да бъде създаден";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "Добави папка";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "Добави скин";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "Нов скин";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "Шаблон";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "Създай";
+
+/* New Skin window: text. */
+"Rename" = "Преименувай";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Скинът не може да бъде създаден";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Добави папка";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Добави скин";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Избрана папка на скина";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "Име";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "Папки и файлове на новия скин";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "Шаблон за нови скинове";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "Име на шаблона";
-
-/* New Skin window: text. */
-"Save new template" = "Запази като нов шаблон";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "Запазени шаблони";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "Операцията не може да бъде завършена";
-
-/* New Skin window: text. */
-"Create" = "Създай";
-
-/* New Skin window: text. */
-"Rename" = "Преименувай";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "Редактирай скина";
+
+/* New Skin window: text. */
+"New skin folders and files" = "Папки и файлове на новия скин";
+
+/* New Skin window: text. */
+"No root folder yet." = "Все още няма основна папка.";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Създайте основна папка в Скинове, за да започнете да добавяте подпапки и файлове на скинове.";
+
+/* New Skin window: text. */
+"Save new template" = "Запази като нов шаблон";
+
+/* New Skin window: text. */
+"Saved templates" = "Запазени шаблони";
+
+/* New Skin window: text. */
+"No saved templates." = "Няма запазени шаблони.";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Име";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "Невалидно име: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "Приложи включената подредба: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "Разширени";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "Опции";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "Премахни";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "Обединявай скиновете";
-
-/* Skin Packager window: button. */
-"Back" = "Назад";
-
-/* Skin Packager window: button. */
-"Next" = "Напред";
-
-/* Skin Packager window: button. */
-"Create Package" = "Създай пакета";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "Създаване на пакет .rmskin";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "Добави скин…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "Добави подредба";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "Добави плъгин…";
-
-/* Skin Packager window: label. */
-"Skin:" = "Скин:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "Подредби:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "Плъгини:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "Информация и съдържание";
 
-/* Skin Packager window: button. */
-"Choose…" = "Избери…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "Опции";
 
-/* Skin Packager window: text. */
-"Do nothing" = "Нищо";
-
-/* Skin Packager window: text. */
-"Load layout" = "Зареди подредба";
-
-/* Skin Packager window: text. */
-"Load skin" = "Зареди скин";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "Запази пакета в:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "След инсталиране:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "Минимална версия на Rainmeter:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "Заглавно изображение:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "Файлове с променливи:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "Зареди предишни настройки";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Задръжте Shift, за да изтриете запис.";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Създаване на пакет .rmskin";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "Не е избран скин";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Няма";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (липсва 32-битова версия)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Пакетът все още не може да бъде създаден";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "Изберете коренната папка на скина (root config).";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "Пакетът все още не може да бъде създаден";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "Връзките бяха изключени от пакета: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "„Файлове с променливи“ и „Обединявай скиновете“ не могат да се използват заедно.";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@“ не е номер на версия като 5.0 или 5.0.0.4657.";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "„%@“ не е номер на версия като 1.0 или 1.1.1.";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "Изберете къде да се запази пакетът.";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Зареди предишни настройки";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Задръжте Shift, за да изтриете запис.";
+
+/* Skin Packager window: text. */
+"Package Info" = "Информация за пакета";
+
+/* Skin Packager window: text. */
+"Package Contents" = "Съдържание на пакета";
+
+/* Skin Packager window: text. */
+"Skin:" = "Скин:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "Добави скин…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "Подредби:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "Добави подредба";
+
+/* Skin Packager window: text. */
+"Remove" = "Премахни";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Плъгини:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Добави плъгин…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "Запази пакета в:";
+
+/* Skin Packager window: text. */
+"Choose…" = "Избери…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "След инсталиране:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Нищо";
+
+/* Skin Packager window: text. */
+"Load skin" = "Зареди скин";
+
+/* Skin Packager window: text. */
+"Load layout" = "Зареди подредба";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "Минимална версия на Deskset:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Заглавно изображение:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Файлове с променливи:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Обединявай скиновете";
+
+/* Skin Packager window: text. */
+"Back" = "Назад";
+
+/* Skin Packager window: text. */
+"Create Package" = "Създай пакета";
+
+/* Skin Packager window: text. */
+"Next" = "Напред";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "Стартиране и език";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "При влизане Deskset се отваря с вашите скинове.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Достъпно, когато Deskset се стартира от папка „Програми“.";
+
+/* SettingsWindowView: text. */
+"Language" = "Език";
+
+/* SettingsWindowView: text. */
 "Appearance" = "Облик";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Автоматично следва светлия и тъмния режим на macOS.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Запазва фиксиран облик за прозорците и менютата на Deskset.";
+
+/* SettingsWindowView: text. */
+"Software Update" = "Актуализация на софтуера";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверява веднъж на ден и сам изтегля обновленията; вие решавате кога да ги инсталирате.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Обновления:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "Взаимодействие с работния плот";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "Интерактивен работен плот";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Предотвратява случайно плъзгане с мишката, докато бутоните остават активни.";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "При влизане Deskset се отваря с вашите скинове.";
+"Global Zoom" = "Глобално мащабиране";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Достъпно, когато Deskset се стартира от папка „Програми“.";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset проверява веднъж на ден и сам изтегля обновленията; вие решавате кога да ги инсталирате.";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Обновления:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "Автоматично следва светлия и тъмния режим на macOS.";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Запазва фиксиран облик за прозорците и менютата на Deskset.";
-
-/* SettingsWindowView: text. */
-"Language" = "Език";
+"Directories" = "Директории";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "Папка с облици";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Папка с настройки";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Автоматично опресняване:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "Диагностика";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Преглед на текущи измервания, променливи, вградени приставки, екрани и мрежова статистика.";
@@ -1934,7 +1972,7 @@
 "No log entries." = "Няма записи в дневника.";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "Папка с настройки";
+"Documentation" = "Документация";
 
 /* SettingsWindowView: text. */
 "Open" = "Отвори";

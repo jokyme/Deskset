@@ -27,8 +27,6 @@ zone.C	Sources/CLua/loslib.c	4	Lua's own os.date and os.time and os.setlocale: r
 background.mainHop	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-background.executorAsync	Sources/Deskset/App/SkinDebugState.swift	1	debug inspection and watch evaluation run on the owning executor without an implicit skin update
-
 effect.fileWrite	Sources/Deskset/App/AppIcon.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.global	Sources/Deskset/App/AppInstallation.swift	1	copying and verifying the app off the UI thread; installation only, never a skin input
@@ -42,10 +40,22 @@ random.UUID	Sources/Deskset/App/AppInstallation.swift	2	unique staging and backu
 random.pid	Sources/Deskset/App/AppInstallation.swift	2	exclude the installer itself when checking for a running copy
 wait.deadline	Sources/Deskset/App/AppInstallation.swift	3	bounded codesign verification of a staged application; terminates only its own timed-out verification child
 
+event.notification	Sources/Deskset/App/AppMaintenancePanel.swift	3	native maintenance progress observes visibility, closing and Reduce Motion; never a skin event
+mono.systemUptime	Sources/Deskset/App/AppMaintenancePanel.swift	2	native maintenance progress animates in real time independently of skin clocks
+timer.Timer	Sources/Deskset/App/AppMaintenancePanel.swift	1	native maintenance progress activity stops when hidden or closed; never a skin timer
+timer.runLoopAdd	Sources/Deskset/App/AppMaintenancePanel.swift	2	native maintenance progress runs in ordinary and installation modal loops; never a skin timer
+
+background.process	Sources/Deskset/App/AppRestart.swift	1	private same-executable restart helper; child process creation and lifetime injectable
+effect.fileWrite	Sources/Deskset/App/AppRestart.swift	2	private nonce-bound restart job and atomic marker cleanup; file operations injectable
+mono.systemUptime	Sources/Deskset/App/AppRestart.swift	1	bounded helper readiness and exact-parent exit; monotonic clock injectable
+random.UUID	Sources/Deskset/App/AppRestart.swift	3	private restart job, nonce and atomic file names; not a skin input
+random.pid	Sources/Deskset/App/AppRestart.swift	3	current and child process identities for restart; PID and child injectable
+wait.sleep	Sources/Deskset/App/AppRestart.swift	1	bounded background helper polling; pause injectable
+
+event.notification	Sources/Deskset/App/AppUpdateController.swift	1	syncs DisableAutoUpdate and DisableVersionCheck layout changes from its own AppState
 timer.Timer	Sources/Deskset/App/AppUpdateController.swift	1	app update check cadence; never runs inside skins and only starts in the interactive app
 timer.runLoopAdd	Sources/Deskset/App/AppUpdateController.swift	1	the app update check timer on the main run loop
 wall.Date()	Sources/Deskset/App/AppUpdateController.swift	1	default injected clock for the persistent daily update check interval
-event.notification	Sources/Deskset/App/AppUpdateController.swift	1	syncs DisableAutoUpdate and DisableVersionCheck layout changes from its own AppState
 
 background.URLSession	Sources/Deskset/App/AppUpdateDownload.swift	2	user-requested app download behind injectable AppUpdateDownloading; private staging, bounded validation and cancellation cleanup
 background.mainHop	Sources/Deskset/App/AppUpdateDownload.swift	3	user-requested app download behind injectable AppUpdateDownloading; private staging, bounded validation and cancellation cleanup
@@ -53,10 +63,6 @@ background.queue	Sources/Deskset/App/AppUpdateDownload.swift	1	user-requested ap
 effect.fileWrite	Sources/Deskset/App/AppUpdateDownload.swift	5	user-requested app download behind injectable AppUpdateDownloading; private staging, bounded validation and cancellation cleanup
 random.UUID	Sources/Deskset/App/AppUpdateDownload.swift	1	user-requested app download behind injectable AppUpdateDownloading; private staging, bounded validation and cancellation cleanup
 
-event.notification	Sources/Deskset/App/AppMaintenancePanel.swift	3	native maintenance progress observes visibility, closing and Reduce Motion; never a skin event
-mono.systemUptime	Sources/Deskset/App/AppMaintenancePanel.swift	2	native maintenance progress animates in real time independently of skin clocks
-timer.Timer	Sources/Deskset/App/AppMaintenancePanel.swift	1	native maintenance progress activity stops when hidden or closed; never a skin timer
-timer.runLoopAdd	Sources/Deskset/App/AppMaintenancePanel.swift	2	native maintenance progress runs in ordinary and installation modal loops; never a skin timer
 effect.fileWrite	Sources/Deskset/App/AppUpdateFlow.swift	2	update window owns prepared downloads and opens a user-requested manual fallback; never a skin effect
 effect.workspace	Sources/Deskset/App/AppUpdateFlow.swift	1	update window owns prepared downloads and opens a user-requested manual fallback; never a skin effect
 
@@ -92,29 +98,44 @@ random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, n
 random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input (the age of stale temporary settings folders)
 
-background.process	Sources/Deskset/App/AppRestart.swift	1	private same-executable restart helper; child process creation and lifetime injectable
-effect.fileWrite	Sources/Deskset/App/AppRestart.swift	2	private nonce-bound restart job and atomic marker cleanup; file operations injectable
-mono.systemUptime	Sources/Deskset/App/AppRestart.swift	1	bounded helper readiness and exact-parent exit; monotonic clock injectable
-random.UUID	Sources/Deskset/App/AppRestart.swift	3	private restart job, nonce and atomic file names; not a skin input
-random.pid	Sources/Deskset/App/AppRestart.swift	3	current and child process identities for restart; PID and child injectable
-wait.sleep	Sources/Deskset/App/AppRestart.swift	1	bounded background helper polling; pause injectable
+background.mainHop	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+background.queue	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+mono.systemUptime	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+random.UUID	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
+timer.asyncAfter	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
 
-background.mainHop	Sources/Deskset/App/SafeStartController.swift	4	marshal injected timer, count and prompt callbacks to the UI thread; cancellation is generation-guarded
-event.pointerState	Sources/Deskset/App/SafeStartController.swift	1	live modifier sampler for the startup chord; flags are injected in tests
-mono.systemUptime	Sources/Deskset/App/SafeStartController.swift	1	one-second startup chord interval; the monotonic clock is injected
-timer.executorTimer	Sources/Deskset/App/SafeStartController.swift	1	startup chord sampling through the executor timer; scheduler is injected
-background.mainHop	Sources/Deskset/App/StartupCrashWatcher.swift	2	deliver startup observation summaries once on the UI thread
-background.process	Sources/Deskset/App/StartupCrashWatcher.swift	1	private same-executable exit observer; launcher is injected and no skin starts a process here
-background.queue	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded READY and prior-result waits run off the UI thread
-effect.fileWrite	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation records and temporary-file cleanup; file operations are injectable
-mono.systemUptime	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded startup observer waits; clock and pause are injected
-random.UUID	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation job identifiers, nonces and atomic-write temporary names; not a skin input
-random.pid	Sources/Deskset/App/StartupCrashWatcher.swift	1	primary process identity for exit observation; PID lookup is injected
-wait.sleep	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded background handshake polling; pause is injected and never blocks the UI
-wall.Date()	Sources/Deskset/App/StartupCrashWatcher.swift	1	five-minute observation history; wall clock is injected
+background.global	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+background.mainHop	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+effect.pasteboard	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+event.notification	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+timer.Timer	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+timer.runLoopAdd	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
+
+effect.pasteboard	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+event.notification	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+random.UUID	Sources/Deskset/App/DebugSkinInspectorView.swift	3	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+timer.Timer	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+timer.runLoopAdd	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+zone.localizedText	Sources/Deskset/App/DebugSkinInspectorView.swift	2	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
+
+zone.localizedText	Sources/Deskset/App/DebugSystemInfo.swift	1	Debug formats current macOS device facts; never a skin input
+
+background.mainHop	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+effect.pasteboard	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+random.UUID	Sources/Deskset/App/DebugWatchEditorController.swift	2	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+timer.Timer	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+timer.runLoopAdd	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
+
+effect.workspace	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+timer.Timer	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+timer.runLoopAdd	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+zone.implicitFormatter	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
+zone.localizedText	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
 
 effect.fileWrite	Sources/Deskset/App/DefaultSkins.swift	6	installing the default skins
 effect.iniWrite	Sources/Deskset/App/DefaultSkins.swift	1	installing the default skins
+
+background.mainHop	Sources/Deskset/App/DeskProStyleComponents.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.mainHop	Sources/Deskset/App/DesktopFollowing.swift	1	Skin Studio: the desktop copy tells the Studio on the main thread that it took a patch (the Studio UI, not a skin input)
 timer.Timer	Sources/Deskset/App/DesktopFollowing.swift	1	Skin Studio session timing and debounces: the desktop copy is patched on the next turn, after the canvas draws the step
@@ -130,7 +151,22 @@ timer.Timer	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timin
 timer.executorTimer	Sources/Deskset/App/EditingSession.swift	1	the update timer, on the executor
 timer.runLoopAdd	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timing and debounces
 
-background.mainHop	Sources/Deskset/App/DeskProStyleComponents.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.fileWrite	Sources/Deskset/App/LayoutCommands.swift	1	create the same-user application lock directory before command startup; not a skin effect
+effect.signal	Sources/Deskset/App/LayoutCommands.swift	1	kill(pid, 0) only probes whether the lock owner exists; no signal is sent
+event.notification	Sources/Deskset/App/LayoutCommands.swift	2	application command channel and termination cleanup; command transport is injected in tests
+mono.systemUptime	Sources/Deskset/App/LayoutCommands.swift	3	bounded command-client acknowledgement and retry deadline; never runs on a skin executor
+random.UUID	Sources/Deskset/App/LayoutCommands.swift	2	command request IDs for acknowledgement and duplicate suppression; not skin randomness
+random.pid	Sources/Deskset/App/LayoutCommands.swift	2	same-user application lock ownership and addressed command delivery
+wait.runLoop	Sources/Deskset/App/LayoutCommands.swift	1	command-client acknowledgement wait with a bounded timeout; not a skin execution loop
+wall.sinceNow	Sources/Deskset/App/LayoutCommands.swift	1	short command-client run-loop slices while awaiting the running application
+
+mono.DispatchTime.now	Sources/Deskset/App/LayoutController.swift	2	one total lifecycle deadline for requesting actions and desktop closure; blocked-executor and installer-timeout regression tests; not a skin input
+timer.asyncAfter	Sources/Deskset/App/LayoutController.swift	2	bounded application lifecycle barriers for action completion and peer draining; exercised with blocked executors
+
+effect.fileWrite	Sources/Deskset/App/LayoutWallpaper.swift	4	LayoutWallpaper live boundary: cached desktop bitmap and rollback; tests inject a memory implementation
+effect.workspace	Sources/Deskset/App/LayoutWallpaper.swift	2	LayoutWallpaper live boundary: apply or restore desktop images; tests never call NSWorkspace
+
+zone.localizedText	Sources/Deskset/App/Localization.swift	1	the Settings language list's alphabetical order; app UI, never a skin input
 
 zone.localizedText	Sources/Deskset/App/ManageModel.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
@@ -146,13 +182,22 @@ effect.terminate	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio,
 event.eventMonitor	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/MenuBarPanelController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+effect.fileWrite	Sources/Deskset/App/NewSkinModel.swift	12	New skin dialog writes within injected Skins and Settings directories; Trash is injectable and tests use temporary folders
+random.UUID	Sources/Deskset/App/NewSkinModel.swift	2	New skin dialog session identities and exclusive temporary file names; never a skin input
+zone.localizedText	Sources/Deskset/App/NewSkinModel.swift	2	New skin dialog folder and template sorting; never a skin input
+
+background.mainHop	Sources/Deskset/App/NewSkinWindowController.swift	1	New skin UI: focuses the naming field on appear; outside any skin
+random.UUID	Sources/Deskset/App/NewSkinWindowController.swift	2	New skin naming-sheet replies use session tokens to reject late callbacks
+
+background.mainHop	Sources/Deskset/App/SafeStartController.swift	4	marshal injected timer, count and prompt callbacks to the UI thread; cancellation is generation-guarded
+event.pointerState	Sources/Deskset/App/SafeStartController.swift	1	live modifier sampler for the startup chord; flags are injected in tests
+mono.systemUptime	Sources/Deskset/App/SafeStartController.swift	1	one-second startup chord interval; the monotonic clock is injected
+timer.executorTimer	Sources/Deskset/App/SafeStartController.swift	1	startup chord sampling through the executor timer; scheduler is injected
+
 event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 effect.pasteboard	Sources/Deskset/App/SettingsWindowView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-random.UUID	Sources/Deskset/App/SettingsWindowView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
-
-zone.localizedText	Sources/Deskset/App/WidgetLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
@@ -164,26 +209,28 @@ mono.threadCPUTime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line toolin
 random.UUID	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
 timer.executorTimer	Sources/Deskset/App/SkinBenchmark.swift	1	--benchmark: the update timer, on the skin's executor as a skin window's
 
-effect.fileWrite	Sources/Deskset/App/LayoutCommands.swift	1	create the same-user application lock directory before command startup; not a skin effect
-effect.signal	Sources/Deskset/App/LayoutCommands.swift	1	kill(pid, 0) only probes whether the lock owner exists; no signal is sent
-event.notification	Sources/Deskset/App/LayoutCommands.swift	2	application command channel and termination cleanup; command transport is injected in tests
-mono.systemUptime	Sources/Deskset/App/LayoutCommands.swift	3	bounded command-client acknowledgement and retry deadline; never runs on a skin executor
-random.UUID	Sources/Deskset/App/LayoutCommands.swift	2	command request IDs for acknowledgement and duplicate suppression; not skin randomness
-random.pid	Sources/Deskset/App/LayoutCommands.swift	2	same-user application lock ownership and addressed command delivery
-wait.runLoop	Sources/Deskset/App/LayoutCommands.swift	1	command-client acknowledgement wait with a bounded timeout; not a skin execution loop
-wall.sinceNow	Sources/Deskset/App/LayoutCommands.swift	1	short command-client run-loop slices while awaiting the running application
-
-effect.fileWrite	Sources/Deskset/App/LayoutWallpaper.swift	4	LayoutWallpaper live boundary: cached desktop bitmap and rollback; tests inject a memory implementation
-effect.workspace	Sources/Deskset/App/LayoutWallpaper.swift	2	LayoutWallpaper live boundary: apply or restore desktop images; tests never call NSWorkspace
+background.executorAsync	Sources/Deskset/App/SkinDebugState.swift	1	debug inspection and watch evaluation run on the owning executor without an implicit skin update
+random.UUID	Sources/Deskset/App/SkinDebugState.swift	1	Watch expression identities distinguish independent debugger requests; evaluation stays on the owning executor
 
 background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 event.notification	Sources/Deskset/App/SkinInstallFlow.swift	1	resume an installation after the active layout replacement completes; app lifecycle only
+
 background.global	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: writes the package off the main thread, outside any skin
 background.mainHop	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: writes the package off the main thread, outside any skin
 effect.workspace	Sources/Deskset/App/SkinPackagerWindowController.swift	1	Skin Packager UI: Show in Finder after a package is made
 
 background.fileEvents	Sources/Deskset/App/SourceWatcher.swift	2	Skin Studio watches the files of the skin it edits
+
+background.mainHop	Sources/Deskset/App/StartupCrashWatcher.swift	2	deliver startup observation summaries once on the UI thread
+background.process	Sources/Deskset/App/StartupCrashWatcher.swift	1	private same-executable exit observer; launcher is injected and no skin starts a process here
+background.queue	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded READY and prior-result waits run off the UI thread
+effect.fileWrite	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation records and temporary-file cleanup; file operations are injectable
+mono.systemUptime	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded startup observer waits; clock and pause are injected
+random.UUID	Sources/Deskset/App/StartupCrashWatcher.swift	2	private observation job identifiers, nonces and atomic-write temporary names; not a skin input
+random.pid	Sources/Deskset/App/StartupCrashWatcher.swift	1	primary process identity for exit observation; PID lookup is injected
+wait.sleep	Sources/Deskset/App/StartupCrashWatcher.swift	1	bounded background handshake polling; pause is injected and never blocks the UI
+wall.Date()	Sources/Deskset/App/StartupCrashWatcher.swift	1	five-minute observation history; wall clock is injected
 
 mono.DispatchTime.now	Sources/Deskset/App/StudioPatching.swift	2	Skin Studio session timing: how long loading the Studio's instance again took
 
@@ -193,6 +240,8 @@ effect.fileWrite	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, no
 random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
+
+zone.localizedText	Sources/Deskset/App/WidgetLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 background.global	Sources/Deskset/AppController.swift	2	prepare user-requested update and restart helpers off the UI thread; restart preparation is replaceable in tests
 background.mainHop	Sources/Deskset/AppController.swift	6	app lifecycle and main-thread restart decisions; late callbacks are guarded before termination
@@ -204,8 +253,6 @@ event.notification	Sources/Deskset/AppController.swift	2	wake, appearance, scree
 event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
 mono.systemUptime	Sources/Deskset/AppController.swift	1	config lookup rescans at most every 3 s
 random.pid	Sources/Deskset/AppController.swift	4	app lifecycle, menus and single-instance handover; not a skin input
-mono.DispatchTime.now	Sources/Deskset/App/LayoutController.swift	2	one total lifecycle deadline for requesting actions and desktop closure; blocked-executor and installer-timeout regression tests; not a skin input
-timer.asyncAfter	Sources/Deskset/App/LayoutController.swift	2	bounded application lifecycle barriers for action completion and peer draining; exercised with blocked executors
 timer.asyncAfter	Sources/Deskset/AppController.swift	2	re-check of regional settings after a change; the installer's wait for skins to close gives up after its timeout (app lifecycle, not a skin input)
 wall.Date()	Sources/Deskset/AppController.swift	1	quitting waits for the skins to close within a budget (app lifecycle, not a skin input)
 zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
@@ -213,6 +260,10 @@ zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus an
 effect.fileWrite	Sources/Deskset/AppState.swift	6	app state files; the transactional Safe Start writer is injectable and does not run as a skin effect
 timer.asyncAfter	Sources/Deskset/AppState.swift	1	state.json saving and ordering; not a skin input
 zone.localizedText	Sources/Deskset/AppState.swift	2	state.json saving and ordering; not a skin input
+
+event.pointerState	Sources/Deskset/ClickThroughOverride.swift	3	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.Timer	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
+timer.runLoopAdd	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
 
 background.mainHop	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
 background.queue	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
@@ -238,18 +289,14 @@ mono.DispatchTime.now	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagno
 timer.Timer	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
 timer.runLoopAdd	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
 
+event.eventMonitor	Sources/Deskset/MouseCaptureController.swift	2	!Mouse:StartCapture global/local event monitor (replaceable MouseCaptureMonitorSource in tests)
+event.pointerState	Sources/Deskset/MouseCaptureController.swift	1	!Mouse:StartCapture initial pressed button bitmask (replaceable pressedButtonsProvider in tests)
+
 background.global	Sources/Deskset/NetworkStatistics.swift	1	shared statistics collection uses the injected repeating scheduler; the live timer runs on a utility queue
 background.queue	Sources/Deskset/NetworkStatistics.swift	1	serial statistics file writes and the final exit barrier; file operations are injected in tests
 effect.fileWrite	Sources/Deskset/NetworkStatistics.swift	2	atomic native statistics storage for the primary desktop instance; FileIO is injected in tests
 timer.dispatchSource	Sources/Deskset/NetworkStatistics.swift	1	lazy two-minute statistics collection for the active session; the repeating scheduler is injected in tests
 
-timer.Timer	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
-timer.runLoopAdd	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
-event.pointerState	Sources/Deskset/ClickThroughOverride.swift	3	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
-timer.Timer	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
-timer.runLoopAdd	Sources/Deskset/ClickThroughOverride.swift	1	ClickThrough override: modifier keys, buttons and pointer read on a timer while a skin is click-through
-event.eventMonitor	Sources/Deskset/MouseCaptureController.swift	2	!Mouse:StartCapture global/local event monitor (replaceable MouseCaptureMonitorSource in tests)
-event.pointerState	Sources/Deskset/MouseCaptureController.swift	1	!Mouse:StartCapture initial pressed button bitmask (replaceable pressedButtonsProvider in tests)
 background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
 event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
 event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
@@ -373,11 +420,15 @@ mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session ti
 timer.executorTimer	Sources/Deskset/SkinRuntime.swift	2	the update and focused TextEdit caret timers, on the executor; both cancel on pause and close
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)
 
-event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
-background.mainHop	Sources/Deskset/SkinView.swift	1	TextEdit clipboard answers return to the main-thread UI after owner-ordered editing
-effect.pasteboard	Sources/Deskset/SkinView.swift	1	user TextEdit copy/cut writes through replaceable main-thread clipboard closures
 event.notification	Sources/Deskset/SkinSelectionController.swift	1	local AppState changes end an in-progress mouse drag when DisableDragging is enabled
 event.pointerState	Sources/Deskset/SkinSelectionController.swift	1	injectable modifierFlags closure reads the selection chord when keyboard focus changes; no global keyboard monitor
+
+timer.Timer	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
+timer.runLoopAdd	Sources/Deskset/SkinToolTip.swift	1	Skin tooltips: the delay before a tooltip appears
+
+background.mainHop	Sources/Deskset/SkinView.swift	1	TextEdit clipboard answers return to the main-thread UI after owner-ordered editing
+effect.pasteboard	Sources/Deskset/SkinView.swift	1	user TextEdit copy/cut writes through replaceable main-thread clipboard closures
+event.pointerState	Sources/Deskset/SkinView.swift	1	window dragging and hover read the pointer
 
 effect.workspace	Sources/Deskset/SkinWindowController.swift	2	a skin opens a URL or file: a host request, recorded by RecordingSkinHost in sandboxed runs
 event.pointerState	Sources/Deskset/SkinWindowController.swift	1	window dragging and hover polling read the pointer
@@ -473,6 +524,9 @@ timer.executorAfter	Sources/DesksetCore/Engine/BackgroundWork.swift	1	a fake's d
 wait.deadline	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle: waits for real work that has no fake (a condition, with a real-time limit)
 wall.sinceNow	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle's real-time limit
 
+effect.fileWrite	Sources/DesksetCore/Engine/DragDropFileOperations.swift	16	SideEffects live implementation: transactional DragDrop writes and Trash; FileManager is replaceable in tests
+random.UUID	Sources/DesksetCore/Engine/DragDropFileOperations.swift	1	SideEffects live implementation: unique staging folder names, never a skin value
+
 zone.Locale.current	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live preferred languages (Locale.preferredLanguages)
 zone.inferredCurrent	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live locale (Locale.autoupdatingCurrent), the default a host passes
 
@@ -535,13 +589,12 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a d
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
-random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
 random.UUID	Sources/DesksetCore/Engine/Scene/SVGDraw.swift	1	identity for independently constructed immutable SVG payloads; no random pixel input or canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
 
 random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
 
-effect.fileWrite	Sources/DesksetCore/Engine/DragDropFileOperations.swift	16	SideEffects live implementation: transactional DragDrop writes and Trash; FileManager is replaceable in tests
-random.UUID	Sources/DesksetCore/Engine/DragDropFileOperations.swift	1	SideEffects live implementation: unique staging folder names, never a skin value
 background.dispatch	Sources/DesksetCore/Engine/SideEffects.swift	2	the live side effects: a helper program started off the skin's thread, and RunCommand's output read on its own queue (a recording starts nothing)
 background.executorAsync	Sources/DesksetCore/Engine/SideEffects.swift	1	a helper program's exit status handed to the executor of the skin that started it: move to the skin's hop with the threading work
 background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and its pipes (a recording starts none)
@@ -605,6 +658,7 @@ random.UUID	Sources/DesksetCore/Rmskin/RmskinFiles.swift	*	skin installer; runs 
 
 effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
 zone.localizedText	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
+
 effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
 random.UUID	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
 zone.localizedText	Sources/DesksetCore/Rmskin/RmskinPackager.swift	*	skin packager; runs outside any skin
@@ -649,37 +703,3 @@ background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.n
 background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment
 
 mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
-background.global	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-background.mainHop	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
-background.mainHop	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-background.mainHop	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
-background.queue	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
-effect.pasteboard	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-effect.pasteboard	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-effect.pasteboard	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
-effect.workspace	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
-event.notification	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-event.notification	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-mono.systemUptime	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
-random.UUID	Sources/Deskset/App/DebugSkinInspectorView.swift	3	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-random.UUID	Sources/Deskset/App/DebugWatchEditorController.swift	2	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
-random.UUID	Sources/Deskset/App/SkinDebugState.swift	1	Watch expression identities distinguish independent debugger requests; evaluation stays on the owning executor
-timer.Timer	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-timer.Timer	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-timer.Timer	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
-timer.Timer	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
-timer.asyncAfter	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
-timer.runLoopAdd	Sources/Deskset/App/DebugInfoView.swift	1	Debug system diagnostics collect network facts in the background and update only the active main-thread view
-timer.runLoopAdd	Sources/Deskset/App/DebugSkinInspectorView.swift	1	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-timer.runLoopAdd	Sources/Deskset/App/DebugWatchEditorController.swift	1	Watch editor polling and clipboard actions belong to the visible dialog; canceled previews cannot update it
-timer.runLoopAdd	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
-zone.implicitFormatter	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
-zone.localizedText	Sources/Deskset/App/DebugSkinInspectorView.swift	2	Debug UI polls immutable snapshots with independent consumer identities; never a skin update timer
-zone.localizedText	Sources/Deskset/App/DebugSystemInfo.swift	1	Debug formats current macOS device facts; never a skin input
-zone.localizedText	Sources/Deskset/App/DebugWindowController.swift	1	Debug window log polling, local timestamp display, menu actions and plugin sorting; never a skin input
-zone.localizedText	Sources/Deskset/App/Localization.swift	1	the Settings language list's alphabetical order; app UI, never a skin input
-random.UUID	Sources/Deskset/App/DebugFileRefresh.swift	1	Debug file watching coalesces background reads and main-thread delivery; stopped sessions discard results
-effect.fileWrite	Sources/Deskset/App/NewSkinModel.swift	12	New skin dialog writes within injected Skins and Settings directories; Trash is injectable and tests use temporary folders
-random.UUID	Sources/Deskset/App/NewSkinModel.swift	2	New skin dialog session identities and exclusive temporary file names; never a skin input
-zone.localizedText	Sources/Deskset/App/NewSkinModel.swift	2	New skin dialog folder and template sorting; never a skin input
-random.UUID	Sources/Deskset/App/NewSkinWindowController.swift	1	New skin naming-sheet replies use session tokens to reject late callbacks

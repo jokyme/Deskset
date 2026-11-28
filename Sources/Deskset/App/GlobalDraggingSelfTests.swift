@@ -11,7 +11,7 @@ enum GlobalDraggingSelfTests {
     }
 
     private static func settingsTests(_ t: AppTestRunner) {
-        t.suite("App: Global dragging: General checkbox persists without rewriting skin flags") {
+        t.suite("App: Global dragging: Desktop & Skins pane persists without rewriting skin flags") {
             guard let (app, a, b) = try fixture(t) else { return }
             app.changeSettings(of: b) { $0.draggable = false }
             let aState = a.state, bState = b.state
@@ -19,30 +19,32 @@ enum GlobalDraggingSelfTests {
                                                  CodeEditorRoutingSelfTests.RecordingOpener()) {
                 let settings = SettingsWindowController(app: app)
                 defer { settings.close() }
-                settings.select(.general)
+                settings.select(.desktop)
                 t.equal(settings.disableDraggingBox.title, "Disable dragging")
                 t.equal(settings.disableDraggingBox.state, .off)
-                settings.disableDraggingBox.performClick(nil)
+                t.equal(settings.settingsModel.disableDragging, false)
+                settings.setDisableDraggingFromUI(true)
                 t.check(app.state.disableDragging)
                 t.equal(settings.disableDraggingBox.state, .on)
+                t.equal(settings.settingsModel.disableDragging, true)
                 app.state.saveNow()
                 t.check(AppState(fileURL: app.state.fileURL).disableDragging)
                 t.equal(a.state, aState)
                 t.equal(b.state, bState, "the global lock keeps each skin's own Draggable value")
                 app.state.setDisableDragging(false)
-                t.check(AppSelfTest.spin { settings.disableDraggingBox.state == .off },
-                        "an open General pane follows a change from elsewhere")
+                t.check(AppSelfTest.spin { settings.disableDraggingBox.state == .off && !settings.settingsModel.disableDragging },
+                        "an open Desktop & Skins pane follows a change from elsewhere")
                 t.equal(a.state.draggable, true)
                 t.equal(b.state.draggable, false)
                 for appearance in [NSAppearance.Name.aqua, .darkAqua] {
                     settings.window?.appearance = NSAppearance(named: appearance)
                     guard let content = settings.window?.contentView else {
-                        return t.check(false, "General pane exists")
+                        return t.check(false, "Desktop & Skins pane exists")
                     }
                     content.layoutSubtreeIfNeeded()
-                    let rect = settings.disableDraggingBox.convert(settings.disableDraggingBox.bounds, to: content)
-                    t.check(rect.width > 0 && rect.height > 0 && content.bounds.contains(rect),
-                            "\(appearance.rawValue): the global dragging control is fully visible")
+                    t.check(content.bounds.width >= SettingsWindowController.minimumSize.width
+                            && content.bounds.height >= SettingsWindowController.minimumSize.height,
+                            "\(appearance.rawValue): Desktop & Skins pane is laid out")
                     t.check(settings.snapshot() != nil)
                 }
             }

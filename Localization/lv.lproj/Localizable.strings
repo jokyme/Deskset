@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fails";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Saglabāt";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Aizvērt";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Pagaidām aizvērt. Nākamajā ikdienas pārbaudē jums var atgādināt vēlreiz.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Apvalki";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Izkārtojumi";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Ielādētie apvalki";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Pārvaldīt šo apvalku…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Atkļūdot apvalku";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Turiet nospiestu taustiņu Control, lai mainītu tālummaiņu par 10 procentpunktiem.";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "Saglabāt kā tukšu izkārtojumu";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Neiekļaut neielādētos apvalkus";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "Iekļaut pašreizējo fona attēlu";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Ielādēt";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "Dzēst";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Rediģēt";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "Izveidot jaunu apvalku";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Tālummaiņa:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "Autors:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Licence:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "Versija:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Atvērt žurnālu";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "Saglabāt jaunu izkārtojumu";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "Nosaukums:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "Izkārtojuma nosaukums";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "Saglabātie izkārtojumi";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "Nav saglabātu izkārtojumu.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Neizdevās nolasīt saglabātos izkārtojumus: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "Neizdevās saglabāt izkārtojumu";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "Vai aizstāt izkārtojumu „%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Izkārtojums ar šo nosaukumu jau pastāv. Vai aizstāt tā saglabātos iestatījumus?";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "Aizstāt";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Atcelt";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "Neizdevās izdzēst izkārtojumu";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "Vai dzēst izkārtojumu „%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Saglabātais izkārtojums tiks pārvietots uz atkritni. Jūsu apvalku faili tiek saglabāti.";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Vispārīgi";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "Darbvirsma un apvalki";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Redaktors";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Lietot visiem apvalkiem";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Atspējot vilkšanu";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Piespiest noklusējuma tālummaiņu";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "Neļaut vilkt apvalkus ar peli.";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "Sistēmas noklusējums (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "Cita…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "Neizdevās izveidot apvalku";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "Pievienot mapi";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "Pievienot apvalku";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "Jauns apvalks";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "Veidne";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "Izveidot";
+
+/* New Skin window: text. */
+"Rename" = "Pārdēvēt";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Neizdevās izveidot apvalku";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Pievienot mapi";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Pievienot apvalku";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Atlasītā apvalka mape";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "Nosaukums";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "Jaunā apvalka mapes un faili";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "Veidne jauniem apvalkiem";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "Veidnes nosaukums";
-
-/* New Skin window: text. */
-"Save new template" = "Saglabāt kā jaunu veidni";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "Saglabātās veidnes";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "Neizdevās pabeigt darbību";
-
-/* New Skin window: text. */
-"Create" = "Izveidot";
-
-/* New Skin window: text. */
-"Rename" = "Pārdēvēt";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "Rediģēt apvalku";
+
+/* New Skin window: text. */
+"New skin folders and files" = "Jaunā apvalka mapes un faili";
+
+/* New Skin window: text. */
+"No root folder yet." = "Saknes mapes vēl nav.";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Izveidojiet saknes mapi sadaļā Apvalki, lai pievienotu apakšmapes un apvalku failus.";
+
+/* New Skin window: text. */
+"Save new template" = "Saglabāt kā jaunu veidni";
+
+/* New Skin window: text. */
+"Saved templates" = "Saglabātās veidnes";
+
+/* New Skin window: text. */
+"No saved templates." = "Nav saglabātu veidņu.";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Nosaukums";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "Nederīgs nosaukums: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "Lietot iekļauto izkārtojumu: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "Papildu";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "Opcijas";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "Noņemt";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "Apvienot apvalkus";
-
-/* Skin Packager window: button. */
-"Back" = "Atpakaļ";
-
-/* Skin Packager window: button. */
-"Next" = "Tālāk";
-
-/* Skin Packager window: button. */
-"Create Package" = "Izveidot pakotni";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "Izveidot .rmskin pakotni";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "Pievienot apvalku…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "Pievienot izkārtojumu";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "Pievienot spraudni…";
-
-/* Skin Packager window: label. */
-"Skin:" = "Apvalks:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "Izkārtojumi:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "Spraudņi:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "Informācija un saturs";
 
-/* Skin Packager window: button. */
-"Choose…" = "Izvēlēties…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "Opcijas";
 
-/* Skin Packager window: text. */
-"Do nothing" = "Neko nedarīt";
-
-/* Skin Packager window: text. */
-"Load layout" = "Ielādēt izkārtojumu";
-
-/* Skin Packager window: text. */
-"Load skin" = "Ielādēt apvalku";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "Saglabāt pakotni:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "Pēc instalēšanas:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "Minimālā Rainmeter versija:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "Galvenes attēls:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "Mainīgo faili:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "Ielādēt iepriekšējos iestatījumus";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Turiet nospiestu Shift, lai dzēstu ierakstu.";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Izveidot .rmskin pakotni";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "Nav izvēlēts apvalks";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Nav";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (trūkst 32 bitu versijas)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Pakotni vēl nevar izveidot";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "Izvēlieties apvalka saknes mapi (root config).";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "Pakotni vēl nevar izveidot";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "Saites netika iekļautas pakotnē: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "„Mainīgo faili” un „Apvienot apvalkus” nevar izmantot kopā.";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@” nav versijas numurs, piemēram, 5.0 vai 5.0.0.4657.";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "“%@” nav versijas numurs, piemēram, 1.0 vai 1.1.1.";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "Izvēlieties, kur saglabāt pakotni.";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Ielādēt iepriekšējos iestatījumus";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Turiet nospiestu Shift, lai dzēstu ierakstu.";
+
+/* Skin Packager window: text. */
+"Package Info" = "Pakotnes informācija";
+
+/* Skin Packager window: text. */
+"Package Contents" = "Pakotnes saturs";
+
+/* Skin Packager window: text. */
+"Skin:" = "Apvalks:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "Pievienot apvalku…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "Izkārtojumi:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "Pievienot izkārtojumu";
+
+/* Skin Packager window: text. */
+"Remove" = "Noņemt";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Spraudņi:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Pievienot spraudni…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "Saglabāt pakotni:";
+
+/* Skin Packager window: text. */
+"Choose…" = "Izvēlēties…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Pēc instalēšanas:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Neko nedarīt";
+
+/* Skin Packager window: text. */
+"Load skin" = "Ielādēt apvalku";
+
+/* Skin Packager window: text. */
+"Load layout" = "Ielādēt izkārtojumu";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "Minimālā Deskset versija:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Galvenes attēls:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Mainīgo faili:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Apvienot apvalkus";
+
+/* Skin Packager window: text. */
+"Back" = "Atpakaļ";
+
+/* Skin Packager window: text. */
+"Create Package" = "Izveidot pakotni";
+
+/* Skin Packager window: text. */
+"Next" = "Tālāk";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "Palaišana un valoda";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Pēc pieteikšanās Deskset atveras ar jūsu apvalkiem.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Pieejams, kad Deskset tiek palaista no mapes „Lietotnes”.";
+
+/* SettingsWindowView: text. */
+"Language" = "Valoda";
+
+/* SettingsWindowView: text. */
 "Appearance" = "Izskats";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Automātiski seko macOS gaišajam un tumšajam režīmam.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Uztur nemainīgu Deskset logu un izvēļņu izskatu.";
+
+/* SettingsWindowView: text. */
+"Software Update" = "Programmatūras atjaunināšana";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset pārbauda reizi dienā un pati lejupielādē atjauninājumus; kad tos instalēt, izlemjat jūs.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Atjauninājumi:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "Darbvirsmas mijiedarbība";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "Interaktīva darbvirsmas vide";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Novērš nejaušu vilkšanu ar peli, saglabājot pogas un darbības aktīvas.";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "Pēc pieteikšanās Deskset atveras ar jūsu apvalkiem.";
+"Global Zoom" = "Globālā mērogošana";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Pieejams, kad Deskset tiek palaista no mapes „Lietotnes”.";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset pārbauda reizi dienā un pati lejupielādē atjauninājumus; kad tos instalēt, izlemjat jūs.";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Atjauninājumi:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "Automātiski seko macOS gaišajam un tumšajam režīmam.";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Uztur nemainīgu Deskset logu un izvēļņu izskatu.";
-
-/* SettingsWindowView: text. */
-"Language" = "Valoda";
+"Directories" = "Direktoriji";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "Apvalku mape";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Iestatījumu mape";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Automātiska atsvaidzināšana:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "Diagnostika";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Pārbaudiet tiešraides mērījumus, mainīgos, iebūvētos spraudņus, displejus un tīkla statistiku.";
@@ -1934,7 +1972,7 @@
 "No log entries." = "Nav žurnāla ierakstu.";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "Iestatījumu mape";
+"Documentation" = "Dokumentācija";
 
 /* SettingsWindowView: text. */
 "Open" = "Atvērt";

@@ -23,6 +23,7 @@ enum SkinPackagerSelfTests {
             t.check(!packager.spec.author.isEmpty, "Author and Version from the first skin's [Metadata]")
             t.check({ if case .skin = packager.spec.load { return true }; return false }(), "loads a skin by default")
             t.equal(packager.spec.minimumRainmeter, "5.0")
+            t.equal(packager.spec.minimumDeskset, RmskinPackager.defaultMinimumDeskset)
             t.check(SkinPackagerWindowController.show(app: app) === packager, "a second request reuses the window")
         }
 
@@ -88,11 +89,11 @@ enum SkinPackagerSelfTests {
             t.equal(packager.spec.layouts.count, 1)
             packager.next()
 
-            packager.edit { $0.minimumRainmeter = "five" }
+            packager.edit { $0.minimumDeskset = "five" }
             packager.create()
             t.check(messages.last?.1.contains(packager.describe(.minimumVersionInvalid("five"))) ?? false,
                     "step 2's checks run on Create")
-            packager.edit { $0.minimumRainmeter = "5.0"; $0.load = .layout("Desk") }
+            packager.edit { $0.minimumDeskset = "1.1.1"; $0.load = .layout("Desk") }
             packager.create()
             let package = output.appendingPathComponent("Deskset_2.1.rmskin")
             t.equal(packager.lastMessage?.title, "Package created")
@@ -100,6 +101,8 @@ enum SkinPackagerSelfTests {
             let inspection = try RmskinPackage.inspect(package)
             defer { inspection.cleanup() }
             t.equal(inspection.manifest.author, "Tester")
+            t.equal(inspection.manifest.minimumRainmeter, "5.0")
+            t.equal(inspection.manifest.minimumDeskset, "1.1.1")
             t.equal(inspection.manifest.loadType, "Layout")
             t.equal(inspection.layouts, ["Desk"])
             t.equal(inspection.pluginNames, ["Glow.dll"])

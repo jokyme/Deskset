@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fișier";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Salvează";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Închide";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Închideți deocamdată. La următoarea verificare zilnică puteți primi din nou un memento.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skinuri";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Aranjamente";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Skinuri încărcate";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Gestionează acest skin…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Depanează skinul";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Țineți apăsată tasta Control pentru a modifica zoomul cu câte 10 puncte procentuale.";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "Salvează ca aranjament gol";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Exclude skinurile neîncărcate";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "Include imaginea de fundal actuală";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Încarcă";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "Șterge";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Editează";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "Creează un skin nou";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Zoom:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "Autor:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Licență:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "Versiune:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Deschide jurnalul";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "Salvează un aranjament nou";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "Nume:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "Numele aranjamentului";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "Aranjamente salvate";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "Niciun aranjament salvat.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Aranjamentele salvate nu au putut fi citite: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "Aranjamentul nu a putut fi salvat";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "Înlocuiți aranjamentul „%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Există deja un aranjament cu acest nume. Doriți să înlocuiți configurările salvate ale acestuia?";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "Înlocuiește";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Anulează";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "Aranjamentul nu a putut fi șters";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "Ștergeți aranjamentul „%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Aranjamentul salvat va fi mutat în Coș. Fișierele skinurilor se păstrează.";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Generale";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "Desktop și skinuri";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Editor";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Aplică tuturor skinurilor";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Dezactivează tragerea";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Impune zoomul implicit";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "Împiedică tragerea skinurilor cu mouse-ul.";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "Implicit în sistem (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "Altă aplicație…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "Skinul nu a putut fi creat";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "Adaugă un dosar";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "Adaugă un skin";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "Skin nou";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "Șablon";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "Creează";
+
+/* New Skin window: text. */
+"Rename" = "Redenumește";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Skinul nu a putut fi creat";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Adaugă un dosar";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Adaugă un skin";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Dosarul skinului selectat";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "Nume";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "Dosarele și fișierele skinului nou";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "Șablon pentru skinuri noi";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "Numele șablonului";
-
-/* New Skin window: text. */
-"Save new template" = "Salvează ca șablon nou";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "Șabloane salvate";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "Operațiunea nu a putut fi finalizată";
-
-/* New Skin window: text. */
-"Create" = "Creează";
-
-/* New Skin window: text. */
-"Rename" = "Redenumește";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "Editează skinul";
+
+/* New Skin window: text. */
+"New skin folders and files" = "Dosarele și fișierele skinului nou";
+
+/* New Skin window: text. */
+"No root folder yet." = "Nu există încă un dosar rădăcină.";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Creați un dosar rădăcină în Skinuri pentru a adăuga subdosare și fișiere de skin.";
+
+/* New Skin window: text. */
+"Save new template" = "Salvează ca șablon nou";
+
+/* New Skin window: text. */
+"Saved templates" = "Șabloane salvate";
+
+/* New Skin window: text. */
+"No saved templates." = "Niciun șablon salvat.";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Nume";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "Nume nevalid: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "Aplică aranjamentul inclus: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "Avansat";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "Opțiuni";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "Elimină";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "Contopește skinurile";
-
-/* Skin Packager window: button. */
-"Back" = "Înapoi";
-
-/* Skin Packager window: button. */
-"Next" = "Înainte";
-
-/* Skin Packager window: button. */
-"Create Package" = "Creează pachetul";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "Creare pachet .rmskin";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "Adaugă un skin…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "Adaugă un aranjament";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "Adaugă un plugin…";
-
-/* Skin Packager window: label. */
-"Skin:" = "Skin:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "Aranjamente:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "Pluginuri:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "Informații și conținut";
 
-/* Skin Packager window: button. */
-"Choose…" = "Alege…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "Opțiuni";
 
-/* Skin Packager window: text. */
-"Do nothing" = "Nu face nimic";
-
-/* Skin Packager window: text. */
-"Load layout" = "Încarcă aranjamentul";
-
-/* Skin Packager window: text. */
-"Load skin" = "Încarcă skinul";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "Salvează pachetul în:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "După instalare:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "Versiunea minimă de Rainmeter:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "Imagine de antet:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "Fișiere de variabile:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "Încarcă configurările anterioare";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Țineți apăsată tasta Shift pentru a șterge o intrare.";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Creare pachet .rmskin";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "Niciun skin ales";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Niciunul";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (lipsește versiunea pe 32 de biți)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Pachetul nu poate fi creat încă";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "Alegeți dosarul rădăcină al skinului (root config).";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "Pachetul nu poate fi creat încă";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "Linkurile au fost lăsate în afara pachetului: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "Fișierele de variabile și Contopește skinurile nu pot fi folosite împreună.";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "„%@” nu este un număr de versiune precum 5.0 sau 5.0.0.4657.";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "„%@” nu este un număr de versiune precum 1.0 sau 1.1.1.";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "Alegeți unde să fie salvat pachetul.";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Încarcă configurările anterioare";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Țineți apăsată tasta Shift pentru a șterge o intrare.";
+
+/* Skin Packager window: text. */
+"Package Info" = "Informații pachet";
+
+/* Skin Packager window: text. */
+"Package Contents" = "Conținut pachet";
+
+/* Skin Packager window: text. */
+"Skin:" = "Skin:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "Adaugă un skin…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "Aranjamente:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "Adaugă un aranjament";
+
+/* Skin Packager window: text. */
+"Remove" = "Elimină";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Pluginuri:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Adaugă un plugin…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "Salvează pachetul în:";
+
+/* Skin Packager window: text. */
+"Choose…" = "Alege…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "După instalare:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Nu face nimic";
+
+/* Skin Packager window: text. */
+"Load skin" = "Încarcă skinul";
+
+/* Skin Packager window: text. */
+"Load layout" = "Încarcă aranjamentul";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "Versiune minimă Deskset:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Imagine de antet:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Fișiere de variabile:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Contopește skinurile";
+
+/* Skin Packager window: text. */
+"Back" = "Înapoi";
+
+/* Skin Packager window: text. */
+"Create Package" = "Creează pachetul";
+
+/* Skin Packager window: text. */
+"Next" = "Înainte";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "Pornire și limbă";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "La autentificare, Deskset se deschide cu skinurile dvs.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Disponibil când Deskset rulează din dosarul Aplicații.";
+
+/* SettingsWindowView: text. */
+"Language" = "Limbă";
+
+/* SettingsWindowView: text. */
 "Appearance" = "Aspect";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Urmează automat modul luminos și întunecat din macOS.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Păstrează ferestrele și meniurile Deskset într-un aspect fix.";
+
+/* SettingsWindowView: text. */
+"Software Update" = "Actualizare software";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset verifică o dată pe zi și descarcă singur actualizările; dvs. alegeți când le instalați.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Actualizări:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "Interacțiune pe desktop";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "Desktop interactiv";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Previne tragerea accidentală cu mouse-ul păstrând butoanele și acțiunile active.";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "La autentificare, Deskset se deschide cu skinurile dvs.";
+"Global Zoom" = "Zoom global";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Disponibil când Deskset rulează din dosarul Aplicații.";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset verifică o dată pe zi și descarcă singur actualizările; dvs. alegeți când le instalați.";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Actualizări:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "Urmează automat modul luminos și întunecat din macOS.";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Păstrează ferestrele și meniurile Deskset într-un aspect fix.";
-
-/* SettingsWindowView: text. */
-"Language" = "Limbă";
+"Directories" = "Directoare";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "Dosar teme";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Dosar configurări";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Reîncărcare automată:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "Diagnosticare";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Inspectați măsurători live, variabile, pluginuri integrate, afișaje și statistici de rețea.";
@@ -1934,7 +1972,7 @@
 "No log entries." = "Nicio intrare în jurnal.";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "Dosar configurări";
+"Documentation" = "Documentație";
 
 /* SettingsWindowView: text. */
 "Open" = "Deschide";

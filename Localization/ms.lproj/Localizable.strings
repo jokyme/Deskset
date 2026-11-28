@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "Fail";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Simpan";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Tutup";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "Tutup buat masa ini. Semakan harian seterusnya mungkin mengingatkan anda lagi.";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "Skin";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "Susun Atur";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "Skin Dimuatkan";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "Urus Skin Ini…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "Nyahpepijat Skin";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Tahan Control untuk menukar zum sebanyak 10 mata peratusan setiap kali.";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "Simpan sebagai susun atur kosong";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "Kecualikan skin yang tidak dimuatkan";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "Sertakan hiasan latar semasa";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "Muatkan";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "Padam";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "Edit";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "Cipta skin baharu";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "Zum:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "Pengarang:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "Lesen:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "Versi:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "Buka Log";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "Simpan susun atur baharu";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "Nama:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "Nama susun atur";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "Susun atur disimpan";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "Tiada susun atur disimpan.";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "Tidak dapat membaca susun atur yang disimpan: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "Tidak dapat menyimpan susun atur";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "Gantikan susun atur “%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "Susun atur dengan nama ini sudah wujud. Gantikan seting yang disimpannya?";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "Gantikan";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "Batal";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "Tidak dapat memadam susun atur";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "Padam susun atur “%@”?";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "Susun atur yang disimpan akan dialihkan ke Tong Sampah. Fail skin anda dikekalkan.";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "Umum";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "Desktop & Skin";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "Editor";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "Gunakan pada semua skin";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Lumpuhkan seret";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "Paksa zum lalai";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "Halang skin daripada diseret dengan tetikus.";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "Lalai sistem (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "Lain…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "Tidak dapat mencipta skin";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "Tambah Folder";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "Tambah skin";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "Skin baharu";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "Templat";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "Cipta";
+
+/* New Skin window: text. */
+"Rename" = "Namakan Semula";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "Tidak dapat mencipta skin";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "Tambah Folder";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "Tambah skin";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "Folder skin yang dipilih";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "Nama";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "Folder dan fail skin baharu";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "Templat untuk skin baharu";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "Nama templat";
-
-/* New Skin window: text. */
-"Save new template" = "Simpan sebagai templat baharu";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "Templat disimpan";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "Tidak dapat melengkapkan operasi";
-
-/* New Skin window: text. */
-"Create" = "Cipta";
-
-/* New Skin window: text. */
-"Rename" = "Namakan Semula";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "Edit skin";
+
+/* New Skin window: text. */
+"New skin folders and files" = "Folder dan fail skin baharu";
+
+/* New Skin window: text. */
+"No root folder yet." = "Belum ada folder akar.";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Cipta folder akar dalam Skin untuk mula menambah subfolder dan fail skin.";
+
+/* New Skin window: text. */
+"Save new template" = "Simpan sebagai templat baharu";
+
+/* New Skin window: text. */
+"Saved templates" = "Templat disimpan";
+
+/* New Skin window: text. */
+"No saved templates." = "Tiada templat disimpan.";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "Nama";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "Nama tidak sah: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "Gunakan susun atur yang disertakan: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "Lanjutan";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "Pilihan";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "Alih Keluar";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "Gabungkan skin";
-
-/* Skin Packager window: button. */
-"Back" = "Kembali";
-
-/* Skin Packager window: button. */
-"Next" = "Seterusnya";
-
-/* Skin Packager window: button. */
-"Create Package" = "Cipta Pakej";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "Cipta Pakej .rmskin";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "Tambah Skin…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "Tambah Susun Atur";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "Tambah Plugin…";
-
-/* Skin Packager window: label. */
-"Skin:" = "Skin:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "Susun atur:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "Plugin:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "Maklumat dan Kandungan";
 
-/* Skin Packager window: button. */
-"Choose…" = "Pilih…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "Pilihan";
 
-/* Skin Packager window: text. */
-"Do nothing" = "Jangan buat apa-apa";
-
-/* Skin Packager window: text. */
-"Load layout" = "Muatkan susun atur";
-
-/* Skin Packager window: text. */
-"Load skin" = "Muatkan skin";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "Simpan pakej ke:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "Selepas pemasangan:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "Versi Rainmeter minimum:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "Imej pengepala:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "Fail pemboleh ubah:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "Muatkan Seting Terdahulu";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Tahan Shift untuk memadam entri.";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "Cipta Pakej .rmskin";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "Tiada skin dipilih";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Tiada";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (versi 32-bit tiada)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "Pakej belum boleh dicipta";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "Pilih folder akar skin (root config).";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "Pakej belum boleh dicipta";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "Pautan tidak disertakan dalam pakej: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "Fail pemboleh ubah dan Gabungkan skin tidak boleh digunakan bersama.";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "“%@” bukan nombor versi seperti 5.0 atau 5.0.0.4657.";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "“%@” bukan nombor versi seperti 1.0 atau 1.1.1.";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "Pilih tempat untuk menyimpan pakej.";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "Muatkan Seting Terdahulu";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Tahan Shift untuk memadam entri.";
+
+/* Skin Packager window: text. */
+"Package Info" = "Maklumat Pakej";
+
+/* Skin Packager window: text. */
+"Package Contents" = "Kandungan Pakej";
+
+/* Skin Packager window: text. */
+"Skin:" = "Skin:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "Tambah Skin…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "Susun atur:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "Tambah Susun Atur";
+
+/* Skin Packager window: text. */
+"Remove" = "Alih Keluar";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "Plugin:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "Tambah Plugin…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "Simpan pakej ke:";
+
+/* Skin Packager window: text. */
+"Choose…" = "Pilih…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "Selepas pemasangan:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "Jangan buat apa-apa";
+
+/* Skin Packager window: text. */
+"Load skin" = "Muatkan skin";
+
+/* Skin Packager window: text. */
+"Load layout" = "Muatkan susun atur";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "Versi minimum Deskset:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "Imej pengepala:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "Fail pemboleh ubah:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "Gabungkan skin";
+
+/* Skin Packager window: text. */
+"Back" = "Kembali";
+
+/* Skin Packager window: text. */
+"Create Package" = "Cipta Pakej";
+
+/* Skin Packager window: text. */
+"Next" = "Seterusnya";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "Permulaan & Bahasa";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset dibuka bersama skin anda apabila anda daftar masuk.";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Tersedia apabila Deskset dijalankan dari folder Aplikasi.";
+
+/* SettingsWindowView: text. */
+"Language" = "Bahasa";
+
+/* SettingsWindowView: text. */
 "Appearance" = "Penampilan";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "Mengikut Mod Cerah dan Gelap macOS secara automatik.";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Mengekalkan tetingkap dan menu Deskset dalam penampilan tetap.";
+
+/* SettingsWindowView: text. */
+"Software Update" = "Kemas Kini Perisian";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset menyemak sekali sehari dan memuat turun kemas kini sendiri; anda pilih bila hendak memasangnya.";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "Kemas kini:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "Interaksi Desktop";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "Desktop Interaktif";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "Elakkan penyeretan tetikus secara tidak sengaja sambil mengekalkan fungsi butang.";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "Deskset dibuka bersama skin anda apabila anda daftar masuk.";
+"Global Zoom" = "Zum Global";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Tersedia apabila Deskset dijalankan dari folder Aplikasi.";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset menyemak sekali sehari dan memuat turun kemas kini sendiri; anda pilih bila hendak memasangnya.";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "Kemas kini:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "Mengikut Mod Cerah dan Gelap macOS secara automatik.";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Mengekalkan tetingkap dan menu Deskset dalam penampilan tetap.";
-
-/* SettingsWindowView: text. */
-"Language" = "Bahasa";
+"Directories" = "Direktori";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "Folder kulit";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "Folder tetapan";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Muat semula automatik:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "Diagnostik";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "Periksa ukuran langsung, pemboleh ubah, pemalam terbina dalam, paparan dan statistik rangkaian.";
@@ -1934,7 +1972,7 @@
 "No log entries." = "Tiada entri log.";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "Folder tetapan";
+"Documentation" = "Dokumentasi";
 
 /* SettingsWindowView: text. */
 "Open" = "Buka";

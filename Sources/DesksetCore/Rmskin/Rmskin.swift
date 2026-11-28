@@ -60,6 +60,7 @@ public struct RmskinManifest: Equatable {
     public var variableFiles: [String] = []
     public var mergeSkins: Bool = false
     public var minimumRainmeter: String = ""
+    public var minimumDeskset: String = ""
     public var minimumWindows: String = ""
     /// Every key/value of the `[rmskin]` section (`[Rainstaller]` for legacy packages), for anything not modelled
     /// above.
@@ -86,6 +87,7 @@ public struct RmskinManifest: Equatable {
         manifest.loadType = string("LoadType")
         manifest.load = string("Load")
         manifest.minimumRainmeter = string("MinimumRainmeter")
+        manifest.minimumDeskset = string("MinimumDeskset")
         manifest.minimumWindows = string("MinimumWindows")
         // `Merge=1/0` is the pre-2.4 (Rainstaller) spelling: "Rainstaller: Added Merge=1/0 to support addons for
         // suites" (version history). `MergeSkins` wins when both are present.

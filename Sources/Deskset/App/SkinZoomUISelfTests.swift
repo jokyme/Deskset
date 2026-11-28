@@ -138,7 +138,7 @@ enum SkinZoomUISelfTests {
                 let settings = SettingsWindowController(app: app)
                 let manage = ManageWindowController(app: app)
                 defer { settings.close(); manage.close() }
-                settings.select(.general)
+                settings.select(.desktop)
                 manage.select(config: inherited.config, file: inherited.file)
                 settings.defaultZoomField.stringValue = "120"
                 perform(settings.defaultZoomField)
@@ -165,7 +165,7 @@ enum SkinZoomUISelfTests {
                 t.equal(app.state.defaultZoomPercent, 110)
                 for appearance in [NSAppearance.Name.aqua, .darkAqua] {
                     settings.window?.appearance = NSAppearance(named: appearance)
-                    t.check(settings.snapshot() != nil, "\(appearance.rawValue): General renders with zoom controls")
+                    t.check(settings.snapshot() != nil, "\(appearance.rawValue): Desktop & Skins renders with zoom controls")
                 }
             }
         }

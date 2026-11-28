@@ -1,8 +1,108 @@
 import AppKit
+import DesksetCore
+import SwiftUI
 
-/// Creates skin files within one folder and manages the templates used for new files.
-final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOutlineViewDataSource,
-    NSOutlineViewDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, NSTabViewDelegate,
+/// Observable state bridging `NewSkinWindowController` and `NewSkinRootView`.
+final class NewSkinViewModel: ObservableObject {
+    enum Section: Int, CaseIterable {
+        case skin = 0
+        case template = 1
+
+        var title: String {
+            switch self {
+            case .skin: return L("New skin")
+            case .template: return L("Template")
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .skin: return "folder.fill"
+            case .template: return "doc.text.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .skin: return DeskProPalette.discoverBlue
+            case .template: return DeskProPalette.indigoTint
+            }
+        }
+    }
+
+    struct TreeRow: Identifiable {
+        let id: UUID
+        let name: String
+        let kind: NewSkinModel.Kind
+        let depth: Int
+        let isRoot: Bool
+        let isResources: Bool
+        let hasChildren: Bool
+        let isExpanded: Bool
+        let canMutate: Bool
+    }
+
+    struct TemplateChoiceItem: Identifiable {
+        let id: String
+        let title: String
+        let template: NewSkinModel.TemplateID
+    }
+
+    struct PromptState: Identifiable {
+        let id: UUID
+        let kind: NewSkinWindowController.NameKind
+        let title: String
+        var text: String
+
+        var confirmTitle: String {
+            kind == .rename ? L("Rename") : L("Create")
+        }
+
+        var symbol: String {
+            switch kind {
+            case .root, .folder: return "folder.badge.plus"
+            case .skin: return "doc.badge.plus"
+            case .rename: return "pencil"
+            }
+        }
+
+        var tint: Color {
+            switch kind {
+            case .root, .folder: return DeskProPalette.discoverBlue
+            case .skin: return DeskProPalette.indigoTint
+            case .rename: return DeskProPalette.signalOrange
+            }
+        }
+    }
+
+    @Published var section: Section = .skin
+    @Published var fullPath: String = ""
+    @Published var displayPath: String = ""
+    @Published var rows: [TreeRow] = []
+    @Published var selectedID: UUID? = nil
+    @Published var expandedIDs: Set<UUID> = []
+
+    @Published var canAddFolder: Bool = false
+    @Published var canAddResources: Bool = false
+    @Published var canAddSkin: Bool = false
+    @Published var isAvailable: Bool = true
+
+    @Published var templateChoices: [TemplateChoiceItem] = []
+    @Published var chosenTemplate: NewSkinModel.TemplateID = .standard
+    @Published var chosenTemplateTitle: String = ""
+
+    @Published var templateDraftName: String = ""
+    @Published var canSaveTemplate: Bool = false
+    @Published var templateNames: [String] = []
+    @Published var selectedTemplateName: String? = nil
+    @Published var canMutateSelectedTemplate: Bool = false
+
+    @Published var activePrompt: PromptState? = nil
+}
+
+/// Creates skin files within one folder and manages the templates used for new files,
+/// styled with Deskset's full-height sidebar, grouped cards, and inline naming sheet.
+final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSMenuDelegate, NSTabViewDelegate,
     NSTextFieldDelegate {
     enum NameKind: Equatable { case root, folder, skin, rename }
     struct NameRequest {
@@ -10,6 +110,9 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         let title: String
         let initialValue: String
     }
+
+    static let defaultSize = NSSize(width: 760, height: 540)
+    static let minimumSize = NSSize(width: 660, height: 460)
 
     private static var currentController: NewSkinWindowController?
     static func window(for app: AppController) -> NewSkinWindowController? {
@@ -38,17 +141,22 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
 
     private unowned let app: AppController
     private let model: NewSkinModel
+    let viewModel = NewSkinViewModel()
+    private var hostingView: NSHostingView<NewSkinRootView>?
+
     private var roots: [NewSkinModel.Item] = []
     private var templateNames: [String] = []
     private var chosenTemplate = NewSkinModel.TemplateID.standard
     private var selectedID: UUID?
+    private var selectedNamedTemplateStorage: String?
     private var busy = false
     private var finished = false
     private var nameRequestID: UUID?
-    private var nameSheet: NSAlert?
+    private var promptAnswerHandler: ((String?) -> Void)?
+
+    // Backing controls preserved for programmatic self-test hooks.
     private let tabs = NSTabView()
     private let pathField = NSTextField(string: "")
-    private let outline = NSOutlineView()
     private let itemMenu = NSMenu()
     private let addFolderButton = NSButton(title: L("Add Folder"), target: nil, action: nil)
     private let resourcesButton = NSButton(title: "@Resources", target: nil, action: nil)
@@ -56,7 +164,6 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     private let templatePopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let templateNameField = NSTextField()
     private let saveTemplateButton = NSButton(title: L("Save"), target: nil, action: nil)
-    private let templateTable = NSTableView()
     private let editTemplateButton = NSButton(title: L("Edit"), target: nil, action: nil)
     private let deleteTemplateButton = NSButton(title: L("Delete"), target: nil, action: nil)
     private var contextIDForTesting: UUID?
@@ -70,18 +177,30 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     init(app: AppController, model: NewSkinModel) throws {
         self.app = app
         self.model = model
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 510),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        DeskProWindowStyle.apply(to: window)
         window.title = L("Create new skin")
-        window.minSize = NSSize(width: 580, height: 420)
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
+        window.minSize = Self.minimumSize
+        window.backgroundColor = .windowBackgroundColor
         window.center()
         super.init(window: window)
         window.delegate = self
         AppTheme.register(window, app: app)
-        buildInterface()
+
+        configureBackingControls()
         try reload()
+
+        let rootView = NewSkinRootView(model: viewModel, controller: self)
+        let host = NSHostingView(rootView: rootView)
+        host.frame = NSRect(origin: .zero, size: Self.defaultSize)
+        host.autoresizingMask = [.width, .height]
+        window.contentView = host
+        hostingView = host
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -97,12 +216,8 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         guard !finished else { return }
         finished = true
         nameRequestID = nil
-        let sheet = nameSheet
-        nameSheet = nil
-        if let sheet {
-            sheet.window.sheetParent?.endSheet(sheet.window, returnCode: .cancel)
-            sheet.window.orderOut(nil)
-        }
+        promptAnswerHandler = nil
+        viewModel.activePrompt = nil
         if Self.currentController === self { Self.currentController = nil }
         guard !app.isTerminating else { return }
         if let refreshForTesting { refreshForTesting() }
@@ -111,153 +226,43 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
 
     private var available: Bool { !finished && !busy && !app.isTerminating }
 
-    private func buildInterface() {
-        guard let content = window?.contentView else { return }
+    private func configureBackingControls() {
         tabs.delegate = self
-        for (identifier, title, view) in [("skin", L("New skin"), buildSkinTab()),
-                                           ("template", L("Template"), buildTemplateTab())] {
+        for (identifier, title) in [("skin", L("New skin")), ("template", L("Template"))] {
             let tab = NSTabViewItem(identifier: identifier)
             tab.label = title
-            tab.view = view
             tabs.addTabViewItem(tab)
         }
-        let close = NSButton(title: L("Close"), target: self, action: #selector(closeClicked))
-        close.keyEquivalent = "\u{1b}"
-        for view in [tabs, close] { view.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(view) }
-        NSLayoutConstraint.activate([
-            tabs.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            tabs.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            tabs.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            tabs.bottomAnchor.constraint(equalTo: close.topAnchor, constant: -12),
-            close.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            close.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
-            close.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-        ])
-    }
-
-    private func buildSkinTab() -> NSView {
         pathField.isEditable = false
         pathField.isSelectable = true
         pathField.setAccessibilityLabel(L("Selected skin folder"))
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
-        column.title = L("Name")
-        outline.addTableColumn(column)
-        outline.outlineTableColumn = column
-        outline.headerView = nil
-        outline.rowHeight = 24
-        outline.dataSource = self
-        outline.delegate = self
-        outline.allowsEmptySelection = false
-        outline.target = self
-        outline.doubleAction = #selector(editSelectedSkin)
-        outline.setAccessibilityLabel(L("New skin folders and files"))
+
         itemMenu.delegate = self
         itemMenu.autoenablesItems = false
-        outline.menu = itemMenu
-        let scroll = NSScrollView()
-        scroll.documentView = outline
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = true
-        scroll.borderType = .bezelBorder
+
         addFolderButton.target = self
         addFolderButton.action = #selector(addFolderClicked)
         resourcesButton.target = self
         resourcesButton.action = #selector(addResourcesClicked)
         addSkinButton.target = self
         addSkinButton.action = #selector(addSkinClicked)
+
         templatePopup.target = self
         templatePopup.action = #selector(templateChosen(_:))
         templatePopup.menu?.autoenablesItems = false
         templatePopup.setAccessibilityLabel(L("Template for new skins"))
-        let buttons = NSStackView(views: [addFolderButton, resourcesButton, addSkinButton, templatePopup, NSView()])
-        buttons.orientation = .vertical
-        buttons.alignment = .leading
-        buttons.spacing = 10
-        for button in [addFolderButton, resourcesButton, addSkinButton, templatePopup] {
-            button.widthAnchor.constraint(equalToConstant: 136).isActive = true
-        }
-        let row = NSStackView(views: [scroll, buttons])
-        row.alignment = .top
-        row.spacing = 12
-        scroll.heightAnchor.constraint(equalTo: row.heightAnchor).isActive = true
-        buttons.widthAnchor.constraint(equalToConstant: 136).isActive = true
-        let stack = NSStackView(views: [pathField, row])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        pathField.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return padded(stack)
-    }
 
-    private func buildTemplateTab() -> NSView {
         templateNameField.delegate = self
         templateNameField.target = self
         templateNameField.action = #selector(saveTemplateClicked)
         templateNameField.setAccessibilityLabel(L("Template name"))
+
         saveTemplateButton.target = self
         saveTemplateButton.action = #selector(saveTemplateClicked)
-        let nameRow = NSStackView(views: [NSTextField(labelWithString: L("Name:")), templateNameField, saveTemplateButton])
-        nameRow.spacing = 10
-        nameRow.alignment = .centerY
-        let saveBox = NSBox()
-        saveBox.title = L("Save new template")
-        saveBox.contentView = padded(nameRow)
-        saveBox.heightAnchor.constraint(equalToConstant: 90).isActive = true
-        templateNameField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("template"))
-        column.title = L("Saved templates")
-        templateTable.addTableColumn(column)
-        templateTable.headerView = nil
-        templateTable.rowHeight = 24
-        templateTable.dataSource = self
-        templateTable.delegate = self
-        templateTable.allowsEmptySelection = true
-        templateTable.setAccessibilityLabel(L("Saved templates"))
-        let scroll = NSScrollView()
-        scroll.documentView = templateTable
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
         editTemplateButton.target = self
         editTemplateButton.action = #selector(editTemplateClicked)
         deleteTemplateButton.target = self
         deleteTemplateButton.action = #selector(deleteTemplateClicked)
-        let buttons = NSStackView(views: [editTemplateButton, deleteTemplateButton, NSView()])
-        buttons.orientation = .vertical
-        buttons.alignment = .leading
-        buttons.spacing = 10
-        for button in [editTemplateButton, deleteTemplateButton] {
-            button.widthAnchor.constraint(equalToConstant: 96).isActive = true
-        }
-        let listRow = NSStackView(views: [scroll, buttons])
-        listRow.alignment = .top
-        listRow.spacing = 12
-        scroll.heightAnchor.constraint(equalTo: listRow.heightAnchor).isActive = true
-        let listBox = NSBox()
-        listBox.title = L("Saved templates")
-        listBox.contentView = padded(listRow)
-        listBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
-        let stack = NSStackView(views: [saveBox, listBox])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        saveBox.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        listBox.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        saveBox.setContentHuggingPriority(.required, for: .vertical)
-        return padded(stack)
-    }
-
-    private func padded(_ view: NSView) -> NSView {
-        let container = NSView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            view.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            view.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            view.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
-        ])
-        return container
     }
 
     private func allItems(_ items: [NewSkinModel.Item]) -> [NewSkinModel.Item] {
@@ -265,24 +270,34 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     }
 
     private func reload(selecting id: UUID? = nil, template: String? = nil) throws {
-        let selectedTemplate = template ?? selectedNamedTemplate
+        let wantedTemplate = template ?? selectedNamedTemplateStorage
         let selectedItemID = id ?? selectedID
         roots = try model.reload()
         templateNames = try model.templates()
-        if case .named(let name) = chosenTemplate, !templateNames.contains(name) { chosenTemplate = .standard }
-        outline.reloadData()
-        outline.expandItem(nil, expandChildren: true)
-        selectedID = selectedItemID ?? roots.first?.id
-        if let item = selectedID.flatMap({ model.item(id: $0) }), outline.row(forItem: item) >= 0 {
-            outline.selectRowIndexes(IndexSet(integer: outline.row(forItem: item)), byExtendingSelection: false)
+        if case .named(let name) = chosenTemplate, !templateNames.contains(name) {
+            chosenTemplate = .standard
+        }
+
+        // Expand newly discovered folders automatically so new items are visible immediately.
+        let allFolderIDs = Set(allItems(roots).filter { $0.kind == .folder }.map(\.id))
+        if viewModel.expandedIDs.isEmpty {
+            viewModel.expandedIDs = allFolderIDs
+        } else {
+            viewModel.expandedIDs.formUnion(allFolderIDs)
+        }
+
+        if let candidate = selectedItemID, model.item(id: candidate) != nil {
+            selectedID = candidate
         } else {
             selectedID = roots.first?.id
-            if !roots.isEmpty { outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
         }
-        templateTable.reloadData()
-        if let name = selectedTemplate, let row = templateNames.firstIndex(of: name) {
-            templateTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        } else { templateTable.deselectAll(nil) }
+
+        if let wantedTemplate, templateNames.contains(wantedTemplate) {
+            selectedNamedTemplateStorage = wantedTemplate
+        } else {
+            selectedNamedTemplateStorage = nil
+        }
+
         updateTemplateMenu()
         updateControls()
     }
@@ -296,13 +311,14 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         }
     }
     private var selectedNamedTemplate: String? {
-        let row = templateTable.selectedRow
-        return templateNames.indices.contains(row) ? templateNames[row] : nil
+        guard let name = selectedNamedTemplateStorage, templateNames.contains(name) else { return nil }
+        return name
     }
 
     private func updateTemplateMenu() {
         templatePopup.removeAllItems()
         templatePopup.addItem(withTitle: L("Template…"))
+        var choices: [NewSkinViewModel.TemplateChoiceItem] = []
         for (title, template) in [(L("Use default template"), NewSkinModel.TemplateID.standard)]
             + templateNames.map({ ($0, NewSkinModel.TemplateID.named($0)) }) {
             let item = NSMenuItem(title: title, action: #selector(templateChosen(_:)), keyEquivalent: "")
@@ -310,21 +326,85 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             item.representedObject = template
             item.state = template == chosenTemplate ? .on : .off
             templatePopup.menu?.addItem(item)
+            let key: String = {
+                switch template {
+                case .standard: return "__default__"
+                case .named(let n): return "named:\(n)"
+                }
+            }()
+            choices.append(.init(id: key, title: title, template: template))
         }
+        viewModel.templateChoices = choices
+        viewModel.chosenTemplate = chosenTemplate
+        switch chosenTemplate {
+        case .standard:
+            viewModel.chosenTemplateTitle = L("Use default template")
+        case .named(let name):
+            viewModel.chosenTemplateTitle = name
+        }
+    }
+
+    private func buildVisibleRows() -> [NewSkinViewModel.TreeRow] {
+        var result: [NewSkinViewModel.TreeRow] = []
+        func walk(_ items: [NewSkinModel.Item], depth: Int) {
+            for item in items {
+                let isRoot = depth == 0 && roots.first === item
+                let isExpanded = viewModel.expandedIDs.contains(item.id)
+                let isResources = item.kind == .folder
+                    && item.url.lastPathComponent.caseInsensitiveCompare("@Resources") == .orderedSame
+                result.append(NewSkinViewModel.TreeRow(
+                    id: item.id,
+                    name: item.url.lastPathComponent,
+                    kind: item.kind,
+                    depth: depth,
+                    isRoot: isRoot,
+                    isResources: isResources,
+                    hasChildren: !item.children.isEmpty,
+                    isExpanded: isExpanded,
+                    canMutate: model.canRenameOrDelete(item: item.id)
+                ))
+                if item.kind == .folder && isExpanded {
+                    walk(item.children, depth: depth + 1)
+                }
+            }
+        }
+        walk(roots, depth: 0)
+        return result
     }
 
     private func updateControls() {
         let parent = selectedFolder
-        pathField.stringValue = (parent?.url ?? roots.first?.url)?.path ?? app.skinsDirectory.path
-        pathField.toolTip = pathField.stringValue
+        let full = (parent?.url ?? roots.first?.url)?.path ?? app.skinsDirectory.path
+        pathField.stringValue = full
+        pathField.toolTip = full
+
         addFolderButton.isEnabled = available && (parent != nil || roots.isEmpty)
         addSkinButton.isEnabled = available && parent != nil
         resourcesButton.isEnabled = available && model.canAddResources
         templatePopup.isEnabled = available
         templateNameField.isEnabled = available
-        saveTemplateButton.isEnabled = available && !templateNameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        let draft = templateNameField.stringValue
+        saveTemplateButton.isEnabled = available && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         editTemplateButton.isEnabled = available && selectedNamedTemplate != nil
         deleteTemplateButton.isEnabled = available && selectedNamedTemplate != nil
+
+        viewModel.fullPath = full
+        viewModel.displayPath = (full as NSString).abbreviatingWithTildeInPath
+        viewModel.selectedID = selectedID
+        viewModel.rows = buildVisibleRows()
+        viewModel.isAvailable = available
+        viewModel.canAddFolder = addFolderButton.isEnabled
+        viewModel.canAddResources = resourcesButton.isEnabled
+        viewModel.canAddSkin = addSkinButton.isEnabled
+
+        if viewModel.templateDraftName != draft {
+            viewModel.templateDraftName = draft
+        }
+        viewModel.canSaveTemplate = saveTemplateButton.isEnabled
+        viewModel.templateNames = templateNames
+        viewModel.selectedTemplateName = selectedNamedTemplate
+        viewModel.canMutateSelectedTemplate = editTemplateButton.isEnabled
     }
 
     private func perform(_ body: () throws -> Void) {
@@ -351,29 +431,21 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         let answer: (String?) -> Void = { [weak self] name in
             guard let self, self.nameRequestID == id, !self.finished else { return }
             self.nameRequestID = nil
-            self.nameSheet = nil
+            self.promptAnswerHandler = nil
+            self.viewModel.activePrompt = nil
             self.busy = false
             self.updateControls()
             guard let name else { return }
             self.perform { try action(name) }
         }
         if let namePromptForTesting { namePromptForTesting(request, answer); return }
-        guard app.presentsWindows, let window else { answer(nil); return }
-        let alert = NSAlert()
-        alert.messageText = title
-        let field = NSTextField(string: initial)
-        field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
-        field.setAccessibilityLabel(L("Name"))
-        alert.accessoryView = field
-        alert.addButton(withTitle: kind == .rename ? L("Rename") : L("Create"))
-        alert.addButton(withTitle: L("Cancel"))
-        nameSheet = alert
-        alert.beginSheetModal(for: window) { [weak self, weak alert] response in
-            guard let self, let alert, self.nameSheet === alert else { return }
-            answer(response == .alertFirstButtonReturn ? field.stringValue : nil)
-        }
-        alert.window.initialFirstResponder = field
-        alert.window.makeFirstResponder(field)
+        guard app.presentsWindows else { answer(nil); return }
+        promptAnswerHandler = answer
+        viewModel.activePrompt = .init(id: id, kind: kind, title: title, text: initial)
+    }
+
+    func completePromptFromUI(_ submittedName: String?) {
+        promptAnswerHandler?(submittedName)
     }
 
     private func requestRootName() {
@@ -385,8 +457,60 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         }
     }
 
-    @objc private func closeClicked() { close() }
-    @objc private func addFolderClicked() {
+    // MARK: - UI Actions
+
+    func selectSectionFromUI(_ section: NewSkinViewModel.Section) {
+        guard available else { return }
+        viewModel.section = section
+        tabs.selectTabViewItem(at: section.rawValue)
+    }
+
+    func selectItemFromUI(_ id: UUID) {
+        guard model.item(id: id) != nil else { return }
+        selectedID = id
+        updateControls()
+    }
+
+    func toggleExpandedFromUI(_ id: UUID) {
+        if viewModel.expandedIDs.contains(id) {
+            viewModel.expandedIDs.remove(id)
+        } else {
+            viewModel.expandedIDs.insert(id)
+        }
+        viewModel.rows = buildVisibleRows()
+    }
+
+    func chooseTemplateFromUI(_ template: NewSkinModel.TemplateID) {
+        guard available else { return }
+        chosenTemplate = template
+        updateTemplateMenu()
+    }
+
+    func setTemplateDraftFromUI(_ text: String) {
+        templateNameField.stringValue = text
+        updateControls()
+    }
+
+    func selectSavedTemplateFromUI(_ name: String?) {
+        selectedNamedTemplateStorage = name
+        updateControls()
+    }
+
+    func editNamedTemplateFromUI(_ name: String) {
+        selectedNamedTemplateStorage = name
+        updateControls()
+        editTemplateClicked()
+    }
+
+    func deleteNamedTemplateFromUI(_ name: String) {
+        selectedNamedTemplateStorage = name
+        updateControls()
+        deleteTemplateClicked()
+    }
+
+    @objc func closeClicked() { close() }
+
+    @objc func addFolderClicked() {
         if roots.isEmpty { requestRootName(); return }
         guard let parent = selectedFolder?.id else { return }
         askName(.folder, title: L("New Folder")) { [weak self] name in
@@ -395,7 +519,8 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             try self.reload(selecting: id)
         }
     }
-    @objc private func addSkinClicked() {
+
+    @objc func addSkinClicked() {
         guard let parent = selectedFolder?.id else { return }
         let template = chosenTemplate
         askName(.skin, title: L("New Skin")) { [weak self] name in
@@ -404,9 +529,11 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             try self.reload(selecting: id)
         }
     }
-    @objc private func addResourcesClicked() {
+
+    @objc func addResourcesClicked() {
         perform { let id = try model.addResources(); try reload(selecting: id) }
     }
+
     @objc private func templateChosen(_ sender: Any) {
         guard available else { return }
         let item = sender as? NSMenuItem ?? templatePopup.selectedItem
@@ -414,20 +541,24 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
         chosenTemplate = template
         updateTemplateMenu()
     }
-    @objc private func saveTemplateClicked() {
+
+    @objc func saveTemplateClicked() {
         let name = templateNameField.stringValue
         perform {
             let saved = try model.saveTemplate(named: name, from: chosenTemplate)
             chosenTemplate = saved
             templateNameField.stringValue = ""
+            viewModel.templateDraftName = ""
             if case .named(let name) = saved { try reload(template: name) }
         }
     }
-    @objc private func editTemplateClicked() {
+
+    @objc func editTemplateClicked() {
         guard let name = selectedNamedTemplate else { return }
         perform { CodeEditorRouter.open(file: try model.templateURL(.named(name)), app: app, loadUnloadedSkin: false) }
     }
-    @objc private func deleteTemplateClicked() {
+
+    @objc func deleteTemplateClicked() {
         guard let name = selectedNamedTemplate else { return }
         perform {
             let url = try model.templateURL(.named(name))
@@ -436,15 +567,21 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             try reload()
         }
     }
+
     private func closeEditors(_ url: URL, directory: Bool) -> Bool {
         if let preflightForTesting { return preflightForTesting(url, directory) }
         return NewSkinEditorPreflight.closeEditors(affectedBy: url, isDirectory: directory, app: app)
     }
-    @objc private func editSelectedSkin() { if let id = selectedID { editSkin(id) } }
+
+    func editSkinFromUI(_ id: UUID) { editSkin(id) }
+    func renameItemFromUI(_ id: UUID) { rename(id) }
+    func deleteItemFromUI(_ id: UUID) { delete(id) }
+
     private func editSkin(_ id: UUID) {
         guard let item = model.item(id: id), item.kind == .skin else { return }
         perform { CodeEditorRouter.open(file: item.url, app: app, loadUnloadedSkin: false) }
     }
+
     private func rename(_ id: UUID) {
         guard let item = model.item(id: id), model.canRenameOrDelete(item: id) else { return }
         let url = item.url, directory = item.kind == .folder
@@ -455,6 +592,7 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             try self.reload(selecting: id)
         }
     }
+
     private func delete(_ id: UUID) {
         guard let item = model.item(id: id), model.canRenameOrDelete(item: id) else { return }
         let url = item.url, directory = item.kind == .folder
@@ -466,42 +604,18 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     }
 
     func controlTextDidChange(_ notification: Notification) { updateControls() }
+
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        let index = tabViewItem.map { tabView.indexOfTabViewItem($0) } ?? 0
+        viewModel.section = NewSkinViewModel.Section(rawValue: index) ?? .skin
         guard available else { return }
         perform { try reload() }
     }
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        (item as? NewSkinModel.Item)?.children.count ?? roots.count
-    }
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        (item as? NewSkinModel.Item)?.children[index] ?? roots[index]
-    }
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? NewSkinModel.Item)?.kind == .folder
-    }
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        guard let item = item as? NewSkinModel.Item else { return nil }
-        let field = NSTextField(labelWithString: item.url.lastPathComponent)
-        field.lineBreakMode = .byTruncatingMiddle
-        if roots.first === item { field.font = .boldSystemFont(ofSize: NSFont.systemFontSize) }
-        return field
-    }
-    func outlineViewSelectionDidChange(_ notification: Notification) {
-        selectedID = outline.selectedRow >= 0 ? (outline.item(atRow: outline.selectedRow) as? NewSkinModel.Item)?.id : nil
-        updateControls()
-    }
-    func numberOfRows(in tableView: NSTableView) -> Int { templateNames.count }
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard templateNames.indices.contains(row) else { return nil }
-        return NSTextField(labelWithString: templateNames[row])
-    }
-    func tableViewSelectionDidChange(_ notification: Notification) { updateControls() }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === itemMenu else { return }
         menu.removeAllItems()
-        let clicked = outline.clickedRow >= 0 ? (outline.item(atRow: outline.clickedRow) as? NewSkinModel.Item)?.id : nil
-        guard available, let id = contextIDForTesting ?? clicked,
+        guard available, let id = contextIDForTesting ?? selectedID,
               let item = model.item(id: id) else { return }
         if item.kind == .skin { addContext(L("Edit skin"), #selector(contextEdit(_:)), id, to: menu) }
         if model.canRenameOrDelete(item: id) {
@@ -509,17 +623,48 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
             addContext(L("Delete"), #selector(contextDelete(_:)), id, to: menu)
         }
     }
+
     private func addContext(_ title: String, _ selector: Selector, _ id: UUID, to menu: NSMenu) {
         let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
         item.target = self
         item.representedObject = id
         menu.addItem(item)
     }
+
     @objc private func contextEdit(_ sender: NSMenuItem) { if let id = sender.representedObject as? UUID { editSkin(id) } }
     @objc private func contextRename(_ sender: NSMenuItem) { if let id = sender.representedObject as? UUID { rename(id) } }
     @objc private func contextDelete(_ sender: NSMenuItem) { if let id = sender.representedObject as? UUID { delete(id) } }
 
-    // MARK: Self-tests
+    // MARK: - Snapshot & Self-tests
+
+    func snapshot() -> NSBitmapImageRep? {
+        guard let view = window?.contentView else { return nil }
+        updateControls()
+        view.layoutSubtreeIfNeeded()
+        hostingView?.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(bounds.width * 2),
+                  pixelsHigh: Int(bounds.height * 2),
+                  bitsPerSample: 8,
+                  samplesPerPixel: 4,
+                  hasAlpha: true,
+                  isPlanar: false,
+                  colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0,
+                  bitsPerPixel: 0
+              ) else { return nil }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
+        return rep
+    }
+
+    func showRootPromptForSnapshot() {
+        viewModel.activePrompt = .init(id: UUID(), kind: .root, title: L("New Root Folder"), text: "")
+    }
+
     var testItems: [NewSkinModel.Item] { allItems(roots) }
     var testSelectedID: UUID? { selectedID }
     var testTabs: NSTabView { tabs }
@@ -534,15 +679,8 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     var testDeleteTemplateButton: NSButton { deleteTemplateButton }
     var testTemplateNames: [String] { templateNames }
     func testRequestRootName() { requestRootName() }
-    func testSelect(_ id: UUID) {
-        guard let item = model.item(id: id) else { return }
-        outline.selectRowIndexes(IndexSet(integer: outline.row(forItem: item)), byExtendingSelection: false)
-    }
-    func testSelectTemplate(_ name: String) {
-        if let row = templateNames.firstIndex(of: name) {
-            templateTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        }
-    }
+    func testSelect(_ id: UUID) { selectItemFromUI(id) }
+    func testSelectTemplate(_ name: String) { selectSavedTemplateFromUI(name) }
     func testChooseTemplate(_ title: String) {
         if let item = templatePopup.menu?.items.first(where: { $0.title == title }) { templateChosen(item) }
     }
@@ -555,4 +693,519 @@ final class NewSkinWindowController: NSWindowController, NSWindowDelegate, NSOut
     func testRename(_ id: UUID) { rename(id) }
     func testDelete(_ id: UUID) { delete(id) }
     func testEdit(_ id: UUID) { editSkin(id) }
+}
+
+// MARK: - SwiftUI Root View
+
+struct NewSkinRootView: View {
+    @ObservedObject var model: NewSkinViewModel
+    weak var controller: NewSkinWindowController?
+
+    private static let topHeight: CGFloat = 56
+    @FocusState private var promptFocused: Bool
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                detailPane
+            }
+            .disabled(model.activePrompt != nil)
+
+            if let prompt = model.activePrompt {
+                promptOverlay(prompt)
+            }
+        }
+        .font(.system(size: 13))
+        .frame(minWidth: NewSkinWindowController.minimumSize.width,
+               minHeight: NewSkinWindowController.minimumSize.height)
+        .background(DeskProPalette.page)
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Left Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                DeskAppMark(size: 28)
+                    .frame(width: 28)
+                Text(L("Create new skin"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 4)
+            .padding(.top, 26)
+            .frame(maxWidth: .infinity, minHeight: Self.topHeight + 26, maxHeight: Self.topHeight + 26, alignment: .leading)
+            .background(WindowDragArea())
+
+            ForEach(NewSkinViewModel.Section.allCases, id: \.rawValue) { item in
+                let selected = model.section == item
+                Button {
+                    controller?.selectSectionFromUI(item)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 22, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(item.tint)
+                            )
+                        Text(item.title)
+                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                            .foregroundColor(selected ? .white : .primary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(selected ? Color.accentColor : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer(minLength: 12)
+
+            Divider()
+                .padding(.horizontal, 6)
+                .padding(.bottom, 6)
+
+            Button {
+                controller?.closeClicked()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                        )
+                    Text(L("Close"))
+                        .font(.system(size: 13))
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .padding(.bottom, 12)
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 210)
+        .background(Color.primary.opacity(0.04))
+    }
+
+    // MARK: - Detail Area
+
+    private var detailPane: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(model.section.title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+            }
+            .padding(.horizontal, 28)
+            .frame(height: Self.topHeight)
+            .background(WindowDragArea())
+
+            switch model.section {
+            case .skin:
+                skinSectionView
+                    .padding(.horizontal, 28)
+                    .padding(.top, 4)
+                    .padding(.bottom, 22)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            case .template:
+                ScrollView {
+                    templateSectionView
+                        .padding(.horizontal, 28)
+                        .padding(.top, 4)
+                        .padding(.bottom, 24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    // MARK: - 1. New Skin Section
+
+    private var skinSectionView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup {
+                DeskProSettingsRow(
+                    title: L("Selected skin folder"),
+                    detail: model.displayPath,
+                    symbol: "folder.fill",
+                    symbolTint: DeskProPalette.discoverBlue
+                ) {
+                    HStack(spacing: 6) {
+                        Text(L("Template"))
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+
+                        Picker("", selection: Binding(
+                            get: { model.chosenTemplate },
+                            set: { controller?.chooseTemplateFromUI($0) }
+                        )) {
+                            ForEach(model.templateChoices) { choice in
+                                Text(choice.title).tag(choice.template)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .disabled(!model.isAvailable)
+                    }
+                }
+                .help(model.fullPath)
+
+                HStack(spacing: 8) {
+                    Button {
+                        controller?.addFolderClicked()
+                    } label: {
+                        Label(L("Add Folder"), systemImage: "folder.badge.plus")
+                    }
+                    .disabled(!model.canAddFolder)
+
+                    Button {
+                        controller?.addResourcesClicked()
+                    } label: {
+                        Label("@Resources", systemImage: "shippingbox")
+                    }
+                    .disabled(!model.canAddResources)
+
+                    Spacer()
+
+                    Button {
+                        controller?.addSkinClicked()
+                    } label: {
+                        Label(L("Add skin"), systemImage: "doc.badge.plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.canAddSkin)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("New skin folders and files"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.leading, 2)
+
+                Group {
+                    if model.rows.isEmpty {
+                        emptyTreeState
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 2) {
+                                ForEach(model.rows) { row in
+                                    treeRowView(row)
+                                }
+                            }
+                            .padding(8)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DeskProPalette.box))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+            }
+        }
+    }
+
+    private var emptyTreeState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 28, weight: .medium))
+                .foregroundColor(DeskProPalette.discoverBlue)
+                .frame(width: 52, height: 52)
+                .background(Circle().fill(DeskProPalette.discoverBlue.opacity(0.12)))
+
+            Text(L("No root folder yet."))
+                .font(.system(size: 14, weight: .semibold))
+
+            Text(L("Create a root folder in Skins to start adding subfolders and skin files."))
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
+
+            Button {
+                controller?.addFolderClicked()
+            } label: {
+                Label(L("New Root Folder"), systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+            .disabled(!model.canAddFolder)
+            Spacer()
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func treeRowView(_ row: NewSkinViewModel.TreeRow) -> some View {
+        let selected = model.selectedID == row.id
+        let rowIcon: String = {
+            if row.kind == .skin { return "doc.text.fill" }
+            if row.isResources { return "shippingbox.fill" }
+            return "folder.fill"
+        }()
+        let iconTint: Color = {
+            if selected { return .white }
+            if row.kind == .skin { return DeskProPalette.indigoTint }
+            if row.isResources { return DeskProPalette.signalOrange }
+            return DeskProPalette.discoverBlue
+        }()
+
+        return HStack(spacing: 8) {
+            if row.kind == .folder && row.hasChildren {
+                Button {
+                    controller?.toggleExpandedFromUI(row.id)
+                } label: {
+                    Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(selected ? .white.opacity(0.9) : .secondary)
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Color.clear.frame(width: 14, height: 14)
+            }
+
+            Image(systemName: rowIcon)
+                .font(.system(size: 13))
+                .foregroundColor(iconTint)
+
+            Text(row.name)
+                .font(.system(size: 13, weight: row.isRoot ? .semibold : .regular))
+                .foregroundColor(selected ? .white : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 8)
+
+            if selected && model.isAvailable {
+                HStack(spacing: 6) {
+                    if row.kind == .skin {
+                        Button(L("Edit")) {
+                            controller?.editSkinFromUI(row.id)
+                        }
+                        .controlSize(.small)
+                    }
+                    if row.canMutate {
+                        Button(L("Rename")) {
+                            controller?.renameItemFromUI(row.id)
+                        }
+                        .controlSize(.small)
+
+                        Button(L("Delete")) {
+                            controller?.deleteItemFromUI(row.id)
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+        }
+        .padding(.leading, 8 + CGFloat(row.depth) * 18)
+        .padding(.trailing, 10)
+        .frame(height: 30)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(selected ? Color.accentColor : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            controller?.selectItemFromUI(row.id)
+            if row.kind == .skin {
+                controller?.editSkinFromUI(row.id)
+            } else if row.hasChildren {
+                controller?.toggleExpandedFromUI(row.id)
+            }
+        }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                controller?.selectItemFromUI(row.id)
+            }
+        )
+        .contextMenu {
+            if row.kind == .skin {
+                Button(L("Edit skin")) {
+                    controller?.editSkinFromUI(row.id)
+                }
+            }
+            if row.canMutate {
+                Button(L("Rename")) {
+                    controller?.renameItemFromUI(row.id)
+                }
+                Button(L("Delete")) {
+                    controller?.deleteItemFromUI(row.id)
+                }
+            }
+        }
+    }
+
+    // MARK: - 2. Template Section
+
+    private var templateSectionView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup(title: L("Save new template")) {
+                DeskProSettingsRow(title: L("Name:"), divider: false) {
+                    HStack(spacing: 8) {
+                        TextField(
+                            L("Template name"),
+                            text: Binding(
+                                get: { model.templateDraftName },
+                                set: { controller?.setTemplateDraftFromUI($0) }
+                            )
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 220)
+                        .disabled(!model.isAvailable)
+                        .onSubmit {
+                            if model.canSaveTemplate {
+                                controller?.saveTemplateClicked()
+                            }
+                        }
+
+                        Button(L("Save")) {
+                            controller?.saveTemplateClicked()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!model.canSaveTemplate)
+                    }
+                }
+            }
+
+            DeskProSettingsGroup(title: L("Saved templates")) {
+                if model.templateNames.isEmpty {
+                    DeskProSettingsRow(title: L("No saved templates."), divider: false) {
+                        EmptyView()
+                    }
+                } else {
+                    ForEach(Array(model.templateNames.enumerated()), id: \.element) { idx, name in
+                        let selected = model.selectedTemplateName == name
+                        DeskProSettingsRow(
+                            title: name,
+                            symbol: "doc.text.fill",
+                            symbolTint: selected ? .accentColor : DeskProPalette.indigoTint,
+                            divider: idx < model.templateNames.count - 1
+                        ) {
+                            HStack(spacing: 8) {
+                                Button(L("Edit")) {
+                                    controller?.editNamedTemplateFromUI(name)
+                                }
+                                .controlSize(.small)
+                                .disabled(!model.isAvailable)
+
+                                Button(L("Delete")) {
+                                    controller?.deleteNamedTemplateFromUI(name)
+                                }
+                                .controlSize(.small)
+                                .disabled(!model.isAvailable)
+                            }
+                        }
+                        .background(selected ? Color.accentColor.opacity(0.07) : Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            controller?.selectSavedTemplateFromUI(name)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Naming Modal Card
+
+    private func promptOverlay(_ prompt: NewSkinViewModel.PromptState) -> some View {
+        let trimmed = prompt.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ZStack {
+            Color.black.opacity(0.24)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: prompt.symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(prompt.tint)
+                        )
+
+                    Text(prompt.title)
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Spacer()
+                }
+
+                TextField(
+                    L("Name"),
+                    text: Binding(
+                        get: { model.activePrompt?.text ?? "" },
+                        set: { model.activePrompt?.text = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .focused($promptFocused)
+                .onSubmit {
+                    guard !trimmed.isEmpty else { return }
+                    controller?.completePromptFromUI(prompt.text)
+                }
+
+                HStack(spacing: 8) {
+                    Spacer()
+
+                    Button(L("Cancel")) {
+                        controller?.completePromptFromUI(nil)
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button(prompt.confirmTitle) {
+                        controller?.completePromptFromUI(prompt.text)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(trimmed.isEmpty)
+                }
+            }
+            .padding(20)
+            .frame(width: 360)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(DeskProPalette.box)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.75)
+            )
+            .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+            .onAppear {
+                DispatchQueue.main.async {
+                    promptFocused = true
+                }
+            }
+        }
+    }
 }

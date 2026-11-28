@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// The settings of recently made packages, newest first, for "Load previous" (manual: "This restores the settings used
@@ -48,11 +49,100 @@ struct SkinPackagerHistory {
     }
 }
 
+/// Observable state bridging `SkinPackagerWindowController` and `SkinPackagerRootView`.
+final class SkinPackagerViewModel: ObservableObject {
+    enum Section: String, CaseIterable {
+        case info
+        case options
+        case advanced
+
+        var title: String {
+            switch self {
+            case .info: return L("Information and Components")
+            case .options: return L("Options")
+            case .advanced: return L("Advanced")
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .info: return "shippingbox.fill"
+            case .options: return "slider.horizontal.3"
+            case .advanced: return "gearshape.2.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .info: return DeskProPalette.discoverBlue
+            case .options: return DeskProPalette.indigoTint
+            case .advanced: return DeskProPalette.privacyGreen
+            }
+        }
+    }
+
+    struct LayoutItem: Identifiable {
+        let id: Int
+        let name: String
+        let path: String
+    }
+
+    struct PluginItem: Identifiable {
+        let id: Int
+        let description: String
+        let toolTip: String?
+    }
+
+    struct HistoryItem: Identifiable {
+        let id: Int
+        let title: String
+    }
+
+    @Published var section: Section = .info
+    @Published var step: Int = 1
+    @Published var busy: Bool = false
+
+    // Step 1
+    @Published var name: String = ""
+    @Published var author: String = ""
+    @Published var version: String = ""
+    @Published var skinDisplayText: String = ""
+    @Published var skinFullPath: String? = nil
+    @Published var hasSkin: Bool = false
+    @Published var layouts: [LayoutItem] = []
+    @Published var savedLayoutNames: [String] = []
+    @Published var plugins: [PluginItem] = []
+
+    // Step 2 - Options
+    @Published var outputDisplayText: String = ""
+    @Published var outputFullPath: String? = nil
+    @Published var loadKindIndex: Int = 0
+    @Published var canChooseLoadLayout: Bool = false
+    @Published var loadChoices: [String] = []
+    @Published var selectedLoadChoice: String = ""
+    @Published var minimumDeskset: String = RmskinPackager.defaultMinimumDeskset
+
+    // Step 2 - Advanced
+    @Published var headerDisplayText: String = ""
+    @Published var headerFullPath: String? = nil
+    @Published var hasHeader: Bool = false
+    @Published var variablesText: String = ""
+    @Published var variablesEnabled: Bool = true
+    @Published var mergeSkins: Bool = false
+    @Published var mergeEnabled: Bool = true
+
+    // History
+    @Published var historyItems: [HistoryItem] = []
+}
+
 /// Skin Packager (manual: "To launch the Skin Packager, open the Manage window and click the button labeled Create
 /// .rmskin package..."): step 1 asks for the information and components, step 2 for the options and, on its Advanced
-/// tab, the header image, variables files and Merge skins. `RmskinPackager` checks and writes the package.
+/// section, the header image, variables files and Merge skins. `RmskinPackager` checks and writes the package.
 final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
     enum Choice: Equatable { case skin, layoutFolder, plugin, output, header }
+
+    static let defaultSize = NSSize(width: 780, height: 550)
+    static let minimumSize = NSSize(width: 680, height: 470)
 
     private static var current: SkinPackagerWindowController?
     /// Where "Load previous" is kept (self-tests and snapshots use memory).
@@ -81,9 +171,14 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private unowned let app: AppController
+    let viewModel = SkinPackagerViewModel()
+    private var hostingView: NSHostingView<SkinPackagerRootView>?
+
     private(set) var spec = RmskinPackageSpec()
     private(set) var step = 1
+    private var advancedSelected = false
     private(set) var busy = false
+    private var syncing = false
     var history: SkinPackagerHistory { SkinPackagerHistory(storage: SkinPackagerWindowController.historyStorage) }
 
     /// Tests answer the open panels, the confirmation and the messages, and build on the main thread.
@@ -92,51 +187,33 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
     var messageForTesting: ((String, String) -> Void)?
     private(set) var lastMessage: (title: String, text: String)?
 
-    // Step 1
-    private let nameField = NSTextField()
-    private let authorField = NSTextField()
-    private let versionField = NSTextField()
-    private let skinLabel = NSTextField(labelWithString: "")
-    private let layoutsList = NSStackView()
-    private let pluginsList = NSStackView()
-    private let addLayoutButton = NSPopUpButton(frame: .zero, pullsDown: true)
-    // Step 2
-    private let tabs = NSSegmentedControl(labels: [L("Options"), L("Advanced")], trackingMode: .selectOne,
-                                          target: nil, action: nil)
-    private let outputLabel = NSTextField(labelWithString: "")
-    private let loadKindPopup = NSPopUpButton()
-    private let loadItemPopup = NSPopUpButton()
-    private let minimumField = NSTextField()
-    private let headerLabel = NSTextField(labelWithString: "")
-    private let removeHeaderButton = NSButton(title: L("Remove"), target: nil, action: nil)
-    private let variablesField = NSTextField()
-    private let mergeBox = NSButton(checkboxWithTitle: L("Merge skins"), target: nil, action: nil)
-    private let optionsPage = NSGridView()
-    private let advancedPage = NSGridView()
-    // Both steps
-    private let stepOne = NSStackView()
-    private let stepTwo = NSStackView()
-    private let previousPopup = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let backButton = NSButton(title: L("Back"), target: nil, action: nil)
-    private let nextButton = NSButton(title: L("Next"), target: nil, action: nil)
-    private let createButton = NSButton(title: L("Create Package"), target: nil, action: nil)
-    private let spinner = NSProgressIndicator()
-
     init(app: AppController) {
         self.app = app
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        DeskProWindowStyle.apply(to: window)
         window.title = L("Create .rmskin Package")
-        window.minSize = NSSize(width: 600, height: 370)
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
+        window.minSize = Self.minimumSize
+        window.backgroundColor = .windowBackgroundColor
         window.center()
         super.init(window: window)
         window.delegate = self
         AppTheme.register(window, app: app)
+
+        spec.minimumDeskset = RmskinPackager.defaultMinimumDeskset
         spec.outputDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-        build(in: window)
         refresh()
+
+        let rootView = SkinPackagerRootView(model: viewModel, controller: self)
+        let host = NSHostingView(rootView: rootView)
+        host.frame = NSRect(origin: .zero, size: Self.defaultSize)
+        host.autoresizingMask = [.width, .height]
+        window.contentView = host
+        hostingView = host
     }
 
     required init?(coder: NSCoder) { nil }
@@ -145,237 +222,77 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         if SkinPackagerWindowController.current === self { SkinPackagerWindowController.current = nil }
     }
 
-    // MARK: Layout
-
-    private func build(in window: NSWindow) {
-        let content = WindowBackgroundView()
-        window.contentView = content
-        // Long paths are cut in the middle instead of widening the window.
-        for path in [skinLabel, outputLabel, headerLabel] {
-            path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            path.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        }
-
-        // Step 1: information and components.
-        for field in [nameField, authorField, versionField, minimumField, variablesField] {
-            field.target = self
-            field.action = #selector(fieldsChanged)
-            field.delegate = self
-        }
-        let addSkin = NSButton(title: L("Add Skin…"), target: self, action: #selector(chooseSkin))
-        skinLabel.lineBreakMode = .byTruncatingMiddle
-        addLayoutButton.addItem(withTitle: L("Add Layout"))
-        addLayoutButton.menu?.delegate = self
-        let addPlugin = NSButton(title: L("Add Plugin…"), target: self, action: #selector(choosePlugin))
-        for list in [layoutsList, pluginsList] {
-            list.orientation = .vertical
-            list.alignment = .leading
-            list.spacing = 4
-        }
-        let info = NSGridView(views: [
-            [label(L("Name:")), nameField],
-            [label(L("Author:")), authorField],
-            [label(L("Version:")), versionField],
-            [label(L("Skin:")), row([skinLabel, addSkin])],
-            [label(L("Layouts:")), layoutsList],
-            [NSGridCell.emptyContentView, addLayoutButton],
-            [label(L("Plugins:")), pluginsList],
-            [NSGridCell.emptyContentView, addPlugin],
-        ])
-        styleForm(info)
-        stepOne.orientation = .vertical
-        stepOne.alignment = .leading
-        stepOne.addArrangedSubview(heading(L("Information and Components")))
-        stepOne.addArrangedSubview(info)
-
-        // Step 2: options, and the Advanced tab.
-        tabs.target = self
-        tabs.action = #selector(tabChanged)
-        tabs.selectedSegment = 0
-        outputLabel.lineBreakMode = .byTruncatingMiddle
-        let chooseOutput = NSButton(title: L("Choose…"), target: self, action: #selector(chooseOutput))
-        loadKindPopup.addItems(withTitles: [L("Do nothing"), L("Load skin"), L("Load layout")])
-        loadKindPopup.target = self
-        loadKindPopup.action = #selector(loadKindChanged)
-        loadItemPopup.target = self
-        loadItemPopup.action = #selector(fieldsChanged)
-        minimumField.placeholderString = RmskinPackager.defaultMinimumRainmeter
-        optionsPage.addRow(with: [label(L("Save package to:")), row([outputLabel, chooseOutput])])
-        optionsPage.addRow(with: [label(L("After installation:")), row([loadKindPopup, loadItemPopup])])
-        optionsPage.addRow(with: [label(L("Minimum Rainmeter version:")), minimumField])
-        styleForm(optionsPage)
-        headerLabel.lineBreakMode = .byTruncatingMiddle
-        let chooseHeader = NSButton(title: L("Choose…"), target: self, action: #selector(chooseHeader))
-        removeHeaderButton.target = self
-        removeHeaderButton.action = #selector(removeHeader)
-        variablesField.placeholderString = "Skin\\Folder\\Variables.inc | …"
-        mergeBox.target = self
-        mergeBox.action = #selector(fieldsChanged)
-        advancedPage.addRow(with: [label(L("Header image:")), row([headerLabel, chooseHeader, removeHeaderButton])])
-        advancedPage.addRow(with: [label(L("Variables files:")), variablesField])
-        advancedPage.addRow(with: [NSGridCell.emptyContentView, mergeBox])
-        styleForm(advancedPage)
-        // Text fields and path rows reach the form's right edge; buttons and menus keep their size.
-        for (grid, views) in [(info, [nameField, authorField, versionField, skinLabel.superview]),
-                              (optionsPage, [minimumField, outputLabel.superview]),
-                              (advancedPage, [variablesField, headerLabel.superview])] as [(NSGridView, [NSView?])] {
-            for view in views.compactMap({ $0 }) {
-                view.trailingAnchor.constraint(equalTo: grid.trailingAnchor).isActive = true
-            }
-        }
-        stepTwo.orientation = .vertical
-        stepTwo.alignment = .leading
-        stepTwo.addArrangedSubview(tabs)
-        stepTwo.addArrangedSubview(optionsPage)
-        stepTwo.addArrangedSubview(advancedPage)
-
-        // Buttons.
-        previousPopup.addItem(withTitle: L("Load Previous"))
-        previousPopup.menu?.delegate = self
-        previousPopup.toolTip = L("Hold Shift to delete an entry.")
-        let cancel = NSButton(title: L("Cancel"), target: self, action: #selector(cancel))
-        cancel.keyEquivalent = "\u{1b}"
-        backButton.target = self
-        backButton.action = #selector(back)
-        nextButton.target = self
-        nextButton.action = #selector(next)
-        nextButton.keyEquivalent = "\r"
-        createButton.target = self
-        createButton.action = #selector(create)
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let bar = row([previousPopup, spacer, spinner, cancel, backButton, nextButton, createButton])
-
-        for view in [stepOne, stepTwo, bar] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(view)
-        }
-        NSLayoutConstraint.activate([
-            stepOne.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            stepOne.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            stepOne.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            stepTwo.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            stepTwo.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            stepTwo.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            bar.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
-            stepOne.bottomAnchor.constraint(lessThanOrEqualTo: bar.topAnchor, constant: -12),
-            stepTwo.bottomAnchor.constraint(lessThanOrEqualTo: bar.topAnchor, constant: -12),
-            info.widthAnchor.constraint(equalTo: stepOne.widthAnchor),
-            optionsPage.widthAnchor.constraint(equalTo: stepTwo.widthAnchor),
-            advancedPage.widthAnchor.constraint(equalTo: stepTwo.widthAnchor),
-        ])
+    func windowDidBecomeKey(_ notification: Notification) {
+        syncMenus()
     }
 
-    private func label(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
-        field.alignment = .right
-        return field
-    }
+    // MARK: - State ↔ ViewModel
 
-    private func heading(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
-        field.font = .boldSystemFont(ofSize: NSFont.systemFontSize + 1)
-        return field
+    func syncMenus() {
+        viewModel.savedLayoutNames = (try? app.layoutStore.list()) ?? []
+        viewModel.historyItems = history.entries.enumerated().map { idx, entry in
+            let title = entry.version.isEmpty ? entry.name : "\(entry.name) \(entry.version)"
+            return .init(id: idx, title: title)
+        }
     }
-
-    private func row(_ views: [NSView]) -> NSStackView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        return stack
-    }
-
-    private func styleForm(_ grid: NSGridView) {
-        grid.rowSpacing = 8
-        grid.columnSpacing = 10
-        grid.column(at: 0).xPlacement = .trailing
-        grid.rowAlignment = .firstBaseline
-    }
-
-    // MARK: State → views
 
     /// Shows `spec` and the step; also after every change.
     func refresh() {
-        stepOne.isHidden = step != 1
-        stepTwo.isHidden = step != 2
-        optionsPage.isHidden = tabs.selectedSegment != 0
-        advancedPage.isHidden = tabs.selectedSegment != 1
-        backButton.isHidden = step == 1
-        nextButton.isHidden = step != 1
-        createButton.isHidden = step != 2
-        if step == 2 { createButton.keyEquivalent = "\r" } else { createButton.keyEquivalent = "" }
-        nextButton.keyEquivalent = step == 1 ? "\r" : ""
-        for control in [nextButton, createButton, backButton] { control.isEnabled = !busy }
-        busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
+        syncing = true
+        defer { syncing = false }
 
-        setIfNeeded(nameField, spec.name)
-        setIfNeeded(authorField, spec.author)
-        setIfNeeded(versionField, spec.version)
-        setIfNeeded(minimumField, spec.minimumRainmeter)
-        setIfNeeded(variablesField, spec.variableFiles.joined(separator: " | "))
-        skinLabel.stringValue = spec.rootConfig.map { ($0.path as NSString).abbreviatingWithTildeInPath }
+        viewModel.step = step
+        viewModel.section = step == 1 ? .info : (advancedSelected ? .advanced : .options)
+        viewModel.busy = busy
+
+        if viewModel.name != spec.name { viewModel.name = spec.name }
+        if viewModel.author != spec.author { viewModel.author = spec.author }
+        if viewModel.version != spec.version { viewModel.version = spec.version }
+        let effectiveMinimumDeskset = spec.minimumDeskset ?? RmskinPackager.defaultMinimumDeskset
+        if viewModel.minimumDeskset != effectiveMinimumDeskset { viewModel.minimumDeskset = effectiveMinimumDeskset }
+
+        let joinedVars = spec.variableFiles.joined(separator: " | ")
+        if viewModel.variablesText != joinedVars { viewModel.variablesText = joinedVars }
+
+        viewModel.hasSkin = spec.rootConfig != nil
+        viewModel.skinFullPath = spec.rootConfig?.path
+        viewModel.skinDisplayText = spec.rootConfig.map { ($0.path as NSString).abbreviatingWithTildeInPath }
             ?? L("No skin chosen")
-        skinLabel.toolTip = spec.rootConfig?.path
-        skinLabel.textColor = spec.rootConfig == nil ? .secondaryLabelColor : .labelColor
-        rebuild(layoutsList, items: spec.layouts.map { (text: $0.lastPathComponent, toolTip: $0.path) },
-                remove: #selector(removeLayout(_:)))
-        rebuild(pluginsList, items: spec.plugins.map { (text: pluginDescription($0), toolTip: pluginToolTip($0)) },
-                remove: #selector(removePlugin(_:)))
-        outputLabel.stringValue = spec.outputDirectory.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
-        outputLabel.toolTip = spec.outputDirectory?.path
-        headerLabel.stringValue = spec.headerImage?.lastPathComponent ?? L("None")
-        headerLabel.toolTip = spec.headerImage?.path
-        headerLabel.textColor = spec.headerImage == nil ? .secondaryLabelColor : .labelColor
-        removeHeaderButton.isHidden = spec.headerImage == nil
-        mergeBox.state = spec.mergeSkins ? .on : .off
-        // "This option is not compatible with the Variables files option" (and the other way round).
-        mergeBox.isEnabled = spec.variableFiles.isEmpty
-        variablesField.isEnabled = !spec.mergeSkins
+
+        viewModel.layouts = spec.layouts.enumerated().map { idx, url in
+            .init(id: idx, name: url.lastPathComponent, path: url.path)
+        }
+        viewModel.plugins = spec.plugins.enumerated().map { idx, plugin in
+            .init(id: idx, description: pluginDescription(plugin), toolTip: pluginToolTip(plugin))
+        }
+
+        viewModel.outputFullPath = spec.outputDirectory?.path
+        viewModel.outputDisplayText = spec.outputDirectory.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
+
+        viewModel.hasHeader = spec.headerImage != nil
+        viewModel.headerFullPath = spec.headerImage?.path
+        viewModel.headerDisplayText = spec.headerImage?.lastPathComponent ?? L("None")
+
+        viewModel.mergeSkins = spec.mergeSkins
+        viewModel.mergeEnabled = spec.variableFiles.isEmpty
+        viewModel.variablesEnabled = !spec.mergeSkins
 
         let choices = loadChoices()
+        viewModel.loadChoices = choices
+        viewModel.canChooseLoadLayout = !spec.layouts.isEmpty
         switch spec.load {
-        case .none: loadKindPopup.selectItem(at: 0)
-        case .skin: loadKindPopup.selectItem(at: 1)
-        case .layout: loadKindPopup.selectItem(at: 2)
+        case .none:
+            viewModel.loadKindIndex = 0
+            viewModel.selectedLoadChoice = ""
+        case .skin(let path):
+            viewModel.loadKindIndex = 1
+            viewModel.selectedLoadChoice = choices.contains(path) ? path : (choices.first ?? "")
+        case .layout(let path):
+            viewModel.loadKindIndex = 2
+            viewModel.selectedLoadChoice = choices.contains(path) ? path : (choices.first ?? "")
         }
-        loadKindPopup.item(at: 2)?.isEnabled = !spec.layouts.isEmpty
-        loadKindPopup.autoenablesItems = false
-        loadItemPopup.removeAllItems()
-        loadItemPopup.addItems(withTitles: choices)
-        loadItemPopup.isHidden = spec.load == .none
-        switch spec.load {
-        case .skin(let path), .layout(let path): loadItemPopup.selectItem(withTitle: path)
-        case .none: break
-        }
-    }
 
-    private func setIfNeeded(_ field: NSTextField, _ value: String) {
-        if field.stringValue != value && field.currentEditor() == nil { field.stringValue = value }
-    }
-
-    private func rebuild(_ list: NSStackView, items: [(text: String, toolTip: String?)], remove: Selector) {
-        list.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if items.isEmpty {
-            let none = NSTextField(labelWithString: L("None"))
-            none.textColor = .secondaryLabelColor
-            list.addArrangedSubview(none)
-        }
-        for (index, item) in items.enumerated() {
-            let button = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: L("Remove"))
-                                  ?? NSImage(), target: self, action: remove)
-            button.isBordered = false
-            button.tag = index
-            button.toolTip = L("Remove")
-            let textLabel = NSTextField(labelWithString: item.text)
-            textLabel.lineBreakMode = .byTruncatingMiddle
-            textLabel.toolTip = item.toolTip
-            list.addArrangedSubview(row([button, textLabel]))
-        }
+        syncMenus()
     }
 
     func pluginDescription(_ plugin: RmskinPackageSpec.Plugin) -> String {
@@ -403,7 +320,98 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    // MARK: Views → state
+    // MARK: - ViewModel → State
+
+    private func readFields() {
+        spec.name = viewModel.name
+        spec.author = viewModel.author
+        spec.version = viewModel.version
+        spec.minimumDeskset = viewModel.minimumDeskset
+        spec.variableFiles = viewModel.variablesText.split(separator: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        spec.mergeSkins = viewModel.mergeSkins && spec.variableFiles.isEmpty
+        if !viewModel.selectedLoadChoice.isEmpty {
+            switch spec.load {
+            case .skin: spec.load = .skin(viewModel.selectedLoadChoice)
+            case .layout: spec.load = .layout(viewModel.selectedLoadChoice)
+            case .none: break
+            }
+        }
+    }
+
+    func updateTextFieldsFromUI() {
+        guard !syncing else { return }
+        spec.name = viewModel.name
+        spec.author = viewModel.author
+        spec.version = viewModel.version
+        spec.minimumDeskset = viewModel.minimumDeskset
+        spec.variableFiles = viewModel.variablesText.split(separator: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if !spec.variableFiles.isEmpty && spec.mergeSkins {
+            spec.mergeSkins = false
+            viewModel.mergeSkins = false
+        }
+        viewModel.mergeEnabled = spec.variableFiles.isEmpty
+        viewModel.variablesEnabled = !spec.mergeSkins
+    }
+
+    func setMergeSkinsFromUI(_ enabled: Bool) {
+        readFields()
+        spec.mergeSkins = enabled && spec.variableFiles.isEmpty
+        refresh()
+    }
+
+    func selectLoadKindFromUI(_ index: Int) {
+        readFields()
+        switch index {
+        case 1: spec.load = .skin(spec.rootConfig.flatMap { RmskinPackager.skinFiles(inRootConfig: $0).first } ?? "")
+        case 2: spec.load = .layout(spec.layouts.first?.lastPathComponent ?? "")
+        default: spec.load = .none
+        }
+        refresh()
+    }
+
+    func selectLoadItemFromUI(_ choice: String) {
+        readFields()
+        switch spec.load {
+        case .skin: spec.load = .skin(choice)
+        case .layout: spec.load = .layout(choice)
+        case .none: break
+        }
+        refresh()
+    }
+
+    func selectSectionFromUI(_ target: SkinPackagerViewModel.Section) {
+        guard !busy else { return }
+        switch target {
+        case .info:
+            back()
+        case .options:
+            if step == 1 {
+                advancedSelected = false
+                next()
+            } else {
+                readFields()
+                advancedSelected = false
+                refresh()
+            }
+        case .advanced:
+            if step == 1 {
+                readFields()
+                let first = RmskinPackager.problems(spec).filter(SkinPackagerWindowController.isStepOne)
+                guard first.isEmpty else {
+                    return message(L("The package can’t be created yet"), first.map(describe).joined(separator: "\n"))
+                }
+                step = 2
+                advancedSelected = true
+                refresh()
+            } else {
+                readFields()
+                advancedSelected = true
+                refresh()
+            }
+        }
+    }
 
     /// Changes the settings as typing into the window would (self-tests).
     func edit(_ change: (inout RmskinPackageSpec) -> Void) {
@@ -412,45 +420,11 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         refresh()
     }
 
-    @objc private func fieldsChanged() {
-        readFields()
-        refresh()
-    }
-
-    private func readFields() {
-        spec.name = nameField.stringValue
-        spec.author = authorField.stringValue
-        spec.version = versionField.stringValue
-        spec.minimumRainmeter = minimumField.stringValue
-        spec.variableFiles = variablesField.stringValue.split(separator: "|")
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        spec.mergeSkins = mergeBox.state == .on && spec.variableFiles.isEmpty
-        if let title = loadItemPopup.titleOfSelectedItem {
-            switch spec.load {
-            case .skin: spec.load = .skin(title)
-            case .layout: spec.load = .layout(title)
-            case .none: break
-            }
-        }
-    }
-
-    @objc private func loadKindChanged() {
-        readFields()
-        switch loadKindPopup.indexOfSelectedItem {
-        case 1: spec.load = .skin(spec.rootConfig.flatMap { RmskinPackager.skinFiles(inRootConfig: $0).first } ?? "")
-        case 2: spec.load = .layout(spec.layouts.first?.lastPathComponent ?? "")
-        default: spec.load = .none
-        }
-        refresh()
-    }
-
-    @objc private func tabChanged() { refresh() }
-
     /// Step 2 on its Options or Advanced tab, without step 1's checks (snapshots and self-tests).
     func showStepTwo(advanced: Bool) {
         readFields()
         step = 2
-        tabs.selectedSegment = advanced ? 1 : 0
+        advancedSelected = advanced
         refresh()
     }
 
@@ -471,6 +445,9 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
            !RmskinPackager.skinFiles(inRootConfig: folder).contains(path) {
             spec.load = .none
         }
+        viewModel.name = spec.name
+        viewModel.author = spec.author
+        viewModel.version = spec.version
         refresh()
     }
 
@@ -495,37 +472,37 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         refresh()
     }
 
-    @objc private func removeLayout(_ sender: NSButton) {
+    func removeLayoutFromUI(at index: Int) {
         readFields()
-        guard spec.layouts.indices.contains(sender.tag) else { return }
-        let name = spec.layouts.remove(at: sender.tag).lastPathComponent
+        guard spec.layouts.indices.contains(index) else { return }
+        let name = spec.layouts.remove(at: index).lastPathComponent
         if case .layout(let loaded) = spec.load, loaded == name { spec.load = .none }
         refresh()
     }
 
-    @objc private func removePlugin(_ sender: NSButton) {
+    func removePluginFromUI(at index: Int) {
         readFields()
-        if spec.plugins.indices.contains(sender.tag) { spec.plugins.remove(at: sender.tag) }
+        if spec.plugins.indices.contains(index) { spec.plugins.remove(at: index) }
         refresh()
     }
 
-    @objc private func removeHeader() {
+    func removeHeaderFromUI() {
         readFields()
         spec.headerImage = nil
         refresh()
     }
 
-    // MARK: Choosing files
+    // MARK: - Choosing Files
 
-    @objc private func chooseSkin() {
+    func chooseSkinFromUI() {
         choose(.skin) { [weak self] url in self?.setSkin(url) }
     }
 
-    @objc private func choosePlugin() {
+    func choosePluginFromUI() {
         choose(.plugin) { [weak self] url in self?.addPlugin(url) }
     }
 
-    @objc private func chooseOutput() {
+    func chooseOutputFromUI() {
         choose(.output) { [weak self] url in
             self?.readFields()
             self?.spec.outputDirectory = url
@@ -533,7 +510,7 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    @objc private func chooseHeader() {
+    func chooseHeaderFromUI() {
         choose(.header) { [weak self] url in
             self?.readFields()
             self?.spec.headerImage = url
@@ -541,13 +518,12 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    @objc private func chooseLayoutFolder() {
+    func chooseLayoutFolderFromUI() {
         choose(.layoutFolder) { [weak self] url in self?.addLayout(url) }
     }
 
-    @objc private func addSavedLayout(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String,
-              let file = try? app.layoutStore.iniURL(named: name) else { return }
+    func addSavedLayoutFromUI(named name: String) {
+        guard let file = try? app.layoutStore.iniURL(named: name) else { return }
         addLayout(file.deletingLastPathComponent())
     }
 
@@ -598,30 +574,61 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    // MARK: Load previous
+    // MARK: - Load Previous
+
+    func popUpHistoryMenuFromUI() {
+        guard let contentView = window?.contentView else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let entries = history.entries
+        if entries.isEmpty {
+            let empty = NSMenuItem(title: L("None"), action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        } else {
+            for (index, entry) in entries.enumerated() {
+                let title = entry.version.isEmpty ? entry.name : "\(entry.name) \(entry.version)"
+                let item = NSMenuItem(title: title, action: #selector(historyMenuItemChosen(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                menu.addItem(item)
+            }
+        }
+        let y: CGFloat = contentView.isFlipped ? contentView.bounds.height - 46 : 46
+        menu.popUp(positioning: nil, at: NSPoint(x: 18, y: y), in: contentView)
+    }
+
+    @objc private func historyMenuItemChosen(_ sender: NSMenuItem) {
+        loadPrevious(at: sender.tag)
+    }
 
     func loadPrevious(at index: Int) {
         // "Entries in the Load previous menu can be deleted by holding Shift."
         if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
             history.forget(at: index)
+            syncMenus()
             return
         }
         let entries = history.entries
         guard entries.indices.contains(index) else { return }
         spec = entries[index]
+        if spec.minimumDeskset == nil {
+            spec.minimumDeskset = RmskinPackager.defaultMinimumDeskset
+        }
         if spec.outputDirectory == nil || !FileManager.default.fileExists(atPath: spec.outputDirectory!.path) {
             spec.outputDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
         }
+        viewModel.name = spec.name
+        viewModel.author = spec.author
+        viewModel.version = spec.version
+        viewModel.minimumDeskset = spec.minimumDeskset ?? RmskinPackager.defaultMinimumDeskset
+        viewModel.variablesText = spec.variableFiles.joined(separator: " | ")
         refresh()
     }
 
-    @objc private func previousChosen(_ sender: NSMenuItem) {
-        loadPrevious(at: sender.tag)
-    }
+    // MARK: - Steps
 
-    // MARK: Steps
-
-    @objc private func cancel() { window?.close() }
+    func cancelFromUI() { window?.close() }
 
     @objc func back() {
         readFields()
@@ -662,16 +669,17 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
 
     private func finish(_ result: Result<RmskinPackager.Result, Error>, _ made: RmskinPackageSpec) {
         busy = false
-        refresh()
         switch result {
         case .success(let built):
             history.remember(made)
+            refresh()
             var text = built.url.path
             if !built.skippedLinks.isEmpty {
                 text += "\n\n" + L("Links were left out of the package: %@", built.skippedLinks.joined(separator: ", "))
             }
             reportCreated(built.url, text)
         case .failure(let error):
+            refresh()
             message(L("Could not create the package"), String(describing: error))
         }
     }
@@ -712,7 +720,33 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
         alert.beginSheetModal(for: window)
     }
 
-    // MARK: Problems in words
+    // MARK: - Snapshot
+
+    func snapshot() -> NSBitmapImageRep? {
+        guard let view = window?.contentView else { return nil }
+        refresh()
+        view.layoutSubtreeIfNeeded()
+        hostingView?.layoutSubtreeIfNeeded()
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let rep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: Int(bounds.width * 2),
+                  pixelsHigh: Int(bounds.height * 2),
+                  bitsPerSample: 8,
+                  samplesPerPixel: 4,
+                  hasAlpha: true,
+                  isPlanar: false,
+                  colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0,
+                  bitsPerPixel: 0
+              ) else { return nil }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
+        return rep
+    }
+
+    // MARK: - Problems in Words
 
     static func isStepOne(_ problem: RmskinPackagerProblem) -> Bool {
         switch problem {
@@ -738,58 +772,469 @@ final class SkinPackagerWindowController: NSWindowController, NSWindowDelegate {
             return L("The header image must be 400 × 60 pixels; this one is %lld × %lld.", width, height)
         case .variableFileNotFound(let path): return L("The variables file “%@” is not in the skin.", path)
         case .mergeWithVariableFiles: return L("Variables files and Merge skins can’t be used together.")
-        case .minimumVersionInvalid(let text): return L("“%@” is not a version number such as 5.0 or 5.0.0.4657.", text)
+        case .minimumVersionInvalid(let text): return L("“%@” is not a version number such as 1.0 or 1.1.1.", text)
         case .outputMissing: return L("Choose where to save the package.")
         }
     }
 }
 
-extension SkinPackagerWindowController: NSTextFieldDelegate {
-    func controlTextDidChange(_ obj: Notification) {
-        readFields()
-        // Keep the typing field as it is; only the dependent controls follow.
-        mergeBox.isEnabled = spec.variableFiles.isEmpty
-        variablesField.isEnabled = !spec.mergeSkins
-    }
-}
+// MARK: - SwiftUI Root View
 
-extension SkinPackagerWindowController: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        // Pull-down menus keep their first item as the button's title.
-        while menu.items.count > 1 { menu.removeItem(at: 1) }
-        if menu === previousPopup.menu {
-            let entries = history.entries
-            for (index, entry) in entries.enumerated() {
-                let title = entry.version.isEmpty ? entry.name : "\(entry.name) \(entry.version)"
-                let item = NSMenuItem(title: title, action: #selector(previousChosen(_:)), keyEquivalent: "")
-                item.target = self
-                item.tag = index
-                menu.addItem(item)
+struct SkinPackagerRootView: View {
+    @ObservedObject var model: SkinPackagerViewModel
+    weak var controller: SkinPackagerWindowController?
+
+    private static let topHeight: CGFloat = 56
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            detailPane
+        }
+        .font(.system(size: 13))
+        .frame(minWidth: SkinPackagerWindowController.minimumSize.width,
+               minHeight: SkinPackagerWindowController.minimumSize.height)
+        .background(DeskProPalette.page)
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Left Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                DeskAppMark(size: 28)
+                    .frame(width: 28)
+                Text(L("Create .rmskin Package"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
-            if entries.isEmpty {
-                let item = NSMenuItem(title: L("None"), action: nil, keyEquivalent: "")
-                item.isEnabled = false
-                menu.addItem(item)
+            .padding(.leading, 4)
+            .padding(.top, 26)
+            .frame(maxWidth: .infinity, minHeight: Self.topHeight + 26, maxHeight: Self.topHeight + 26, alignment: .leading)
+            .background(WindowDragArea())
+
+            ForEach(SkinPackagerViewModel.Section.allCases, id: \.rawValue) { item in
+                let selected = model.section == item
+                Button {
+                    controller?.selectSectionFromUI(item)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 22, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(item.tint)
+                            )
+                        Text(item.title)
+                            .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                            .foregroundColor(selected ? .white : .primary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(selected ? Color.accentColor : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
             }
-        } else if menu === addLayoutButton.menu {
-            for name in (try? app.layoutStore.list()) ?? [] {
-                let item = NSMenuItem(title: name, action: #selector(addSavedLayout(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = name
-                menu.addItem(item)
+
+            Spacer(minLength: 12)
+
+            Divider()
+                .padding(.horizontal, 6)
+                .padding(.bottom, 4)
+
+            Button {
+                controller?.popUpHistoryMenuFromUI()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                        )
+                    Text(L("Load Previous"))
+                        .font(.system(size: 13))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 32)
+                .contentShape(Rectangle())
             }
-            if menu.items.count > 1 { menu.addItem(.separator()) }
-            let other = NSMenuItem(title: L("Other…"), action: #selector(chooseLayoutFolder), keyEquivalent: "")
-            other.target = self
-            menu.addItem(other)
+            .buttonStyle(.plain)
+            .help(L("Hold Shift to delete an entry."))
+            .disabled(model.busy)
+            .padding(.bottom, 12)
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 225)
+        .background(Color.primary.opacity(0.04))
+    }
+
+    // MARK: - Right Detail Pane
+
+    private var detailPane: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(model.section.title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+            }
+            .padding(.horizontal, 28)
+            .frame(height: Self.topHeight)
+            .background(WindowDragArea())
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    switch model.section {
+                    case .info:
+                        infoPage
+                    case .options:
+                        optionsPage
+                    case .advanced:
+                        advancedPage
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 4)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Divider()
+
+            bottomBar
         }
     }
-}
 
-/// Fills itself with the window background color, so offscreen snapshots (`--snapshot-ui packager`) look like the window.
-private final class WindowBackgroundView: NSView {
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        dirtyRect.fill()
+    // MARK: - Step 1: Information & Components
+
+    private var infoPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup(title: L("Package Info")) {
+                DeskProSettingsRow(title: L("Name:")) {
+                    TextField("", text: Binding(
+                        get: { model.name },
+                        set: {
+                            model.name = $0
+                            controller?.updateTextFieldsFromUI()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                    .disabled(model.busy)
+                }
+
+                DeskProSettingsRow(title: L("Author:")) {
+                    TextField("", text: Binding(
+                        get: { model.author },
+                        set: {
+                            model.author = $0
+                            controller?.updateTextFieldsFromUI()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                    .disabled(model.busy)
+                }
+
+                DeskProSettingsRow(title: L("Version:"), divider: false) {
+                    TextField("", text: Binding(
+                        get: { model.version },
+                        set: {
+                            model.version = $0
+                            controller?.updateTextFieldsFromUI()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                    .disabled(model.busy)
+                }
+            }
+
+            DeskProSettingsGroup(title: L("Package Contents")) {
+                DeskProSettingsRow(
+                    title: L("Skin:"),
+                    detail: model.skinDisplayText
+                ) {
+                    Button(L("Add Skin…")) {
+                        controller?.chooseSkinFromUI()
+                    }
+                    .disabled(model.busy)
+                }
+                .help(model.skinFullPath ?? "")
+
+                DeskProSettingsRow(
+                    title: L("Layouts:"),
+                    detail: model.layouts.isEmpty ? L("None") : nil,
+                    divider: model.layouts.isEmpty
+                ) {
+                    Menu(L("Add Layout")) {
+                        ForEach(model.savedLayoutNames, id: \.self) { name in
+                            Button(name) {
+                                controller?.addSavedLayoutFromUI(named: name)
+                            }
+                        }
+                        if !model.savedLayoutNames.isEmpty {
+                            Divider()
+                        }
+                        Button(L("Other…")) {
+                            controller?.chooseLayoutFolderFromUI()
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(model.busy)
+                }
+
+                if !model.layouts.isEmpty {
+                    ForEach(Array(model.layouts.enumerated()), id: \.element.id) { idx, item in
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.3.group")
+                                .font(.system(size: 11.5))
+                                .foregroundColor(DeskProPalette.indigoTint)
+                            Text(item.name)
+                                .font(.system(size: 12.5))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button(L("Remove")) {
+                                controller?.removeLayoutFromUI(at: item.id)
+                            }
+                            .controlSize(.small)
+                            .disabled(model.busy)
+                        }
+                        .help(item.path)
+                        .padding(.leading, 28)
+                        .padding(.trailing, 14)
+                        .padding(.vertical, 6)
+
+                        if idx == model.layouts.count - 1 {
+                            Divider().padding(.leading, 14)
+                        }
+                    }
+                }
+
+                DeskProSettingsRow(
+                    title: L("Plugins:"),
+                    detail: model.plugins.isEmpty ? L("None") : nil,
+                    divider: false
+                ) {
+                    Button(L("Add Plugin…")) {
+                        controller?.choosePluginFromUI()
+                    }
+                    .disabled(model.busy)
+                }
+
+                if !model.plugins.isEmpty {
+                    Divider().padding(.leading, 28)
+                    ForEach(model.plugins) { plugin in
+                        HStack(spacing: 8) {
+                            Image(systemName: "puzzlepiece.extension")
+                                .font(.system(size: 11.5))
+                                .foregroundColor(DeskProPalette.privacyGreen)
+                            Text(plugin.description)
+                                .font(.system(size: 12))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button(L("Remove")) {
+                                controller?.removePluginFromUI(at: plugin.id)
+                            }
+                            .controlSize(.small)
+                            .disabled(model.busy)
+                        }
+                        .help(plugin.toolTip ?? "")
+                        .padding(.leading, 28)
+                        .padding(.trailing, 14)
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Step 2A: Options
+
+    private var optionsPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup {
+                DeskProSettingsRow(
+                    title: L("Save package to:"),
+                    detail: model.outputDisplayText
+                ) {
+                    Button(L("Choose…")) {
+                        controller?.chooseOutputFromUI()
+                    }
+                    .disabled(model.busy)
+                }
+                .help(model.outputFullPath ?? "")
+
+                DeskProSettingsRow(title: L("After installation:")) {
+                    HStack(spacing: 8) {
+                        Picker("", selection: Binding(
+                            get: { model.loadKindIndex },
+                            set: { controller?.selectLoadKindFromUI($0) }
+                        )) {
+                            Text(L("Do nothing")).tag(0)
+                            Text(L("Load skin")).tag(1)
+                            if model.canChooseLoadLayout || model.loadKindIndex == 2 {
+                                Text(L("Load layout")).tag(2)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .disabled(model.busy)
+
+                        if model.loadKindIndex != 0 && !model.loadChoices.isEmpty {
+                            Picker("", selection: Binding(
+                                get: { model.selectedLoadChoice },
+                                set: { controller?.selectLoadItemFromUI($0) }
+                            )) {
+                                ForEach(model.loadChoices, id: \.self) { choice in
+                                    Text(choice)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .tag(choice)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                            .disabled(model.busy)
+                        }
+                    }
+                }
+
+                DeskProSettingsRow(
+                    title: L("Minimum Deskset version:"),
+                    divider: false
+                ) {
+                    TextField(RmskinPackager.defaultMinimumDeskset, text: Binding(
+                        get: { model.minimumDeskset },
+                        set: {
+                            model.minimumDeskset = $0
+                            controller?.updateTextFieldsFromUI()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 120)
+                    .multilineTextAlignment(.trailing)
+                    .disabled(model.busy)
+                }
+            }
+        }
+    }
+
+    // MARK: - Step 2B: Advanced
+
+    private var advancedPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup {
+                DeskProSettingsRow(
+                    title: L("Header image:"),
+                    detail: model.headerDisplayText
+                ) {
+                    HStack(spacing: 8) {
+                        if model.hasHeader {
+                            Button(L("Remove")) {
+                                controller?.removeHeaderFromUI()
+                            }
+                            .disabled(model.busy)
+                        }
+                        Button(L("Choose…")) {
+                            controller?.chooseHeaderFromUI()
+                        }
+                        .disabled(model.busy)
+                    }
+                }
+                .help(model.headerFullPath ?? "")
+
+                DeskProSettingsRow(title: L("Variables files:")) {
+                    TextField("Skin\\Folder\\Variables.inc | …", text: Binding(
+                        get: { model.variablesText },
+                        set: {
+                            model.variablesText = $0
+                            controller?.updateTextFieldsFromUI()
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 270)
+                    .disabled(model.busy || !model.variablesEnabled)
+                }
+
+                DeskProSettingsRow(
+                    title: L("Merge skins"),
+                    divider: false
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { model.mergeSkins },
+                        set: { controller?.setMergeSkinsFromUI($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .disabled(model.busy || !model.mergeEnabled)
+                }
+            }
+        }
+    }
+
+    // MARK: - Bottom Action Bar
+
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            if model.busy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Spacer()
+
+            Button(L("Cancel")) {
+                controller?.cancelFromUI()
+            }
+            .keyboardShortcut(.cancelAction)
+
+            if model.step == 2 {
+                Button(L("Back")) {
+                    controller?.back()
+                }
+                .disabled(model.busy)
+
+                Button(L("Create Package")) {
+                    controller?.create()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.busy)
+            } else {
+                Button(L("Next")) {
+                    controller?.next()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.busy)
+            }
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 12)
+        .background(DeskProPalette.page)
     }
 }

@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "ไฟล์";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "บันทึก";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "ปิด";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "ปิดไว้ก่อน การตรวจสอบประจำวันครั้งถัดไปอาจแจ้งเตือนคุณอีกครั้ง";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "สกิน";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "เลย์เอาต์";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "สกินที่โหลดอยู่";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "จัดการสกินนี้…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "ดีบักสกิน";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "กดปุ่ม Control ค้างไว้เพื่อเปลี่ยนการซูมครั้งละ 10 จุดเปอร์เซ็นต์";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "บันทึกเป็นเลย์เอาต์ว่าง";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "ไม่รวมสกินที่ไม่ได้โหลด";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "รวมภาพพื้นหลังปัจจุบัน";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "โหลด";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "ลบ";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "แก้ไข";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "สร้างสกินใหม่";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "การซูม:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "ผู้สร้าง:";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "สัญญาอนุญาต:";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "เวอร์ชัน:";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "เปิดบันทึก";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "บันทึกเลย์เอาต์ใหม่";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "ชื่อ:";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "ชื่อเลย์เอาต์";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "เลย์เอาต์ที่บันทึกไว้";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "ไม่มีเลย์เอาต์ที่บันทึกไว้";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "ไม่สามารถอ่านเลย์เอาต์ที่บันทึกไว้: %@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "ไม่สามารถบันทึกเลย์เอาต์";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "แทนที่เลย์เอาต์ “%@” หรือไม่";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "มีเลย์เอาต์ชื่อนี้อยู่แล้ว ต้องการแทนที่การตั้งค่าที่บันทึกไว้หรือไม่";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "แทนที่";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "ยกเลิก";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "ไม่สามารถลบเลย์เอาต์";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "ลบเลย์เอาต์ “%@” หรือไม่";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "เลย์เอาต์ที่บันทึกไว้จะถูกย้ายไปที่ถังขยะ ไฟล์สกินของคุณยังคงอยู่";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "ทั่วไป";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "เดสก์ท็อปและสกิน";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "ตัวแก้ไข";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "ใช้กับทุกสกิน";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "ปิดการลาก";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "บังคับใช้การซูมเริ่มต้น";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "ไม่ให้ลากสกินด้วยเมาส์";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "ค่าเริ่มต้นของระบบ (%@)";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "อื่นๆ…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "ไม่สามารถสร้างสกิน";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "เพิ่มโฟลเดอร์";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "เพิ่มสกิน";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "สกินใหม่";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "แม่แบบ";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "สร้าง";
+
+/* New Skin window: text. */
+"Rename" = "เปลี่ยนชื่อ";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "ไม่สามารถสร้างสกิน";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "เพิ่มโฟลเดอร์";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "เพิ่มสกิน";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "โฟลเดอร์สกินที่เลือก";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "ชื่อ";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "โฟลเดอร์และไฟล์ของสกินใหม่";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "แม่แบบสำหรับสกินใหม่";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "ชื่อแม่แบบ";
-
-/* New Skin window: text. */
-"Save new template" = "บันทึกเป็นแม่แบบใหม่";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "แม่แบบที่บันทึกไว้";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "ไม่สามารถดำเนินการให้เสร็จสมบูรณ์";
-
-/* New Skin window: text. */
-"Create" = "สร้าง";
-
-/* New Skin window: text. */
-"Rename" = "เปลี่ยนชื่อ";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "แก้ไขสกิน";
+
+/* New Skin window: text. */
+"New skin folders and files" = "โฟลเดอร์และไฟล์ของสกินใหม่";
+
+/* New Skin window: text. */
+"No root folder yet." = "ยังไม่มีโฟลเดอร์ราก";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "สร้างโฟลเดอร์รากในสกินเพื่อเริ่มเพิ่มโฟลเดอร์ย่อยและไฟล์สกิน";
+
+/* New Skin window: text. */
+"Save new template" = "บันทึกเป็นแม่แบบใหม่";
+
+/* New Skin window: text. */
+"Saved templates" = "แม่แบบที่บันทึกไว้";
+
+/* New Skin window: text. */
+"No saved templates." = "ไม่มีเทมเพลตที่บันทึกไว้";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "ชื่อ";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "ชื่อไม่ถูกต้อง: %@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "ใช้เลย์เอาต์ที่รวมมา: %@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "ขั้นสูง";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "ตัวเลือก";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "เอาออก";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "รวมสกิน";
-
-/* Skin Packager window: button. */
-"Back" = "ย้อนกลับ";
-
-/* Skin Packager window: button. */
-"Next" = "ถัดไป";
-
-/* Skin Packager window: button. */
-"Create Package" = "สร้างแพ็กเกจ";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "สร้างแพ็กเกจ .rmskin";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "เพิ่มสกิน…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "เพิ่มเลย์เอาต์";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "เพิ่มปลั๊กอิน…";
-
-/* Skin Packager window: label. */
-"Skin:" = "สกิน:";
-
-/* Skin Packager window: label. */
-"Layouts:" = "เลย์เอาต์:";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "ปลั๊กอิน:";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "ข้อมูลและเนื้อหา";
 
-/* Skin Packager window: button. */
-"Choose…" = "เลือก…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "ตัวเลือก";
 
-/* Skin Packager window: text. */
-"Do nothing" = "ไม่ทำอะไร";
-
-/* Skin Packager window: text. */
-"Load layout" = "โหลดเลย์เอาต์";
-
-/* Skin Packager window: text. */
-"Load skin" = "โหลดสกิน";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "บันทึกแพ็กเกจไปที่:";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "หลังการติดตั้ง:";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "เวอร์ชัน Rainmeter ขั้นต่ำ:";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "ภาพส่วนหัว:";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "ไฟล์ตัวแปร:";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "โหลดการตั้งค่าก่อนหน้า";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "กดปุ่ม Shift ค้างไว้เพื่อลบรายการ";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "สร้างแพ็กเกจ .rmskin";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "ไม่ได้เลือกสกิน";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "ไม่มี";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@ (ไม่มีเวอร์ชัน 32 บิต)";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "ยังไม่สามารถสร้างแพ็กเกจได้";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "เลือกโฟลเดอร์รากของสกิน (root config)";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "ยังไม่สามารถสร้างแพ็กเกจได้";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "ลิงก์ถูกละไว้จากแพ็กเกจ: %@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "ไม่สามารถใช้ “ไฟล์ตัวแปร” และ “รวมสกิน” พร้อมกันได้";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "“%@” ไม่ใช่หมายเลขเวอร์ชัน เช่น 5.0 หรือ 5.0.0.4657";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "“%@” ไม่ใช่หมายเลขเวอร์ชัน เช่น 1.0 หรือ 1.1.1";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "เลือกตำแหน่งที่จะบันทึกแพ็กเกจ";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "โหลดการตั้งค่าก่อนหน้า";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "กดปุ่ม Shift ค้างไว้เพื่อลบรายการ";
+
+/* Skin Packager window: text. */
+"Package Info" = "ข้อมูลแพ็กเกจ";
+
+/* Skin Packager window: text. */
+"Package Contents" = "เนื้อหาแพ็กเกจ";
+
+/* Skin Packager window: text. */
+"Skin:" = "สกิน:";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "เพิ่มสกิน…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "เลย์เอาต์:";
+
+/* Skin Packager window: text. */
+"Add Layout" = "เพิ่มเลย์เอาต์";
+
+/* Skin Packager window: text. */
+"Remove" = "เอาออก";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "ปลั๊กอิน:";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "เพิ่มปลั๊กอิน…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "บันทึกแพ็กเกจไปที่:";
+
+/* Skin Packager window: text. */
+"Choose…" = "เลือก…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "หลังการติดตั้ง:";
+
+/* Skin Packager window: text. */
+"Do nothing" = "ไม่ทำอะไร";
+
+/* Skin Packager window: text. */
+"Load skin" = "โหลดสกิน";
+
+/* Skin Packager window: text. */
+"Load layout" = "โหลดเลย์เอาต์";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "เวอร์ชัน Deskset ขั้นต่ำ:";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "ภาพส่วนหัว:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "ไฟล์ตัวแปร:";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "รวมสกิน";
+
+/* Skin Packager window: text. */
+"Back" = "ย้อนกลับ";
+
+/* Skin Packager window: text. */
+"Create Package" = "สร้างแพ็กเกจ";
+
+/* Skin Packager window: text. */
+"Next" = "ถัดไป";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "การเริ่มต้นและภาษา";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "Deskset จะเปิดพร้อมสกินของคุณเมื่อคุณเข้าสู่ระบบ";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "ใช้ได้เมื่อ Deskset ทำงานจากโฟลเดอร์แอปพลิเคชัน";
+
+/* SettingsWindowView: text. */
+"Language" = "ภาษา";
+
+/* SettingsWindowView: text. */
 "Appearance" = "รูปลักษณ์";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "เปลี่ยนตามโหมดสว่างและโหมดมืดของ macOS โดยอัตโนมัติ";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "คงรูปลักษณ์หน้าต่างและเมนูของ Deskset ไว้ตามที่เลือก";
+
+/* SettingsWindowView: text. */
+"Software Update" = "รายการอัปเดตซอฟต์แวร์";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset ตรวจสอบวันละครั้งและดาวน์โหลดการอัปเดตเอง คุณเป็นผู้เลือกว่าจะติดตั้งเมื่อใด";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "การอัปเดต:";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "การโต้ตอบบนเดสก์ท็อป";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "เดสก์ท็อปแบบโต้ตอบ";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "ป้องกันการเผลอลากด้วยเมาส์โดยยังคงกดปุ่มและโต้ตอบได้ตามปกติ";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "Deskset จะเปิดพร้อมสกินของคุณเมื่อคุณเข้าสู่ระบบ";
+"Global Zoom" = "การซูมทั้งหมด";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "ใช้ได้เมื่อ Deskset ทำงานจากโฟลเดอร์แอปพลิเคชัน";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset ตรวจสอบวันละครั้งและดาวน์โหลดการอัปเดตเอง คุณเป็นผู้เลือกว่าจะติดตั้งเมื่อใด";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "การอัปเดต:";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "เปลี่ยนตามโหมดสว่างและโหมดมืดของ macOS โดยอัตโนมัติ";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "คงรูปลักษณ์หน้าต่างและเมนูของ Deskset ไว้ตามที่เลือก";
-
-/* SettingsWindowView: text. */
-"Language" = "ภาษา";
+"Directories" = "ไดเรกทอรี";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "โฟลเดอร์สกิน";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "โฟลเดอร์การตั้งค่า";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "โหลดซ้ำอัตโนมัติ:";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "การวินิจฉัย";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "ตรวจสอบค่าการวัด ตัวแปร ปลั๊กอินในตัว จอภาพ และสถิติเครือข่ายแบบสด";
@@ -1934,7 +1972,7 @@
 "No log entries." = "ไม่มีรายการบันทึก";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "โฟลเดอร์การตั้งค่า";
+"Documentation" = "เอกสารประกอบ";
 
 /* SettingsWindowView: text. */
 "Open" = "เปิด";
