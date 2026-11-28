@@ -353,6 +353,10 @@ public final class Skin {
     /// a mouse entry, a preview, work that comes back to the skin (`async`, `SkinHop`, `!Delay`)…
     private var workDepth = 0
 
+    /// Local background jobs (`Skin.startBackground` excluding remote network requests) started on this executor and
+    /// not yet delivered back to it. Read and updated on the skin's own executor only.
+    public internal(set) var pendingLocalBackgroundWork = 0
+
     /// Called when an entry point starts; pair it with `endWork` (in a `defer`).
     @inline(__always)
     func beginWork() {
@@ -1435,6 +1439,7 @@ public final class Skin {
         closed = true
         generation += 1
         pendingHostSuspensions = 0
+        pendingLocalBackgroundWork = 0
         // Cancelled rather than left to find the skin closed: they let go of what they hold at once.
         for work in pendingDelays.values { work.cancel() }
         pendingDelays = [:]
