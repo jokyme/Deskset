@@ -805,7 +805,7 @@ struct NewSkinRootView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: 210)
-        .background(Color.primary.opacity(0.04))
+        .background(DeskProPalette.utilitySidebar)
     }
 
     // MARK: - Detail Area

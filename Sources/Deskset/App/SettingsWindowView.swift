@@ -119,7 +119,7 @@ struct DesksetSettingsRootView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: 240)
-        .background(Color.primary.opacity(0.04))
+        .background(DeskProPalette.utilitySidebar)
     }
 
     private func sidebarRow(for item: SettingsWindowController.Pane) -> some View {

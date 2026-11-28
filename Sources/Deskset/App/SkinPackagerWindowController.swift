@@ -887,7 +887,7 @@ struct SkinPackagerRootView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: 225)
-        .background(Color.primary.opacity(0.04))
+        .background(DeskProPalette.utilitySidebar)
     }
 
     // MARK: - Right Detail Pane
