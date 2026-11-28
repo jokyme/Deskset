@@ -686,6 +686,23 @@ enum CodeEditorRoutingSelfTests {
                 t.equal(app.state.data.settingsPane, "editor")
                 t.equal(SettingsWindowController(app: app).pane, .editor, "reopens on the last pane")
 
+                // Selecting About keeps About while Settings stays open, and clears to General once closed.
+                let shownSettings = SettingsWindowController.show(app: app, pane: .about)
+                t.equal(shownSettings.pane, .about)
+                let stillOpen = SettingsWindowController.show(app: app)
+                t.check(stillOpen === shownSettings)
+                t.equal(stillOpen.pane, .about, "unclosed Settings window keeps About selected")
+                shownSettings.close()
+                let reopenedAfterAbout = SettingsWindowController.show(app: app)
+                t.equal(reopenedAfterAbout.pane, .general, "closing Settings clears About selection on next open")
+                reopenedAfterAbout.close()
+                app.state.setSettingsPane("about")
+                let sanitized = SettingsWindowController(app: app)
+                t.equal(sanitized.pane, .general, "stored 'about' pane resets to General")
+                t.equal(app.state.data.settingsPane, "general")
+                sanitized.close()
+                settings.select(.editor)
+
                 t.equal(settings.testEditorTitles, [SettingsWindowController.builtInTitle, "-", "Forky", "TextEdit", "Zed",
                                                     "-", "System default (Forky)", "Other…"])
                 t.equal(settings.editorPopUp.titleOfSelectedItem, SettingsWindowController.builtInTitle)

@@ -3,7 +3,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title; MenuBarPanelController: text. */
 "About Deskset" = "About Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -12,7 +12,7 @@
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Manage Skins…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; MenuBarPanelController: text; WidgetLibraryView: text. */
 "Install Skin…" = "Install Skin…";
 
 /* Main menu: menu item. */
@@ -760,7 +760,7 @@
 /* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Automatically check for updates";
 
-/* Settings window: button; App updates: text; SettingsWindowView: text. */
+/* Settings window: button; App updates: text; MenuBarPanelController: text; SettingsWindowView: text. */
 "Check for Updates…" = "Check for Updates…";
 
 /* Settings window: button; SettingsWindowView: text.
@@ -996,7 +996,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "By %@";
 
-/* Skin installer: text; SettingsWindowView: text.
+/* Skin installer: text; MenuBarPanelController: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Version %@";
 
@@ -1149,7 +1149,7 @@
 /* Skin Packager window: text. */
 "No skin chosen" = "No skin chosen";
 
-/* Skin Packager window: text.
+/* Skin Packager window: text, menu item.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "None";
 
@@ -1355,7 +1355,7 @@
 
 // MARK: App updates
 
-/* App updates: text. */
+/* App updates: text; MenuBarPanelController: text. */
 "Checking for Updates…" = "Checking for Updates…";
 
 /* App updates: message (an error or a status).

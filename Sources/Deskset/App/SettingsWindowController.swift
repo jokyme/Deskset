@@ -88,9 +88,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @discardableResult
     static func show(app: AppController, pane: Pane? = nil) -> SettingsWindowController {
         let reused = current.flatMap { $0.app === app ? $0 : nil }
+        let wasOpen = reused.map {
+            !app.presentsWindows || $0.window?.isVisible == true || $0.window?.isMiniaturized == true
+        } ?? false
         let controller = reused ?? SettingsWindowController(app: app)
         current = controller
-        if let pane { controller.select(pane) }
+        if let pane {
+            controller.select(pane)
+        } else if !wasOpen && controller.pane == .about {
+            controller.select(.general)
+        }
         if reused != nil {
             controller.refreshEditorPopUp()
             controller.updateControls()
@@ -128,7 +135,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = host
         hostingView = host
 
-        select(app.state.data.settingsPane.flatMap(Pane.init(rawValue:)) ?? .general)
+        select(restoredMainPane)
 
         observer = NotificationCenter.default.addObserver(
             forName: .desksetEditorPreferencesChanged,
@@ -164,14 +171,44 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let globalSettingsObserver { NotificationCenter.default.removeObserver(globalSettingsObserver) }
     }
 
+    private var restoredMainPane: Pane {
+        guard let raw = app.state.data.settingsPane,
+              let saved = Pane(rawValue: raw),
+              saved != .about else {
+            if app.state.data.settingsPane == Pane.about.rawValue {
+                app.state.setSettingsPane(Pane.general.rawValue)
+            }
+            return .general
+        }
+        return saved
+    }
+
     func select(_ pane: Pane) {
         self.pane = pane
         settingsModel.pane = pane
         window?.title = pane.title
-        app.state.setSettingsPane(pane.rawValue)
+        if pane != .about {
+            app.state.setSettingsPane(pane.rawValue)
+        }
         if pane == .debug {
             refreshDebugData()
         }
+    }
+
+    private func resetAboutSelectionOnClose() {
+        if pane == .about {
+            app.state.setSettingsPane(Pane.general.rawValue)
+        }
+        if Self.current === self { Self.current = nil }
+    }
+
+    override func close() {
+        resetAboutSelectionOnClose()
+        super.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        resetAboutSelectionOnClose()
     }
 
     private func configureControls() {

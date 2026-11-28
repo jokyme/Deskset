@@ -1615,6 +1615,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.title = updates.menuTitle
             }
         }
+        menuBarPanel.refreshIfLoaded()
     }
 
     /// Branded native notices, also inspectable in headless tests. Automatic checks never report network failures.
@@ -1756,11 +1757,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func handleStatusItemClick(type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags) {
-        if modifiers.contains(.control) {
+        if type == .rightMouseUp || type == .rightMouseDown {
+            menuBarPanel.toggle(relativeTo: statusItem?.button)
+        } else if modifiers.contains(.control) {
             menuBarPanel.close()
             showDebug(tab: .log)
         } else {
-            menuBarPanel.toggle(relativeTo: statusItem?.button)
+            menuBarPanel.close()
+            showManageWindow(selecting: nil, file: nil)
         }
     }
 
