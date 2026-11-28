@@ -250,6 +250,31 @@ public struct BackgroundJob<T> {
         self.init(kind, subject: subject, start: { deliver in queue.async { deliver(work()) } },
                   inline: fixture ? work : nil, scripted: scripted, reads: reads)
     }
+
+    /// Whether this job reads or renders local files/system state rather than waiting on a remote network endpoint.
+    var isLocal: Bool {
+        switch kind {
+        case .ping, .weather, .sun:
+            return false
+        case .webParserPage, .webParserDownload:
+            return reads != nil
+        default:
+            return true
+        }
+    }
+}
+
+private final class BackgroundOnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !claimed else { return false }
+        claimed = true
+        return true
+    }
 }
 
 // MARK: - Skin
@@ -267,6 +292,18 @@ extension Skin {
         if let virtual = executor as? VirtualTimeExecutor {
             virtual.background.start(job, hop: hop, config: config, tree: rootConfigDirectory, then: completion,
                                      orElse: dropped)
+            return
+        }
+        if job.isLocal {
+            pendingLocalBackgroundWork += 1
+            let once = BackgroundOnceFlag()
+            job.start { result in
+                if once.claim() {
+                    hop.postLocalBackground({ completion(result) }, orElse: dropped.map { drop in { drop(result) } })
+                } else {
+                    hop.post({ completion(result) }, orElse: dropped.map { drop in { drop(result) } })
+                }
+            }
             return
         }
         job.start { result in
