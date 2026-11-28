@@ -183,6 +183,9 @@ enum LocalizationSelfTests {
                 manage.selectTab(tab)
                 if let content = manage.window?.contentView { visit(view: content, "Manage \(tab)") }
             }
+            let inspector = manage.makeInspectorViewForTesting(config: "App\\Focus")
+            inspector.layoutSubtreeIfNeeded()
+            visit(view: inspector, "Manage inspector sheet")
             visit(manage.window?.title, "Manage title")
             manage.close()
             let debug = DebugWindowController.show(app: app, tab: .log)

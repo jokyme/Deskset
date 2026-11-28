@@ -1885,6 +1885,51 @@ private func runWebParserReviewTests(_ t: TestRunner) {
                 "\(WebParserNetwork.shared.sessionCount) sessions")
     }
 
+    t.suite("WebParser: allowsRemoteBackgroundWork=false skips HTTP requests while keeping local files") {
+        let dir = t.temporaryDirectory("webparser-local-only")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let localXML = dir.appendingPathComponent("local.xml")
+        try "<feed><item>LocalHeadline</item><img src=\"\(server.url("/local-only-child.png"))\"/></feed>"
+            .write(to: localXML, atomically: true, encoding: .utf8)
+
+        server.handler = { _ in .text("<feed><item>RemoteHeadline</item></feed>") }
+
+        let (skin, _) = try makeSkin(t, """
+        [RemoteParent]
+        Measure=WebParser
+        URL=\(server.url("/local-only-feed"))
+        RegExp=(?siU)<item>(.*)</item>
+        StringIndex=1
+
+        [RemoteDownload]
+        Measure=WebParser
+        URL=\(server.url("/local-only-direct.bin"))
+        Download=1
+
+        [LocalParent]
+        Measure=WebParser
+        URL=file://\(localXML.path)
+        RegExp=(?siU)<item>(.*)</item>.*src="(.*)"
+
+        [LocalText]
+        Measure=WebParser
+        URL=[LocalParent]
+        StringIndex=1
+
+        [ChildRemoteDownload]
+        Measure=WebParser
+        URL=[LocalParent]
+        StringIndex=2
+        Download=1
+        """)
+        skin.allowsRemoteBackgroundWork = false
+        updateAndSettle(skin)
+        let leaked = server.requests.filter { $0.target.hasPrefix("/local-only-") }
+        t.equal(leaked.count, 0, "no HTTP page or download request reached the server: \(leaked)")
+        t.equal(str(skin, "RemoteParent"), "")
+        t.equal(str(skin, "LocalText"), "LocalHeadline", "local file:// resources still parse")
+    }
+
     t.suite("WebParser: typical RegExp shapes (RSS items with lookahead, JSON, U flag)") {
         let item = "(?(?=.*<item>).*<item>.*<title>(.*)</title>.*<link>(.*)</link>.*<pubDate>(.*)</pubDate>)"
         if case .matched(let caps, let n) = WebParserProcessor.match(

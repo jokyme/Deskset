@@ -91,7 +91,7 @@ final class WidgetLibraryViewModel: ObservableObject {
         section = newSection
         selectedFolder = nil
         scrollToCardID = nil
-        if newSection == .favorites {
+        if newSection == .active || newSection == .favorites {
             chosenVariants.removeAll()
         }
     }
@@ -487,6 +487,7 @@ struct WidgetLibraryRootView: View {
                 controller?.createPackage()
             }
             toolbarIconButton(symbol: "arrow.clockwise", help: L("Refresh All")) {
+                controller?.invalidateMetadataCache()
                 model.thumbnails.invalidateAll()
                 app.refreshAllAction()
             }
@@ -1174,7 +1175,7 @@ private struct VariantSizeGlyph: View {
 
 // MARK: - Per-Skin Inspector Sheet (Full Rainmeter Skin Settings, Metadata & Compatibility)
 
-private struct SkinInspectorSheetView: View {
+struct SkinInspectorSheetView: View {
     let configName: String
     @ObservedObject var model: WidgetLibraryViewModel
     let controller: ManageWindowController
@@ -1185,6 +1186,7 @@ private struct SkinInspectorSheetView: View {
     @State private var yText: String = ""
     @State private var fadeText: String = ""
     @State private var loadOrderText: String = ""
+    @State private var zoomText: String = "100"
     @State private var zoomValue: Int = 100
 
     private var config: SkinConfig? { app.config(named: configName) }
@@ -1205,6 +1207,11 @@ private struct SkinInspectorSheetView: View {
     var body: some View {
         let _ = model.revision
         let editable = running != nil && !chosenFile.isEmpty
+        let selectionLocked = app.skinSelection.contains(configName)
+        let monitorController: SkinWindowController? = {
+            guard isExactLoaded, let running, running.isStarted, !running.isStopped else { return nil }
+            return running
+        }()
         let fileURL = config?.directory.appendingPathComponent(chosenFile)
         let metadata: [String: String] = {
             if isExactLoaded, let running { return running.runtime.snapshot.metadata }
@@ -1350,16 +1357,17 @@ private struct SkinInspectorSheetView: View {
                                 .labelsHidden()
                                 .frame(width: 120)
 
-                                TextField("", text: $fadeText)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 56)
-                                    .multilineTextAlignment(.trailing)
-                                    .onSubmit {
-                                        guard let running, let v = Int(fadeText.trimmingCharacters(in: .whitespaces)) else { return }
-                                        app.changeSettings(of: running) {
-                                            $0.fadeDuration = min(max(v, 0), SkinState.maxFadeDuration)
-                                        }
-                                    }
+                                InspectorIntegerField(
+                                    text: fadeText,
+                                    placeholder: "250",
+                                    width: 56,
+                                    isEnabled: editable,
+                                    accessibilityLabel: L("Fade duration:")
+                                ) { submitted in
+                                    fadeText = submitted
+                                    commitFadeDuration()
+                                }
+                                .fixedSize()
                                 Text(L("ms"))
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
@@ -1370,36 +1378,82 @@ private struct SkinInspectorSheetView: View {
                         DeskProSettingsRow(title: L("Coordinates:")) {
                             HStack(spacing: 6) {
                                 Text("X").font(.system(size: 11)).foregroundColor(.secondary)
-                                TextField("0", text: $xText)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 64)
-                                    .multilineTextAlignment(.trailing)
-                                    .onSubmit(commitCoordinates)
+                                InspectorIntegerField(
+                                    text: xText,
+                                    placeholder: "0",
+                                    width: 56,
+                                    isEnabled: editable,
+                                    accessibilityLabel: "X"
+                                ) { submitted in
+                                    xText = submitted
+                                    commitCoordinates()
+                                }
+                                .fixedSize()
                                 Text("Y").font(.system(size: 11)).foregroundColor(.secondary)
-                                TextField("0", text: $yText)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 64)
-                                    .multilineTextAlignment(.trailing)
-                                    .onSubmit(commitCoordinates)
+                                InspectorIntegerField(
+                                    text: yText,
+                                    placeholder: "0",
+                                    width: 56,
+                                    isEnabled: editable,
+                                    accessibilityLabel: "Y"
+                                ) { submitted in
+                                    yText = submitted
+                                    commitCoordinates()
+                                }
+                                .fixedSize()
+                                InspectorDisplayMonitorPopUp(
+                                    running: monitorController,
+                                    app: app,
+                                    revision: model.revision
+                                )
+                                .fixedSize()
                             }
                             .disabled(!editable)
                         }
 
                         DeskProSettingsRow(title: L("Zoom:")) {
                             HStack(spacing: 6) {
-                                Stepper(value: Binding(
-                                    get: { zoomValue },
-                                    set: { newVal in
-                                        let clamped = min(max(newVal, 10), 500)
-                                        zoomValue = clamped
-                                        app.setSkinZoom(config: configName, percent: clamped)
-                                    }
-                                ), in: 10...500, step: 10) {
-                                    Text("\(zoomValue)%")
-                                        .font(.system(size: 12.5).monospacedDigit())
+                                InspectorIntegerField(
+                                    text: zoomText,
+                                    placeholder: "100",
+                                    width: 56,
+                                    isEnabled: editable && !app.state.forceDefaultZoom,
+                                    accessibilityLabel: L("Skin zoom")
+                                ) { submitted in
+                                    zoomText = submitted
+                                    commitZoomText()
                                 }
+                                .fixedSize()
+                                InspectorZoomStepper(
+                                    value: zoomValue,
+                                    isEnabled: editable && !app.state.forceDefaultZoom
+                                ) { newPercent in
+                                    let clamped = min(max(newPercent, 10), 500)
+                                    zoomValue = clamped
+                                    zoomText = String(clamped)
+                                    app.setSkinZoom(config: configName, percent: clamped)
+                                }
+                                .fixedSize()
+                                Text("%")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
                             }
                             .disabled(!editable || app.state.forceDefaultZoom)
+                        }
+
+                        DeskProSettingsRow(title: L("Load order:")) {
+                            InspectorIntegerField(
+                                text: loadOrderText,
+                                placeholder: "0",
+                                width: 64,
+                                isEnabled: editable,
+                                accessibilityLabel: L("Load order:")
+                            ) { submitted in
+                                loadOrderText = submitted
+                                commitLoadOrder()
+                            }
+                            .fixedSize()
+                            .disabled(!editable)
                         }
 
                         DeskProSettingsRow(title: L("Draggable")) {
@@ -1407,7 +1461,7 @@ private struct SkinInspectorSheetView: View {
                                 get: { skinState.draggable },
                                 set: { v in if let running { app.changeSettings(of: running) { $0.draggable = v } } }
                             ))
-                            .toggleStyle(.switch).labelsHidden().disabled(!editable)
+                            .toggleStyle(.switch).labelsHidden().disabled(!editable || selectionLocked)
                         }
 
                         DeskProSettingsRow(title: L("Click through")) {
@@ -1415,7 +1469,7 @@ private struct SkinInspectorSheetView: View {
                                 get: { skinState.clickThrough },
                                 set: { v in if let running { app.changeSettings(of: running) { $0.clickThrough = v } } }
                             ))
-                            .toggleStyle(.switch).labelsHidden().disabled(!editable)
+                            .toggleStyle(.switch).labelsHidden().disabled(!editable || selectionLocked)
                         }
 
                         DeskProSettingsRow(title: L("Keep on screen")) {
@@ -1423,7 +1477,7 @@ private struct SkinInspectorSheetView: View {
                                 get: { skinState.keepOnScreen },
                                 set: { v in if let running { app.changeSettings(of: running) { $0.keepOnScreen = v } } }
                             ))
-                            .toggleStyle(.switch).labelsHidden().disabled(!editable)
+                            .toggleStyle(.switch).labelsHidden().disabled(!editable || selectionLocked)
                         }
 
                         DeskProSettingsRow(title: L("Snap to edges")) {
@@ -1516,6 +1570,8 @@ private struct SkinInspectorSheetView: View {
         }
         .frame(width: 560, height: 600)
         .onAppear(perform: syncFields)
+        .onChange(of: model.revision) { _ in syncFields() }
+        .onChange(of: configName) { _ in syncFields() }
     }
 
     private func syncFields() {
@@ -1532,14 +1588,227 @@ private struct SkinInspectorSheetView: View {
                 ? app.state.defaultZoomPercent
                 : (s.zoomOverridePercent ?? app.state.defaultZoomPercent)
         }
+        zoomText = String(zoomValue)
         fadeText = String(s.fadeDuration)
         loadOrderText = String(s.loadOrder)
     }
 
+    private func commitFadeDuration() {
+        guard let running, let v = Int(fadeText.trimmingCharacters(in: .whitespaces)) else {
+            fadeText = String(skinState.fadeDuration)
+            return
+        }
+        let clamped = min(max(v, 0), SkinState.maxFadeDuration)
+        app.changeSettings(of: running) { $0.fadeDuration = clamped }
+        fadeText = String(clamped)
+    }
+
     private func commitCoordinates() {
         guard let x = Int(xText.trimmingCharacters(in: .whitespaces)),
-              let y = Int(yText.trimmingCharacters(in: .whitespaces)) else { return }
+              let y = Int(yText.trimmingCharacters(in: .whitespaces)) else {
+            syncFields()
+            return
+        }
         controller.selectInLibrary(config: configName, file: chosenFile)
         controller.testTypeCoordinates(x: x, y: y)
+        syncFields()
+    }
+
+    private func commitZoomText() {
+        guard running != nil, !chosenFile.isEmpty, !app.state.forceDefaultZoom else {
+            zoomText = String(zoomValue)
+            return
+        }
+        guard let percent = Int(zoomText.trimmingCharacters(in: .whitespaces)) else {
+            zoomText = String(zoomValue)
+            return
+        }
+        let clamped = min(max(percent, 10), 500)
+        zoomValue = clamped
+        zoomText = String(clamped)
+        app.setSkinZoom(config: configName, percent: clamped)
+    }
+
+    private func commitLoadOrder() {
+        guard let running else {
+            loadOrderText = String(skinState.loadOrder)
+            return
+        }
+        guard let v = Int(loadOrderText.trimmingCharacters(in: .whitespaces)) else {
+            loadOrderText = String(running.state.loadOrder)
+            return
+        }
+        let clamped = min(max(v, -1_000_000), 1_000_000)
+        app.changeSettings(of: running) { $0.loadOrder = clamped }
+        loadOrderText = String(clamped)
+    }
+}
+
+/// Right-aligned AppKit `NSTextField` hosted in `SkinInspectorSheetView` so edits commit both on Return and on focus
+/// loss (`sendsActionOnEndEditing`) and expose a real AppKit accessibility label for UI automation and self-tests.
+private struct InspectorIntegerField: NSViewRepresentable {
+    let text: String
+    let placeholder: String
+    let width: CGFloat
+    let isEnabled: Bool
+    let accessibilityLabel: String
+    let onCommit: (String) -> Void
+
+    final class Coordinator: NSObject {
+        var onCommit: (String) -> Void
+
+        init(onCommit: @escaping (String) -> Void) {
+            self.onCommit = onCommit
+        }
+
+        @objc func committed(_ sender: NSTextField) {
+            onCommit(sender.stringValue)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCommit: onCommit)
+    }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.bezelStyle = .roundedBezel
+        field.isBezeled = true
+        field.isEditable = true
+        field.isSelectable = true
+        field.drawsBackground = true
+        field.alignment = .right
+        field.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize(for: .regular), weight: .regular)
+        field.placeholderString = placeholder
+        field.stringValue = text
+        field.isEnabled = isEnabled
+        field.cell?.sendsActionOnEndEditing = true
+        field.target = context.coordinator
+        field.action = #selector(Coordinator.committed(_:))
+        field.setAccessibilityLabel(accessibilityLabel)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.onCommit = onCommit
+        if field.isEnabled != isEnabled {
+            field.isEnabled = isEnabled
+        }
+        if field.accessibilityLabel() != accessibilityLabel {
+            field.setAccessibilityLabel(accessibilityLabel)
+        }
+        if field.currentEditor() == nil, field.stringValue != text {
+            field.stringValue = text
+        }
+    }
+}
+
+/// Pull-down button in `SkinInspectorSheetView` backed by `AppController.displayMonitorMenu(for:appliesToSelection:)`,
+/// keeping the visible Widget Library settings sheet in sync with the shared monitor choices and actions.
+private struct InspectorDisplayMonitorPopUp: NSViewRepresentable {
+    let running: SkinWindowController?
+    let app: AppController
+    let revision: Int
+
+    final class Coordinator: NSObject, NSMenuDelegate {
+        weak var running: SkinWindowController?
+        weak var app: AppController?
+
+        func populate(_ menu: NSMenu) {
+            menu.removeAllItems()
+            menu.addItem(withTitle: L("Display monitor"), action: nil, keyEquivalent: "")
+            guard let app, let running, running.isStarted, !running.isStopped else { return }
+            let choices = app.displayMonitorMenu(for: running, appliesToSelection: false)
+            for item in choices.items {
+                choices.removeItem(item)
+                menu.addItem(item)
+            }
+        }
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            populate(menu)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: true)
+        popup.controlSize = .regular
+        popup.setAccessibilityLabel(L("Display monitor"))
+        popup.toolTip = L("Select the display monitor for this skin.")
+        popup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        popup.menu?.delegate = context.coordinator
+        popup.menu?.autoenablesItems = false
+        context.coordinator.running = running
+        context.coordinator.app = app
+        if let menu = popup.menu {
+            context.coordinator.populate(menu)
+        }
+        popup.isEnabled = running != nil
+        return popup
+    }
+
+    func updateNSView(_ popup: NSPopUpButton, context: Context) {
+        _ = revision
+        context.coordinator.running = running
+        context.coordinator.app = app
+        if let menu = popup.menu {
+            context.coordinator.populate(menu)
+        }
+        popup.isEnabled = running != nil
+    }
+}
+
+/// AppKit `SkinZoomStepper` hosted in `SkinInspectorSheetView` so per-skin zoom steps by 1 percentage point (or 10
+/// while holding Control), matching `ManageWindowController` and `SettingsWindowController`.
+private struct InspectorZoomStepper: NSViewRepresentable {
+    let value: Int
+    let isEnabled: Bool
+    let onChange: (Int) -> Void
+
+    final class Coordinator: NSObject {
+        var onChange: (Int) -> Void
+
+        init(onChange: @escaping (Int) -> Void) {
+            self.onChange = onChange
+        }
+
+        @objc func stepped(_ sender: SkinZoomStepper) {
+            onChange(sender.integerValue)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChange: onChange)
+    }
+
+    func makeNSView(context: Context) -> SkinZoomStepper {
+        let stepper = SkinZoomStepper()
+        stepper.minValue = 10
+        stepper.maxValue = 500
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.integerValue = value
+        stepper.isEnabled = isEnabled
+        stepper.target = context.coordinator
+        stepper.action = #selector(Coordinator.stepped(_:))
+        stepper.setAccessibilityLabel(L("Skin zoom"))
+        stepper.toolTip = L("Hold Control to change zoom by 10 percentage points.")
+        return stepper
+    }
+
+    func updateNSView(_ stepper: SkinZoomStepper, context: Context) {
+        context.coordinator.onChange = onChange
+        if stepper.integerValue != value {
+            stepper.integerValue = value
+        }
+        if stepper.isEnabled != isEnabled {
+            stepper.isEnabled = isEnabled
+        }
     }
 }

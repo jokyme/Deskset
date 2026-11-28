@@ -113,6 +113,7 @@ enum ManageModel {
         let host = RenderHost()
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: host)
+        skin.allowsRemoteBackgroundWork = false
         do {
             try skin.load()
         } catch {

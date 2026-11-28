@@ -134,6 +134,17 @@ public struct RmskinManifest: Equatable {
     /// The Rainmeter release whose skin features Deskset implements (all of its revisions).
     public static let compatibleRainmeterVersion = "5.0.0"
 
+    /// Installed Deskset version compared against `MinimumDeskset`: the app bundle's short version when running inside
+    /// `Deskset.app`, else `DesksetCore.version`.
+    public static var currentDesksetVersion: String {
+        if Bundle.main.bundleIdentifier == "app.deskset.Deskset",
+           let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            let trimmed = version.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return DesksetCore.version
+    }
+
     /// `MinimumRainmeter` (or a legacy package's `MinRainmeterVer`) asks for a release newer than
     /// `compatibleRainmeterVersion`. Revisions are ignored: every 5.0 revision counts as 5.0. Rainmeter refuses such a
     /// package ("Rainmeter will not install the skin on a system that does not meet the requirements"); Deskset only
@@ -147,6 +158,19 @@ public struct RmskinManifest: Equatable {
         guard !minimum.isEmpty else { return false }
         let release = versionComponents(minimum).prefix(3).map(String.init).joined(separator: ".")
         return !Self.version(compatibleRainmeterVersion, isAtLeast: release)
+    }
+
+    /// `MinimumDeskset` asks for a Deskset release newer than `currentDesksetVersion`. Like `MinimumRainmeter`, Deskset
+    /// warns before installation rather than refusing the package outright.
+    public var requiresNewerDeskset: Bool {
+        RmskinManifest.requiresNewerDeskset(minimumDeskset)
+    }
+
+    public static func requiresNewerDeskset(_ version: String,
+                                            currentVersion: String = currentDesksetVersion) -> Bool {
+        let minimum = version.trimmingCharacters(in: .whitespaces)
+        guard !minimum.isEmpty else { return false }
+        return !Self.version(currentVersion, isAtLeast: minimum)
     }
 
     public static func versionComponents(_ version: String) -> [Int] {
@@ -490,6 +514,11 @@ public enum RmskinPackage {
         if inspection.manifest.requiresNewerRainmeter {
             inspection.warnings.append("The package requires Rainmeter \(inspection.manifest.minimumRainmeter) or later. "
                 + "Deskset is compatible with Rainmeter 5.0 skins, so features of a newer version may not work.")
+        }
+        if inspection.manifest.requiresNewerDeskset {
+            let installed = RmskinManifest.currentDesksetVersion
+            inspection.warnings.append("The package requires Deskset \(inspection.manifest.minimumDeskset) or later. "
+                + "This Mac is running Deskset \(installed), so features of a newer version may not work.")
         }
         if inspection.manifest.packageFormat == .rmskin,
            inspection.manifest.mergeSkins, !inspection.manifest.variableFiles.isEmpty {

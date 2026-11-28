@@ -710,6 +710,39 @@ private func rmskinInspectTests(_ t: TestRunner) {
         t.equal(b.warnings, [])
     }
 
+    t.suite("Rmskin: a package requiring a newer Deskset version warns on inspect and install") {
+        for ok in ["", "  ", "0.9", "1.0.0", "1.1.1", "invalid"] {
+            t.check(!RmskinManifest.requiresNewerDeskset(ok, currentVersion: "1.1.1"), "\(ok) is satisfied by 1.1.1")
+        }
+        for newer in ["1.1.2", "1.2", "1.2.0", "9.0.0"] {
+            t.check(RmskinManifest.requiresNewerDeskset(newer, currentVersion: "1.1.1"), "\(newer) is newer than 1.1.1")
+        }
+
+        let dir = t.temporaryDirectory("rmskin-minimum-deskset")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let skinsDir = dir.appendingPathComponent("Skins")
+        let future = try makePackage([("RMSKIN.ini", utf8("[rmskin]\nName=Future\nMinimumDeskset=9.0.0\n")),
+                                      ("Skins/Future/Future.ini", utf8("[Rainmeter]\n"))],
+                                     in: dir, name: "future.rmskin")
+        let inspected = try RmskinPackage.inspect(future)
+        defer { inspected.cleanup() }
+        t.equal(inspected.manifest.minimumDeskset, "9.0.0")
+        t.equal(inspected.warnings.filter { $0.contains("Deskset 9.0.0 or later") }.count, 1, "\(inspected.warnings)")
+
+        let installed = try RmskinInstaller.install(packageURL: future, skinsDirectory: skinsDir, backupSkins: false)
+        t.equal(installed.installedRootConfigs, ["Future"], "warns without blocking installation")
+        t.equal(installed.warnings.filter { $0.contains("Deskset 9.0.0 or later") }.count, 1, "\(installed.warnings)")
+        t.check(exists(skinsDir.appendingPathComponent("Future/Future.ini")))
+
+        let satisfied = try makePackage([
+            ("RMSKIN.ini", utf8("[rmskin]\nName=Satisfied\nMinimumDeskset=\(RmskinManifest.currentDesksetVersion)\n")),
+            ("Skins/Satisfied/Satisfied.ini", utf8("[Rainmeter]\n")),
+        ], in: dir, name: "satisfied.rmskin")
+        let okInspection = try RmskinPackage.inspect(satisfied)
+        defer { okInspection.cleanup() }
+        t.equal(okInspection.warnings, [])
+    }
+
     t.suite("Rmskin: inspect minimal / nested / missing manifest") {
         let dir = t.temporaryDirectory("rmskin-inspect2")
         defer { try? FileManager.default.removeItem(at: dir) }

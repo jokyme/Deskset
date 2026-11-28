@@ -357,6 +357,11 @@ public final class Skin {
     /// not yet delivered back to it. Read and updated on the skin's own executor only.
     public internal(set) var pendingLocalBackgroundWork = 0
 
+    /// Whether background work that reaches remote network endpoints (`!BackgroundJob.isLocal`, such as HTTP/HTTPS
+    /// `WebParser` transfers and `PingPlugin` probes) may start. Off-screen previews disable this so browsing unloaded
+    /// skins reads only local files.
+    public var allowsRemoteBackgroundWork = true
+
     /// Called when an entry point starts; pair it with `endWork` (in a `defer`).
     @inline(__always)
     func beginWork() {

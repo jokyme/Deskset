@@ -1491,6 +1491,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         discoverSkins()
         let controller = manageWindow ?? ManageWindowController(app: self)
         manageWindow = controller
+        controller.prepareForPresentation()
         controller.selectTab(tab)
         if let config { controller.select(config: config, file: file) }
         bringToFront(controller)
@@ -1512,6 +1513,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Activates the app and brings the window in front of the other apps' windows (a menu of the menu bar icon or
     /// a click on a skin does not activate the app, and an inactive app's window stays behind the active app's).
     func bringToFront(_ controller: NSWindowController) {
+        (controller as? ManageWindowController)?.prepareForPresentation()
         lastBroughtToFront = controller.window
         guard presentsWindows, let window = controller.window else { return }
         activateApp(for: controller)

@@ -332,6 +332,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private func startFetch(force: Bool) {
         guard !closed else { return }
         let target = checkedFileAccess(WebParserURL.target(for: options.url))
+        if case .http = target, !skin.allowsRemoteBackgroundWork { return }
         if options.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             report("empty-url", "WebParser [\(name)]: URL is empty")
             return
@@ -523,6 +524,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                                isResource: Bool) {
         guard !closed else { return }
         let target = checkedFileAccess(WebParserURL.target(for: source, relativeTo: base))
+        if case .http = target, !skin.allowsRemoteBackgroundWork { return }
         var destination: URL?
         let isTemporary = options.downloadFile.isEmpty
         if isTemporary {
