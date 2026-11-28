@@ -396,6 +396,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   its own `Draggable`, `Click Through` and `Keep on Screen` menu items (and matching temporary toggles) are locked to keep
   the temporary selection state intact (matching Rainmeter 5.0). Refresh Skin and Unload Skin
   also apply to the selected group, clearing its selection as the instances stop.
+  Settings → Debug & Log includes a **Developer mode** switch (enabled by default); turning it off hides the config path,
+  Select skin, global `Deskset` and root-config submenus, Debug Skin, Edit Skin, Refresh Skin and Open Skin Folder from skin
+  menus (leaving custom skin actions, Variants, Settings, Compatibility Notes when present, Manage Skin… and Unload Skin),
+  while holding Option (`⌥`) when right-clicking a skin temporarily shows the full menu.
 - Why: Mac menu conventions.
 - Skin impact: none.
 - Status: emulated
@@ -462,7 +466,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   interfaces when selected, and provides **Reset statistics** in its footer alongside `!ResetStats`. Display and Network support copying a value or the full list.
   Plugins lists loaded non-built-in plugin implementations (built-in Rainmeter 5.0 measures promoted from plugins are filtered out)
   with known aliases consolidated, the Deskset version marked `(bundled)` and author `jokyme`. All listed implementations update with the app; external plugins remain unsupported.
-  About copies app version, bundle build number when available, architecture and program/settings/skin/log paths.
+  About opens the `About Deskset` pane inside the Settings window (from the app/status/skin menus and `!About`), and copies app version, bundle build number when available, architecture and program/settings/skin/log paths.
 - Why: native macOS controls and device APIs, existing command execution and bounded log storage.
 - Skin impact: use `!Debug` for diagnostics. Existing `!About` command tokens remain accepted but show version details.
   Build date and Windows plugin binaries are unavailable; network indices are BSD indices, not Windows interface IDs.
@@ -564,7 +568,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   actions and `Ctrl+R` / `F5` refresh), Plugins (excluding built-in 5.0 measures promoted from plugins when no separate
   plugin entry applies), Display and Network (with **Reset statistics**) (<https://www.rainmeter.net/changes-5.0/>).
 - Mac (Deskset):
-  - `UITheme` (`0`, `1`, `2`) applies live across Deskset's Manage, Settings, About, Debug, Packager, New Skin,
+  - `UITheme` (`0`, `1`, `2`) applies live across Deskset's Manage, Settings (including its About Deskset pane), Debug, Packager, New Skin,
     Code Editor, Studio windows, menus, alerts and skin tooltips; `UITheme` and `DisableAutoUpdate` are preserved
     across ordinary layout loads alongside `DisableVersionCheck`.
   - Settings groups **User interface** (`Language`, `Theme`), **General** (`Launch at login`, automatic updates),
@@ -934,7 +938,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### MET Norway credit in the skin menu, weather settings
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): the right-click menu of every skin with a MacWeather measure has "Weather: Based on data from MET
-  Norway ↗" (opens api.met.no) and "Updated 12:05", after the skin's own items; the About window names MET Norway and
+  Norway ↗" (opens api.met.no) and "Updated 12:05", after the skin's own items; Settings → About Deskset names MET Norway and
   GeoNames. `defaults write app.deskset.Deskset WeatherEnabled -bool NO` turns weather requests off (read at every
   use); `WeatherDebug -bool YES` adds the rounded coordinates of places written in skins (never this Mac's location)
   and timings to the log. See `weather.md`.

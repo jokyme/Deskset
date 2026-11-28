@@ -1286,7 +1286,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 #### About（Log、Skins、Plugins、Version）
 - **Windows：** About 的四个页面提供日志、活动皮肤的运行值、插件信息和版本/路径信息
   （<https://docs.rainmeter.net/manual/user-interface/about/>）。
-- **Mac：** Debug 使用独立的 5 页签原生窗口（`Log` 初始显示最近 50 条日志与 SF Symbols 状态图标；`Skins` 展示 Measures、Variables、Meters 与 Watch，并支持 `Edit measure` / `Edit meter` / `Edit variable` 与 `⌘R` / Ctrl-R / F5 刷新；`Plugins` 过滤已内置化的 5.0 measure；`Display`；`Network` 页包含 **Reset statistics**），与独立的 **About** 窗口分开，可从状态栏菜单、Manage、皮肤子菜单、`!About` 与 `!Debug` 打开。主菜单已移除独立 Open Log 项；设置调整为“用户界面（语言、Theme [`UITheme=0|1|2`]）”、“通用（开机启动、启动延迟 5 分钟并同步 `DisableAutoUpdate`/`DisableVersionCheck` 且跳过已取消版本的自动更新）”、“皮肤（Skins 文件夹、默认缩放、强制缩放、禁止拖动）”；选中皮肤期间锁定 `Draggable` / `Click Through` / `Keep on Screen` 菜单项；连续淡入淡出从当前透明度平滑衔接。
+- **Mac：** Debug 使用独立的 5 页签原生窗口（`Log` 初始显示最近 50 条日志与 SF Symbols 状态图标；`Skins` 展示 Measures、Variables、Meters 与 Watch，并支持 `Edit measure` / `Edit meter` / `Edit variable` 与 `⌘R` / Ctrl-R / F5 刷新；`Plugins` 过滤已内置化的 5.0 measure；`Display`；`Network` 页包含 **Reset statistics**），而 **About** 收归在设置窗口底部的 `关于 Deskset` 页中（可从应用菜单、状态栏菜单、皮肤子菜单及 `!About` 打开）；设置 ▸ 调试与日志还提供默认开启的**开发者模式**开关，关闭后精简皮肤右键菜单中的开发者项（按住 Option 右键皮肤可临时展开完整菜单）。主菜单已移除独立 Open Log 项；设置调整为“用户界面（语言、Theme [`UITheme=0|1|2`]）”、“通用（开机启动、启动延迟 5 分钟并同步 `DisableAutoUpdate`/`DisableVersionCheck` 且跳过已取消版本的自动更新）”、“皮肤（Skins 文件夹、默认缩放、强制缩放、禁止拖动）”；选中皮肤期间锁定 `Draggable` / `Click Through` / `Keep on Screen` 菜单项；连续淡入淡出从当前透明度平滑衔接。
   Log 初始显示最近 20 条，新消息置顶；过滤只影响后续消息，Clear 只清面板，Command-C 复制所选消息正文。
   面板沿用现有日志的 2,000 条上限。Skins 显示实时 measure 范围、数值、字符串和用户变量，标出禁用/暂停状态；
   长值截断显示，复制保留完整内容。Plugins 列出已注册的内置实现，版本跟随 Deskset 并标注 `(bundled)`，作者显示 `jokyme`；

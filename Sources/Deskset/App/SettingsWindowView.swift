@@ -46,6 +46,7 @@ final class DesksetSettingsViewModel: ObservableObject {
     @Published var liveReload: Bool = true
 
     // Debug & Log
+    @Published var developerMode: Bool = true
     @Published var fileLoggingEnabled: Bool = false
     @Published var recentLogs: [Log.Line] = []
     @Published var showErrorLogs: Bool = true
@@ -677,6 +678,21 @@ struct DesksetSettingsRootView: View {
 
     private var debugPage: some View {
         VStack(alignment: .leading, spacing: 0) {
+            DeskProSettingsGroup {
+                DeskProSettingsRow(
+                    title: L("Developer mode"),
+                    detail: L("Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily."),
+                    divider: false
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { model.developerMode },
+                        set: { controller?.setDeveloperModeFromUI($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+            }
+
             DeskProSettingsGroup(title: L("Diagnostics")) {
                 DeskProSettingsRow(
                     title: L("Log file"),
@@ -830,9 +846,7 @@ struct DesksetSettingsRootView: View {
                 Spacer()
 
                 Button(L("Copy to Clipboard")) {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(AboutWindowController.formatVersionReport(for: app), forType: .string)
+                    AboutWindowController.copyVersionDetailsToClipboard(for: app)
                 }
             }
             .padding(16)

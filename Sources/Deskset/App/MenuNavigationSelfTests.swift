@@ -171,6 +171,91 @@ enum MenuNavigationSelfTests {
             t.check(context.item(withTitle: "Deskset")?.submenu?.item(withTitle: "Help") == nil,
                     "the existing skin flyout has no additional Help entry")
         }
+
+        t.suite("App: menu navigation: developer mode simplifies skin menus and preserves Option override") {
+            guard let (app, skin) = try fixture(t),
+                  let leaf = app.activate(config: "Branches\\Only\\Leaf", file: "Leaf.ini") else { return }
+            let customFolder = SkinLibrary.directory(for: "Custom\\Widget", root: app.skinsDirectory)
+            try FileManager.default.createDirectory(at: customFolder, withIntermediateDirectories: true)
+            try """
+            [Rainmeter]
+            Update=-1
+            ContextTitle=Toggle Format
+            ContextAction=[!Redraw]
+            ContextTitle2=Switch Theme
+            ContextAction2=[!Redraw]
+            [Meter]
+            Meter=String
+            Text=Hello
+            """.write(to: customFolder.appendingPathComponent("Small.ini"), atomically: true, encoding: .utf8)
+            try "[Rainmeter]\nUpdate=-1\n[Meter]\nMeter=String\nText=Large\n"
+                .write(to: customFolder.appendingPathComponent("Large.ini"), atomically: true, encoding: .utf8)
+            app.rescanLibrary()
+            guard let custom = app.activate(config: "Custom\\Widget", file: "Small.ini") else {
+                return t.check(false, "custom widget loads")
+            }
+
+            t.equal(app.state.developerMode, true, "Developer mode is enabled by default")
+
+            CodeEditorRoutingSelfTests.withFakes(.init(), .init()) {
+                let settings = SettingsWindowController(app: app)
+                defer { settings.close() }
+                settings.select(.debug)
+                t.equal(settings.developerModeBox.state, .on)
+                t.equal(settings.settingsModel.developerMode, true)
+
+                settings.setDeveloperModeFromUI(false)
+                t.equal(app.state.developerMode, false)
+                t.equal(settings.developerModeBox.state, .off)
+                t.equal(settings.settingsModel.developerMode, false)
+            }
+
+            // Persist to state.json and survive layout replacement.
+            app.state.saveNow()
+            let reloadedState = AppState(fileURL: app.state.fileURL)
+            t.equal(reloadedState.developerMode, false, "Developer mode preference persists in state.json")
+            app.state.replaceLayout(LayoutState(skins: app.state.data.skins, order: app.state.data.skinOrder,
+                                                rainmeterOptions: app.state.data.rainmeterOptions))
+            t.equal(app.state.developerMode, false, "Layout replacement preserves local Developer mode preference")
+
+            // Simplified menu for a skin with custom actions and multiple variants:
+            let simplified = app.skinMenu(for: custom, includeCustomItems: true)
+            let simplifiedTitles = simplified.items.map { $0.isSeparatorItem ? "-" : $0.title }
+            t.equal(simplifiedTitles, [
+                "Toggle Format",
+                "Switch Theme",
+                "-",
+                "Variants",
+                "Settings",
+                "-",
+                "Manage Skin…",
+                "Unload Skin",
+            ])
+
+            // Simplified menu for a single-variant skin with no custom actions: no leading or double separators.
+            let minimal = app.skinMenu(for: leaf, includeCustomItems: true)
+            let minimalTitles = minimal.items.map { $0.isSeparatorItem ? "-" : $0.title }
+            t.equal(minimalTitles, [
+                "Settings",
+                "-",
+                "Manage Skin…",
+                "Unload Skin",
+            ])
+
+            // Option-right-click (`forceDeveloperItems: true`) restores the full developer menu temporarily.
+            let expanded = app.skinMenu(for: skin, includeCustomItems: true, forceDeveloperItems: true)
+            t.equal(expanded.items.first?.title, "Suite\\Clock")
+            t.check(expanded.item(withTitle: "Select skin") != nil)
+            t.check(expanded.item(withTitle: "Deskset") != nil)
+            t.check(rootMenu(in: expanded, named: "Suite") != nil)
+            t.check(expanded.item(withTitle: "Debug Skin") != nil)
+            t.check(expanded.item(withTitle: "Edit Skin…") != nil)
+            t.check(expanded.item(withTitle: "Refresh Skin") != nil)
+            t.check(expanded.item(withTitle: "Focus Skin") != nil)
+            t.check(expanded.item(withTitle: "Open Skin Folder") != nil)
+
+            app.state.setDeveloperMode(true)
+        }
     }
 
     private static func fixture(_ t: AppTestRunner) throws -> (AppController, SkinWindowController)? {

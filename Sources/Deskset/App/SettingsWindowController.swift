@@ -61,6 +61,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let defaultZoomStepper = SkinZoomStepper()
     let forceZoomBox = NSButton(checkboxWithTitle: L("Apply to all skins"), target: nil, action: nil)
     let disableDraggingBox = NSButton(checkboxWithTitle: L("Disable dragging"), target: nil, action: nil)
+    let developerModeBox = NSButton(checkboxWithTitle: L("Developer mode"), target: nil, action: nil)
 
     /// Editors offered in the pop-up (installed only) and the macOS default for .ini files.
     private(set) var detectedEditors: [CodeEditorApp] = []
@@ -211,6 +212,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         resetAboutSelectionOnClose()
     }
 
+    func versionReportText() -> String {
+        AboutWindowController.formatVersionReport(for: app)
+    }
+
+    @objc func copyVersionDetailsToClipboard() {
+        AboutWindowController.copyVersionDetailsToClipboard(for: app)
+    }
+
     private func configureControls() {
         languagePopUp.target = self
         languagePopUp.action = #selector(languageChosen)
@@ -270,6 +279,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         disableDraggingBox.action = #selector(disableDraggingToggled)
         disableDraggingBox.toolTip = L("Prevent dragging skins with the mouse.")
         disableDraggingBox.setAccessibilityLabel(L("Disable dragging"))
+
+        developerModeBox.target = self
+        developerModeBox.action = #selector(developerModeToggled)
+        developerModeBox.setAccessibilityLabel(L("Developer mode"))
 
         loginBox.target = self
         loginBox.action = #selector(loginToggled)
@@ -355,6 +368,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         uiThemePopUp.selectItem(withTag: app.state.uiTheme.rawValue)
         disableDraggingBox.state = app.state.disableDragging ? .on : .off
+        developerModeBox.state = app.state.developerMode ? .on : .off
         loginBox.state = LaunchAtLogin.isEnabled ? .on : .off
         loginBox.isEnabled = LaunchAtLogin.isAvailable
         automaticUpdatesBox.state = app.updates.automaticallyChecks ? .on : .off
@@ -422,11 +436,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsModel.disableDragging = app.state.disableDragging
         settingsModel.skinsFolderDisplayPath = (app.skinsDirectory.path as NSString).abbreviatingWithTildeInPath
         settingsModel.settingsFolderDisplayPath = (app.settingsDirectory.path as NSString).abbreviatingWithTildeInPath
+        settingsModel.developerMode = app.state.developerMode
         settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
         refreshDebugData()
     }
 
     func refreshDebugData() {
+        settingsModel.developerMode = app.state.developerMode
         settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
         settingsModel.recentLogs = Array(Log.recent.reversed())
     }
@@ -628,6 +644,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func disableDraggingToggled() {
         app.state.setDisableDragging(disableDraggingBox.state == .on)
+        updateControls()
+    }
+
+    func setDeveloperModeFromUI(_ value: Bool) {
+        developerModeBox.state = value ? .on : .off
+        developerModeToggled()
+    }
+
+    @objc private func developerModeToggled() {
+        app.state.setDeveloperMode(developerModeBox.state == .on)
         updateControls()
     }
 

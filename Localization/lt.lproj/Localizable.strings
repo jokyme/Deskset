@@ -4,7 +4,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title; MenuBarPanelController: text. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); MenuBarPanelController: text. */
 "About Deskset" = "Apie Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -29,7 +29,7 @@
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Įrašyti";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Uždaryti";
 
@@ -776,6 +776,9 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Išjungti tempimą";
 
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text. */
+"Developer mode" = "Kūrėjo režimas";
+
 /* Settings window: VoiceOver description. */
 "Theme" = "Tema";
 
@@ -871,17 +874,6 @@
 /* About window: message (an error or a status).
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
-
-/* About window: button; SettingsWindowView: text.
-   Note: Button: copies the version line for bug reports. */
-"Copy to Clipboard" = "Kopijuoti į iškarpinę";
-
-/* About window: text; SettingsWindowView: text. */
-"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Darbalaukio valdikliai jūsų „Mac“ kompiuteriui, suderinami su Rainmeter apvalkalais.";
-
-/* About window: text; SettingsWindowView: text.
-   Note: A legal line; translate faithfully. */
-"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter yra atitinkamų savininkų prekių ženklas; Deskset su juo nesusijusi.";
 
 // MARK: New Skin window
 
@@ -1959,6 +1951,9 @@
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Automatinis įkėlimas iš naujo:";
 
+/* SettingsWindowView: status or description line. */
+"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Rodyti derinimo, redagavimo, atnaujinimo ir aplanko veiksmus apvalkalų kontekstiniuose meniu. Spustelėdami apvalkalą dešiniuoju pelės klavišu palaikykite Option, kad parodytumėte juos laikinai.";
+
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostika";
 
@@ -1970,6 +1965,17 @@
 
 /* SettingsWindowView: text. */
 "No log entries." = "Žurnalo įrašų nėra.";
+
+/* SettingsWindowView: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Darbalaukio valdikliai jūsų „Mac“ kompiuteriui, suderinami su Rainmeter apvalkalais.";
+
+/* SettingsWindowView: text.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Kopijuoti į iškarpinę";
+
+/* SettingsWindowView: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter yra atitinkamų savininkų prekių ženklas; Deskset su juo nesusijusi.";
 
 /* SettingsWindowView: text. */
 "Documentation" = "Dokumentacija";

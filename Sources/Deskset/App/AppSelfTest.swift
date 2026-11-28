@@ -860,7 +860,7 @@ enum AppSelfTest {
     static func closeEditors() {
         for app in retainedApps {
             StudioWindowController.window(for: app)?.window?.close()
-            AboutWindowController.window(for: app)?.close()
+            SettingsWindowController.window(for: app)?.close()
             DebugWindowController.window(for: app)?.close()
             for c in app.sortedControllers { c.pauseUpdates() }
         }

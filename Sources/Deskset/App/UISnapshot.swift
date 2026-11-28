@@ -16,7 +16,7 @@ import DesksetCore
 /// - `icon`: the app icon at 1024 px.
 /// - `menubar`: the menu bar glyph, enlarged.
 /// - `settings`: the Settings window on its Editor pane (or `--pane general`), listing the editors installed here.
-/// - `about`: the About window with version and credits.
+/// - `about`: the Settings window on its About Deskset pane.
 /// - `debug`: the Debug window (`--pane log|skins|display|network|plugins`, `--select Config`).
 /// - `codeeditor`: the built-in code editor on a copy of Deskset\System (System.ini and its @Include files), with a
 ///   section revealed and tinted (`--size WxH`, default 760x560).
@@ -242,10 +242,10 @@ enum UISnapshot {
                                 backupsDirectory: root.appendingPathComponent("Backups"),
                                 settingsDirectory: root.appendingPathComponent("Settings"),
                                 presentsWindows: false)
-        let about = AboutWindowController.show(app: app, tab: .version)
-        if let size { about.window?.setContentSize(size) }
-        let data = about.snapshot()?.representation(using: .png, properties: [:])
-        about.close()
+        let settings = app.showAbout(tab: .version)
+        if let size { settings.window?.setContentSize(size) }
+        let data = settings.snapshot()?.representation(using: .png, properties: [:])
+        settings.close()
         withExtendedLifetime(app) {}
         return data
     }

@@ -18,7 +18,6 @@ enum DebugSelfTests {
             defer {
                 SettingsWindowController.window(for: app)?.close()
                 DebugWindowController.window(for: app)?.close()
-                AboutWindowController.window(for: app)?.close()
                 app.manageWindow?.close()
             }
 
@@ -63,9 +62,9 @@ enum DebugSelfTests {
                 focus.skin.execute("[!Debug Log]", from: nil)
                 t.check(AppSelfTest.spin { DebugWindowController.window(for: app)?.selectedTab == .log })
 
-                // 5. !About opens About Deskset.
+                // 5. !About opens About Deskset in Settings.
                 focus.skin.execute("[!About]", from: nil)
-                t.check(AppSelfTest.spin { AboutWindowController.window(for: app)?.selectedTab == .version })
+                t.check(AppSelfTest.spin { SettingsWindowController.window(for: app)?.pane == .about })
 
                 // 6. !TrayMenu and !SkinMenu pop up menus with updated actions.
                 var poppedMenus: [NSMenu] = []
@@ -87,7 +86,10 @@ enum DebugSelfTests {
         t.suite("App: Debug: entry points and skin selection") {
             guard let app = try AppSelfTest.makeApp(t),
                   let focus = app.activate(config: "App\\Focus", file: "Focus.ini") else { return }
-            defer { DebugWindowController.window(for: app)?.close(); AboutWindowController.window(for: app)?.close() }
+            defer {
+                DebugWindowController.window(for: app)?.close()
+                SettingsWindowController.window(for: app)?.close()
+            }
             t.equal(DebugWindowController.Tab.allCases.map(\.rawValue), ["Log", "Skins", "Plugins", "Display", "Network"])
             t.equal(DebugWindowController.Tab.parse("sKiN"), .skins)
             t.equal(DebugWindowController.Tab.parse("Network"), .network)
@@ -107,8 +109,10 @@ enum DebugSelfTests {
             t.check(AppSelfTest.spin { debug.selectedTab == .network })
             focus.skin.execute("[!Debug Plugins]", from: nil)
             t.check(AppSelfTest.spin { debug.selectedTab == .plugins })
-            app.aboutAction()
-            t.equal(AboutWindowController.window(for: app)?.selectedTab, .version)
+            CodeEditorRoutingSelfTests.withFakes(.init(), .init()) {
+                app.aboutAction()
+                t.equal(SettingsWindowController.window(for: app)?.pane, .about)
+            }
             t.equal(debug.selectedTab, .plugins)
             app.handleStatusItemClick(type: .leftMouseUp, modifiers: [.control])
             t.equal(debug.selectedTab, .log)

@@ -177,10 +177,6 @@ enum LocalizationSelfTests {
                 }
                 settings.close()
             }
-            let about = AboutWindowController(app: app)
-            if let content = about.window?.contentView { visit(view: content, "About") }
-            visit(about.window?.title, "About title")
-            about.close()
             let manage = ManageWindowController(app: app)
             manage.select(config: "App\\Focus", file: "Focus.ini")
             for tab in [ManageWindowController.Tab.skins, .layouts] {
