@@ -145,9 +145,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private var minimumSizeRestoreGaveUp = false
     private var interfaceReady = false
 
+    static let defaultContentSize = NSSize(width: 1060, height: 700)
+    static let frameAutosaveName = "DesksetWidgetLibraryWindowV2"
+
     init(app: AppController) {
         self.app = app
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 680),
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         DeskProWindowStyle.apply(to: window)
@@ -157,9 +160,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         window.delegate = self
         AppTheme.register(window, app: app)
         buildInterface()
-        window.setFrameAutosaveName("DesksetWidgetLibraryWindow")
-        if !window.setFrameUsingName("DesksetWidgetLibraryWindow") {
-            window.center()
+        if app.presentsWindows {
+            window.setFrameAutosaveName(Self.frameAutosaveName)
+            if !window.setFrameUsingName(Self.frameAutosaveName) {
+                window.setContentSize(Self.defaultContentSize)
+                window.center()
+                placedByDefault = true
+            }
+        } else {
+            window.setContentSize(Self.defaultContentSize)
             placedByDefault = true
         }
         keepMinimumSize()
@@ -284,6 +293,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     func windowWillClose(_ notification: Notification) {
         DeskProInstantToolTip.shared.hide()
         watchHiddenSkins(false)
+        libraryModel.thumbnails.cancelSettling()
     }
 
     @objc private func scrollViewDidScroll(_ notification: Notification) {
@@ -492,6 +502,9 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         tabs.isHidden = true
         let libraryView = WidgetLibraryRootView(model: libraryModel, controller: self, app: app)
         let host = NSHostingView(rootView: libraryView)
+        if #available(macOS 13.0, *) {
+            host.sizingOptions = []
+        }
         host.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(host)
         NSLayoutConstraint.activate([

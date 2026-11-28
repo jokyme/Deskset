@@ -337,7 +337,7 @@ struct WidgetLibraryRootView: View {
             }
             .padding(12)
         }
-        .frame(width: 220)
+        .frame(width: 208)
         .frame(maxHeight: .infinity)
         .background(DeskProPalette.librarySidebar)
     }
@@ -476,6 +476,7 @@ struct WidgetLibraryRootView: View {
                 controller?.createPackage()
             }
             toolbarIconButton(symbol: "arrow.clockwise", help: L("Refresh All")) {
+                model.thumbnails.invalidateAll()
                 app.refreshAllAction()
             }
             toolbarIconButton(symbol: "folder", help: L("Open Skins Folder")) {
@@ -560,15 +561,15 @@ struct WidgetLibraryRootView: View {
                     .padding(.top, 96)
                 } else {
                     LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 332, maximum: 440), spacing: 16)],
-                        spacing: 16
+                        columns: [GridItem(.adaptive(minimum: 296, maximum: 520), spacing: 14)],
+                        spacing: 14
                     ) {
                         ForEach(items) { card in
                             skinCard(card)
                                 .id(card.id)
                         }
                     }
-                    .padding(22)
+                    .padding(18)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -116,6 +116,8 @@ enum UIThemeSelfTests {
             return t.check(false, "General pane content exists")
         }
         t.equal(window.minSize, SettingsWindowController.minimumSize)
+        t.equal(manage.window?.contentView?.bounds.width, ManageWindowController.defaultContentSize.width,
+                "Widget Library opens wide enough to display two cards side by side by default")
         t.equal(settings.settingsModel.pane, .general)
         t.equal(SettingsWindowController.Pane.allCases.map(\.rawValue),
                 ["general", "desktop", "editor", "debug", "about"])
@@ -160,6 +162,7 @@ enum UIThemeSelfTests {
         app.rescanLibrary()
         manage.reload()
         checkToolbarInstantToolTips(t, manage: manage)
+        checkAsyncThumbnailSettling(t, app: app)
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: appearance)
             manage.window?.appearance = NSAppearance(named: appearance)
@@ -237,5 +240,87 @@ enum UIThemeSelfTests {
             t.equal(DeskProInstantToolTip.shared.activeText, nil,
                     "leaving icon button hides its tooltip immediately")
         }
+    }
+
+    /// Verifies that `SkinThumbnailCache` settles two-stage `FileView` listing + `Type=Icon` thumbnails (as used by
+    /// `Stationery\Launcher`), updates the cached image once the icon arrives, closes the temporary skin, and writes
+    /// no icon files into the real skin directory on disk.
+    private static func checkAsyncThumbnailSettling(_ t: AppTestRunner, app: AppController) {
+        let fm = FileManager.default
+        let folder = app.skinsDirectory.appendingPathComponent("AsyncThumbFixture")
+        let targetDir = folder.appendingPathComponent("Items")
+        try? fm.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        let sampleFile = targetDir.appendingPathComponent("Doc.txt")
+        try? "hello".write(to: sampleFile, atomically: true, encoding: .utf8)
+        let escapedDir = targetDir.path.replacingOccurrences(of: "\\", with: "/")
+        let ini = """
+        [Rainmeter]
+        Update=1000
+        SkinWidth=64
+        SkinHeight=64
+
+        [MeasureParent]
+        Measure=Plugin
+        Plugin=FileView
+        Path=\(escapedDir)
+        WildcardSearch=Doc.txt
+        ShowDotDot=0
+        Count=1
+        UpdateDivider=-1
+
+        [MeasureIcon]
+        Measure=Plugin
+        Plugin=FileView
+        Path=[MeasureParent]
+        Type=Icon
+        Index=1
+        IconSize=ExtraLarge
+        IconPath=Icons/Target.png
+        UpdateDivider=2
+        IfMatch=\\.png$
+        IfMatchAction=[!UpdateMeter MeterIcon][!Redraw]
+
+        [MeterIcon]
+        Meter=Image
+        ImageName=[MeasureIcon]
+        X=8
+        Y=8
+        W=48
+        H=48
+        DynamicVariables=1
+        UpdateDivider=-1
+        """
+        try? ini.write(to: folder.appendingPathComponent("Skin.ini"), atomically: true, encoding: .utf8)
+        defer {
+            try? fm.removeItem(at: folder)
+            app.rescanLibrary()
+        }
+        app.rescanLibrary()
+
+        let cache = SkinThumbnailCache()
+        _ = cache.thumbnail(config: "AsyncThumbFixture", file: "Skin.ini", isDark: false, app: app)
+
+        func hasVisiblePixels(_ image: NSImage) -> Bool {
+            guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let data = cg.dataProvider?.data,
+                  let ptr = CFDataGetBytePtr(data) else { return false }
+            let count = CFDataGetLength(data)
+            var idx = 3
+            while idx < count {
+                if ptr[idx] > 16 { return true }
+                idx += 4
+            }
+            return false
+        }
+
+        let settled = AppSelfTest.spin(timeout: 10) {
+            guard let entry = cache.thumbnail(config: "AsyncThumbFixture", file: "Skin.ini", isDark: false, app: app) else {
+                return false
+            }
+            return cache.activeSettlingCount == 0 && hasVisiblePixels(entry.image)
+        }
+        t.check(settled, "SkinThumbnailCache settles async FileView Type=Icon thumbnails and closes temporary skins")
+        t.check(!fm.fileExists(atPath: folder.appendingPathComponent("Icons/Target.png").path),
+                "thumbnail icon extraction stays inside StudioActionPolicy sandbox without writing into Skins/")
     }
 }
