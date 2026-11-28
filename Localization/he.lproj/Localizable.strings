@@ -1952,7 +1952,7 @@
 "Live reload:" = "טעינה מחדש אוטומטית:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "הצג פעולות ניפוי שגיאות, עריכה, רענון ותיקייה בתפריטי ההקשר של ערכות הנושא. החזק את Option בעת לחיצה ימנית על ערכת נושא כדי להציג אותן זמנית.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "הצג פעולות ניפוי שגיאות, רענון ותיקייה בתפריטי ההקשר של ערכות הנושא. החזק את Option בעת לחיצה ימנית על ערכת נושא כדי להציג אותן זמנית.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "אבחון";

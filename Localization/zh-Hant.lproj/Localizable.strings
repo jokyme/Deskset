@@ -1952,7 +1952,7 @@
 "Live reload:" = "自動重新整理：";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "在皮膚右鍵選單中顯示除錯、編輯、重新整理及檔案夾操作。關閉後按住 Option 右鍵點按皮膚可暫時顯示完整選單。";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "在皮膚右鍵選單中顯示除錯、重新整理及檔案夾操作。關閉後按住 Option 右鍵點按皮膚可暫時顯示完整選單。";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "診斷";

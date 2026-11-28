@@ -1952,7 +1952,7 @@
 "Live reload:" = "Tự động tải lại:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Hiển thị các tác vụ gỡ lỗi, sửa, làm mới và thư mục trong menu ngữ cảnh của giao diện. Giữ phím Option khi bấm chuột phải vào giao diện để hiển thị tạm thời.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Hiển thị các tác vụ gỡ lỗi, làm mới và thư mục trong menu ngữ cảnh của giao diện. Giữ phím Option khi bấm chuột phải vào giao diện để hiển thị tạm thời.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Chẩn đoán";

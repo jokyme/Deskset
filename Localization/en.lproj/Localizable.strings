@@ -1951,7 +1951,7 @@
 "Live reload:" = "Live reload:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostics";

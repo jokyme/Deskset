@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatisk genindlæsning:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Vis handlinger til fejlfinding, redigering, opdatering og mappe i genvejsmenuer for skins. Hold Option nede ved højreklik på et skin for at vise dem midlertidigt.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Vis handlinger til fejlfinding, opdatering og mappe i genvejsmenuer for skins. Hold Option nede ved højreklik på et skin for at vise dem midlertidigt.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostik";

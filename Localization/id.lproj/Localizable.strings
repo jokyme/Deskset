@@ -1952,7 +1952,7 @@
 "Live reload:" = "Muat ulang otomatis:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Tampilkan tindakan debug, edit, segarkan, dan folder di menu konteks skin. Tahan tombol Option saat mengeklik kanan skin untuk menampilkannya sementara.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Tampilkan tindakan debug, segarkan, dan folder di menu konteks skin. Tahan tombol Option saat mengeklik kanan skin untuk menampilkannya sementara.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostik";

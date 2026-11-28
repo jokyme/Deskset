@@ -1952,7 +1952,7 @@
 "Live reload:" = "إعادة التحميل التلقائي:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "إظهار إجراءات التصحيح والتحرير والتحديث والمجلد في القوائم السياقية للواجهات. اضغط مطوّلاً على Option عند النقر بزر الماوس الأيمن على واجهة لإظهارها مؤقتاً.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "إظهار إجراءات التصحيح والتحديث والمجلد في القوائم السياقية للواجهات. اضغط مطوّلاً على Option عند النقر بزر الماوس الأيمن على واجهة لإظهارها مؤقتاً.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "التشخيص";

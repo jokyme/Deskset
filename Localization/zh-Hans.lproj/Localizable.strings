@@ -1952,7 +1952,7 @@
 "Live reload:" = "自动刷新：";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "在皮肤右键菜单中显示调试、编辑、刷新及文件夹操作。关闭后按住 Option 右键皮肤可临时显示完整菜单。";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "在皮肤右键菜单中显示调试、刷新及文件夹操作。关闭后按住 Option 右键皮肤可临时显示完整菜单。";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "诊断";

@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automaatne uuesti laadimine:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Kuva nahkade kontekstimenüüdes silumis-, muutmis-, värskendamis- ja kaustatoimingud. Hoia nahal paremklõpsates all klahvi Option, et kuvada need ajutiselt.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Kuva nahkade kontekstimenüüdes silumis-, värskendamis- ja kaustatoimingud. Hoia nahal paremklõpsates all klahvi Option, et kuvada need ajutiselt.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostika";

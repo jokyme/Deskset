@@ -1952,7 +1952,7 @@
 "Live reload:" = "Otomatik yenileme:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Kabuk bağlam menülerinde hata ayıklama, düzenleme, yenileme ve klasör eylemlerini gösterin. Geçici olarak göstermek için bir kabuğa sağ tıklarken Option tuşunu basılı tutun.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Kabuk bağlam menülerinde hata ayıklama, yenileme ve klasör eylemlerini gösterin. Geçici olarak göstermek için bir kabuğa sağ tıklarken Option tuşunu basılı tutun.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Tanılama";

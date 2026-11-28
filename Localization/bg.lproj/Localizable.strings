@@ -1952,7 +1952,7 @@
 "Live reload:" = "Автоматично опресняване:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Показване на действията за отстраняване на грешки, редактиране, опресняване и папка в контекстните менюта на скиновете. Задръжте Option при щракване с десния бутон върху скин, за да ги покажете временно.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Показване на действията за отстраняване на грешки, опресняване и папка в контекстните менюта на скиновете. Задръжте Option при щракване с десния бутон върху скин, за да ги покажете временно.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Диагностика";

@@ -681,7 +681,7 @@ struct DesksetSettingsRootView: View {
             DeskProSettingsGroup {
                 DeskProSettingsRow(
                     title: L("Developer mode"),
-                    detail: L("Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily."),
+                    detail: L("Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily."),
                     divider: false
                 ) {
                     Toggle("", isOn: Binding(

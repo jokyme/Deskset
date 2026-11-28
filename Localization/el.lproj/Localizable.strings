@@ -1952,7 +1952,7 @@
 "Live reload:" = "Αυτόματη ανανέωση:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Εμφάνιση ενεργειών αποσφαλμάτωσης, επεξεργασίας, ανανέωσης και φακέλου στα μενού συντόμευσης θεμάτων. Κρατήστε πατημένο το Option κατά το δεξί κλικ σε ένα θέμα για προσωρινή εμφάνιση.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Εμφάνιση ενεργειών αποσφαλμάτωσης, ανανέωσης και φακέλου στα μενού συντόμευσης θεμάτων. Κρατήστε πατημένο το Option κατά το δεξί κλικ σε ένα θέμα για προσωρινή εμφάνιση.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Διαγνωστικά";

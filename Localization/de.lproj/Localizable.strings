@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatisch neu laden:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Debug-, Bearbeitungs-, Aktualisierungs- und Ordneraktionen in den Kontextmenüs von Skins anzeigen. Halte beim Rechtsklick auf einen Skin die Option-Taste gedrückt, um sie vorübergehend einzublenden.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Debug-, Aktualisierungs- und Ordneraktionen in den Kontextmenüs von Skins anzeigen. Halte beim Rechtsklick auf einen Skin die Option-Taste gedrückt, um sie vorübergehend einzublenden.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnose";

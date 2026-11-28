@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automātiska atsvaidzināšana:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Rādīt atkļūdošanas, rediģēšanas, atsvaidzināšanas un mapes darbības apvalku kontekstizvēlnēs. Turiet nospiestu taustiņu Option, ar peles labo pogu noklikšķinot uz apvalka, lai tās parādītu īslaicīgi.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Rādīt atkļūdošanas, atsvaidzināšanas un mapes darbības apvalku kontekstizvēlnēs. Turiet nospiestu taustiņu Option, ar peles labo pogu noklikšķinot uz apvalka, lai tās parādītu īslaicīgi.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostika";
