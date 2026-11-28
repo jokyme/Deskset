@@ -1952,7 +1952,7 @@
 "Live reload:" = "自動再読み込み：";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "スキンのコンテキストメニューにデバッグ、編集、再読み込み、フォルダの操作を表示します。Optionキーを押しながらスキンを副ボタンクリックすると一時的に表示できます。";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "スキンのコンテキストメニューにデバッグ、再読み込み、フォルダの操作を表示します。Optionキーを押しながらスキンを副ボタンクリックすると一時的に表示できます。";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "診断";

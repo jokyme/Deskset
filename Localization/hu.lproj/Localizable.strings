@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatikus frissítés:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Hibakeresési, szerkesztési, frissítési és mappaműveletek megjelenítése a felületek helyi menüiben. Tartsa lenyomva az Option billentyűt a felületre való jobb kattintáskor az ideiglenes megjelenítésükhöz.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Hibakeresési, frissítési és mappaműveletek megjelenítése a felületek helyi menüiben. Tartsa lenyomva az Option billentyűt a felületre való jobb kattintáskor az ideiglenes megjelenítésükhöz.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnosztika";

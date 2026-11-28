@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automaattinen uudelleenlataus:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Näytä virheenkorjaus-, muokkaus-, päivitys- ja kansiotoiminnot ulkoasujen pikavalikoissa. Pidä Option-näppäintä painettuna ulkoasua kakkosklikatessa näyttääksesi ne tilapäisesti.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Näytä virheenkorjaus-, päivitys- ja kansiotoiminnot ulkoasujen pikavalikoissa. Pidä Option-näppäintä painettuna ulkoasua kakkosklikatessa näyttääksesi ne tilapäisesti.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostiikka";

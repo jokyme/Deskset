@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatisch herladen:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Toon acties voor foutopsporing, bewerken, vernieuwen en mappen in de contextmenu’s van skins. Houd Option ingedrukt tijdens het secundair klikken op een skin om ze tijdelijk te tonen.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Toon acties voor foutopsporing, vernieuwen en mappen in de contextmenu’s van skins. Houd Option ingedrukt tijdens het secundair klikken op een skin om ze tijdelijk te tonen.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostiek";

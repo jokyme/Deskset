@@ -397,8 +397,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   the temporary selection state intact (matching Rainmeter 5.0). Refresh Skin and Unload Skin
   also apply to the selected group, clearing its selection as the instances stop.
   Settings → Debug & Log includes a **Developer mode** switch (enabled by default); turning it off hides the config path,
-  Select skin, global `Deskset` and root-config submenus, Debug Skin, Edit Skin, Refresh Skin and Open Skin Folder from skin
-  menus (leaving custom skin actions, Variants, Settings, Compatibility Notes when present, Manage Skin… and Unload Skin),
+  Select skin, global `Deskset` and root-config submenus, Debug Skin, "Edit in <app>", Refresh Skin and Open Skin Folder from skin
+  menus and places custom skin actions directly at the top level even when more than three are defined (leaving custom skin
+  actions, Variants, Settings, Compatibility Notes when present, Manage Skin…, Edit Skin… and Unload Skin),
   while holding Option (`⌥`) when right-clicking a skin temporarily shows the full menu.
 - Why: Mac menu conventions.
 - Skin impact: none.
@@ -407,7 +408,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### Custom skin actions (ContextTitle / ContextAction)
 - Windows (Rainmeter): "Up to 25 ContextTitleN options"; "If more than 3 options are given, 'Custom skin actions'
   becomes a submenu"; titles are dynamic.
-- Mac (Deskset): same (the engine reads the titles when the menu opens); `!SkinCustomMenu` shows only them.
+- Mac (Deskset): same in Developer mode (and with Option-right-click); when Developer mode is turned off, custom actions
+  appear directly at the top level of the skin menu. The engine reads the titles when the menu opens; `!SkinCustomMenu`
+  shows only them.
 - Why: —
 - Skin impact: none.
 - Status: identical

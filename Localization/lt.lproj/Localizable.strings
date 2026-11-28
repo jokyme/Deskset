@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatinis įkėlimas iš naujo:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Rodyti derinimo, redagavimo, atnaujinimo ir aplanko veiksmus apvalkalų kontekstiniuose meniu. Spustelėdami apvalkalą dešiniuoju pelės klavišu palaikykite Option, kad parodytumėte juos laikinai.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Rodyti derinimo, atnaujinimo ir aplanko veiksmus apvalkalų kontekstiniuose meniu. Spustelėdami apvalkalą dešiniuoju pelės klavišu palaikykite Option, kad parodytumėte juos laikinai.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostika";

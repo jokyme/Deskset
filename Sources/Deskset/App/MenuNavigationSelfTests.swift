@@ -180,10 +180,15 @@ enum MenuNavigationSelfTests {
             try """
             [Rainmeter]
             Update=-1
-            ContextTitle=Toggle Format
+            ContextTitle=Open Clock
             ContextAction=[!Redraw]
-            ContextTitle2=Switch Theme
-            ContextAction2=[!Redraw]
+            ContextTitle2=---
+            ContextTitle3=Toggle Format
+            ContextAction3=[!Redraw]
+            ContextTitle4=Switch Theme
+            ContextAction4=[!Redraw]
+            ContextTitle5=Show Seconds
+            ContextAction5=[!Redraw]
             [Meter]
             Meter=String
             Text=Hello
@@ -218,19 +223,31 @@ enum MenuNavigationSelfTests {
                                                 rainmeterOptions: app.state.data.rainmeterOptions))
             t.equal(app.state.developerMode, false, "Layout replacement preserves local Developer mode preference")
 
-            // Simplified menu for a skin with custom actions and multiple variants:
+            // Simplified menu for a skin with >3 custom actions and multiple variants places custom actions inline:
             let simplified = app.skinMenu(for: custom, includeCustomItems: true)
+            t.check(simplified.item(withTitle: "Custom Skin Actions") == nil,
+                    "Developer mode off flattens >3 custom actions onto the top-level menu")
             let simplifiedTitles = simplified.items.map { $0.isSeparatorItem ? "-" : $0.title }
             t.equal(simplifiedTitles, [
+                "Open Clock",
+                "-",
                 "Toggle Format",
                 "Switch Theme",
+                "Show Seconds",
                 "-",
                 "Variants",
                 "Settings",
                 "-",
                 "Manage Skin…",
+                "Edit Skin…",
                 "Unload Skin",
             ])
+
+            // Option-right-click on the same skin restores the traditional Rainmeter Custom Skin Actions submenu:
+            let customDeveloper = app.skinMenu(for: custom, includeCustomItems: true, forceDeveloperItems: true)
+            t.equal(customDeveloper.item(withTitle: "Custom Skin Actions")?.submenu?.items
+                        .map { $0.isSeparatorItem ? "-" : $0.title },
+                    ["Open Clock", "-", "Toggle Format", "Switch Theme", "Show Seconds"])
 
             // Simplified menu for a single-variant skin with no custom actions: no leading or double separators.
             let minimal = app.skinMenu(for: leaf, includeCustomItems: true)
@@ -239,6 +256,7 @@ enum MenuNavigationSelfTests {
                 "Settings",
                 "-",
                 "Manage Skin…",
+                "Edit Skin…",
                 "Unload Skin",
             ])
 

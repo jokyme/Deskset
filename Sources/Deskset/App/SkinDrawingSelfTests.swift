@@ -38,8 +38,12 @@ enum SkinDrawingSelfTests {
             let file = dir.appendingPathComponent("Clock.ini")
             try (keep.replacingOccurrences(of: "Update=50", with: "Update=40")).write(to: file, atomically: true,
                                                                                       encoding: .utf8)
+            // Drain any deferred main-queue / AppKit teardown from preceding suites before timing the run-loop timer.
+            _ = ServiceThreadingSelfTests.drainMainQueue()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
             var options = SkinBenchmark.Options()
-            options.seconds = 0.5
+            options.seconds = 1.0
             options.warmup = 0.1
             guard let r = SkinBenchmark.measure(file, skinsRoot: root, options: options) else {
                 return t.check(false, "the skin loads")
@@ -1444,14 +1448,18 @@ extension SkinDrawingSelfTests {
                         return t.check(false, "copies \(folder.lastPathComponent)")
                     }
                     for file in DrawingCacheCheck.skinFiles(in: copy) {
-                        let r = ContentLayerCheck.check(file, skinsRoot: copy, budget: isCI ? 0.5 : 2,
-                                                        compact: isCI && results.count >= 12)
+                        let r = autoreleasepool {
+                            ContentLayerCheck.check(file, skinsRoot: copy, budget: isCI ? 0.5 : 2,
+                                                    compact: isCI && results.count >= 12)
+                        }
                         guard r.skipped == nil else { continue }
                         results.append(r)
                         t.check(r.mismatches.isEmpty, ContentLayerCheck.line(for: r))
                     }
                 }
             }
+            _ = ServiceThreadingSelfTests.drainMainQueue()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
             let steps = results.reduce(0) { $0 + $1.steps }
             let worst = results.map(\.worstComposite).max() ?? 0
             let fractional = results.filter(\.fractional).count

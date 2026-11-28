@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatsko osvežavanje:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Prikaži radnje za otklanjanje grešaka, uređivanje, osvežavanje i fasciklu u kontekstnim menijima skinova. Držite Option pri desnom kliku na skin da ih privremeno prikažete.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Prikaži radnje za otklanjanje grešaka, osvežavanje i fasciklu u kontekstnim menijima skinova. Držite Option pri desnom kliku na skin da ih privremeno prikažete.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Dijagnostika";

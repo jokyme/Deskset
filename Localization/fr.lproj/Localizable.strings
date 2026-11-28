@@ -1952,7 +1952,7 @@
 "Live reload:" = "Actualisation auto :";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Afficher les actions de débogage, de modification, d’actualisation et de dossier dans les menus contextuels des skins. Maintenez la touche Option enfoncée lors d’un clic secondaire sur un skin pour les afficher temporairement.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Afficher les actions de débogage, d’actualisation et de dossier dans les menus contextuels des skins. Maintenez la touche Option enfoncée lors d’un clic secondaire sur un skin pour les afficher temporairement.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostic";

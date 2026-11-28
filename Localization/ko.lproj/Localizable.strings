@@ -1952,7 +1952,7 @@
 "Live reload:" = "자동 새로 고침:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "스킨 단축 메뉴에 디버그, 편집, 새로 고침 및 폴더 동작을 표시합니다. Option 키를 누른 채 스킨을 오른쪽 클릭하면 일시적으로 표시됩니다.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "스킨 단축 메뉴에 디버그, 새로 고침 및 폴더 동작을 표시합니다. Option 키를 누른 채 스킨을 오른쪽 클릭하면 일시적으로 표시됩니다.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "진단";

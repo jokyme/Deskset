@@ -1952,7 +1952,7 @@
 "Live reload:" = "โหลดซ้ำอัตโนมัติ:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "แสดงการทำงานสำหรับดีบัก แก้ไข รีเฟรช และโฟลเดอร์ในเมนูคลิกขวาของสกิน กดปุ่ม Option ค้างไว้ขณะคลิกขวาที่สกินเพื่อแสดงชั่วคราว";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "แสดงการทำงานสำหรับดีบัก รีเฟรช และโฟลเดอร์ในเมนูคลิกขวาของสกิน กดปุ่ม Option ค้างไว้ขณะคลิกขวาที่สกินเพื่อแสดงชั่วคราว";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "การวินิจฉัย";

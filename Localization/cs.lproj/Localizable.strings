@@ -1952,7 +1952,7 @@
 "Live reload:" = "Automatické obnovení:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Zobrazit v místních nabídkách skinů akce pro ladění, úpravy, obnovení a složku. Podržením klávesy Option při kliknutí pravým tlačítkem na skin je zobrazíte dočasně.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Zobrazit v místních nabídkách skinů akce pro ladění, obnovení a složku. Podržením klávesy Option při kliknutí pravým tlačítkem na skin je zobrazíte dočasně.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostika";

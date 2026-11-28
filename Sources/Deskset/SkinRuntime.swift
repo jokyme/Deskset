@@ -625,12 +625,16 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     // MARK: Bangs for other skins
 
-    /// Whether a bang for `config` must go behind a load: one the directory knows of, or one this skin asked for that
-    /// the main thread has not scheduled yet.
-    private func isLoadPending(_ config: String, in directory: SkinDirectory) -> Bool {
-        if directory.isLoadPending(config) { return true }
+    /// Reads the skins' directory together with whether a bang for `config` must wait behind a load: one the directory
+    /// knows of, or one this skin asked for that the main thread has not scheduled yet.
+    /// `loadsInFlight` must be read before `directoryStore.directory` to match the main thread's handoff order
+    /// (`applyToWindow` publishes `pendingLoads` to `directoryStore` before clearing `loadsInFlight`), so a reader
+    /// never observes both a pre-publish directory and a cleared in-flight count.
+    private func directorySnapshot(for config: String) -> (directory: SkinDirectory, loadPending: Bool)? {
         let key = SkinLibrary.normalizedConfigName(config).lowercased()
-        return loadsInFlight.access { $0[key] != nil }
+        let inFlight = loadsInFlight.access { $0[key] != nil }
+        guard let directory = directoryStore?.directory else { return nil }
+        return (directory, inFlight || directory.isLoadPending(config))
     }
 
     /// Hands `message` (made with the hops it carries) to another skin's runtime. Pool mode always queues peer bangs,
@@ -662,8 +666,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// log), or without a directory.
     private func send(_ bang: Bang, toConfig name: String) {
         guard permitsLayoutAction else { return }
-        if let directory = directoryStore?.directory, !isLoadPending(name, in: directory),
-           let target = directory.runtime(for: name) {
+        if let state = directorySnapshot(for: name), !state.loadPending,
+           let target = state.directory.runtime(for: name) {
             deliver(bang.name, to: target) { .bang(bang, from: config, hops: $0) }
         } else {
             request(.forward(bang, toConfig: name, hops: currentHops, whileClosing: isClosing))
@@ -702,8 +706,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             case .config(let name):
                 if name.caseInsensitiveCompare(config) == .orderedSame && !isRetiredForLayout {
                     ownWindowBang(member)
-                } else if let directory = directoryStore?.directory, directory.runtime(for: name) == nil,
-                          !isLoadPending(name, in: directory) {
+                } else if let state = directorySnapshot(for: name), state.directory.runtime(for: name) == nil,
+                          !state.loadPending {
                     // A config that does not run and is not loading: nothing happens (nor is it logged).
                 } else {
                     send(member, toConfig: name)
@@ -1147,8 +1151,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
                 let targetName = SkinLibrary.normalizedConfigName(rawTarget)
                 if targetName.caseInsensitiveCompare(config) == .orderedSame {
                     captureOwnMenu = !isRetiredForLayout
-                } else if let directory = directoryStore?.directory, !isLoadPending(targetName, in: directory),
-                          let target = directory.runtime(for: targetName), !target.isRetiredForLayout {
+                } else if let state = directorySnapshot(for: targetName), !state.loadPending,
+                          let target = state.directory.runtime(for: targetName), !target.isRetiredForLayout {
                     let delivered = deliver(bang.name, to: target) { .prepareMenu(makeHostBang(hops: $0)) }
                     return delivered && suspends ? .suspended : .handled
                 }

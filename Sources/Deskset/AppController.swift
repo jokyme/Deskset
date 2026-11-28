@@ -1951,9 +1951,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Custom skin actions (https://docs.rainmeter.net/manual/skins/rainmeter-section/#ContextTitle), as the
     /// engine reads them when the menu opens (titles "are always dynamic"; separators, 30-character titles and the
     /// rules for invalid items are the engine's). Each item runs its action from `[Rainmeter]`.
-    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinWindowController, to menu: NSMenu) {
+    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinWindowController, to menu: NSMenu,
+                                collapseSeparators: Bool = false) {
         for entry in items {
             if entry.isSeparator {
+                if collapseSeparators, menu.items.last?.isSeparatorItem != false {
+                    continue
+                }
                 menu.addItem(.separator())
                 continue
             }
@@ -2002,8 +2006,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
     /// When `state.developerMode` is off (unless `forceDeveloperItems` is set, e.g. Option-right-click or Debug),
-    /// developer-facing entries (config path, multi-select, app/root-config flyouts, debug, edit, refresh and folder)
-    /// are omitted so ordinary users see only widget actions, variants, window settings, manage and unload.
+    /// developer-facing entries (config path, multi-select, app/root-config flyouts, debug, external code editor,
+    /// refresh and folder) are omitted and custom actions are placed directly at the top level so ordinary users see a
+    /// single flat menu of widget actions, variants, window settings, manage, edit and unload.
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool, discoverLibrary: Bool = true,
                   prepared: SkinPreparedMenu? = nil, forceDeveloperItems: Bool = false) -> NSMenu {
         if discoverLibrary { discoverSkins() }
@@ -2039,18 +2044,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } ?? menuFacts(for: c)
             let custom = facts.items
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
-            if custom.count > 3 {
+            // When Developer mode is off, place custom actions directly at the top level instead of nesting them.
+            if showDeveloper && custom.count > 3 {
                 let submenu = NSMenu()
                 addCustomItems(custom, for: c, to: submenu)
                 let holder = NSMenuItem(title: L("Custom Skin Actions"), action: nil, keyEquivalent: "")
                 holder.submenu = submenu
                 menu.addItem(holder)
             } else if !custom.isEmpty {
-                addCustomItems(custom, for: c, to: menu)
+                addCustomItems(custom, for: c, to: menu, collapseSeparators: !showDeveloper)
             }
             // CC BY 4.0: every skin that shows MET Norway's forecasts credits them, whoever wrote it.
-            for weather in WeatherWiring.menuItems(for: facts.weather, target: self,
-                                                   action: #selector(openWeatherSourceAction(_:))) {
+            let weatherItems = WeatherWiring.menuItems(for: facts.weather, target: self,
+                                                       action: #selector(openWeatherSourceAction(_:)))
+            if !showDeveloper && !weatherItems.isEmpty {
+                addSeparatorIfNeeded()
+            }
+            for weather in weatherItems {
                 menu.addItem(weather)
             }
             if showDeveloper {
@@ -2164,8 +2174,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Settings ▸ Editor gets an item of its own.
         var entries: [(String, Selector)] = [(L("Manage Skin…"), #selector(manageSkinAction(_:)))]
         if showDeveloper {
-            entries += [(L("Debug Skin"), #selector(debugSkinAction(_:))),
-                        (L("Edit Skin…"), #selector(inspectSkinAction(_:)))]
+            entries.append((L("Debug Skin"), #selector(debugSkinAction(_:))))
+        }
+        entries.append((L("Edit Skin…"), #selector(inspectSkinAction(_:))))
+        if showDeveloper {
             if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
                                                                       preferences: state.editor,
                                                                       locator: CodeEditorRouter.locator) {

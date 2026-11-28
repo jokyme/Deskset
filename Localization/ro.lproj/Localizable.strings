@@ -1952,7 +1952,7 @@
 "Live reload:" = "Reîncărcare automată:";
 
 /* SettingsWindowView: status or description line. */
-"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Afișează acțiunile de depanare, editare, reîmprospătare și dosar în meniurile contextuale ale temelor. Ține apăsată tasta Option la clicul dreapta pe o temă pentru a le afișa temporar.";
+"Show debug, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Afișează acțiunile de depanare, reîmprospătare și dosar în meniurile contextuale ale temelor. Ține apăsată tasta Option la clicul dreapta pe o temă pentru a le afișa temporar.";
 
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnosticare";
