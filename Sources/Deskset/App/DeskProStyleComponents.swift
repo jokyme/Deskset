@@ -8,7 +8,7 @@ enum DeskProPalette {
     static let page = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor(white: 0.157, alpha: 1)
-            : NSColor(white: 0.93, alpha: 1)
+            : NSColor(srgbRed: 0.957, green: 0.961, blue: 0.969, alpha: 1)
     })
 
     static let box = Color(nsColor: NSColor(name: nil) { appearance in
@@ -17,7 +17,19 @@ enum DeskProPalette {
             : .white
     })
 
-    static let librarySidebar = Color(nsColor: .underPageBackgroundColor).opacity(0.6)
+    static let librarySidebarNSColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.141, green: 0.145, blue: 0.153, alpha: 1)
+            : NSColor(srgbRed: 0.969, green: 0.973, blue: 0.980, alpha: 1)
+    }
+
+    static let librarySidebar = Color(nsColor: librarySidebarNSColor)
+
+    static let utilitySidebar = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 0.185, alpha: 1)
+            : NSColor(srgbRed: 0.969, green: 0.973, blue: 0.980, alpha: 1)
+    })
 
     static func hex(_ value: UInt32, alpha: Double = 1.0) -> Color {
         Color(

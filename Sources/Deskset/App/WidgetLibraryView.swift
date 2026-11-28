@@ -392,7 +392,7 @@ struct WidgetLibraryRootView: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(selected ? Color.primary.opacity(0.10) : Color.clear)
+                    .fill(selected ? Color.primary.opacity(isDark ? 0.10 : 0.06) : Color.clear)
             )
             .contentShape(Rectangle())
         }

@@ -173,7 +173,18 @@ enum UIThemeSelfTests {
             t.equal(settings.settingsModel.disableDragging, app.state.disableDragging)
             t.equal(settings.settingsModel.automaticallyChecksUpdates, app.updates.automaticallyChecks)
             t.check(settings.snapshot() != nil, "\(appearance.rawValue): General snapshot succeeds")
-            t.check(manage.snapshot() != nil, "\(appearance.rawValue): Widget Library snapshot succeeds")
+            if let manageSnap = manage.snapshot(),
+               let sample = manageSnap.colorAt(x: 40, y: 20)?.usingColorSpace(.sRGB) {
+                if appearance == .aqua {
+                    t.check(sample.redComponent > 0.94 && sample.greenComponent > 0.94 && sample.blueComponent > 0.95,
+                            "aqua: Widget Library sidebar stays bright off-white instead of dark gray")
+                } else {
+                    t.check(sample.redComponent < 0.22 && sample.greenComponent < 0.22 && sample.blueComponent < 0.24,
+                            "darkAqua: Widget Library sidebar stays dark")
+                }
+            } else {
+                t.check(false, "\(appearance.rawValue): Widget Library snapshot succeeds")
+            }
             t.check(app.menuBarPanel.snapshot() != nil, "\(appearance.rawValue): MenuBarPanel snapshot succeeds")
         }
         window.appearance = nil
