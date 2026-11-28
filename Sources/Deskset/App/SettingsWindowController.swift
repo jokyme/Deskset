@@ -2,18 +2,19 @@ import AppKit
 import DesksetCore
 import SwiftUI
 
-/// Deskset Settings window, redesigned to match Deskset Pro (Image 6):
-/// full-height left sidebar (`General / Appearance`, `Editor`, `Layouts`, `Debug & Log`, `About Deskset`)
-/// and grouped card pages. Everything persists in `AppState` (`state.json`).
+/// Deskset Settings window with a flat left sidebar (`General`, `Desktop & Skins`, `Editor`, `Debug & Log`,
+/// plus `About Deskset` anchored at the bottom) and grouped card pages. Everything persists in `AppState` (`state.json`).
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     enum Pane: String, CaseIterable {
-        case general, editor, layouts, debug, about
+        case general, desktop, editor, debug, about
+
+        static let mainPanes: [Pane] = [.general, .desktop, .editor, .debug]
 
         var title: String {
             switch self {
             case .general: return L("General")
+            case .desktop: return L("Desktop & Skins")
             case .editor: return L("Editor")
-            case .layouts: return L("Layouts")
             case .debug: return L("Debug & Log")
             case .about: return L("About Deskset")
             }
@@ -22,10 +23,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         var symbol: String {
             switch self {
             case .general: return "gearshape"
+            case .desktop: return "rectangle.3.group"
             case .editor: return "chevron.left.forwardslash.chevron.right"
-            case .layouts: return "rectangle.3.group"
             case .debug: return "ladybug"
-            case .about: return "square.grid.2x2"
+            case .about: return "info.circle"
             }
         }
 
@@ -145,7 +146,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.updateZoomControls()
-            self?.refreshLayoutsData()
             self?.refreshDebugData()
         }
         globalSettingsObserver = NotificationCenter.default.addObserver(
@@ -167,14 +167,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func select(_ pane: Pane) {
         self.pane = pane
         settingsModel.pane = pane
-        if pane != .general {
-            settingsModel.generalSubSection = nil
-        }
         window?.title = pane.title
         app.state.setSettingsPane(pane.rawValue)
-        if pane == .layouts {
-            refreshLayoutsData()
-        } else if pane == .debug {
+        if pane == .debug {
             refreshDebugData()
         }
     }
@@ -389,20 +384,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsModel.forceDefaultZoom = app.state.forceDefaultZoom
         settingsModel.disableDragging = app.state.disableDragging
         settingsModel.skinsFolderDisplayPath = (app.skinsDirectory.path as NSString).abbreviatingWithTildeInPath
+        settingsModel.settingsFolderDisplayPath = (app.settingsDirectory.path as NSString).abbreviatingWithTildeInPath
         settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
-        refreshLayoutsData()
         refreshDebugData()
-    }
-
-    func refreshLayoutsData() {
-        settingsModel.layoutNames = (try? app.layoutStore.list()) ?? []
-        settingsModel.isLoadingLayout = app.isLoadingLayout
     }
 
     func refreshDebugData() {
         settingsModel.fileLoggingEnabled = app.state.fileLoggingEnabled
         settingsModel.recentLogs = Array(Log.recent.reversed())
-        settingsModel.activeSkins = app.controllersByName.filter { !$0.isStopped }.map { ($0.config, $0.file) }
     }
 
     private func preferencesChanged() {
@@ -633,73 +622,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func automaticUpdatesToggled() {
         app.updates.setAutomaticallyChecks(automaticUpdatesBox.state == .on)
         updateControls()
-    }
-
-    // MARK: - Layouts Actions in Settings
-
-    func saveLayoutFromUI() {
-        let name = settingsModel.layoutDraftName
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.caseInsensitiveCompare("@Backup") != .orderedSame else { return }
-        let options = LayoutSaveOptions(
-            empty: settingsModel.saveEmptyLayout,
-            excludeUnloaded: settingsModel.excludeUnloaded,
-            includeWallpaper: settingsModel.includeWallpaper
-        )
-        let performSave = { [weak self] in
-            guard let self else { return }
-            do {
-                try self.app.saveLayout(named: name, options: options)
-                self.refreshLayoutsData()
-            } catch {
-                self.app.alert(L("Could not save layout"), error.localizedDescription)
-            }
-        }
-        guard app.layoutStore.contains(named: name), app.presentsWindows, let window else {
-            performSave()
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = L("Replace layout “%@”?", name)
-        alert.informativeText = L("A layout with this name already exists. Replace its saved settings?")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L("Replace"))
-        alert.addButton(withTitle: L("Cancel"))
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertFirstButtonReturn { performSave() }
-        }
-    }
-
-    func loadLayoutFromUI(named name: String) {
-        settingsModel.isLoadingLayout = true
-        app.loadLayout(named: name) { [weak self] _ in
-            self?.refreshLayoutsData()
-        }
-    }
-
-    func deleteLayoutFromUI(named name: String) {
-        let performDelete = { [weak self] in
-            guard let self else { return }
-            do {
-                try self.app.deleteLayout(named: name)
-                self.refreshLayoutsData()
-            } catch {
-                self.app.alert(L("Could not delete layout"), error.localizedDescription)
-            }
-        }
-        guard app.presentsWindows, let window else {
-            performDelete()
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = L("Delete layout “%@”?", name)
-        alert.informativeText = L("This moves the saved layout to the Trash. Your skin files are kept.")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L("Delete"))
-        alert.addButton(withTitle: L("Cancel"))
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertFirstButtonReturn { performDelete() }
-        }
     }
 
     // MARK: - Snapshot (UISnapshot & Self-Tests)

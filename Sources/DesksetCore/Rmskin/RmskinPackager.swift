@@ -51,6 +51,8 @@ public struct RmskinPackageSpec: Equatable, Codable {
     public var load: Load = .none
     /// Written as `MinimumRainmeter`; "Rainmeter version numbers are written in the form Major.Minor.Patch.Revision".
     public var minimumRainmeter = RmskinPackager.defaultMinimumRainmeter
+    /// Optional minimum Deskset version written as `MinimumDeskset` by Deskset's Skin Packager UI.
+    public var minimumDeskset: String? = nil
     /// A 400×60 `.bmp` shown by the installer.
     public var headerImage: URL?
     /// Paths starting with the root config folder (`illustro\Clock\Variables.inc`).
@@ -99,6 +101,8 @@ public enum RmskinPackagerError: Error, Equatable, CustomStringConvertible {
 public enum RmskinPackager {
     /// The Rainmeter release whose skin features Deskset implements (`RmskinManifest.compatibleRainmeterVersion`).
     public static let defaultMinimumRainmeter = "5.0"
+    /// The default minimum Deskset version offered by Deskset's Skin Packager.
+    public static let defaultMinimumDeskset = DesksetCore.version
     public static let headerSize = (width: 400, height: 60)
 
     /// What `build` did besides writing the package.
@@ -226,6 +230,12 @@ public enum RmskinPackager {
         if minimum.range(of: #"^[0-9]{1,4}(\.[0-9]{1,6}){0,3}$"#, options: .regularExpression) == nil {
             problems.append(.minimumVersionInvalid(minimum))
         }
+        if let rawDeskset = spec.minimumDeskset {
+            let minimumDeskset = rawDeskset.trimmingCharacters(in: .whitespaces)
+            if minimumDeskset.range(of: #"^[0-9]{1,4}(\.[0-9]{1,6}){0,3}$"#, options: .regularExpression) == nil {
+                problems.append(.minimumVersionInvalid(minimumDeskset))
+            }
+        }
         if spec.outputDirectory == nil || !RmskinFiles.isDirectory(spec.outputDirectory!) {
             problems.append(.outputMissing)
         }
@@ -272,6 +282,12 @@ public enum RmskinPackager {
         }
         if spec.mergeSkins { lines.append("MergeSkins=1") }
         lines.append("MinimumRainmeter=\(clean(spec.minimumRainmeter))")
+        if let minimumDeskset = spec.minimumDeskset {
+            let trimmed = clean(minimumDeskset)
+            if !trimmed.isEmpty {
+                lines.append("MinimumDeskset=\(trimmed)")
+            }
+        }
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 

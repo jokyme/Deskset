@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "文件";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "存储";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "关闭";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "暂时关闭。下一次每日检查时可能会再次提醒你。";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "皮肤";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "布局";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "已加载的皮肤";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "管理此皮肤…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "调试皮肤";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "按住 Control 键可每次调整 10 个百分点。";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "存储为空布局";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "不包括未加载的皮肤";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "包括当前墙纸";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "加载";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "删除";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "编辑";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "新建皮肤";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "缩放：";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "作者：";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "许可证：";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "版本：";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "打开日志";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "存储新布局";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "名称：";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "布局名称";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "已存储的布局";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "没有已存储的布局。";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "无法读取已存储的布局：%@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "无法存储布局";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "要替换布局“%@”吗？";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "已存在同名布局。要替换其中存储的设置吗？";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "替换";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "取消";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "无法删除布局";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "要删除布局“%@”吗？";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "存储的布局将移到废纸篓，皮肤文件会保留。";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "通用";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "桌面与皮肤";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "编辑器";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "应用到所有皮肤";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "禁止拖动";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "强制使用默认缩放";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "禁止用鼠标拖动皮肤。";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "系统默认（%@）";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "其他…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "无法创建皮肤";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "添加文件夹";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "添加皮肤";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "新皮肤";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "模板";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "创建";
+
+/* New Skin window: text. */
+"Rename" = "重新命名";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "无法创建皮肤";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "添加文件夹";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "添加皮肤";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "所选的皮肤文件夹";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "名称";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "新皮肤的文件夹和文件";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "新皮肤的模板";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "模板名称";
-
-/* New Skin window: text. */
-"Save new template" = "存储为新模板";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "已存储的模板";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "无法完成操作";
-
-/* New Skin window: text. */
-"Create" = "创建";
-
-/* New Skin window: text. */
-"Rename" = "重新命名";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "编辑皮肤";
+
+/* New Skin window: text. */
+"New skin folders and files" = "新皮肤的文件夹和文件";
+
+/* New Skin window: text. */
+"No root folder yet." = "尚未创建根文件夹。";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "在皮肤目录下创建一个根文件夹，即可开始添加子文件夹与皮肤文件。";
+
+/* New Skin window: text. */
+"Save new template" = "存储为新模板";
+
+/* New Skin window: text. */
+"Saved templates" = "已存储的模板";
+
+/* New Skin window: text. */
+"No saved templates." = "暂无已存储的模板。";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "名称";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "名称无效：%@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "应用安装包中的布局：%@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "高级";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "选项";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "移除";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "合并皮肤";
-
-/* Skin Packager window: button. */
-"Back" = "上一步";
-
-/* Skin Packager window: button. */
-"Next" = "下一步";
-
-/* Skin Packager window: button. */
-"Create Package" = "创建安装包";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = "创建 .rmskin 安装包";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "添加皮肤…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "添加布局";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "添加插件…";
-
-/* Skin Packager window: label. */
-"Skin:" = "皮肤：";
-
-/* Skin Packager window: label. */
-"Layouts:" = "布局：";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "插件：";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "基本信息与内容";
 
-/* Skin Packager window: button. */
-"Choose…" = "选取…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "选项";
 
-/* Skin Packager window: text. */
-"Do nothing" = "不执行任何操作";
-
-/* Skin Packager window: text. */
-"Load layout" = "加载布局";
-
-/* Skin Packager window: text. */
-"Load skin" = "加载皮肤";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "安装包存储位置：";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "安装后：";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "最低 Rainmeter 版本：";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "横幅图像：";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "变量文件：";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "使用以前的设置";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "按住 Shift 键可删除条目。";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = "创建 .rmskin 安装包";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "未选择皮肤";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "无";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@（缺少 32 位版本）";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "暂时无法创建安装包";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "选择皮肤的根配置文件夹。";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "暂时无法创建安装包";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "以下链接未放入安装包：%@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "“变量文件”和“合并皮肤”不能同时使用。";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "“%@”不是有效的版本号（例如 5.0 或 5.0.0.4657）。";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "“%@”不是 1.0 或 1.1.1 这样的版本号。";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "选择安装包的存储位置。";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "使用以前的设置";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "按住 Shift 键可删除条目。";
+
+/* Skin Packager window: text. */
+"Package Info" = "安装包信息";
+
+/* Skin Packager window: text. */
+"Package Contents" = "包含内容";
+
+/* Skin Packager window: text. */
+"Skin:" = "皮肤：";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "添加皮肤…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "布局：";
+
+/* Skin Packager window: text. */
+"Add Layout" = "添加布局";
+
+/* Skin Packager window: text. */
+"Remove" = "移除";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "插件：";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "添加插件…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "安装包存储位置：";
+
+/* Skin Packager window: text. */
+"Choose…" = "选取…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "安装后：";
+
+/* Skin Packager window: text. */
+"Do nothing" = "不执行任何操作";
+
+/* Skin Packager window: text. */
+"Load skin" = "加载皮肤";
+
+/* Skin Packager window: text. */
+"Load layout" = "加载布局";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "最低 Deskset 版本：";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "横幅图像：";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "变量文件：";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "合并皮肤";
+
+/* Skin Packager window: text. */
+"Back" = "上一步";
+
+/* Skin Packager window: text. */
+"Create Package" = "创建安装包";
+
+/* Skin Packager window: text. */
+"Next" = "下一步";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "启动与语言";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "登录时，Deskset 会自动打开并加载你的皮肤。";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Deskset 从“应用程序”文件夹运行时可用。";
+
+/* SettingsWindowView: text. */
+"Language" = "语言";
+
+/* SettingsWindowView: text. */
 "Appearance" = "外观";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "随 macOS 浅色与深色模式自动切换。";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "将 Deskset 窗口与菜单固定在指定外观。";
+
+/* SettingsWindowView: text. */
+"Software Update" = "软件更新";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset 每天检查一次，并自动下载更新；何时安装由你决定。";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "更新：";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "桌面交互";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "桌面自由拖动";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "防止鼠标误触拖动组件，同时保留组件上的按钮点击与交互功能。";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "登录时，Deskset 会自动打开并加载你的皮肤。";
+"Global Zoom" = "全局缩放";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Deskset 从“应用程序”文件夹运行时可用。";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset 每天检查一次，并自动下载更新；何时安装由你决定。";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "更新：";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "随 macOS 浅色与深色模式自动切换。";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "将 Deskset 窗口与菜单固定在指定外观。";
-
-/* SettingsWindowView: text. */
-"Language" = "语言";
+"Directories" = "存储目录";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "皮肤文件夹";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "设置文件夹";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "自动刷新：";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "诊断";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "查看实时皮肤度量值、变量、内置插件、显示器与网络统计信息。";
@@ -1934,7 +1972,7 @@
 "No log entries." = "暂无日志记录。";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "设置文件夹";
+"Documentation" = "使用文档";
 
 /* SettingsWindowView: text. */
 "Open" = "打开";

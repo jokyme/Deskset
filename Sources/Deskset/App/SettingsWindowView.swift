@@ -18,8 +18,6 @@ final class DesksetSettingsViewModel: ObservableObject {
     }
 
     @Published var pane: SettingsWindowController.Pane = .general
-    @Published var generalSubSection: String? = nil // "appearance" or nil
-    @Published var scrollTrigger = UUID()
 
     // General
     @Published var languageItems: [LanguageItem] = []
@@ -32,10 +30,13 @@ final class DesksetSettingsViewModel: ObservableObject {
     @Published var checkUpdatesTitle: String = ""
     @Published var availableUpdateVersion: String? = nil
     @Published var updateStatusText: String = ""
+
+    // Desktop & Skins
     @Published var defaultZoomPercent: Int = 100
     @Published var forceDefaultZoom: Bool = false
     @Published var disableDragging: Bool = false
     @Published var skinsFolderDisplayPath: String = ""
+    @Published var settingsFolderDisplayPath: String = ""
 
     // Editor
     @Published var editorItems: [EditorItem] = []
@@ -44,14 +45,6 @@ final class DesksetSettingsViewModel: ObservableObject {
     @Published var codeFontSize: Int = 13
     @Published var liveReload: Bool = true
 
-    // Layouts
-    @Published var layoutNames: [String] = []
-    @Published var layoutDraftName: String = ""
-    @Published var saveEmptyLayout: Bool = false
-    @Published var excludeUnloaded: Bool = false
-    @Published var includeWallpaper: Bool = false
-    @Published var isLoadingLayout: Bool = false
-
     // Debug & Log
     @Published var fileLoggingEnabled: Bool = false
     @Published var recentLogs: [Log.Line] = []
@@ -59,12 +52,10 @@ final class DesksetSettingsViewModel: ObservableObject {
     @Published var showWarningLogs: Bool = true
     @Published var showNoticeLogs: Bool = true
     @Published var showDebugLogs: Bool = true
-    @Published var activeSkins: [(config: String, file: String)] = []
 }
 
-/// Deskset Settings redesigned to match Deskset Pro (Image 6):
-/// full-height left sidebar (`Deskset` app card + colorful rounded icon badges + blue selection pill + `外观` sub-row)
-/// and right-hand System Settings style grouped white/dark cards.
+/// Deskset Settings with 4 flat preference categories (`General`, `Desktop & Skins`, `Editor`, `Debug & Log`)
+/// and `About Deskset` anchored at the bottom of the left sidebar.
 struct DesksetSettingsRootView: View {
     @ObservedObject var model: DesksetSettingsViewModel
     weak var controller: SettingsWindowController?
@@ -72,7 +63,6 @@ struct DesksetSettingsRootView: View {
 
     private static let topHeight: CGFloat = 56
     private static let topAnchorID = "settings.top"
-    private static let appearanceAnchorID = "settings.appearance"
 
     @State private var defaultZoomText: String = "100"
     @State private var fontSizeText: String = "13"
@@ -80,7 +70,7 @@ struct DesksetSettingsRootView: View {
     var body: some View {
         ScrollViewReader { proxy in
             HStack(spacing: 0) {
-                sidebar(proxy: proxy)
+                sidebar
                 Divider()
                 detailArea(proxy: proxy)
             }
@@ -97,13 +87,8 @@ struct DesksetSettingsRootView: View {
             .onChange(of: model.codeFontSize) { newValue in
                 fontSizeText = String(newValue)
             }
-            .onChange(of: model.scrollTrigger) { _ in
-                let target = (model.pane == .general && model.generalSubSection == "appearance")
-                    ? Self.appearanceAnchorID
-                    : Self.topAnchorID
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    proxy.scrollTo(target, anchor: .top)
-                }
+            .onChange(of: model.pane) { _ in
+                proxy.scrollTo(Self.topAnchorID, anchor: .top)
             }
         }
         .ignoresSafeArea()
@@ -111,87 +96,60 @@ struct DesksetSettingsRootView: View {
 
     // MARK: - Left Sidebar
 
-    private func sidebar(proxy: ScrollViewProxy) -> some View {
+    private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
             sidebarHeader
                 .padding(.top, 26)
                 .frame(maxWidth: .infinity, minHeight: Self.topHeight + 26, maxHeight: Self.topHeight + 26, alignment: .leading)
                 .background(WindowDragArea())
 
-            ForEach(SettingsWindowController.Pane.allCases, id: \.rawValue) { item in
-                let selected = model.pane == item && !(item == .general && model.generalSubSection != nil)
-                Button {
-                    model.generalSubSection = nil
-                    controller?.select(item)
-                    model.scrollTrigger = UUID()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: item.sidebarSymbol)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 22, height: 22)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(item.sidebarTint)
-                            )
-                        Text(item.title)
-                            .font(.system(size: 13, weight: model.pane == item ? .semibold : .regular))
-                            .foregroundColor(selected ? .white : .primary)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(height: 32)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(selected ? Color.accentColor : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                if item == .general {
-                    let subSelected = model.pane == .general && model.generalSubSection == "appearance"
-                    Button {
-                        if model.pane != .general {
-                            controller?.select(.general)
-                        }
-                        model.generalSubSection = "appearance"
-                        model.scrollTrigger = UUID()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "paintpalette.fill")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 18, height: 18)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(DeskProPalette.signalOrange)
-                                )
-                            Text(L("Appearance"))
-                                .font(.system(size: 12.5, weight: subSelected ? .semibold : .regular))
-                                .foregroundColor(subSelected ? .white : .primary)
-                                .lineLimit(1)
-                            Spacer()
-                        }
-                        .padding(.leading, 38)
-                        .padding(.trailing, 8)
-                        .frame(height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(subSelected ? Color.accentColor : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+            ForEach(SettingsWindowController.Pane.mainPanes, id: \.rawValue) { item in
+                sidebarRow(for: item)
             }
 
-            Spacer()
+            Spacer(minLength: 12)
+
+            Divider()
+                .padding(.horizontal, 6)
+                .padding(.bottom, 4)
+
+            sidebarRow(for: .about)
+                .padding(.bottom, 12)
         }
         .padding(.horizontal, 10)
         .frame(width: 240)
         .background(Color.primary.opacity(0.04))
+    }
+
+    private func sidebarRow(for item: SettingsWindowController.Pane) -> some View {
+        let selected = model.pane == item
+        return Button {
+            controller?.select(item)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.sidebarSymbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(item.sidebarTint)
+                    )
+                Text(item.title)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundColor(selected ? .white : .primary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(selected ? Color.accentColor : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var sidebarHeader: some View {
@@ -244,10 +202,10 @@ struct DesksetSettingsRootView: View {
                     switch model.pane {
                     case .general:
                         generalPage
+                    case .desktop:
+                        desktopPage
                     case .editor:
                         editorPage
-                    case .layouts:
-                        layoutsPage
                     case .debug:
                         debugPage
                     case .about:
@@ -262,35 +220,11 @@ struct DesksetSettingsRootView: View {
         }
     }
 
-    // MARK: - 1. General Page (Matching Image 6)
+    // MARK: - 1. General Page
 
     private var generalPage: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Top Visual Mode Cards (Desktop Resident Widgets + Studio, matching Image 6's visual hero cards)
-            HStack(alignment: .top, spacing: 14) {
-                desktopModeVisualCard(
-                    selected: !model.disableDragging,
-                    isLocked: false,
-                    title: L("Interactive Desktop"),
-                    caption: L("Drag widgets freely on the desktop and right-click any widget for quick actions.")
-                ) {
-                    controller?.setDisableDraggingFromUI(false)
-                }
-
-                desktopModeVisualCard(
-                    selected: model.disableDragging,
-                    isLocked: true,
-                    title: L("Locked Positions"),
-                    caption: L("Prevent accidental mouse dragging while keeping buttons and actions interactive.")
-                ) {
-                    controller?.setDisableDraggingFromUI(true)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.bottom, 22)
-
-            // Startup & Updates Group
-            DeskProSettingsGroup(title: L("General")) {
+            DeskProSettingsGroup(title: L("Startup & Language")) {
                 DeskProSettingsRow(
                     title: L("Launch Deskset at login"),
                     detail: model.launchAtLoginAvailable
@@ -306,6 +240,61 @@ struct DesksetSettingsRootView: View {
                     .disabled(!model.launchAtLoginAvailable)
                 }
 
+                DeskProSettingsRow(title: L("Language"), divider: false) {
+                    Picker("", selection: Binding(
+                        get: { model.selectedLanguageIndex },
+                        set: { controller?.chooseLanguageIndexFromUI($0) }
+                    )) {
+                        ForEach(model.languageItems) { item in
+                            if item.isSeparator {
+                                Divider()
+                            } else {
+                                Text(item.title).tag(item.id)
+                            }
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+            }
+
+            DeskProSettingsGroup(title: L("Appearance")) {
+                HStack(alignment: .top, spacing: 10) {
+                    appearancePreviewCard(
+                        selected: model.uiTheme == .auto,
+                        darkPreview: false,
+                        splitAuto: true,
+                        title: L("Auto"),
+                        subtitle: L("Follows macOS Light and Dark Mode automatically.")
+                    ) {
+                        controller?.chooseThemeFromUI(.auto)
+                    }
+
+                    appearancePreviewCard(
+                        selected: model.uiTheme == .light,
+                        darkPreview: false,
+                        splitAuto: false,
+                        title: L("Light"),
+                        subtitle: L("Keeps Deskset windows and menus in a fixed appearance.")
+                    ) {
+                        controller?.chooseThemeFromUI(.light)
+                    }
+
+                    appearancePreviewCard(
+                        selected: model.uiTheme == .dark,
+                        darkPreview: true,
+                        splitAuto: false,
+                        title: L("Dark"),
+                        subtitle: L("Keeps Deskset windows and menus in a fixed appearance.")
+                    ) {
+                        controller?.chooseThemeFromUI(.dark)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(14)
+            }
+
+            DeskProSettingsGroup(title: L("Software Update")) {
                 DeskProSettingsRow(
                     title: L("Automatically check for updates"),
                     detail: L("Deskset checks once a day and downloads updates itself; you choose when to install them.")
@@ -338,84 +327,42 @@ struct DesksetSettingsRootView: View {
                     }
                 }
             }
+        }
+    }
 
-            // Appearance Section (Anchored for Sidebar `外观`, matching Image 6)
-            VStack(alignment: .leading, spacing: 0) {
-                DeskProSettingsGroup(title: L("Appearance")) {
-                    VStack(spacing: 0) {
-                        HStack(alignment: .top, spacing: 10) {
-                            appearancePreviewCard(
-                                selected: model.uiTheme == .auto,
-                                darkPreview: false,
-                                splitAuto: true,
-                                title: L("Auto"),
-                                subtitle: L("Follows macOS Light and Dark Mode automatically.")
-                            ) {
-                                controller?.chooseThemeFromUI(.auto)
-                            }
+    // MARK: - 2. Desktop & Skins Page
 
-                            appearancePreviewCard(
-                                selected: model.uiTheme == .light,
-                                darkPreview: false,
-                                splitAuto: false,
-                                title: L("Light"),
-                                subtitle: L("Keeps Deskset windows and menus in a fixed appearance.")
-                            ) {
-                                controller?.chooseThemeFromUI(.light)
-                            }
+    private var desktopPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("Desktop Interaction"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.leading, 2)
 
-                            appearancePreviewCard(
-                                selected: model.uiTheme == .dark,
-                                darkPreview: true,
-                                splitAuto: false,
-                                title: L("Dark"),
-                                subtitle: L("Keeps Deskset windows and menus in a fixed appearance.")
-                            ) {
-                                controller?.chooseThemeFromUI(.dark)
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(14)
-
-                        Divider().padding(.leading, 14)
+                HStack(alignment: .top, spacing: 14) {
+                    desktopModeVisualCard(
+                        selected: !model.disableDragging,
+                        isLocked: false,
+                        title: L("Interactive Desktop"),
+                        caption: L("Drag widgets freely on the desktop and right-click any widget for quick actions.")
+                    ) {
+                        controller?.setDisableDraggingFromUI(false)
                     }
 
-                    DeskProSettingsRow(title: L("Language"), divider: false) {
-                        Picker("", selection: Binding(
-                            get: { model.selectedLanguageIndex },
-                            set: { controller?.chooseLanguageIndexFromUI($0) }
-                        )) {
-                            ForEach(model.languageItems) { item in
-                                if item.isSeparator {
-                                    Divider()
-                                } else {
-                                    Text(item.title).tag(item.id)
-                                }
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 260)
+                    desktopModeVisualCard(
+                        selected: model.disableDragging,
+                        isLocked: true,
+                        title: L("Locked Positions"),
+                        caption: L("Prevent accidental mouse dragging while keeping buttons and actions interactive.")
+                    ) {
+                        controller?.setDisableDraggingFromUI(true)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .id(Self.appearanceAnchorID)
+            .padding(.bottom, 22)
 
-            // Skins Group
-            DeskProSettingsGroup(title: L("Skins")) {
-                DeskProSettingsRow(
-                    title: L("Skins folder"),
-                    detail: model.skinsFolderDisplayPath
-                ) {
-                    HStack(spacing: 8) {
-                        Button(L("Refresh All")) {
-                            app.refreshAllAction()
-                        }
-                        Button(L("Show in Finder")) {
-                            app.openSkinsFolderAction()
-                        }
-                    }
-                }
-
+            DeskProSettingsGroup(title: L("Global Zoom")) {
                 DeskProSettingsRow(title: L("Default zoom")) {
                     HStack(spacing: 6) {
                         TextField("100", text: $defaultZoomText)
@@ -437,7 +384,8 @@ struct DesksetSettingsRootView: View {
 
                 DeskProSettingsRow(
                     title: L("Apply to all skins"),
-                    detail: L("Apply the default zoom to every skin.")
+                    detail: L("Apply the default zoom to every skin."),
+                    divider: false
                 ) {
                     Toggle("", isOn: Binding(
                         get: { model.forceDefaultZoom },
@@ -446,18 +394,31 @@ struct DesksetSettingsRootView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
+            }
+
+            DeskProSettingsGroup(title: L("Directories")) {
+                DeskProSettingsRow(
+                    title: L("Skins folder"),
+                    detail: model.skinsFolderDisplayPath
+                ) {
+                    HStack(spacing: 8) {
+                        Button(L("Refresh All")) {
+                            app.refreshAllAction()
+                        }
+                        Button(L("Show in Finder")) {
+                            app.openSkinsFolderAction()
+                        }
+                    }
+                }
 
                 DeskProSettingsRow(
-                    title: L("Disable dragging"),
-                    detail: L("Prevent dragging skins with the mouse."),
+                    title: L("Settings folder"),
+                    detail: model.settingsFolderDisplayPath,
                     divider: false
                 ) {
-                    Toggle("", isOn: Binding(
-                        get: { model.disableDragging },
-                        set: { controller?.setDisableDraggingFromUI($0) }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
+                    Button(L("Show in Finder")) {
+                        Workspace.reveal(app.settingsDirectory)
+                    }
                 }
             }
         }
@@ -638,11 +599,11 @@ struct DesksetSettingsRootView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - 2. Editor Page
+    // MARK: - 3. Editor Page
 
     private var editorPage: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DeskProSettingsGroup(title: L("Editor"), footer: model.editorHelperText) {
+            DeskProSettingsGroup(footer: model.editorHelperText) {
                 DeskProSettingsRow(title: L("Edit code with")) {
                     Picker("", selection: Binding(
                         get: { model.selectedEditorIndex },
@@ -663,7 +624,7 @@ struct DesksetSettingsRootView: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(maxWidth: 280)
+                    .fixedSize()
                 }
 
                 DeskProSettingsRow(title: L("Code font size")) {
@@ -701,104 +662,6 @@ struct DesksetSettingsRootView: View {
         }
     }
 
-    // MARK: - 3. Layouts Page
-
-    private var layoutsPage: some View {
-        let trimmed = model.layoutDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let canSave = !model.isLoadingLayout && !trimmed.isEmpty
-            && trimmed.caseInsensitiveCompare("@Backup") != .orderedSame
-
-        return VStack(alignment: .leading, spacing: 0) {
-            DeskProSettingsGroup(title: L("Save new layout")) {
-                DeskProSettingsRow(title: L("Name:")) {
-                    HStack(spacing: 8) {
-                        TextField(L("Layout name"), text: $model.layoutDraftName)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 220)
-                            .disabled(model.isLoadingLayout)
-                        Button(L("Save")) {
-                            controller?.saveLayoutFromUI()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!canSave)
-                    }
-                }
-
-                DeskProSettingsRow(title: L("Save as empty layout")) {
-                    Toggle("", isOn: Binding(
-                        get: { model.saveEmptyLayout },
-                        set: {
-                            model.saveEmptyLayout = $0
-                            if $0 {
-                                model.excludeUnloaded = false
-                                model.includeWallpaper = false
-                            }
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .disabled(model.isLoadingLayout)
-                }
-
-                DeskProSettingsRow(title: L("Exclude unloaded skins")) {
-                    Toggle("", isOn: $model.excludeUnloaded)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .disabled(model.isLoadingLayout || model.saveEmptyLayout)
-                }
-
-                DeskProSettingsRow(title: L("Include current wallpaper"), divider: false) {
-                    Toggle("", isOn: $model.includeWallpaper)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .disabled(model.isLoadingLayout || model.saveEmptyLayout)
-                }
-            }
-
-            DeskProSettingsGroup(title: L("Saved layouts")) {
-                if model.layoutNames.isEmpty {
-                    DeskProSettingsRow(title: L("No saved layouts."), divider: false) {
-                        EmptyView()
-                    }
-                } else {
-                    ForEach(Array(model.layoutNames.enumerated()), id: \.element) { idx, name in
-                        DeskProSettingsRow(
-                            title: name,
-                            symbol: name.caseInsensitiveCompare("@Backup") == .orderedSame
-                                ? "clock.arrow.circlepath"
-                                : "rectangle.3.group",
-                            symbolTint: .accentColor,
-                            divider: idx < model.layoutNames.count - 1
-                        ) {
-                            HStack(spacing: 8) {
-                                Button(L("Load")) {
-                                    controller?.loadLayoutFromUI(named: name)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .disabled(model.isLoadingLayout)
-
-                                Button(L("Edit")) {
-                                    app.editLayout(named: name)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(model.isLoadingLayout)
-
-                                Button(L("Delete")) {
-                                    controller?.deleteLayoutFromUI(named: name)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(model.isLoadingLayout)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - 4. Debug & Log Page
 
     private var filteredLogs: [Log.Line] {
@@ -814,7 +677,7 @@ struct DesksetSettingsRootView: View {
 
     private var debugPage: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DeskProSettingsGroup(title: L("Debug")) {
+            DeskProSettingsGroup(title: L("Diagnostics")) {
                 DeskProSettingsRow(
                     title: L("Log file"),
                     detail: Log.fileURL.path
@@ -843,43 +706,8 @@ struct DesksetSettingsRootView: View {
                     detail: L("Inspect live skin measures, variables, built-in plugins, displays and network statistics."),
                     divider: false
                 ) {
-                    HStack(spacing: 6) {
-                        ForEach(DebugWindowController.Tab.allCases, id: \.rawValue) { tab in
-                            Button(tab.title) {
-                                app.showDebug(tab: tab)
-                            }
-                            .controlSize(.small)
-                        }
-                        Button(L("Open Inspector…")) {
-                            app.showDebug(tab: .skins)
-                        }
-                        .controlSize(.small)
-                    }
-                }
-            }
-
-            if !model.activeSkins.isEmpty {
-                DeskProSettingsGroup(title: L("Loaded Skins")) {
-                    ForEach(Array(model.activeSkins.enumerated()), id: \.offset) { idx, item in
-                        DeskProSettingsRow(
-                            title: item.config,
-                            detail: item.file,
-                            symbol: "checkmark.circle.fill",
-                            symbolTint: DeskProPalette.loadedGreen,
-                            divider: idx < model.activeSkins.count - 1
-                        ) {
-                            HStack(spacing: 8) {
-                                Button(L("Refresh")) {
-                                    if let c = app.controller(for: item.config) { app.refresh(c) }
-                                }
-                                .controlSize(.small)
-
-                                Button(L("Debug Skin")) {
-                                    app.showDebug(tab: .skins, config: item.config)
-                                }
-                                .controlSize(.small)
-                            }
-                        }
+                    Button(L("Open Inspector…")) {
+                        app.showDebug(tab: .skins)
                     }
                 }
             }
@@ -943,7 +771,7 @@ struct DesksetSettingsRootView: View {
                             }
                         }
                     }
-                    .frame(maxHeight: 260)
+                    .frame(maxHeight: 280)
                 }
             }
         }
@@ -975,7 +803,7 @@ struct DesksetSettingsRootView: View {
         }
     }
 
-    // MARK: - 5. About Deskset Page (Matching Deskset Pro AboutPage)
+    // MARK: - 5. About Deskset Page
 
     private var aboutPage: some View {
         let details = AboutWindowController.versionDetails(for: app)
@@ -1001,43 +829,26 @@ struct DesksetSettingsRootView: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    Button(L("Copy to Clipboard")) {
-                        let pb = NSPasteboard.general
-                        pb.clearContents()
-                        pb.setString(AboutWindowController.formatVersionReport(for: app), forType: .string)
-                    }
-                    Button(L("Check for Updates…")) {
-                        app.checkForUpdatesAction()
-                    }
+                Button(L("Copy to Clipboard")) {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(AboutWindowController.formatVersionReport(for: app), forType: .string)
                 }
             }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DeskProPalette.box))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
             .padding(.bottom, 22)
-
-            DeskProSettingsGroup(title: L("Skins")) {
-                DeskProSettingsRow(title: L("Skins folder"), detail: details.skinPath) {
-                    Button(L("Show in Finder")) {
-                        app.openSkinsFolderAction()
-                    }
-                }
-                DeskProSettingsRow(title: L("Settings folder"), detail: details.settingsPath) {
-                    Button(L("Show in Finder")) {
-                        Workspace.reveal(app.settingsDirectory)
-                    }
-                }
-                DeskProSettingsRow(title: L("Log file"), detail: details.logFile, divider: false) {
-                    Button(L("Show in Finder")) {
-                        Workspace.reveal(Log.fileURL)
-                    }
-                }
-            }
 
             DeskProSettingsGroup(
                 title: L("Help"),
                 footer: L("Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.")
                     + "\n" + WeatherWiring.credits
             ) {
-                DeskProSettingsRow(title: L("Help"), divider: false) {
+                DeskProSettingsRow(title: L("Documentation"), divider: false) {
                     Button(L("Open")) {
                         if let url = URL(string: "https://docs.rainmeter.net/") {
                             app.openMenuURL(url)
@@ -1054,18 +865,18 @@ extension SettingsWindowController.Pane {
     var sidebarSymbol: String {
         switch self {
         case .general: return "gearshape.fill"
+        case .desktop: return "rectangle.3.group.fill"
         case .editor: return "chevron.left.forwardslash.chevron.right"
-        case .layouts: return "rectangle.3.group.fill"
         case .debug: return "ladybug.fill"
-        case .about: return "square.grid.2x2.fill"
+        case .about: return "info.circle.fill"
         }
     }
 
     var sidebarTint: Color {
         switch self {
         case .general: return Color(white: 0.55)
+        case .desktop: return DeskProPalette.indigoTint
         case .editor: return DeskProPalette.discoverBlue
-        case .layouts: return DeskProPalette.indigoTint
         case .debug: return DeskProPalette.privacyGreen
         case .about: return DeskProPalette.aboutInk
         }

@@ -486,7 +486,9 @@ Skins folder) and `.severalPackages([names])`.
   - Layout: `RMSKIN.ini`, optional `RMSKIN.bmp`, `Skins/<root>/…`, `Layouts/<name>/…`, `Plugins/32bit|64bit/<dll>`;
     ZIP from `ditto -c -k --norsrc --noextattr --noacl --noqtn`, then the 16-byte footer.
   - `RMSKIN.ini`: UTF-16 LE with BOM, CRLF; keys Name, Author, Version, LoadType/Load (only with a choice),
-    VariableFiles (` | `), MergeSkins=1 (only when set), MinimumRainmeter. No MinimumWindows (removed in 5.0).
+    VariableFiles (` | `), MergeSkins=1 (only when set), MinimumRainmeter (fixed at `5.0`, matching Deskset's Rainmeter
+    5.0 compatibility baseline), and MinimumDeskset (set from the "Minimum Deskset version:" field in Deskset's Skin
+    Packager, defaulting to the running Deskset version). No MinimumWindows (removed in 5.0).
     Line breaks in fields become spaces.
   - Names: staged with POSIX `mkdir` / `copyfile` in Unicode form C (Foundation's file APIs would decompose them), and
     the UTF-8 flag (bit 11) is set in every central record and local header (`RmskinZip.markNamesUTF8`), since ditto

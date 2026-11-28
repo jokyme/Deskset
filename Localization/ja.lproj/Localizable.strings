@@ -25,11 +25,11 @@
 /* Main menu: menu title. */
 "File" = "ファイル";
 
-/* Main menu: menu item; Manage window: button; New Skin window: button; DebugWatchEditorController: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Main menu: menu item; Manage window: button; New Skin window: button, text; DebugWatchEditorController: button; WidgetLibraryView: text.
    Note: Menu command and button (Apple's standard term). */
 "Save" = "保存";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: button; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "閉じる";
 
@@ -193,15 +193,15 @@
 /* Menu bar menu, skin menus and update alerts: tooltip. */
 "Close for now. The next daily check can remind you again." = "いったん閉じます。次回の毎日の確認で再び通知されることがあります。";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status); SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; DebugWindowController: message (an error or a status).
    Note: A skin is a desktop widget made for Rainmeter (a clock, a monitor…). Use the term the Rainmeter community uses in your language; keep it the same everywhere. */
 "Skins" = "スキン";
 
-/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; Settings window: message (an error or a status); WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; Manage window: text; WidgetLibraryView: message (an error or a status).
    Note: A layout is a saved set of loaded skins with their positions and settings (Rainmeter's term). */
 "Layouts" = "レイアウト";
 
-/* Menu bar menu, skin menus and update alerts: menu item; SettingsWindowView: text; WidgetLibraryView: message (an error or a status).
+/* Menu bar menu, skin menus and update alerts: menu item; WidgetLibraryView: message (an error or a status).
    Note: Submenu that lists the skins that are on the desktop now ("loaded" = running). */
 "Loaded Skins" = "ロード中のスキン";
 
@@ -299,7 +299,7 @@
 /* Menu bar menu, skin menus and update alerts: text. */
 "Manage Skin…" = "このスキンを管理…";
 
-/* Menu bar menu, skin menus and update alerts: text; SettingsWindowView: text.
+/* Menu bar menu, skin menus and update alerts: text.
    Note: Opens the Debug window for this skin. */
 "Debug Skin" = "スキンをデバッグ";
 
@@ -389,27 +389,27 @@
    Note: Tooltip of the zoom stepper (the arrows change it by 1 point). */
 "Hold Control to change zoom by 10 percentage points." = "Control キーを押したままにすると 10 ポイントずつ変更できます。";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Save as empty layout" = "空のレイアウトとして保存";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Exclude unloaded skins" = "ロードしていないスキンを除く";
 
-/* Manage window: checkbox; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: checkbox; WidgetLibraryView: text. */
 "Include current wallpaper" = "現在の壁紙を含める";
 
-/* Manage window: button, text; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, text; WidgetLibraryView: text.
    Note: Button: loads the selected skin or layout (puts it on the desktop and runs it). */
 "Load" = "ロード";
 
-/* Manage window: button; Settings window: button; New Skin window: button, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: button; New Skin window: button, text; WidgetLibraryView: text. */
 "Delete" = "削除";
 
-/* Manage window: button, menu item; New Skin window: button; SettingsWindowView: text; WidgetLibraryView: text.
+/* Manage window: button, menu item; New Skin window: button, text; WidgetLibraryView: text.
    Note: A button or command that opens the skin, layout or template for editing (a verb, not the Edit menu's title). */
 "Edit" = "編集";
 
-/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, tooltip, menu item; New Skin window: window title, text; WidgetLibraryView: text. */
 "Create new skin" = "新規スキンを作成";
 
 /* Manage window: VoiceOver description, tooltip; WidgetLibraryView: text.
@@ -467,7 +467,7 @@
    Note: The size of a skin on the desktop, as a percentage (100% = the size the skin was made for). */
 "Zoom:" = "拡大率：";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Author:" = "作成者：";
 
 /* Manage window: text; WidgetLibraryView: text.
@@ -477,7 +477,7 @@
 /* Manage window: text; WidgetLibraryView: text. */
 "License:" = "ライセンス：";
 
-/* Manage window: text; Skin Packager window: label; WidgetLibraryView: text. */
+/* Manage window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Version:" = "バージョン：";
 
 /* Manage window: window title; MenuBarPanelController: text; WidgetLibraryView: text. */
@@ -495,46 +495,46 @@
 /* Manage window: button. */
 "Open Log" = "ログを開く";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "Save new layout" = "新規レイアウトを保存";
 
-/* Manage window: label; New Skin window: label; Skin Packager window: label; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: label; New Skin window: text; Skin Packager window: text; WidgetLibraryView: text. */
 "Name:" = "名前：";
 
-/* Manage window: VoiceOver description; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description; WidgetLibraryView: text. */
 "Layout name" = "レイアウト名";
 
-/* Manage window: VoiceOver description, text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: VoiceOver description, text; WidgetLibraryView: text. */
 "Saved layouts" = "保存済みのレイアウト";
 
-/* Manage window: text; SettingsWindowView: text; WidgetLibraryView: text. */
+/* Manage window: text; WidgetLibraryView: text. */
 "No saved layouts." = "保存済みのレイアウトはありません。";
 
 /* Manage window: text. */
 "Could not read saved layouts: %@" = "保存済みのレイアウトを読み込めませんでした：%@";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not save layout" = "レイアウトを保存できませんでした";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Replace layout “%@”?" = "レイアウト“%@”を置き換えますか？";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "A layout with this name already exists. Replace its saved settings?" = "同じ名前のレイアウトがすでにあります。保存されている設定を置き換えますか？";
 
-/* Manage window: button; Settings window: button; Skin Packager window: button. */
+/* Manage window: button; Skin Packager window: button. */
 "Replace" = "置き換える";
 
-/* Manage window: button; Settings window: button; New Skin window: button; Skin installer: button; Skin Packager window: button; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
+/* Manage window: button; New Skin window: text; Skin installer: button; Skin Packager window: button, text; Move to Trash confirmation: button; Safe Start: text; App updates: button, text; Installing Deskset in Applications: button; Install and update panels: button, text; DebugWatchEditorController: button; UISnapshot: button. */
 "Cancel" = "キャンセル";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Could not delete layout" = "レイアウトを削除できませんでした";
 
-/* Manage window: alert title; Settings window: alert title. */
+/* Manage window: alert title. */
 "Delete layout “%@”?" = "レイアウト“%@”を削除しますか？";
 
-/* Manage window: alert or dialog message; Settings window: alert or dialog message. */
+/* Manage window: alert or dialog message. */
 "This moves the saved layout to the Trash. Your skin files are kept." = "保存済みのレイアウトがゴミ箱に移動されます。スキンのファイルはそのまま残ります。";
 
 /* Manage window: tooltip. */
@@ -737,11 +737,14 @@
 
 // MARK: Settings window
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status).
    Note: The first pane of Settings (Apple's usual name). */
 "General" = "一般";
 
-/* Settings window: message (an error or a status); SettingsWindowView: text.
+/* Settings window: message (an error or a status). */
+"Desktop & Skins" = "デスクトップとスキン";
+
+/* Settings window: message (an error or a status).
    Note: A pane of Settings: options for editing skins. */
 "Editor" = "エディタ";
 
@@ -769,7 +772,7 @@
    Note: Checkbox under "Default zoom:": every skin uses the default zoom, even one that has its own. */
 "Apply to all skins" = "すべてのスキンに適用";
 
-/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text.
+/* Settings window: checkbox, VoiceOver description.
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "ドラッグを無効にする";
 
@@ -795,7 +798,7 @@
    Note: VoiceOver name of the "Apply to all skins" checkbox under the default zoom. */
 "Force default zoom" = "デフォルトの拡大率を強制";
 
-/* Settings window: tooltip; SettingsWindowView: status or description line. */
+/* Settings window: tooltip. */
 "Prevent dragging skins with the mouse." = "マウスでスキンをドラッグできないようにします。";
 
 /* Settings window: text.
@@ -806,7 +809,7 @@
    Note: Choice for "Edit code with:"; %@ is the app macOS opens .ini files with. */
 "System default (%@)" = "システムのデフォルト（%@）";
 
-/* Settings window: text; Skin Packager window: menu item.
+/* Settings window: text; Skin Packager window: text.
    Note: Last item of the editor list: choose any app. */
 "Other…" = "その他…";
 
@@ -882,47 +885,40 @@
 
 // MARK: New Skin window
 
-/* New Skin window: alert title. */
-"Could not create a skin" = "スキンを作成できませんでした";
-
-/* New Skin window: button.
-   Note: Button: adds a subfolder to the new skin. */
-"Add Folder" = "フォルダを追加";
-
-/* New Skin window: button.
-   Note: Button: adds another skin (.ini) file to the new skin. */
-"Add skin" = "スキンを追加";
-
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: Tab of the New skin window: the folders and files to create. */
 "New skin" = "新規スキン";
 
-/* New Skin window: text.
+/* New Skin window: message (an error or a status), text.
    Note: A tab of the New skin window: the files a new skin starts with. */
 "Template" = "テンプレート";
 
-/* New Skin window: VoiceOver description.
+/* New Skin window: text. */
+"Create" = "作成";
+
+/* New Skin window: text. */
+"Rename" = "名前を変更";
+
+/* New Skin window: alert title. */
+"Could not create a skin" = "スキンを作成できませんでした";
+
+/* New Skin window: button, text.
+   Note: Button: adds a subfolder to the new skin. */
+"Add Folder" = "フォルダを追加";
+
+/* New Skin window: button, text.
+   Note: Button: adds another skin (.ini) file to the new skin. */
+"Add skin" = "スキンを追加";
+
+/* New Skin window: VoiceOver description, text.
    Note: VoiceOver name of the field showing the folder the new skin goes in. */
 "Selected skin folder" = "選択中のスキンフォルダ";
-
-/* New Skin window: column heading, VoiceOver description; DebugSkinInspectorView: text; DebugWindowController: text.
-   Note: Column heading and field name: the name of a folder or skin file. */
-"Name" = "名前";
-
-/* New Skin window: VoiceOver description. */
-"New skin folders and files" = "新規スキンのフォルダとファイル";
 
 /* New Skin window: VoiceOver description. */
 "Template for new skins" = "新規スキンのテンプレート";
 
-/* New Skin window: VoiceOver description. */
+/* New Skin window: VoiceOver description, text. */
 "Template name" = "テンプレート名";
-
-/* New Skin window: text. */
-"Save new template" = "新規テンプレートとして保存";
-
-/* New Skin window: column heading, VoiceOver description, text. */
-"Saved templates" = "保存済みのテンプレート";
 
 /* New Skin window: menu item.
    Note: First item of a pop-up menu of saved templates; choosing a template fills in the new skin's files. */
@@ -933,12 +929,6 @@
 
 /* New Skin window: alert title. */
 "Could not complete the operation" = "操作を完了できませんでした";
-
-/* New Skin window: text. */
-"Create" = "作成";
-
-/* New Skin window: text. */
-"Rename" = "名前を変更";
 
 /* New Skin window: text.
    Note: Creates a new top-level skin folder (a "root config", the folder that holds one skin suite). */
@@ -954,6 +944,28 @@
 /* New Skin window: text.
    Note: Context menu item: opens the new skin's file in the code editor. */
 "Edit skin" = "スキンを編集";
+
+/* New Skin window: text. */
+"New skin folders and files" = "新規スキンのフォルダとファイル";
+
+/* New Skin window: text. */
+"No root folder yet." = "ルートフォルダがまだありません。";
+
+/* New Skin window: text. */
+"Create a root folder in Skins to start adding subfolders and skin files." = "Skins 内にルートフォルダを作成すると、サブフォルダやスキンファイルを追加できます。";
+
+/* New Skin window: text. */
+"Save new template" = "新規テンプレートとして保存";
+
+/* New Skin window: text. */
+"Saved templates" = "保存済みのテンプレート";
+
+/* New Skin window: text. */
+"No saved templates." = "保存されたテンプレートはありません。";
+
+/* New Skin window: text; DebugSkinInspectorView: text; DebugWindowController: text.
+   Note: Column heading and field name: the name of a folder or skin file. */
+"Name" = "名前";
 
 /* New Skin window: message (an error or a status). */
 "Invalid name: %@" = "無効な名前です：%@";
@@ -1041,7 +1053,7 @@
    Note: Installer checkbox; %@ is the layout's name. */
 "Apply included layout: %@" = "同梱のレイアウトを適用：%@";
 
-/* Skin installer: menu item; Skin Packager window: text. */
+/* Skin installer: menu item; Skin Packager window: message (an error or a status). */
 "Advanced" = "詳細";
 
 /* Skin installer: tooltip. */
@@ -1124,97 +1136,21 @@
 
 // MARK: Skin Packager window
 
-/* Skin Packager window: text. */
-"Options" = "オプション";
-
-/* Skin Packager window: button, VoiceOver description, tooltip. */
-"Remove" = "取り除く";
-
-/* Skin Packager window: checkbox.
-   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
-"Merge skins" = "スキンを統合";
-
-/* Skin Packager window: button. */
-"Back" = "戻る";
-
-/* Skin Packager window: button. */
-"Next" = "次へ";
-
-/* Skin Packager window: button. */
-"Create Package" = "パッケージを作成";
-
-/* Skin Packager window: window title.
-   Note: Title of the Skin Packager window. Keep ".rmskin". */
-"Create .rmskin Package" = ".rmskin パッケージを作成";
-
-/* Skin Packager window: button. */
-"Add Skin…" = "スキンを追加…";
-
-/* Skin Packager window: menu item. */
-"Add Layout" = "レイアウトを追加";
-
-/* Skin Packager window: button.
-   Note: Adds a Windows plugin (.dll) to the package. */
-"Add Plugin…" = "プラグインを追加…";
-
-/* Skin Packager window: label. */
-"Skin:" = "スキン：";
-
-/* Skin Packager window: label. */
-"Layouts:" = "レイアウト：";
-
-/* Skin Packager window: label.
-   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
-"Plugins:" = "プラグイン：";
-
-/* Skin Packager window: text.
+/* Skin Packager window: message (an error or a status).
    Note: Heading of the Skin Packager's first page: the package's name, author and contents. */
 "Information and Components" = "情報と内容";
 
-/* Skin Packager window: button. */
-"Choose…" = "選択…";
+/* Skin Packager window: message (an error or a status). */
+"Options" = "オプション";
 
-/* Skin Packager window: text. */
-"Do nothing" = "何もしない";
-
-/* Skin Packager window: text. */
-"Load layout" = "レイアウトをロード";
-
-/* Skin Packager window: text. */
-"Load skin" = "スキンをロード";
-
-/* Skin Packager window: label.
-   Note: The file the package is written to. */
-"Save package to:" = "パッケージの保存先：";
-
-/* Skin Packager window: label.
-   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
-"After installation:" = "インストール後：";
-
-/* Skin Packager window: label.
-   Note: Keep "Rainmeter" (the name of the Windows app the skins are made for). */
-"Minimum Rainmeter version:" = "必要な Rainmeter のバージョン：";
-
-/* Skin Packager window: label.
-   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
-"Header image:" = "ヘッダ画像：";
-
-/* Skin Packager window: label.
-   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
-"Variables files:" = "変数ファイル：";
-
-/* Skin Packager window: menu item.
-   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
-"Load Previous" = "以前の設定を読み込む";
-
-/* Skin Packager window: tooltip.
-   Note: Tooltip of the "Load Previous" pop-up menu. */
-"Hold Shift to delete an entry." = "Shift キーを押したままにすると項目を削除できます。";
+/* Skin Packager window: window title, text.
+   Note: Title of the Skin Packager window. Keep ".rmskin". */
+"Create .rmskin Package" = ".rmskin パッケージを作成";
 
 /* Skin Packager window: text. */
 "No skin chosen" = "スキンが選択されていません";
 
-/* Skin Packager window: text, label, menu item.
+/* Skin Packager window: text.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "なし";
 
@@ -1230,12 +1166,12 @@
    Note: %@ is a plugin's file name. */
 "%@ (32-bit version missing)" = "%@（32 ビット版がありません）";
 
+/* Skin Packager window: text. */
+"The package can’t be created yet" = "まだパッケージを作成できません";
+
 /* Skin Packager window: alert or dialog message, message (an error or a status).
    Note: The root config is the top-level folder of a skin suite in the Skins folder. */
 "Choose the skin's root config folder." = "スキンのルート設定フォルダを選択してください。";
-
-/* Skin Packager window: text. */
-"The package can’t be created yet" = "まだパッケージを作成できません";
 
 /* Skin Packager window: text. */
 "Links were left out of the package: %@" = "次のリンクはパッケージに含まれませんでした：%@";
@@ -1284,10 +1220,91 @@
 "Variables files and Merge skins can’t be used together." = "“変数ファイル”と“スキンを統合”は同時に使用できません。";
 
 /* Skin Packager window: message (an error or a status). */
-"“%@” is not a version number such as 5.0 or 5.0.0.4657." = "“%@”は 5.0 や 5.0.0.4657 のようなバージョン番号ではありません。";
+"“%@” is not a version number such as 1.0 or 1.1.1." = "“%@” は 1.0 や 1.1.1 のようなバージョン番号ではありません。";
 
 /* Skin Packager window: message (an error or a status). */
 "Choose where to save the package." = "パッケージの保存先を選択してください。";
+
+/* Skin Packager window: text.
+   Note: First item of a pop-up menu of earlier package settings; choosing one fills in the form again. */
+"Load Previous" = "以前の設定を読み込む";
+
+/* Skin Packager window: text.
+   Note: Tooltip of the "Load Previous" pop-up menu. */
+"Hold Shift to delete an entry." = "Shift キーを押したままにすると項目を削除できます。";
+
+/* Skin Packager window: text. */
+"Package Info" = "パッケージ情報";
+
+/* Skin Packager window: text. */
+"Package Contents" = "パッケージ内容";
+
+/* Skin Packager window: text. */
+"Skin:" = "スキン：";
+
+/* Skin Packager window: text. */
+"Add Skin…" = "スキンを追加…";
+
+/* Skin Packager window: text. */
+"Layouts:" = "レイアウト：";
+
+/* Skin Packager window: text. */
+"Add Layout" = "レイアウトを追加";
+
+/* Skin Packager window: text. */
+"Remove" = "取り除く";
+
+/* Skin Packager window: text.
+   Note: Plugins are Windows .dll add-ons for skins; they cannot run on a Mac. */
+"Plugins:" = "プラグイン：";
+
+/* Skin Packager window: text.
+   Note: Adds a Windows plugin (.dll) to the package. */
+"Add Plugin…" = "プラグインを追加…";
+
+/* Skin Packager window: text.
+   Note: The file the package is written to. */
+"Save package to:" = "パッケージの保存先：";
+
+/* Skin Packager window: text. */
+"Choose…" = "選択…";
+
+/* Skin Packager window: text.
+   Note: Package option: what the installer does after copying the skins (nothing, load a skin, load a layout). */
+"After installation:" = "インストール後：";
+
+/* Skin Packager window: text. */
+"Do nothing" = "何もしない";
+
+/* Skin Packager window: text. */
+"Load skin" = "スキンをロード";
+
+/* Skin Packager window: text. */
+"Load layout" = "レイアウトをロード";
+
+/* Skin Packager window: text. */
+"Minimum Deskset version:" = "最小 Deskset バージョン：";
+
+/* Skin Packager window: text.
+   Note: The banner picture (400 × 60, .bmp) the installer shows above the package's name. */
+"Header image:" = "ヘッダ画像：";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's VariableFiles): files whose variable values are kept when a skin is upgraded. */
+"Variables files:" = "変数ファイル：";
+
+/* Skin Packager window: text.
+   Note: Package option (Rainmeter's MergeSkins): installing adds the files to an installed skin instead of replacing it. */
+"Merge skins" = "スキンを統合";
+
+/* Skin Packager window: text. */
+"Back" = "戻る";
+
+/* Skin Packager window: text. */
+"Create Package" = "パッケージを作成";
+
+/* Skin Packager window: text. */
+"Next" = "次へ";
 
 // MARK: Move to Trash confirmation
 
@@ -1877,7 +1894,38 @@
 // MARK: SettingsWindowView
 
 /* SettingsWindowView: text. */
+"Startup & Language" = "起動と言語";
+
+/* SettingsWindowView: text. */
+"Deskset opens with your skins when you log in." = "ログインすると、Deskset がスキンと一緒に開きます。";
+
+/* SettingsWindowView: text. */
+"Available when Deskset runs from the Applications folder." = "Deskset を“アプリケーション”フォルダから実行している場合に利用できます。";
+
+/* SettingsWindowView: text. */
+"Language" = "言語";
+
+/* SettingsWindowView: text. */
 "Appearance" = "外観";
+
+/* SettingsWindowView: text. */
+"Follows macOS Light and Dark Mode automatically." = "macOS のライトモードとダークモードに合わせて自動的に切り替えます。";
+
+/* SettingsWindowView: text. */
+"Keeps Deskset windows and menus in a fixed appearance." = "Deskset のウインドウとメニューを指定した外観に固定します。";
+
+/* SettingsWindowView: text. */
+"Software Update" = "ソフトウェアアップデート";
+
+/* SettingsWindowView: status or description line. */
+"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset は 1 日に 1 回確認し、アップデートを自動でダウンロードします。インストールするタイミングは選べます。";
+
+/* SettingsWindowView: text.
+   Note: Settings row with the automatic update checkbox. */
+"Updates:" = "アップデート：";
+
+/* SettingsWindowView: text. */
+"Desktop Interaction" = "デスクトップ操作";
 
 /* SettingsWindowView: text. */
 "Interactive Desktop" = "デスクトップで自由に移動";
@@ -1892,29 +1940,16 @@
 "Prevent accidental mouse dragging while keeping buttons and actions interactive." = "ボタンや操作を有効にしたまま、誤ってマウスでドラッグするのを防ぎます。";
 
 /* SettingsWindowView: text. */
-"Deskset opens with your skins when you log in." = "ログインすると、Deskset がスキンと一緒に開きます。";
+"Global Zoom" = "全体ズーム";
 
 /* SettingsWindowView: text. */
-"Available when Deskset runs from the Applications folder." = "Deskset を“アプリケーション”フォルダから実行している場合に利用できます。";
-
-/* SettingsWindowView: status or description line. */
-"Deskset checks once a day and downloads updates itself; you choose when to install them." = "Deskset は 1 日に 1 回確認し、アップデートを自動でダウンロードします。インストールするタイミングは選べます。";
-
-/* SettingsWindowView: text.
-   Note: Settings row with the automatic update checkbox. */
-"Updates:" = "アップデート：";
-
-/* SettingsWindowView: text. */
-"Follows macOS Light and Dark Mode automatically." = "macOS のライトモードとダークモードに合わせて自動的に切り替えます。";
-
-/* SettingsWindowView: text. */
-"Keeps Deskset windows and menus in a fixed appearance." = "Deskset のウインドウとメニューを指定した外観に固定します。";
-
-/* SettingsWindowView: text. */
-"Language" = "言語";
+"Directories" = "保存先フォルダ";
 
 /* SettingsWindowView: text. */
 "Skins folder" = "スキンフォルダ";
+
+/* SettingsWindowView: text. */
+"Settings folder" = "設定フォルダ";
 
 /* SettingsWindowView: text.
    Note: Unit after a font size (points). */
@@ -1923,6 +1958,9 @@
 /* SettingsWindowView: text.
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "自動再読み込み：";
+
+/* SettingsWindowView: text. */
+"Diagnostics" = "診断";
 
 /* SettingsWindowView: status or description line. */
 "Inspect live skin measures, variables, built-in plugins, displays and network statistics." = "実行中のスキンのメジャー、変数、内蔵プラグイン、ディスプレイ、ネットワーク統計を確認します。";
@@ -1934,7 +1972,7 @@
 "No log entries." = "ログ項目はありません。";
 
 /* SettingsWindowView: text. */
-"Settings folder" = "設定フォルダ";
+"Documentation" = "ドキュメント";
 
 /* SettingsWindowView: text. */
 "Open" = "開く";

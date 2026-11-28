@@ -113,7 +113,9 @@ enum UIThemeSelfTests {
         t.equal(window.minSize, SettingsWindowController.minimumSize)
         t.equal(settings.settingsModel.pane, .general)
         t.equal(SettingsWindowController.Pane.allCases.map(\.rawValue),
-                ["general", "editor", "layouts", "debug", "about"])
+                ["general", "desktop", "editor", "debug", "about"])
+        t.equal(SettingsWindowController.Pane.mainPanes.map(\.rawValue),
+                ["general", "desktop", "editor", "debug"])
         t.check(manage.libraryModel.cards.contains { $0.config.name == "ThemeFixture" },
                 "Widget Library card grid includes the installed fixture")
         let idleFolder = app.skinsDirectory.appendingPathComponent("UnloadedSuite")

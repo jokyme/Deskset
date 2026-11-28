@@ -56,6 +56,8 @@ enum UISnapshot {
                                 size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil)
         case "packager":
             data = packagerPreview(pane: value(after: "--pane"))
+        case "newskin":
+            data = newSkinPreview(pane: value(after: "--pane"))
         case "codeeditor":
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
                 .map { $0.isFinite ? min(max($0, 200), 3000) : 760 }
@@ -197,8 +199,37 @@ enum UISnapshot {
         guard let packager = SkinPackagerWindowController.show(app: app, rootConfig: skins.appendingPathComponent("Deskset"))
         else { return nil }
         if let pane { packager.showStepTwo(advanced: pane.lowercased() == "advanced") }
-        let data = packager.window?.contentView.flatMap(png)
+        let data = packager.snapshot()?.representation(using: .png, properties: [:])
         packager.close()
+        withExtendedLifetime(app) {}
+        return data
+    }
+
+    private static func newSkinPreview(pane: String?) -> Data? {
+        let root = temporaryDirectory("newskin")
+        let skins = root.appendingPathComponent("Skins")
+        try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+        if let test = Paths.repositoryFolder("TestSkins") {
+            try? FileManager.default.copyItem(at: test.appendingPathComponent("Deskset"),
+                                              to: skins.appendingPathComponent("Deskset"))
+        }
+        let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                backupsDirectory: root.appendingPathComponent("Backups"),
+                                settingsDirectory: root.appendingPathComponent("Settings"), presentsWindows: false)
+        let mode = (pane ?? "prompt").lowercased()
+        let initial = mode == "prompt" ? nil : skins.appendingPathComponent("Deskset")
+        guard let model = try? NewSkinModel(skinsDirectory: app.skinsDirectory, settingsDirectory: app.settingsDirectory,
+                                            initialDirectory: initial),
+              let dialog = try? NewSkinWindowController(app: app, model: model) else { return nil }
+        if mode == "prompt" {
+            dialog.showRootPromptForSnapshot()
+        } else if mode == "template" {
+            _ = try? model.saveTemplate(named: "Minimal Clock", from: .standard)
+            dialog.testTabs.selectTabViewItem(at: 1)
+        }
+        let data = dialog.snapshot()?.representation(using: .png, properties: [:])
+        dialog.close()
         withExtendedLifetime(app) {}
         return data
     }

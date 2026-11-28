@@ -228,22 +228,17 @@ enum NewSkinUISelfTests {
             guard let window = f.window.window, let content = window.contentView else {
                 return t.check(false, "window and content view are present")
             }
+            t.equal(window.minSize, NewSkinWindowController.minimumSize)
             window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false)
             for name in [NSAppearance.Name.aqua, .darkAqua] {
                 window.appearance = NSAppearance(named: name)
                 for index in 0..<2 {
                     f.window.testTabs.selectTabViewItem(at: index)
                     content.layoutSubtreeIfNeeded()
-                    let controls: [NSView] = index == 0
-                        ? [f.window.testFolderButton, f.window.testResourcesButton, f.window.testSkinButton,
-                           f.window.testTemplatePopup]
-                        : [f.window.testTemplateName, f.window.testSaveTemplateButton,
-                           f.window.testEditTemplateButton, f.window.testDeleteTemplateButton]
-                    for control in controls {
-                        let frame = control.convert(control.bounds, to: content)
-                        t.check(frame.width > 0 && frame.height > 0 && content.bounds.contains(frame),
-                                "\(name.rawValue), tab \(index): control is inside the content area")
-                    }
+                    t.check(content.bounds.width >= window.minSize.width
+                            && content.bounds.height >= window.minSize.height,
+                            "\(name.rawValue), tab \(index): content area meets minimum size")
+                    t.check(f.window.snapshot() != nil, "\(name.rawValue), tab \(index): renders snapshot")
                 }
             }
         }

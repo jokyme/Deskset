@@ -674,7 +674,7 @@ enum CodeEditorRoutingSelfTests {
                         "sidebar spans full window height")
                 t.equal(settings.window?.titlebarAppearsTransparent, true)
                 t.equal(settings.window?.toolbar, nil, "sidebar replaces the classic preference toolbar")
-                for extraPane in [SettingsWindowController.Pane.layouts, .debug, .about] {
+                for extraPane in [SettingsWindowController.Pane.desktop, .debug, .about] {
                     settings.select(extraPane)
                     t.equal(settings.pane, extraPane)
                     t.equal(settings.settingsModel.pane, extraPane)
