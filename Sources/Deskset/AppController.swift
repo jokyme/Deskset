@@ -1614,6 +1614,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.title = updates.menuTitle
             }
         }
+        menuBarPanel.refreshIfLoaded()
     }
 
     /// Branded native notices, also inspectable in headless tests. Automatic checks never report network failures.
@@ -1755,11 +1756,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func handleStatusItemClick(type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags) {
-        if modifiers.contains(.control) {
+        if type == .rightMouseUp || type == .rightMouseDown {
+            menuBarPanel.toggle(relativeTo: statusItem?.button)
+        } else if modifiers.contains(.control) {
             menuBarPanel.close()
             showDebug(tab: .log)
         } else {
-            menuBarPanel.toggle(relativeTo: statusItem?.button)
+            menuBarPanel.close()
+            showManageWindow(selecting: nil, file: nil)
         }
     }
 
@@ -2374,6 +2378,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
               running.file.caseInsensitiveCompare(file) == .orderedSame else { return }
         guard isFavorite(config: running.config, file: running.file) != favorite else { return }
         state.setFavorite(config: running.config, file: running.file, favorite: favorite)
+        notifyChanged()
+    }
+
+    /// Updates a saved Favorite shortcut for any installed config/INI variant from the Widget Library card grid,
+    /// whether or not that variant is currently loaded on the desktop.
+    func setLibraryFavorite(_ favorite: Bool, config: String, file: String) {
+        guard let entry = self.config(named: config),
+              let matchedFile = entry.files.first(where: { $0.caseInsensitiveCompare(file) == .orderedSame }) else {
+            return
+        }
+        guard isFavorite(config: entry.name, file: matchedFile) != favorite else { return }
+        state.setFavorite(config: entry.name, file: matchedFile, favorite: favorite)
         notifyChanged()
     }
 

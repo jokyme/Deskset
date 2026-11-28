@@ -66,7 +66,7 @@ enum UISnapshot {
         case "manage":
             // Sizes are clamped (a typo like 90000x600 would otherwise ask for a gigabyte-sized bitmap).
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
-                .map { $0.isFinite ? min(max($0, 200), 3000) : 900 }
+                .map { $0.isFinite ? min(max($0, 200), 3000) : Double(ManageWindowController.defaultContentSize.width) }
             let typed = (value(after: "--coordinates")?.split(separator: ",").compactMap { Int($0) }) ?? []
             data = managePreview(select: value(after: "--select") ?? "App\\Focus", skinsDir: value(after: "--skins-dir"),
                                  size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil,

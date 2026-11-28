@@ -330,6 +330,16 @@ public struct SkinHop: @unchecked Sendable {
     /// otherwise `dropped` runs there instead. `dropped` is for what must not be left behind when nobody takes the
     /// result, such as a temporary file the background work saved; it must not touch the skin.
     public func post(_ work: @escaping () -> Void, orElse dropped: (() -> Void)? = nil) {
+        enqueue(localBackground: false, work, orElse: dropped)
+    }
+
+    /// Delivers local background work back to the skin's executor, decrementing `pendingLocalBackgroundWork` before
+    /// `work` runs so child jobs started inside `work` are counted before `skinDidFinishWork` fires.
+    func postLocalBackground(_ work: @escaping () -> Void, orElse dropped: (() -> Void)? = nil) {
+        enqueue(localBackground: true, work, orElse: dropped)
+    }
+
+    private func enqueue(localBackground: Bool, _ work: @escaping () -> Void, orElse dropped: (() -> Void)?) {
         // The hop owns its destination, but queued work must not keep its own executor alive through the hop.
         let target = self.target
         executor.async {
@@ -338,7 +348,14 @@ public struct SkinHop: @unchecked Sendable {
                 return
             }
             // A piece of work of the skin's own: its snapshot follows what it did.
-            withExtendedLifetime(skin) { skin.work(work) }
+            withExtendedLifetime(skin) {
+                skin.work {
+                    if localBackground {
+                        skin.pendingLocalBackgroundWork = max(0, skin.pendingLocalBackgroundWork - 1)
+                    }
+                    work()
+                }
+            }
         }
     }
 }

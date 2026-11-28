@@ -1,10 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// Deskset's menu bar panel, aligned with Deskset Pro's `MenuBarPanel` design:
-/// header (`AppIcon` + `Deskset`), `组件库` (`Widget Library`), `设置…` (`Settings…`), and `退出 Deskset` (`Quit Deskset`).
+/// Deskset's menu bar panel, opened on right-clicking the status bar icon:
+/// header (`AppIcon` + `Deskset`), `组件库` (`Widget Library`), `安装皮肤…` (`Install Skin…`),
+/// `设置…` (`Settings…`), `检查更新…` (`Check for Updates…` with update reminder badge),
+/// `关于 Deskset` (`About Deskset`), and `退出 Deskset` (`Quit Deskset`).
 final class MenuBarPanelController: NSObject, NSWindowDelegate {
     static let panelWidth: CGFloat = 320
+
+    struct ItemSummary: Equatable {
+        let title: String
+        let badge: String?
+        let isEnabled: Bool
+    }
 
     private unowned let app: AppController
     private var panel: MenuBarFloatingPanel?
@@ -12,6 +20,7 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
     private var globalMouseMonitor: Any?
     private var localKeyMonitor: Any?
     private var appResignObserver: NSObjectProtocol?
+    private(set) var didRequestOpenTesting = false
 
     init(app: AppController) {
         self.app = app
@@ -31,11 +40,45 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
         return panel
     }
 
+    var itemsForTesting: [ItemSummary] {
+        let updateVersion = app.updates.availableRelease?.version.description
+        let isChecking = app.updates.isChecking
+        return [
+            ItemSummary(title: L("Widget Library"), badge: nil, isEnabled: true),
+            ItemSummary(title: L("Install Skin…"), badge: nil, isEnabled: true),
+            ItemSummary(title: L("Settings…"), badge: nil, isEnabled: true),
+            ItemSummary(
+                title: isChecking ? L("Checking for Updates…") : L("Check for Updates…"),
+                badge: updateVersion.map { "v\($0)" },
+                isEnabled: updateVersion != nil || !isChecking
+            ),
+            ItemSummary(title: L("About Deskset"), badge: nil, isEnabled: true),
+            ItemSummary(title: L("Quit Deskset"), badge: nil, isEnabled: true),
+        ]
+    }
+
     func toggle(relativeTo button: NSStatusBarButton?) {
-        if isVisible {
+        if isVisible || (!app.presentsWindows && didRequestOpenTesting) {
             close()
         } else {
             show(relativeTo: button)
+        }
+    }
+
+    func refreshIfLoaded() {
+        guard let window = panel else { return }
+        AppTheme.apply(app.state.uiTheme, to: window)
+        updateRootView(in: window)
+        window.contentView?.layoutSubtreeIfNeeded()
+        let fittingHeight = max(168, ceil(window.contentView?.fittingSize.height ?? 186))
+        if window.isVisible {
+            var frame = window.frame
+            let topY = frame.maxY
+            frame.size = NSSize(width: Self.panelWidth, height: fittingHeight)
+            frame.origin.y = topY - fittingHeight
+            window.setFrame(frame, display: true)
+        } else {
+            window.setContentSize(NSSize(width: Self.panelWidth, height: fittingHeight))
         }
     }
 
@@ -64,6 +107,7 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
             window.center()
         }
 
+        didRequestOpenTesting = true
         guard app.presentsWindows else { return }
         installMonitors()
         window.makeKeyAndOrderFront(nil)
@@ -71,6 +115,7 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        didRequestOpenTesting = false
         removeMonitors()
         highlightedButton?.highlight(false)
         highlightedButton = nil
@@ -81,11 +126,24 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
         close()
     }
 
+    /// Triggers one of the panel's primary actions directly for headless self-tests.
+    func performUpdateActionForTesting() {
+        triggerUpdateAction()
+    }
+
+    func performInstallSkinForTesting() {
+        leave { self.app.installSkinAction() }
+    }
+
+    func performAboutForTesting() {
+        leave { _ = SettingsWindowController.show(app: self.app, pane: .about) }
+    }
+
     @discardableResult
     private func ensurePanel() -> MenuBarFloatingPanel {
         if let panel { return panel }
         let created = MenuBarFloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 186),
+            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 280),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -104,21 +162,38 @@ final class MenuBarPanelController: NSObject, NSWindowDelegate {
         return created
     }
 
+    private func triggerUpdateAction() {
+        if app.updates.availableRelease != nil {
+            leave { self.app.showAvailableUpdateAction() }
+        } else if !app.updates.isChecking {
+            leave { self.app.checkForUpdatesAction() }
+        }
+    }
+
     private func updateRootView(in window: MenuBarFloatingPanel) {
         let updateVersion = app.updates.availableRelease?.version.description
+        let isChecking = app.updates.isChecking
         let rootView = DesksetMenuBarPanelView(
             updateVersion: updateVersion,
+            isCheckingUpdates: isChecking,
             onOpenLibrary: { [weak self] in
                 guard let self else { return }
                 self.leave { self.app.manageAction() }
+            },
+            onInstallSkin: { [weak self] in
+                guard let self else { return }
+                self.leave { self.app.installSkinAction() }
             },
             onOpenSettings: { [weak self] in
                 guard let self else { return }
                 self.leave { self.app.settingsAction() }
             },
-            onShowUpdate: { [weak self] in
+            onCheckUpdates: { [weak self] in
+                self?.triggerUpdateAction()
+            },
+            onOpenAbout: { [weak self] in
                 guard let self else { return }
-                self.leave { self.app.showAvailableUpdateAction() }
+                self.leave { _ = SettingsWindowController.show(app: self.app, pane: .about) }
             },
             onQuit: { [weak self] in
                 guard let self else { return }
@@ -246,7 +321,7 @@ private final class MenuBarCardContainerView<Content: View>: NSVisualEffectView 
 
     init(rootView: Content) {
         self.hostingView = NSHostingView(rootView: rootView)
-        super.init(frame: NSRect(x: 0, y: 0, width: MenuBarPanelController.panelWidth, height: 186))
+        super.init(frame: NSRect(x: 0, y: 0, width: MenuBarPanelController.panelWidth, height: 280))
         material = .popover
         state = .active
         blendingMode = .behindWindow
@@ -287,13 +362,16 @@ private final class MenuBarCardContainerView<Content: View>: NSVisualEffectView 
     }
 }
 
-// MARK: - SwiftUI Menu Bar Panel View (Aligned with Deskset Pro)
+// MARK: - SwiftUI Menu Bar Panel View
 
 struct DesksetMenuBarPanelView: View {
     let updateVersion: String?
+    let isCheckingUpdates: Bool
     let onOpenLibrary: () -> Void
+    let onInstallSkin: () -> Void
     let onOpenSettings: () -> Void
-    let onShowUpdate: () -> Void
+    let onCheckUpdates: () -> Void
+    let onOpenAbout: () -> Void
     let onQuit: () -> Void
 
     @Environment(\.colorScheme) private var scheme
@@ -306,10 +384,15 @@ struct DesksetMenuBarPanelView: View {
             MenuPanelRule()
             VStack(spacing: 0) {
                 MenuPanelRow(
-                    symbol: "plus",
+                    symbol: "square.grid.2x2",
                     title: L("Widget Library"),
                     shortcut: "⇧⌘,",
                     action: onOpenLibrary
+                )
+                MenuPanelRow(
+                    symbol: "square.and.arrow.down",
+                    title: L("Install Skin…"),
+                    action: onInstallSkin
                 )
             }
             .padding(.vertical, 4)
@@ -321,6 +404,16 @@ struct DesksetMenuBarPanelView: View {
                     shortcut: "⌘,",
                     action: onOpenSettings
                 )
+                updateRow
+                MenuPanelRow(
+                    symbol: "info.circle",
+                    title: L("About Deskset"),
+                    action: onOpenAbout
+                )
+            }
+            .padding(.vertical, 4)
+            MenuPanelRule()
+            VStack(spacing: 0) {
                 MenuPanelRow(
                     symbol: "power",
                     title: L("Quit Deskset"),
@@ -336,6 +429,24 @@ struct DesksetMenuBarPanelView: View {
         )
     }
 
+    private var updateRow: some View {
+        let hasUpdate = updateVersion != nil
+        let rowTitle = (isCheckingUpdates && !hasUpdate)
+            ? L("Checking for Updates…")
+            : L("Check for Updates…")
+
+        return MenuPanelRow(
+            symbol: hasUpdate ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath",
+            filled: hasUpdate,
+            tint: hasUpdate ? Self.brandOrange : nil,
+            title: rowTitle,
+            badgeText: updateVersion.map { "v\($0)" },
+            badgeHelp: updateVersion.map { L("Update to Deskset %@…", $0) },
+            isDisabled: isCheckingUpdates && !hasUpdate,
+            action: onCheckUpdates
+        )
+    }
+
     private var header: some View {
         HStack(spacing: 10) {
             Image(nsImage: AppIcon.image(size: 64))
@@ -346,22 +457,10 @@ struct DesksetMenuBarPanelView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .fixedSize()
             Spacer(minLength: 8)
-            if let updateVersion {
-                Button(action: onShowUpdate) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 9.5, weight: .bold))
-                        Text(L("Update to Deskset %@…", updateVersion))
-                            .font(.system(size: 11, weight: .semibold))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 9)
-                    .frame(height: 24)
-                    .background(Capsule().fill(Self.brandOrange))
-                }
-                .buttonStyle(MenuPanelPressStyle())
-            }
+            Text(L("Version %@", AppVersion.current))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -375,6 +474,9 @@ private struct MenuPanelRow: View {
     var tint: Color? = nil
     let title: String
     var shortcut: String? = nil
+    var badgeText: String? = nil
+    var badgeHelp: String? = nil
+    var isDisabled = false
     let action: () -> Void
 
     @State private var hovered = false
@@ -385,10 +487,24 @@ private struct MenuPanelRow: View {
                 MenuPanelBadge(symbol: symbol, tint: tint, filled: filled)
                 Text(title)
                     .font(.system(size: 13))
-                    .foregroundColor(.primary)
+                    .foregroundColor(isDisabled ? .secondary : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                if let shortcut {
+                if let badgeText {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 5, height: 5)
+                        Text(badgeText)
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .frame(height: 20)
+                    .background(Capsule().fill(DesksetMenuBarPanelView.brandOrange))
+                    .help(badgeHelp ?? "")
+                } else if let shortcut {
                     Text(shortcut)
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
@@ -398,7 +514,8 @@ private struct MenuPanelRow: View {
             .frame(height: 36)
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .buttonStyle(MenuPanelRowStyle(hovered: hovered))
+        .disabled(isDisabled)
+        .buttonStyle(MenuPanelRowStyle(hovered: hovered && !isDisabled))
         .onHover { hovered = $0 }
     }
 }
@@ -439,17 +556,9 @@ private struct MenuPanelBadge: View {
                 Circle()
                     .fill(
                         filled
-                            ? Color.accentColor
+                            ? (tint ?? Color.accentColor)
                             : (tint ?? Color.primary).opacity(tint == nil ? 0.09 : 0.14)
                     )
             )
-    }
-}
-
-private struct MenuPanelPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

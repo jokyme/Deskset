@@ -4,7 +4,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status). */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); MenuBarPanelController: text. */
 "About Deskset" = "Acerca de Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -13,7 +13,7 @@
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Gestionar skins…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; MenuBarPanelController: text; WidgetLibraryView: text. */
 "Install Skin…" = "Instalar skin…";
 
 /* Main menu: menu item. */
@@ -761,7 +761,7 @@
 /* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Buscar actualizaciones automáticamente";
 
-/* Settings window: button; App updates: text; SettingsWindowView: text. */
+/* Settings window: button; App updates: text; MenuBarPanelController: text; SettingsWindowView: text. */
 "Check for Updates…" = "Buscar actualizaciones…";
 
 /* Settings window: button; SettingsWindowView: text.
@@ -989,7 +989,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "De %@";
 
-/* Skin installer: text; SettingsWindowView: text.
+/* Skin installer: text; MenuBarPanelController: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Versión %@";
 
@@ -1348,7 +1348,7 @@
 
 // MARK: App updates
 
-/* App updates: text. */
+/* App updates: text; MenuBarPanelController: text. */
 "Checking for Updates…" = "Buscando actualizaciones…";
 
 /* App updates: message (an error or a status).

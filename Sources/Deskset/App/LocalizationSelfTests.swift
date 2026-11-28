@@ -201,6 +201,10 @@ enum LocalizationSelfTests {
             if let content = watchEditor.window?.contentView { visit(view: content, "WatchEditor") }
             visit(watchEditor.window?.title, "WatchEditor title")
             watchEditor.close()
+            if let content = app.menuBarPanel.windowForTesting?.contentView {
+                visit(view: content, "MenuBarPanel")
+            }
+            app.menuBarPanel.close()
             t.equal(untranslated, [], "text that does not go through L")
         }
     }

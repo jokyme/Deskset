@@ -1275,7 +1275,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   参见 [Manage](https://docs.rainmeter.net/manual/user-interface/manage/) 与
   [上下文菜单](https://docs.rainmeter.net/manual/user-interface/context-menus/)。
   [Rainmeter 5.0](https://www.rainmeter.net/changes-5.0/) 在打开菜单、切换到 Manage 和激活配置时检查皮肤目录变化。
-- **Mac：** Manage 与 Settings 为运行中的皮肤文件提供 Favorite。收藏按配置与 INI 保存，菜单位于 Skins 与 Layouts 之间，
+- **Mac：** Manage、组件库卡片与 Settings 提供按配置与 INI 保存的收藏（传统设置项仅针对运行中的皮肤文件，组件库卡片可直接收藏或取消收藏未加载的变体）。菜单位于 Skins 与 Layouts 之间，
   标出已加载项，空列表时禁用；缺失文件不显示。卸载、重启与本地布局切换保留收藏。
   打开菜单、进入或切回 Manage、选择其 Skins 页及激活配置时，发现新增、删除和变体变化，仅更新列表，不重载运行中的皮肤。
 - **原因：** 收藏保存在本地应用偏好中，与窗口和布局设置分开。

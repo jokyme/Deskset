@@ -1465,7 +1465,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   and [context menus](https://docs.rainmeter.net/manual/user-interface/context-menus/).
   [Rainmeter 5.0](https://www.rainmeter.net/changes-5.0/) checks for changes when opening menus, switching to Manage
   and activating configs.
-- **Mac:** Manage and Settings offer Favorite for the running skin file. Saved config/INI shortcuts appear between
+- **Mac:** Manage, Widget Library cards and Settings offer Favorite for config/INI variants (active-skin settings require the running file; Widget Library cards can star/unstar unloaded variants directly). Saved config/INI shortcuts appear between
   Skins and Layouts, show their loaded state and survive unload/restart. The submenu is disabled when empty; missing
   files are hidden. Local layouts preserve favorites. Menus, Manage entry/focus/Skins-tab selection and config
   activation discover additions, removals and variants without reloading running skins.
