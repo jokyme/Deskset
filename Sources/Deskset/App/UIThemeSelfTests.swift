@@ -31,7 +31,6 @@ enum UIThemeSelfTests {
                 let settings = SettingsWindowController(app: app)
                 let debug = DebugWindowController.show(app: app, tab: .log)
                 let manage = ManageWindowController(app: app)
-                let about = AboutWindowController(app: app)
                 let packager = SkinPackagerWindowController(app: app)
                 let menuBarPanelWindow = app.menuBarPanel.windowForTesting
                 _ = app.skinToolTips.ensurePanelForTesting()
@@ -40,7 +39,6 @@ enum UIThemeSelfTests {
                     settings.close()
                     debug.close()
                     manage.close()
-                    about.close()
                     packager.close()
                 }
                 settings.select(.general)
@@ -60,7 +58,6 @@ enum UIThemeSelfTests {
                 t.equal(settings.window?.appearance?.name, .darkAqua)
                 t.equal(debug.window?.appearance?.name, .darkAqua)
                 t.equal(manage.window?.appearance?.name, .darkAqua)
-                t.equal(about.window?.appearance?.name, .darkAqua)
                 t.equal(packager.window?.appearance?.name, .darkAqua)
                 t.equal(menuBarPanelWindow?.appearance?.name, .darkAqua)
                 t.equal(app.updateFlow.window?.appearance?.name, .darkAqua)

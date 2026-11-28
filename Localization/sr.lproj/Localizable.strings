@@ -4,7 +4,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status). */
 "About Deskset" = "О апликацији Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -29,7 +29,7 @@
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Сачувај";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Затвори";
 
@@ -776,6 +776,9 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Искључи превлачење";
 
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text. */
+"Developer mode" = "Режим за програмере";
+
 /* Settings window: VoiceOver description. */
 "Theme" = "Тема";
 
@@ -871,17 +874,6 @@
 /* About window: message (an error or a status).
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
-
-/* About window: button; SettingsWindowView: text.
-   Note: Button: copies the version line for bug reports. */
-"Copy to Clipboard" = "Копирај у оставу";
-
-/* About window: text; SettingsWindowView: text. */
-"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Виџети за радну површину вашег Mac рачунара, компатибилни са скиновима за Rainmeter.";
-
-/* About window: text; SettingsWindowView: text.
-   Note: A legal line; translate faithfully. */
-"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter је заштитни знак одговарајућих власника; Deskset није повезан са њим.";
 
 // MARK: New Skin window
 
@@ -1150,7 +1142,7 @@
 /* Skin Packager window: text. */
 "No skin chosen" = "Није изабран скин";
 
-/* Skin Packager window: text.
+/* Skin Packager window: text, menu item.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Нема";
 
@@ -1959,6 +1951,9 @@
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Аутоматско освежавање:";
 
+/* SettingsWindowView: status or description line. */
+"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Прикажи радње за отклањање грешака, уређивање, освежавање и фасциклу у контекстним менијима скинова. Држите Option при десном клику на скин да их привремено прикажете.";
+
 /* SettingsWindowView: text. */
 "Diagnostics" = "Дијагностика";
 
@@ -1970,6 +1965,17 @@
 
 /* SettingsWindowView: text. */
 "No log entries." = "Нема ставки у дневнику.";
+
+/* SettingsWindowView: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Виџети за радну површину вашег Mac рачунара, компатибилни са скиновима за Rainmeter.";
+
+/* SettingsWindowView: text.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Копирај у оставу";
+
+/* SettingsWindowView: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter је заштитни знак одговарајућих власника; Deskset није повезан са њим.";
 
 /* SettingsWindowView: text. */
 "Documentation" = "Документација";

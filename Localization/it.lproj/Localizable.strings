@@ -4,7 +4,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status). */
 "About Deskset" = "Informazioni su Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -29,7 +29,7 @@
    Note: Menu command and button (Apple's standard term). */
 "Save" = "Salva";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; About window: button; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: text; New Skin window: text; App updates: text, button; Installing Deskset in Applications: button; Install and update panels: text; DebugWindowController: button.
    Note: Menu command and button (Apple's standard term). */
 "Close" = "Chiudi";
 
@@ -776,6 +776,9 @@
    Note: Checkbox: skins cannot be moved with the mouse. */
 "Disable dragging" = "Disattiva trascinamento";
 
+/* Settings window: checkbox, VoiceOver description; SettingsWindowView: text. */
+"Developer mode" = "Modalità sviluppatore";
+
 /* Settings window: VoiceOver description. */
 "Theme" = "Tema";
 
@@ -871,17 +874,6 @@
 /* About window: message (an error or a status).
    Note: The About window's version line: version, processor. */
 "Deskset %@ - %@" = "Deskset %@ – %@";
-
-/* About window: button; SettingsWindowView: text.
-   Note: Button: copies the version line for bug reports. */
-"Copy to Clipboard" = "Copia negli appunti";
-
-/* About window: text; SettingsWindowView: text. */
-"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Widget per la scrivania del tuo Mac, compatibili con le skin di Rainmeter.";
-
-/* About window: text; SettingsWindowView: text.
-   Note: A legal line; translate faithfully. */
-"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter è un marchio dei rispettivi proprietari; Deskset non è affiliato a Rainmeter.";
 
 // MARK: New Skin window
 
@@ -1150,7 +1142,7 @@
 /* Skin Packager window: text. */
 "No skin chosen" = "Nessuna skin scelta";
 
-/* Skin Packager window: text.
+/* Skin Packager window: text, menu item.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Nessuna";
 
@@ -1959,6 +1951,9 @@
    Note: Setting: reload a skin automatically when its file changes. */
 "Live reload:" = "Ricarica automatica:";
 
+/* SettingsWindowView: status or description line. */
+"Show debug, edit, refresh and folder actions in skin context menus. Hold Option when right-clicking a skin to show them temporarily." = "Mostra le azioni di debug, modifica, aggiornamento e cartella nei menu contestuali delle skin. Tieni premuto Opzione facendo clic secondario su una skin per mostrarle temporaneamente.";
+
 /* SettingsWindowView: text. */
 "Diagnostics" = "Diagnostica";
 
@@ -1970,6 +1965,17 @@
 
 /* SettingsWindowView: text. */
 "No log entries." = "Nessuna voce di log.";
+
+/* SettingsWindowView: text. */
+"Desktop widgets for your Mac, compatible with Rainmeter skins." = "Widget per la scrivania del tuo Mac, compatibili con le skin di Rainmeter.";
+
+/* SettingsWindowView: text.
+   Note: Button: copies the version line for bug reports. */
+"Copy to Clipboard" = "Copia negli appunti";
+
+/* SettingsWindowView: text.
+   Note: A legal line; translate faithfully. */
+"Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it." = "Rainmeter è un marchio dei rispettivi proprietari; Deskset non è affiliato a Rainmeter.";
 
 /* SettingsWindowView: text. */
 "Documentation" = "Documentazione";

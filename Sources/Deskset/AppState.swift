@@ -251,6 +251,8 @@ struct AppStateData: Codable {
     var editor = EditorPreferences()
     /// Settings ▸ General: update checks and notifications.
     var updates = AppUpdatePreferences()
+    /// Settings ▸ Debug & Log: developer items in skin context menus (default true).
+    var developerMode = true
     /// The Settings pane shown last (the window reopens on it).
     var settingsPane: String?
     /// False until the file has held editor preferences: the one moment the old UserDefaults live-reload switch is
@@ -263,7 +265,7 @@ struct AppStateData: Codable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case skins, favorites, skinOrder, hasLoadedLayout, rainmeterOptions, trayMeasureOptions,
-             defaultSkinsInstalled, shippedVariables, editor, updates, settingsPane
+             defaultSkinsInstalled, shippedVariables, editor, updates, developerMode, settingsPane
     }
 
     private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
@@ -284,6 +286,7 @@ struct AppStateData: Codable {
         editor = storedEditor ?? EditorPreferences()
         hasEditorPreferences = storedEditor != nil
         updates = ((try? c.decodeIfPresent(AppUpdatePreferences.self, forKey: .updates)) ?? nil) ?? AppUpdatePreferences()
+        developerMode = ((try? c.decodeIfPresent(Bool.self, forKey: .developerMode)) ?? nil) ?? true
         settingsPane = (try? c.decodeIfPresent(String.self, forKey: .settingsPane)) ?? nil
     }
 
@@ -299,6 +302,7 @@ struct AppStateData: Codable {
         if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
         try c.encode(updates, forKey: .updates)
+        if !developerMode { try c.encode(developerMode, forKey: .developerMode) }
         try c.encodeIfPresent(settingsPane, forKey: .settingsPane)
         var other = encoder.container(keyedBy: AnyCodingKey.self)
         try other.encodeUnknown(unknownKeys, besides: AppStateData.knownKeys)
@@ -507,6 +511,15 @@ final class AppState {
         guard data.settingsPane != pane else { return }
         data.settingsPane = pane
         scheduleSave()
+    }
+
+    var developerMode: Bool { data.developerMode }
+
+    func setDeveloperMode(_ enabled: Bool) {
+        guard data.developerMode != enabled else { return }
+        data.developerMode = enabled
+        scheduleSave()
+        NotificationCenter.default.post(name: .desksetGlobalSettingsChanged, object: self)
     }
 
     var updates: AppUpdatePreferences { data.updates }

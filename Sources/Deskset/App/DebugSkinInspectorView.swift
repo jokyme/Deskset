@@ -254,7 +254,7 @@ final class DebugSkinInspectorView: NSView, NSTableViewDataSource, NSTableViewDe
 
     @objc private func showSkinMenu(_ sender: Any?) {
         guard let config = selectedSkinConfig, let controller = app.controller(for: config), !controller.isStopped else { return }
-        let menu = app.skinMenu(for: controller, includeCustomItems: true)
+        let menu = app.skinMenu(for: controller, includeCustomItems: true, forceDeveloperItems: true)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: skinButton.bounds.maxY), in: skinButton)
     }
 

@@ -1519,7 +1519,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   (<https://docs.rainmeter.net/manual/user-interface/about/>).
 - **Mac:** Debug uses a standalone 5-tab native window (`Log` showing initial 50 messages with SF Symbol severity icons;
   `Skins` showing Measures, Variables, Meters and Watch with `Edit measure`/`Edit meter`/`Edit variable` jumps and `⌘R`/Ctrl-R/F5 refresh;
-  `Plugins` excluding promoted 5.0 built-in measures; `Display`; and `Network` containing **Reset statistics**), separate from **About** (opened from the menu bar menu, Manage, skin submenus, `!About`, and `!Debug`).
+  `Plugins` excluding promoted 5.0 built-in measures; `Display`; and `Network` containing **Reset statistics**), while **About** lives on the `About Deskset` pane inside the Settings window (opened from the app/menu bar/skin menus and `!About`). Settings → Debug & Log also provides a **Developer mode** toggle (on by default) to hide developer actions from skin context menus unless Option is held when right-clicking.
   `UITheme` (`0`, `1`, `2`) applies live across windows, alerts, menus and skin tooltips.
   Log starts with 20 recent entries, adds new messages at the top, filters only future messages, clears only the panel
   and copies selected message text with Command-C. The existing 2,000-entry history limit also bounds this panel.

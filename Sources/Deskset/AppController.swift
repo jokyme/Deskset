@@ -717,7 +717,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Self.reopenTarget(editor: StudioWindowController.window(for: self)?.window,
                           settings: SettingsWindowController.openWindow,
                           debug: DebugWindowController.openWindow,
-                          about: AboutWindowController.openWindow,
                           newSkin: NewSkinWindowController.window(for: self)?.window,
                           codeWindows: codeFileWindows.compactMap(\.window)) { $0.isVisible || $0.isMiniaturized }
     }
@@ -1571,8 +1570,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @discardableResult
-    func showAbout(tab: AboutWindowController.Tab = .version) -> AboutWindowController {
-        AboutWindowController.show(app: self, tab: tab)
+    func showAbout(tab: AboutWindowController.Tab = .version) -> SettingsWindowController {
+        SettingsWindowController.show(app: self, pane: .about)
     }
 
     @discardableResult
@@ -1998,9 +1997,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
+    /// When `state.developerMode` is off (unless `forceDeveloperItems` is set, e.g. Option-right-click or Debug),
+    /// developer-facing entries (config path, multi-select, app/root-config flyouts, debug, edit, refresh and folder)
+    /// are omitted so ordinary users see only widget actions, variants, window settings, manage and unload.
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool, discoverLibrary: Bool = true,
-                  prepared: SkinPreparedMenu? = nil) -> NSMenu {
+                  prepared: SkinPreparedMenu? = nil, forceDeveloperItems: Bool = false) -> NSMenu {
         if discoverLibrary { discoverSkins() }
+        let showDeveloper = forceDeveloperItems || state.developerMode
         let menu = NSMenu()
         menu.autoenablesItems = false
         AppTheme.apply(state.uiTheme, to: menu)
@@ -2008,14 +2011,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         func allMatch<Value: Equatable>(_ key: KeyPath<SkinState, Value>, _ value: Value) -> Bool {
             !targets.isEmpty && targets.allSatisfy { $0.state[keyPath: key] == value }
         }
-        let configName = item(c.config, #selector(openSkinFolderAction(_:)))
-        configName.representedObject = [c.config]
-        menu.addItem(configName)
-        let selected = item(L("Select skin"), #selector(selectSkinAction(_:)))
-        selected.representedObject = [c.config]
-        selected.state = skinSelection.contains(c.config) ? .on : .off
-        menu.addItem(selected)
-        menu.addItem(.separator())
+        func addSeparatorIfNeeded() {
+            if let last = menu.items.last, !last.isSeparatorItem {
+                menu.addItem(.separator())
+            }
+        }
+        if showDeveloper {
+            let configName = item(c.config, #selector(openSkinFolderAction(_:)))
+            configName.representedObject = [c.config]
+            menu.addItem(configName)
+            let selected = item(L("Select skin"), #selector(selectSkinAction(_:)))
+            selected.representedObject = [c.config]
+            selected.state = skinSelection.contains(c.config) ? .on : .off
+            menu.addItem(selected)
+            menu.addItem(.separator())
+        }
         // The compatibility notes from the skin's snapshot; the custom items and the weather credit read when
         // the menu opens (`menuFacts`), or from `prepared` when `!SkinMenu` already captured them on the executor.
         let snapshot = c.runtime.snapshot
@@ -2039,18 +2049,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                    action: #selector(openWeatherSourceAction(_:))) {
                 menu.addItem(weather)
             }
-            menu.addItem(.separator())
-            let appMenu = NSMenu()
-            appMenu.addItem(item(L("Manage"), #selector(manageAction)))
-            appMenu.addItem(item(L("Debug"), #selector(debugAction)))
-            appMenu.addItem(item(L("About"), #selector(aboutAction)))
-            appMenu.addItem(.separator())
-            appMenu.addItem(favoritesMenuItem())
-            appMenu.addItem(item(L("Refresh All"), #selector(refreshAllAction)))
-            let appItem = NSMenuItem(title: "Deskset", action: nil, keyEquivalent: "")
-            appItem.submenu = appMenu
-            menu.addItem(appItem)
-            menu.addItem(.separator())
+            if showDeveloper {
+                menu.addItem(.separator())
+                let appMenu = NSMenu()
+                appMenu.addItem(item(L("Manage"), #selector(manageAction)))
+                appMenu.addItem(item(L("Debug"), #selector(debugAction)))
+                appMenu.addItem(item(L("About"), #selector(aboutAction)))
+                appMenu.addItem(.separator())
+                appMenu.addItem(favoritesMenuItem())
+                appMenu.addItem(item(L("Refresh All"), #selector(refreshAllAction)))
+                let appItem = NSMenuItem(title: "Deskset", action: nil, keyEquivalent: "")
+                appItem.submenu = appMenu
+                menu.addItem(appItem)
+                menu.addItem(.separator())
+            } else {
+                addSeparatorIfNeeded()
+            }
         }
 
         if let entry = config(named: c.config), entry.files.count > 1 {
@@ -2066,7 +2080,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(variantsItem)
         }
 
-        if let root = rootConfigMenu(for: c.config) { menu.addItem(root) }
+        if showDeveloper, let root = rootConfigMenu(for: c.config) { menu.addItem(root) }
 
         let settings = NSMenu()
         settings.autoenablesItems = false
@@ -2144,17 +2158,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         // Edit Skin… opens the Skin Studio (its Code view is the built-in code editor). A code editor app chosen in
         // Settings ▸ Editor gets an item of its own.
-        var entries: [(String, Selector)] = [(L("Manage Skin…"), #selector(manageSkinAction(_:))),
-                                             (L("Debug Skin"), #selector(debugSkinAction(_:))),
-                                             (L("Edit Skin…"), #selector(inspectSkinAction(_:)))]
-        if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
-                                                                  preferences: state.editor,
-                                                                  locator: CodeEditorRouter.locator) {
-            entries.append((L("Edit in %@", editor.name), #selector(editSkinAction(_:))))
+        var entries: [(String, Selector)] = [(L("Manage Skin…"), #selector(manageSkinAction(_:)))]
+        if showDeveloper {
+            entries += [(L("Debug Skin"), #selector(debugSkinAction(_:))),
+                        (L("Edit Skin…"), #selector(inspectSkinAction(_:)))]
+            if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
+                                                                      preferences: state.editor,
+                                                                      locator: CodeEditorRouter.locator) {
+                entries.append((L("Edit in %@", editor.name), #selector(editSkinAction(_:))))
+            }
+            entries += [(L("Refresh Skin"), #selector(refreshSkinAction(_:))),
+                        (L("Open Skin Folder"), #selector(openSkinFolderAction(_:)))]
         }
-        entries += [(L("Refresh Skin"), #selector(refreshSkinAction(_:))),
-                    (L("Open Skin Folder"), #selector(openSkinFolderAction(_:))),
-                    (L("Unload Skin"), #selector(unloadSkinAction(_:)))]
+        entries.append((L("Unload Skin"), #selector(unloadSkinAction(_:))))
         for (title, selector) in entries {
             let i = item(title, selector)
             i.representedObject = [c.config]

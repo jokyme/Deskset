@@ -884,7 +884,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func showContextMenu(with event: NSEvent, in view: NSView) {
         app.skinSelection.beginMenuTracking()
         defer { app.skinSelection.endMenuTracking() }
-        NSMenu.popUpContextMenu(app.skinMenu(for: self, includeCustomItems: true), with: event, for: view)
+        let forceDeveloperItems = event.modifierFlags.contains(.option)
+        NSMenu.popUpContextMenu(
+            app.skinMenu(for: self, includeCustomItems: true, forceDeveloperItems: forceDeveloperItems),
+            with: event,
+            for: view
+        )
     }
 
     // MARK: NSWindowDelegate
