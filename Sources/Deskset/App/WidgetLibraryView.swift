@@ -162,6 +162,7 @@ struct WidgetLibraryRootView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchFocused: Bool
+    @State private var installButtonHovered = false
 
     init(model: WidgetLibraryViewModel, controller: ManageWindowController, app: AppController) {
         self.model = model
@@ -320,20 +321,30 @@ struct WidgetLibraryRootView: View {
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Text(L("Install Skin…"))
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
+                            .font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundColor(Color.primary.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 34)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(Color.accentColor)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(Color.white.opacity(installButtonHovered ? 0.10 : 0))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                            )
                     )
+                    .shadow(color: Color.accentColor.opacity(isDark ? 0.36 : 0.24), radius: 6, y: 2)
+                    .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .onHover { installButtonHovered = $0 }
             }
             .padding(12)
         }

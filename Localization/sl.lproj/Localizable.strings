@@ -4,7 +4,7 @@
 
 // MARK: Main menu
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Settings window: message (an error or a status); About window: window title; MenuBarPanelController: text. */
 "About Deskset" = "O programu Deskset";
 
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; MenuBarPanelController: text. */
@@ -13,7 +13,7 @@
 /* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item. */
 "Manage Skins…" = "Upravljaj preobleke…";
 
-/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; WidgetLibraryView: text. */
+/* Main menu: menu item; Menu bar menu, skin menus and update alerts: menu item; Manage window: button; MenuBarPanelController: text; WidgetLibraryView: text. */
 "Install Skin…" = "Namesti preobleko…";
 
 /* Main menu: menu item. */
@@ -761,7 +761,7 @@
 /* Settings window: checkbox; SettingsWindowView: text. */
 "Automatically check for updates" = "Samodejno preverjaj posodobitve";
 
-/* Settings window: button; App updates: text; SettingsWindowView: text. */
+/* Settings window: button; App updates: text; MenuBarPanelController: text; SettingsWindowView: text. */
 "Check for Updates…" = "Preveri posodobitve…";
 
 /* Settings window: button; SettingsWindowView: text.
@@ -997,7 +997,7 @@
    Note: Under a package's name; %@ is the author's name. */
 "By %@" = "Avtor: %@";
 
-/* Skin installer: text; SettingsWindowView: text.
+/* Skin installer: text; MenuBarPanelController: text; SettingsWindowView: text.
    Note: %@ is a version number, e.g. "Version 1.2". */
 "Version %@" = "Različica %@";
 
@@ -1150,7 +1150,7 @@
 /* Skin Packager window: text. */
 "No skin chosen" = "Ni izbrane preobleke";
 
-/* Skin Packager window: text.
+/* Skin Packager window: text, menu item.
    Note: Shown when no header image or plugin is chosen. */
 "None" = "Brez";
 
@@ -1356,7 +1356,7 @@
 
 // MARK: App updates
 
-/* App updates: text. */
+/* App updates: text; MenuBarPanelController: text. */
 "Checking for Updates…" = "Preverjanje posodobitev…";
 
 /* App updates: message (an error or a status).

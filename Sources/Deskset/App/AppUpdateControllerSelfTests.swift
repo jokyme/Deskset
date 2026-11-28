@@ -292,6 +292,58 @@ enum AppUpdateControllerSelfTests {
             t.check(app.showUpdateNotice(.failed("Offline"), automatic: false))
             t.check(app.lastAlert?.text.contains("Offline") == true)
             settings.close()
+
+            // Menu bar icon left-click vs right-click and right-click panel items/update badge.
+            let menuAppState = Self.state(t)
+            let menuApp = AppController(state: menuAppState, presentsWindows: false)
+            let menuFetcher = Fetcher()
+            menuApp.updates = AppUpdateController(state: menuAppState, service: menuFetcher, currentVersion: "0.2.0")
+            menuApp.updates.onNotice = { [weak menuApp] notice, automatic in
+                menuApp?.showUpdateNotice(notice, automatic: automatic) ?? false
+            }
+            menuApp.updates.onChange = { [weak menuApp] in
+                menuApp?.menuBarPanel.refreshIfLoaded()
+            }
+            defer {
+                menuApp.menuBarPanel.close()
+                menuApp.manageWindow?.close()
+                SettingsWindowController.window(for: menuApp)?.close()
+            }
+
+            menuApp.handleStatusItemClick(type: .rightMouseUp, modifiers: [])
+            t.equal(menuApp.menuBarPanel.didRequestOpenTesting, true, "right-click opens the menu bar panel")
+            t.check(menuApp.manageWindow == nil, "right-click does not open Widget Library")
+            t.equal(menuApp.menuBarPanel.itemsForTesting.map(\.title), [
+                L("Widget Library"),
+                L("Install Skin…"),
+                L("Settings…"),
+                L("Check for Updates…"),
+                L("About Deskset"),
+                L("Quit Deskset"),
+            ])
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].badge, nil)
+
+            menuApp.handleStatusItemClick(type: .leftMouseUp, modifiers: [])
+            t.equal(menuApp.menuBarPanel.didRequestOpenTesting, false, "left-click closes open menu bar panel")
+            t.check(menuApp.manageWindow != nil && menuApp.lastBroughtToFront === menuApp.manageWindow?.window,
+                    "left-click opens Widget Library")
+
+            menuApp.menuBarPanel.performUpdateActionForTesting()
+            t.equal(menuFetcher.completions.count, 1, "Check for Updates row starts manual update check")
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].title, L("Checking for Updates…"))
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].isEnabled, false)
+
+            menuFetcher.completions[0](.success(release("0.3.0")))
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].title, L("Check for Updates…"))
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].badge, "v0.3.0",
+                    "available update shows version badge on Check for Updates row")
+            t.equal(menuApp.menuBarPanel.itemsForTesting[3].isEnabled, true)
+            t.check(menuApp.menuBarPanel.snapshot() != nil, "menu bar panel snapshot renders update badge")
+
+            menuApp.lastAlert.map { _ in }
+            menuApp.menuBarPanel.performAboutForTesting()
+            t.equal(SettingsWindowController.window(for: menuApp)?.pane, .about,
+                    "About Deskset row opens Settings on About Deskset")
           }
         }
 
