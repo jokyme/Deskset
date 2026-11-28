@@ -424,8 +424,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   (<https://docs.rainmeter.net/manual/user-interface/context-menus/>,
   <https://docs.rainmeter.net/manual/user-interface/manage/>). Rainmeter 5.0 checks for skin-folder changes when
   opening a context menu, switching to Manage or activating a config (<https://www.rainmeter.net/changes-5.0/>).
-- Mac (Deskset): the same Favorite entry points update saved shortcuts to individual config/INI pairs. Manage
-  disables Favorite unless the selected file is running. Favorites appears between Skins and Layouts, is disabled
+- Mac (Deskset): the same Favorite entry points update saved shortcuts to individual config/INI pairs; skin Settings
+  menus and the active-skin checkbox disable Favorite unless the selected file is running, while Widget Library cards
+  also allow starring or unstarring any installed variant directly. Favorites appears between Skins and Layouts, is disabled
   when empty, lists available shortcuts in library order and marks the loaded file. Shortcuts survive unloading
   and restarting; local layouts leave them unchanged. Missing files are omitted from the menu without clearing
   their saved shortcuts. Opening menus or Manage, returning to Manage, selecting its Skins tab and activating configs

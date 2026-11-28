@@ -2361,6 +2361,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notifyChanged()
     }
 
+    /// Updates a saved Favorite shortcut for any installed config/INI variant from the Widget Library card grid,
+    /// whether or not that variant is currently loaded on the desktop.
+    func setLibraryFavorite(_ favorite: Bool, config: String, file: String) {
+        guard let entry = self.config(named: config),
+              let matchedFile = entry.files.first(where: { $0.caseInsensitiveCompare(file) == .orderedSame }) else {
+            return
+        }
+        guard isFavorite(config: entry.name, file: matchedFile) != favorite else { return }
+        state.setFavorite(config: entry.name, file: matchedFile, favorite: favorite)
+        notifyChanged()
+    }
+
     @objc private func toggleFavoriteAction(_ sender: NSMenuItem) {
         let parts = args(sender)
         guard parts.count == 2 else { return }
