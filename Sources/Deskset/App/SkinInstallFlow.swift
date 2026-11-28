@@ -529,7 +529,7 @@ final class SkinInstallFlow {
         let alert = NSAlert()
         alert.messageText = summary.title
         alert.informativeText = summary.subtitle
-        alert.alertStyle = summary.pluginWarning == nil ? .informational : .warning
+        alert.alertStyle = (summary.pluginWarning == nil && summary.warnings.isEmpty) ? .informational : .warning
         alert.addButton(withTitle: L("Install"))
         alert.addButton(withTitle: L("Cancel"))
         let controls = OptionControls(summary: summary)

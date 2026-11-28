@@ -294,6 +294,7 @@ extension Skin {
                                      orElse: dropped)
             return
         }
+        guard job.isLocal || allowsRemoteBackgroundWork else { return }
         if job.isLocal {
             pendingLocalBackgroundWork += 1
             let once = BackgroundOnceFlag()

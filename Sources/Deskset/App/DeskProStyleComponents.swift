@@ -639,6 +639,7 @@ final class SkinThumbnailCache: ObservableObject {
             system: app.system,
             host: host
         )
+        skin.allowsRemoteBackgroundWork = false
         skin.actionPolicy = policy
         if let sourceProvider = policy.sideEffects as? SourceProvider {
             skin.sourceProvider = sourceProvider

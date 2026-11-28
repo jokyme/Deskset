@@ -55,6 +55,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// Selected config and .ini (nil file: a folder that is not a config).
     private(set) var selection: (config: String, file: String?)?
     private var issueCache: [String: (modified: Date?, issues: [String])] = [:]
+    private var metadataCache: [String: (modified: Date?, size: Int?, metadata: [String: String])] = [:]
+    private var lastSyncedActiveFiles: [String: String] = [:]
+    private var isWindowOpen = true
+    private var needsReloadOnShow = false
     private let tabs = NSTabView()
     private let layoutsTable = NSTableView()
     private var layoutNames: [String] = []
@@ -277,20 +281,46 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         minimumSizeRestoreGaveUp = false
     }
 
+    func prepareForPresentation() {
+        isWindowOpen = true
+        if needsReloadOnShow {
+            reload()
+        }
+    }
+
+    override func showWindow(_ sender: Any?) {
+        prepareForPresentation()
+        super.showWindow(sender)
+    }
+
+    override func close() {
+        isWindowOpen = false
+        DeskProInstantToolTip.shared.hide()
+        watchHiddenSkins(false)
+        libraryModel.thumbnails.cancelSettling()
+        super.close()
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
+        isWindowOpen = true
+        if needsReloadOnShow { reload() }
         if interfaceReady { app.discoverSkins() }
     }
 
     /// Watches for skins hiding and showing themselves only while some of the window can be seen.
     func windowDidChangeOcclusionState(_ notification: Notification) {
         let visible = window?.occlusionState.contains(.visible) == true
-        if !visible {
+        if visible {
+            isWindowOpen = true
+            if needsReloadOnShow { reload() }
+        } else {
             DeskProInstantToolTip.shared.hide()
         }
         watchHiddenSkins(visible)
     }
 
     func windowWillClose(_ notification: Notification) {
+        isWindowOpen = false
         DeskProInstantToolTip.shared.hide()
         watchHiddenSkins(false)
         libraryModel.thumbnails.cancelSettling()
@@ -970,11 +1000,20 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     // MARK: Data
 
     @objc private func skinsChanged() {
+        guard isWindowOpen, !app.presentsWindows || window?.isVisible == true else {
+            needsReloadOnShow = true
+            return
+        }
         reload()
+    }
+
+    func invalidateMetadataCache() {
+        metadataCache.removeAll()
     }
 
     /// Rebuilds the outline when the library changed and refreshes the details.
     func reload() {
+        needsReloadOnShow = false
         reloadLayouts()
         updateActiveSkinsMenu()
         let library = app.library
@@ -1153,7 +1192,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         if loaded, let running {
             metadata = running.runtime.snapshot.metadata
         } else if let file {
-            metadata = ManageModel.readMetadata(config.directory.appendingPathComponent(file))
+            metadata = cachedMetadata(config.directory.appendingPathComponent(file))
         } else {
             metadata = [:]
         }
@@ -1385,6 +1424,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         var folderCounts: [String: (name: String, count: Int)] = [:]
         var favCount = 0
         var actCount = 0
+        var currentActiveFiles: [String: String] = [:]
         var builtCards: [WidgetLibraryViewModel.CardItem] = []
 
         for cfg in library {
@@ -1398,29 +1438,39 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             }
 
             let running = app.controller(for: cfg.name)
-            if running != nil { actCount += 1 }
+            if let runningFile = running?.file {
+                actCount += 1
+                currentActiveFiles[key] = runningFile
+                if lastSyncedActiveFiles[key]?.caseInsensitiveCompare(runningFile) != .orderedSame {
+                    libraryModel.chosenVariants.removeValue(forKey: key)
+                }
+            }
             let firstFavoriteFile = cfg.files.first { app.isFavorite(config: cfg.name, file: $0) }
             if firstFavoriteFile != nil { favCount += 1 }
 
             let storedChoice = libraryModel.chosenVariants[key].flatMap { candidate in
                 cfg.files.first { $0.caseInsensitiveCompare(candidate) == .orderedSame }
             }
+            if storedChoice == nil {
+                libraryModel.chosenVariants.removeValue(forKey: key)
+            }
             let chosen: String
             if let storedChoice {
                 chosen = storedChoice
+            } else if libraryModel.section == .active, let runningFile = running?.file {
+                chosen = runningFile
             } else if libraryModel.section == .favorites, let firstFavoriteFile {
                 chosen = firstFavoriteFile
             } else {
                 chosen = running?.file ?? firstFavoriteFile ?? cfg.files.first ?? ""
             }
-            libraryModel.chosenVariants[key] = chosen
 
             let metadata: [String: String] = {
                 if let running, running.file.caseInsensitiveCompare(chosen) == .orderedSame {
                     return running.runtime.snapshot.metadata
                 }
                 guard !chosen.isEmpty else { return [:] }
-                return ManageModel.readMetadata(cfg.directory.appendingPathComponent(chosen))
+                return cachedMetadata(cfg.directory.appendingPathComponent(chosen))
             }()
 
             let leafName = cfg.name.split(separator: "\\").last.map(String.init) ?? cfg.name
@@ -1449,6 +1499,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             ))
         }
 
+        lastSyncedActiveFiles = currentActiveFiles
         libraryModel.cards = builtCards
         libraryModel.rootFolders = folderCounts.values.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -1471,6 +1522,19 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         guard roots.flatMap(allNodes).contains(where: { $0.kind == .folder && $0.path.caseInsensitiveCompare(path) == .orderedSame })
         else { return nil }
         return SkinConfig(name: path, directory: SkinLibrary.directory(for: path, root: app.skinsDirectory), files: [])
+    }
+
+    private func cachedMetadata(_ url: URL) -> [String: String] {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let modified = attrs?[.modificationDate] as? Date
+        let size = attrs?[.size] as? Int
+        let key = url.path
+        if let hit = metadataCache[key], hit.modified == modified, hit.size == size {
+            return hit.metadata
+        }
+        let metadata = ManageModel.readMetadata(url)
+        metadataCache[key] = (modified, size, metadata)
+        return metadata
     }
 
     private func cachedIssues(config: SkinConfig, file: String) -> [String] {
@@ -1982,6 +2046,25 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         menuNeedsUpdate(menu)
         return menu
     }
+    var testLoadOrderField: NSTextField { loadOrderField }
+
+    /// Hosts the visible `SkinInspectorSheetView` for self-tests and localization checks.
+    func makeInspectorViewForTesting(config: String) -> NSView {
+        let root = SkinInspectorSheetView(
+            configName: config,
+            model: libraryModel,
+            controller: self,
+            app: app,
+            onClose: { [weak self] in self?.libraryModel.inspectorConfig = nil }
+        )
+        let host = NSHostingView(rootView: root)
+        if #available(macOS 13.0, *) {
+            host.sizingOptions = []
+        }
+        host.frame = NSRect(x: 0, y: 0, width: 560, height: 600)
+        return host
+    }
+
     /// Chooses Show in the outline's context menu of a config's file.
     func testContextShow(config: String) {
         let item = NSMenuItem()

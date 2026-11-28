@@ -132,8 +132,8 @@ Skins folder) and `.severalPackages([names])`.
 - Windows (Rainmeter): the manual documents the packager's fields (Name, Author, Version, load a skin / layout after
   installation, minimum Rainmeter / Windows version, header image, Variables files, Merge skins) but not the key names.
 - Mac (Deskset): `[rmskin]` keys `Name`, `Author`, `Version`, `LoadType`, `Load`, `VariableFiles` (`|`-separated),
-  `MergeSkins` (also the older `Merge`), `MinimumRainmeter`, `MinimumWindows`; every key is kept in `manifest.raw`.
-  UTF-8, UTF-16 and ANSI files are read.
+  `MergeSkins` (also the older `Merge`), `MinimumRainmeter`, `MinimumDeskset`, `MinimumWindows`; every key is kept in
+  `manifest.raw`. UTF-8, UTF-16 and ANSI files are read.
 - Why: the key names the packager fields map to.
 - Skin impact: none observed (all 13 packager-made test packages parse).
 - Status: identical
@@ -141,7 +141,8 @@ Skins folder) and `.severalPackages([names])`.
 ### Minimum Rainmeter / Windows version
 - Windows (Rainmeter): the installer refuses a package whose minimum Rainmeter or Windows version is not met.
 - Mac (Deskset): a minimum Rainmeter version newer than 5.0 (`MinimumRainmeter`, or `MinRainmeterVer` of legacy
-  packages) adds a warning to the install confirmation; the package can still be installed. Revisions are ignored, so
+  packages) or a `MinimumDeskset` version newer than the running Deskset release (`RmskinManifest.requiresNewerDeskset`)
+  adds a warning to the install confirmation; the package can still be installed. Rainmeter revisions are ignored, so
   `5.0.0.5291` counts as 5.0 (`RmskinManifest.requiresNewerRainmeter`). The minimum Windows version is ignored.
 - Why: Deskset implements Rainmeter 5.0's skin features, so a newer requirement may mean a missing feature, but refusing
   the package would also block skins that do not need it. Windows versions mean nothing on macOS.
